@@ -37,6 +37,12 @@ jobs:
       - name: Build Windows installer
         shell: pwsh
         run: npx electron-builder --win nsis --x64 --publish never
+      - name: Rename Windows package for users
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem dist-package -Filter '*-Setup-x64.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'Windows installer not found' }
+          Rename-Item -LiteralPath $installer.FullName -NewName '小美画布-v1.0-Windows-x64.exe'
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-windows
@@ -63,6 +69,10 @@ jobs:
         run: npm install --no-audit --no-fund --ignore-scripts
       - name: Build macOS packages
         run: npx electron-builder --mac zip --x64 --arm64 --publish never
+      - name: Rename macOS packages for users
+        run: |
+          mv dist-package/*-macOS-x64.zip dist-package/小美画布-v1.0-macOS-x64.zip
+          mv dist-package/*-macOS-arm64.zip dist-package/小美画布-v1.0-macOS-arm64.zip
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-macos
@@ -100,9 +110,22 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          generate_release_notes: true
+          name: 小美画布v1.0
+          body: |
+            小美画布 v1.0 正式版。
+
+            下载对应平台的安装包：Windows 或 macOS（Intel / Apple 芯片）。
+          generate_release_notes: false
           files: |
-            release-assets/*-Setup-x64.exe
-            release-assets/*-macOS-x64.zip
-            release-assets/*-macOS-arm64.zip
+            release-assets/小美画布-v1.0-Windows-x64.exe
+            release-assets/小美画布-v1.0-macOS-x64.zip
+            release-assets/小美画布-v1.0-macOS-arm64.zip
             release-assets/update.json
+      - name: Remove old test releases and tags
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for tag in v0.1.0-test.4 v0.1.0-test.5 v0.1.0-test.6; do
+            gh release delete "$tag" --cleanup-tag --yes || true
+          done

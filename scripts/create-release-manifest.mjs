@@ -29,7 +29,7 @@ function sha256(buffer) {
 }
 
 function classify(fileName) {
-  if (/Setup-x64\.exe$/i.test(fileName)) return { platform: 'win32', arch: 'x64', artifact: 'nsis' };
+  if (/(?:Setup-x64|Windows-x64)\.exe$/i.test(fileName)) return { platform: 'win32', arch: 'x64', artifact: 'nsis' };
   const mac = fileName.match(/macOS-(x64|arm64|universal)\.zip$/i);
   if (mac) return { platform: 'darwin', arch: mac[1].toLowerCase(), artifact: 'zip' };
   return null;
@@ -53,7 +53,7 @@ for (const fileName of await readdir(directory)) {
   });
 }
 
-if (!entries.some((item) => item.platform === 'win32')) throw new Error('没有找到 Windows Setup-x64.exe');
+if (!entries.some((item) => item.platform === 'win32')) throw new Error('没有找到 Windows 安装包');
 if (!entries.some((item) => item.platform === 'darwin')) throw new Error('没有找到 macOS ZIP');
 
 const manifest = {
