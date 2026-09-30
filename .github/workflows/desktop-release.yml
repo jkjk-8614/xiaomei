@@ -1,0 +1,104 @@
+name: Desktop release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag, for example v0.1.0'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build bundled Windows API runtime
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir -r requirements.txt pyinstaller
+          pyinstaller --onefile --name xiaomei-api main.py --distpath build/win-api --workpath build/win-api-work --specpath build/win-api-spec
+      - name: Install desktop build tools
+        shell: pwsh
+        run: npm install --no-audit --no-fund --ignore-scripts
+      - name: Build Windows installer
+        shell: pwsh
+        run: npx electron-builder --win nsis --x64 --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows
+          path: dist-package/*
+          if-no-files-found: error
+
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build bundled macOS API runtime
+        run: |
+          python -m pip install --upgrade pip
+          grep -v '^onnxruntime-gpu' requirements.txt > /tmp/requirements-macos.txt
+          python -m pip install --no-cache-dir -r /tmp/requirements-macos.txt onnxruntime pyinstaller
+          pyinstaller --onefile --name xiaomei-api main.py --distpath build/mac-api --workpath build/mac-api-work --specpath build/mac-api-spec
+      - name: Install desktop build tools
+        run: npm install --no-audit --no-fund --ignore-scripts
+      - name: Build macOS packages
+        run: npx electron-builder --mac dmg zip --x64 --arm64 --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos
+          path: dist-package/*
+          if-no-files-found: error
+
+  publish:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: release-assets
+          merge-multiple: true
+      - name: Prepare release manifest
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          VERSION="${RELEASE_VERSION#v}"
+          node scripts/create-release-manifest.mjs \
+            --directory release-assets \
+            --output release-assets/update.json \
+            --version "$VERSION" \
+            --tag "$RELEASE_TAG" \
+            --repository "$GITHUB_REPOSITORY"
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          files: release-assets/*

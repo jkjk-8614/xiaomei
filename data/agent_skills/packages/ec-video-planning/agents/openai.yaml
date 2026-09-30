@@ -1,0 +1,4 @@
+interface:
+  display_name: "视频策划生成 CH"
+  short_description: "基于视频分析报告生成中文视频策划"
+  default_prompt: "Use $ec-video-planning to generate a Chinese video plan from a video analysis report or uploaded video."

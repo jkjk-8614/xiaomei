@@ -1,0 +1,10 @@
+# 忽略 Python 字节码缓存目录
+__pycache__/
+
+# 忽略独立的 .pyc 文件 (防止旧项目中的残留文件)
+*.pyc
+*.pyo
+*.pyd
+.qoder/.DS_Store
+.DS_Store
+.qoder/*

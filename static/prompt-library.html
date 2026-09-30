@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN" data-studio-skin="minimal">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>提示词库 - 小美画布</title>
+    <link rel="icon" href="/static/images/logo.png?v=2026.08.20" type="image/png">
+    <script src="/static/vendor/js/lucide.js?v=2026.08.20.1784161005"></script>
+    <script src="/static/js/theme.js?v=2026.08.20.1788396425"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.08.20.1785985827">
+    <link rel="stylesheet" href="/static/css/prompt-library.css?v=2026.08.20.1786417767">
+    <link rel="stylesheet" href="/static/css/apple-inspired.css?v=2026.08.20.1789013930">
+</head>
+<body>
+    <div class="prompt-library-shell">
+        <header class="prompt-library-header">
+            <div class="prompt-library-heading">
+                <div class="prompt-library-eyebrow"><span class="eyebrow-dot"></span>小美画布 <span class="eyebrow-divider">/</span> 灵感资产</div>
+                <h1><span class="title-icon"><i data-lucide="sparkles"></i></span>提示词库</h1>
+                <p>收藏生成过的好图，连同提示词、参考图和参数一起留存，之后可以重新应用。</p>
+            </div>
+            <div class="prompt-library-header-actions">
+                <span class="header-note"><i data-lucide="bookmark-check"></i>把好结果变成下一次的起点</span>
+                <button class="icon-button" id="refreshCasesButton" type="button" title="刷新案例" aria-label="刷新案例">
+                    <i data-lucide="refresh-cw"></i>
+                </button>
+                <button class="primary-button" id="openCategoryManagerButton" type="button">
+                    <i data-lucide="settings-2"></i>
+                    <span>管理分类</span>
+                </button>
+            </div>
+        </header>
+
+        <section class="prompt-library-toolbar" aria-label="案例筛选">
+            <div class="toolbar-topline">
+                <div>
+                    <span class="toolbar-kicker">查找案例</span>
+                    <span class="toolbar-hint">按标题、提示词、标签或模型快速定位</span>
+                </div>
+                <i data-lucide="sliders-horizontal" class="toolbar-decoration"></i>
+            </div>
+            <div class="toolbar-controls">
+                <label class="search-box" for="caseSearchInput">
+                    <i data-lucide="search"></i>
+                    <input id="caseSearchInput" type="search" placeholder="搜索标题、提示词、标签或模型" autocomplete="off">
+                </label>
+                <label class="select-field">
+                    <span>分类</span>
+                    <select id="caseCategorySelect" class="filter-select" aria-label="分类筛选">
+                        <option value="">全部分类</option>
+                    </select>
+                    <i data-lucide="chevron-down"></i>
+                </label>
+                <label class="select-field">
+                    <span>排序</span>
+                    <select id="caseSortSelect" class="filter-select" aria-label="排序">
+                        <option value="recent">最近收藏</option>
+                        <option value="used">最近使用</option>
+                        <option value="title">标题 A-Z</option>
+                    </select>
+                    <i data-lucide="chevron-down"></i>
+                </label>
+            </div>
+            <div class="toolbar-bottom">
+                <div class="toolbar-tags" id="caseTagFilters" aria-label="标签筛选"></div>
+                <span class="toolbar-tag-hint">点击标签筛选</span>
+            </div>
+        </section>
+
+        <main class="library-main">
+            <section class="library-results">
+                <div class="results-header">
+                    <div>
+                        <span class="section-kicker">我的案例</span>
+                        <span class="section-caption">收藏的生成结果与创作参数</span>
+                    </div>
+                    <div class="results-meta">
+                        <span id="caseSummary">正在读取案例…</span>
+                        <button id="clearCaseFiltersButton" class="text-button" type="button" hidden>清除筛选</button>
+                    </div>
+                </div>
+                <section id="caseGrid" class="case-grid" aria-live="polite"></section>
+                <section id="caseEmptyState" class="case-empty-state" hidden>
+                    <div class="empty-icon"><i data-lucide="star"></i></div>
+                    <h2 id="emptyStateTitle">还没有收藏的生成案例</h2>
+                    <p id="emptyStateText">在画布生成满意图片后，点击图片节点上的收藏按钮。</p>
+                    <button id="emptyStateAction" class="secondary-button" type="button">去小美画布</button>
+                </section>
+            </section>
+
+        </main>
+    </div>
+
+    <div id="caseDrawer" class="case-drawer" hidden>
+        <div class="case-drawer-backdrop" data-close-drawer></div>
+        <aside class="case-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+            <header class="case-drawer-header">
+                <div>
+                    <span class="drawer-kicker">生成案例</span>
+                    <h2 id="detailTitle">案例详情</h2>
+                </div>
+                <button class="icon-button" type="button" data-close-drawer title="关闭详情" aria-label="关闭详情"><i data-lucide="x"></i></button>
+            </header>
+            <div id="caseDetailBody" class="case-detail-body"></div>
+        </aside>
+    </div>
+
+    <div id="categoryModal" class="modal-shell" hidden>
+        <div class="modal-backdrop" data-close-category-modal></div>
+        <section class="category-modal" role="dialog" aria-modal="true" aria-labelledby="categoryModalTitle">
+            <header class="modal-header">
+                <div>
+                    <span class="drawer-kicker">整理方式</span>
+                    <h2 id="categoryModalTitle">管理分类</h2>
+                </div>
+                <button class="icon-button" type="button" data-close-category-modal title="关闭" aria-label="关闭"><i data-lucide="x"></i></button>
+            </header>
+            <div class="category-add-row">
+                <input id="newCategoryInput" type="text" maxlength="30" placeholder="新增分类名称">
+                <button id="addCategoryButton" class="secondary-button" type="button"><i data-lucide="plus"></i>新增</button>
+            </div>
+            <div id="categoryList" class="category-list"></div>
+            <p class="modal-hint">删除分类不会删除案例，案例会自动归入第一个可用分类。</p>
+        </section>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="/static/js/prompt-library.js?v=2026.08.20.1787556589"></script>
+</body>
+</html>

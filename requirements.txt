@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+requests
+pydantic
+python-multipart
+httpx
+pillow
+numpy
+# NVIDIA Windows 优先使用 CUDA；CPU-only 环境可将此行替换为 onnxruntime
+onnxruntime-gpu[cuda,cudnn]

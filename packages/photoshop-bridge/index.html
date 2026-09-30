@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="main.js" defer></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #151b24;
+      --panel: #202832;
+      --panel-soft: #1b222c;
+      --field: #18212b;
+      --border: #344050;
+      --border-soft: #3a4656;
+      --text: #e8edf5;
+      --muted: #a5afbd;
+      --quiet: #8d98a8;
+      --accent: #2f82dd;
+      --accent-hover: #3c91ef;
+      --accent-pressed: #2673c8;
+      --space: 8px;
+      --card-pad: 12px;
+      --control-h: 30px;
+      --side-btn-w: 66px;
+      --safe-right: 14px;
+      --primary-h: 34px;
+    }
+    html, body, uxp-panel {
+      width: 100%;
+      height: 100%;
+      min-height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 12px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+    * { box-sizing: border-box; }
+    #bridgePanel {
+      min-width: 300px;
+      height: 100vh;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      color: var(--text);
+      overflow-y: auto;
+      overflow-x: hidden;
+      overflow-x: hidden;
+    }
+    .panel-topbar {
+      flex: 0 0 auto;
+      min-height: 34px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 12px;
+      border-bottom: 1px solid #293240;
+      background: #151a22;
+      color: #dfe5ef;
+      font-size: 13px;
+      font-weight: 750;
+    }
+    .panel-topbar span:nth-child(2) {
+      min-width: 0;
+      overflow: visible;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .ps-badge {
+      width: 24px;
+      height: 24px;
+      border: 1px solid #386994;
+      border-radius: 5px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #122235;
+      overflow: hidden;
+      padding: 3px;
+    }
+    .ps-badge img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: contain;
+    }
+    .version-chip,
+    .maker-chip {
+      color: #4aa3ff;
+      font-weight: 800;
+    }
+    .maker-chip {
+      margin-left: 4px;
+    }
+    .topbar-spacer { flex: 1 1 auto; }
+    .topbar-icon {
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1;
+    }
+    .panel-body {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space);
+      padding: var(--space);
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+    .panel-header { display: none; }
+    .title { margin: 0; font-size: 16px; line-height: 1.25; font-weight: 700; color: var(--text); }
+    .subtitle { margin-top: 2px; color: var(--muted); font-size: 11px; }
+    #statusDot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #777d87;
+      box-shadow: 0 0 0 3px rgba(119, 125, 135, .16);
+      align-self: start;
+      margin-top: 7px;
+    }
+    .button-primary {
+      width: 100%;
+      min-height: var(--primary-h);
+      display: block;
+      border: 1px solid #61a9ff;
+      border-radius: 8px;
+      background: linear-gradient(#3d94ef, var(--accent));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12);
+      color: #f8fbff;
+      font-weight: 700;
+      font-size: 12px;
+      outline: none;
+    }
+    .button-primary:hover { background: linear-gradient(#66afff, var(--accent-hover)); }
+    .button-primary:active { background: var(--accent-pressed); }
+    .button-secondary, .button-ghost {
+      min-height: 34px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      color: #e7e9ee;
+      font-weight: 650;
+      font-size: 13px;
+      outline: none;
+      padding: 0 10px;
+    }
+    .button-secondary { background: #2b2e34; }
+    .button-secondary:hover { border-color: #515762; background: #30333a; }
+    .button-ghost { background: transparent; color: #d7dae0; }
+    .button-ghost:hover { background: #2c2f35; color: #f1f3f5; }
+    .panel-action-btn {
+      min-width: 72px;
+      min-height: var(--control-h);
+      display: block;
+      border: 1px solid var(--border-soft);
+      border-radius: 7px;
+      background: #202936;
+      color: #dfe6f0;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 0 9px;
+      outline: none;
+    }
+    .target-actions {
+      margin-top: 8px;
+      clear: both;
+      display: grid;
+      gap: 7px;
+    }
+    .bridge-action-strip {
+      display: block;
+      margin: 8px 0 10px;
+      min-height: 38px;
+      white-space: nowrap;
+      overflow: visible;
+    }
+    .bridge-action-btn {
+      display: inline-block;
+      min-height: 34px;
+      width: calc(50% - 6px);
+      border: 1px solid #4d93e9;
+      border-radius: 8px;
+      background: #25344a;
+      color: #f3f7ff;
+      font-size: 12px;
+      font-weight: 800;
+      text-align: center;
+      padding: 0 8px;
+      vertical-align: middle;
+      outline: none;
+    }
+    .bridge-action-btn + .bridge-action-btn {
+      margin-left: 8px;
+    }
+    .bridge-action-btn.primary {
+      border-color: #63adff;
+      background: #2f82dd;
+    }
+    .bridge-action-strip + .hint {
+      margin-top: 0;
+      margin-bottom: 9px;
+    }
+    .card {
+      flex: 0 0 auto;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: var(--panel);
+      padding: var(--card-pad) calc(var(--card-pad) + var(--safe-right)) var(--card-pad) var(--card-pad);
+      overflow: hidden;
+    }
+    .card-title {
+      color: var(--quiet);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      margin-bottom: 10px;
+    }
+    .card-head {
+      display: block;
+      margin-bottom: 9px;
+      min-height: var(--control-h);
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .card-head .card-title {
+      display: inline-block;
+      width: calc(100% - var(--side-btn-w) - var(--safe-right) - 10px);
+      margin: 8px 0 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+    .card-head .panel-action-btn {
+      display: inline-block;
+      width: var(--side-btn-w);
+      min-width: var(--side-btn-w);
+      vertical-align: middle;
+    }
+    #statusText {
+      margin: 0;
+      min-height: 0;
+      color: #f0f2f5;
+      font-size: 12px;
+    }
+    .target-grid {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+    .field span {
+      color: var(--quiet);
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .hint { color: var(--muted); font-size: 11px; margin-top: 8px; line-height: 1.25; }
+    .hint strong { color: #4b9cf5; font-weight: 800; }
+    .target-controls {
+      display: block;
+      min-height: 0;
+      margin-top: 0;
+    }
+    .target-search-wrap {
+      position: relative;
+      margin: 0 0 8px;
+    }
+    .target-search {
+      width: 100%;
+      min-height: 32px;
+      border: 1px solid var(--border-soft);
+      border-radius: 7px;
+      background: var(--field);
+      color: #f0f2f5;
+      padding: 0 30px 0 10px;
+      outline: none;
+      font-size: 11px;
+      margin: 0;
+    }
+    .target-search-icon {
+      position: absolute;
+      right: 10px;
+      top: 6px;
+      color: #828d9c;
+      font-size: 16px;
+      pointer-events: none;
+    }
+    .target-current {
+      width: 100%;
+      min-height: 44px;
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr) 18px;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid #3489ec;
+      border-radius: 7px;
+      background: #223044;
+      color: #f0f2f5;
+      text-align: left;
+      padding: 0 9px;
+      outline: none;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .target-current span:nth-child(2) {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .target-current-icon {
+      color: #6aa7ff;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #6aa7ff;
+      border-radius: 50%;
+      text-align: center;
+      justify-self: center;
+    }
+    .target-current-check {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0;
+      justify-self: end;
+    }
+    .target-current-check::after {
+      content: "";
+      width: 7px;
+      height: 4px;
+      border-left: 2px solid #fff;
+      border-bottom: 2px solid #fff;
+      transform: rotate(-45deg);
+      margin-top: -2px;
+    }
+    .target-debug {
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 8px;
+    }
+    .target-meta-row {
+      display: block;
+      margin-top: 8px;
+      min-height: var(--control-h);
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .target-meta-row .target-debug {
+      display: inline-block;
+      width: calc(100% - var(--side-btn-w) - var(--safe-right) - 10px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-top: 0;
+      vertical-align: middle;
+    }
+    .target-meta-row .panel-action-btn {
+      display: inline-block;
+      width: var(--side-btn-w);
+      min-width: var(--side-btn-w);
+      vertical-align: middle;
+    }
+    .target-nav {
+      display: block;
+      margin-top: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .target-nav .panel-action-btn {
+      display: inline-block;
+      width: calc(50% - 12px);
+      min-height: 32px;
+      vertical-align: middle;
+    }
+    #targetPrevBtn {
+      margin-left: 6px;
+      margin-right: 12px;
+    }
+    #targetNextBtn {
+      margin-right: 6px;
+    }
+    .target-menu {
+      display: none;
+      margin-top: 8px;
+      max-height: 90px;
+      overflow: auto;
+    }
+    .target-menu-item {
+      width: 100%;
+      min-height: 30px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 4px;
+      border: 1px solid var(--border-soft);
+      border-radius: 6px;
+      background: var(--field);
+      color: #f0f2f5;
+      text-align: left;
+      padding: 0 9px;
+      margin-bottom: 5px;
+      outline: none;
+    }
+    .target-menu-item.active {
+      border-color: #68aefc;
+      background: #223247;
+    }
+    .target-menu-item span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .target-menu-item small {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .target-menu-empty {
+      color: var(--muted);
+      font-size: 11px;
+      padding: 4px 0;
+    }
+    #queueCard {
+      display: grid;
+      grid-template-columns: 64px 1fr;
+      gap: 10px;
+      align-items: center;
+    }
+    #queueCard.compact { display: none; }
+    #queuePreview {
+      width: 64px;
+      height: 64px;
+      border: 1px solid var(--border-soft);
+      border-radius: 6px;
+      background: #191b20;
+      color: var(--quiet);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      font-size: 10px;
+      font-weight: 700;
+    }
+    #queueTitle {
+      display: block;
+      margin-top: 3px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #f0f2f5;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    #queueSub { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
+    .actions { display: none; grid-template-columns: 1fr 88px; gap: 8px; }
+    #recentList { display: none; gap: 8px; color: var(--muted); font-size: 11px; }
+    .compact-card {
+      min-height: 74px;
+      display: block;
+      padding: 10px 12px;
+    }
+    .compact-card .card-title {
+      margin: 0 0 9px;
+      color: #c9d1dd;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .status-box {
+      min-height: 30px;
+      border: 1px solid var(--border-soft);
+      border-radius: 7px;
+      background: var(--field);
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 0 9px;
+    }
+    .status-light {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #48ca7a;
+      flex: 0 0 auto;
+    }
+    .section-title-row {
+      min-height: 34px;
+      display: block;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .section-title {
+      display: inline-block;
+      width: calc(100% - var(--side-btn-w) - var(--safe-right) - 10px);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 28px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+    .section-icon {
+      width: 16px;
+      height: 16px;
+      display: inline-block;
+      border: 2px solid #cbd3df;
+      border-radius: 50%;
+      margin-right: 7px;
+      vertical-align: -4px;
+      color: #cbd3df;
+      font-size: 0;
+    }
+    .section-icon.log {
+      border: 0;
+      border-radius: 0;
+      width: 16px;
+      height: 13px;
+      background: repeating-linear-gradient(to bottom, #cbd3df 0, #cbd3df 2px, transparent 2px, transparent 6px);
+      vertical-align: -2px;
+    }
+    .section-title-row .panel-action-btn {
+      display: inline-block;
+      min-width: var(--side-btn-w);
+      width: var(--side-btn-w);
+      vertical-align: middle;
+    }
+    .compact-value {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #f0f2f5;
+      font-size: 11px;
+    }
+    .recent-card {
+      min-height: 46px;
+      padding: 8px 12px;
+    }
+    .recent-card #recentList { display: none; }
+    .secondary-details { display: none; }
+    .server-field { display: none; }
+    .log-card {
+      flex: 1 1 auto;
+      min-height: 92px;
+      padding: 8px 12px;
+      display: block;
+    }
+    .log-card #log { display: none; }
+    .log-card.expanded {
+      min-height: 128px;
+    }
+    .log-card.expanded #log { display: block; }
+    #log {
+      min-height: 0;
+      height: calc(100% - 42px);
+      border: 1px solid var(--border-soft);
+      border-radius: 7px;
+      background: var(--field);
+      padding: 7px;
+      max-height: none;
+      overflow: auto;
+      margin: 7px 0 0;
+      white-space: pre-wrap;
+      color: #d9dde4;
+      font: 10px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      opacity: .92;
+    }
+    @media (max-height: 620px) {
+      :root {
+        --space: 6px;
+        --card-pad: 10px;
+        --control-h: 28px;
+        --primary-h: 32px;
+      }
+      .panel-topbar { min-height: 30px; padding-top: 3px; padding-bottom: 3px; }
+      .panel-body { gap: var(--space); padding: var(--space); }
+      .panel-header { padding-bottom: 4px; }
+      #queueCard { display: none; }
+      .card-head { margin-bottom: 7px; }
+      .target-search-wrap,
+      .target-meta-row,
+      .target-nav,
+      .target-actions,
+      .hint { margin-top: 6px; margin-bottom: 6px; }
+      .compact-card { min-height: 66px; }
+      .recent-card { min-height: 42px; }
+      .log-card { min-height: 52px; }
+      .log-card.expanded { min-height: 112px; }
+      .log-card.expanded #log { height: calc(100% - 42px); min-height: 64px; }
+    }
+    @media (max-height: 520px) {
+      :root {
+        --space: 5px;
+        --card-pad: 8px;
+        --control-h: 26px;
+        --primary-h: 30px;
+        --side-btn-w: 62px;
+        --safe-right: 16px;
+      }
+      .panel-topbar { min-height: 28px; padding: 3px 8px; font-size: 11px; }
+      .ps-badge { width: 20px; height: 20px; padding: 2px; }
+      .topbar-icon { display: none; }
+      .target-current { min-height: 38px; }
+      .target-search { min-height: 28px; }
+      .target-nav .panel-action-btn { min-height: 28px; }
+      .compact-card { min-height: 52px; }
+      .status-box { min-height: 26px; }
+      .recent-card { min-height: 38px; }
+      .log-card { min-height: 38px; }
+      .log-card.expanded { min-height: 96px; }
+      .log-card.expanded #log { display: block; height: calc(100% - 38px); min-height: 54px; }
+    }
+    @media (max-height: 460px) {
+      .compact-card { min-height: 44px; }
+      .compact-card .card-title { margin-bottom: 5px; }
+      .status-box { min-height: 24px; }
+      .recent-card,
+      .log-card { min-height: 34px; padding-top: 4px; padding-bottom: 4px; }
+      .log-card.expanded { min-height: 80px; padding-top: 4px; padding-bottom: 4px; }
+      .log-card.expanded #log { min-height: 40px; }
+    }
+  </style>
+</head>
+<body>
+  <uxp-panel panelid="infiniteCanvasBridgePanel">
+    <div id="bridgePanel">
+      <div class="panel-topbar">
+        <span class="ps-badge"><img src="icons/plugin-dark.png" alt=""></span>
+        <span>无限画布 PS 桥接 <span class="version-chip">V1.0.2</span> <span class="maker-chip">Made by Jensen</span></span>
+        <span class="topbar-spacer"></span>
+        <span class="topbar-icon">⚙</span>
+        <span class="topbar-icon">−</span>
+        <span class="topbar-icon">×</span>
+      </div>
+      <div class="panel-body">
+        <header class="panel-header">
+          <div>
+            <h1 class="title">无限画布</h1>
+            <div class="subtitle">Photoshop 回传面板 V1.0.2</div>
+          </div>
+          <span id="statusDot"></span>
+        </header>
+
+        <section class="card">
+          <div class="card-head">
+            <div class="card-title">目标画布</div>
+            <button id="refreshCanvasBtn" class="panel-action-btn" type="button">刷新</button>
+          </div>
+          <div class="bridge-action-strip">
+            <button id="sendLayerBtn" class="bridge-action-btn primary" type="button">发送到画布</button><button id="matchOriginalBtn" class="bridge-action-btn" type="button">匹配原图</button>
+          </div>
+          <div id="matchOriginalHint" class="hint">选中回传图层后点击，再选原图层点击匹配。</div>
+          <div id="targetCanvasControls" class="target-controls">
+            <div class="target-search-wrap">
+              <input id="targetSearchInput" class="target-search" type="text" placeholder="搜索画布名称...">
+              <span class="target-search-icon">⌕</span>
+            </div>
+            <button id="targetCanvasCurrentBtn" class="target-current" type="button">正在加载画布列表...</button>
+            <div class="target-meta-row">
+              <div id="targetCanvasDebug" class="target-debug">正在识别...</div>
+              <button id="targetToggleBtn" class="panel-action-btn" type="button">展开选择</button>
+            </div>
+            <div class="target-nav">
+              <button id="targetPrevBtn" class="panel-action-btn" type="button">上一个</button>
+              <button id="targetNextBtn" class="panel-action-btn" type="button">下一个</button>
+            </div>
+            <div id="targetCanvasMenu" class="target-menu"></div>
+          </div>
+          <div id="targetCanvasHint" class="hint">正在加载...</div>
+        </section>
+
+        <section class="card compact-card">
+          <div class="card-title">连接状态</div>
+          <div class="status-box">
+            <span class="status-light"></span>
+            <p id="statusText" class="compact-value">面板已加载，自动导入即将开启。</p>
+          </div>
+        </section>
+
+        <section id="queueCard" class="card compact">
+          <div id="queuePreview"><span>无图片</span></div>
+          <div>
+            <div class="card-title">待导入</div>
+            <strong id="queueTitle">暂无队列图片</strong>
+            <p id="queueSub">画布回传后会出现在这里。</p>
+          </div>
+        </section>
+
+        <div class="actions">
+          <button id="pullBtn" class="button-secondary">导入最新</button>
+          <button id="autoBtn" class="button-secondary">自动开</button>
+        </div>
+
+        <section class="card recent-card">
+          <div class="section-title-row">
+            <div class="section-title"><span class="section-icon recent"></span><span>最近任务</span></div>
+            <button id="clearBtn" class="panel-action-btn" type="button">清空队列</button>
+          </div>
+          <div id="recentList">暂无最近任务</div>
+        </section>
+
+        <label class="field server-field">
+          <span>服务地址</span>
+          <input id="serverInput" value="http://127.0.0.1:3000">
+        </label>
+
+        <section id="logCard" class="card log-card expanded">
+          <div class="section-title-row">
+            <div class="section-title"><span class="section-icon log"></span><span>运行日志</span></div>
+            <button id="logToggleBtn" class="panel-action-btn" type="button">折叠</button>
+          </div>
+          <pre id="log"></pre>
+        </section>
+      </div>
+    </div>
+  </uxp-panel>
+</body>
+</html>

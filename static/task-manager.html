@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN" data-studio-scale="off" data-studio-skin="minimal">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>任务管理 - 小美画布</title>
+    <script src="/static/vendor/js/lucide.js?v=2026.08.20.1784161005"></script>
+    <script src="/static/js/theme.js?v=2026.08.20.1788396425"></script>
+    <script>
+        if (new URLSearchParams(window.location.search).get('embedded')) {
+            document.documentElement.classList.add('task-embedded');
+        }
+    </script>
+    <link rel="stylesheet" href="/static/css/task-manager.css?v=2026.08.20.1786781274">
+    <link rel="stylesheet" href="/static/css/apple-inspired.css?v=2026.08.20.1789013930">
+</head>
+<body>
+    <main class="task-page">
+        <header class="task-header">
+            <div class="task-title-line">
+                <h1>定时任务</h1>
+                <p>让 AI 同事按时上工</p>
+            </div>
+            <div class="task-toolbar">
+                <div id="taskFilters" class="task-segmented" role="tablist" aria-label="任务状态筛选">
+                    <button class="task-filter active" type="button" data-filter="all" role="tab" aria-selected="true"><span>全部</span><b id="countAll">0</b></button>
+                    <button class="task-filter" type="button" data-filter="enabled" role="tab" aria-selected="false"><span>已启用</span><b id="countEnabled">0</b></button>
+                    <button class="task-filter" type="button" data-filter="disabled" role="tab" aria-selected="false"><span>未启用</span><b id="countDisabled">0</b></button>
+                </div>
+                <div class="task-toolbar-spacer"></div>
+                <button id="refreshTaskButton" class="task-button task-button-ghost" type="button" title="刷新定时任务">
+                    <i data-lucide="refresh-cw" aria-hidden="true"></i><span>刷新</span>
+                </button>
+                <button id="createTaskButton" class="task-button task-button-primary" type="button">
+                    <i data-lucide="plus" aria-hidden="true"></i><span>新建任务</span>
+                </button>
+            </div>
+        </header>
+
+        <section class="task-table" aria-label="定时任务列表">
+            <div class="task-table-head task-grid">
+                <span>任务</span>
+                <span>类型</span>
+                <span>执行计划</span>
+                <span>下次执行</span>
+                <span>上次结果</span>
+                <span class="task-actions-heading">操作</span>
+            </div>
+            <div id="taskContent" class="task-content" aria-live="polite">
+                <div class="task-empty task-loading"><i data-lucide="loader-circle" aria-hidden="true"></i><span>正在读取任务…</span></div>
+            </div>
+        </section>
+    </main>
+
+    <div id="taskModal" class="task-modal" hidden>
+        <div class="task-modal-backdrop" data-close-task-modal></div>
+        <section class="task-modal-panel" role="dialog" aria-modal="true" aria-labelledby="taskModalTitle">
+            <header class="task-modal-header">
+                <div>
+                    <h2 id="taskModalTitle">新建定时任务</h2>
+                    <p>只覆盖最常用字段；任务会保存在本地并由小美画布按时触发。</p>
+                </div>
+                <button id="closeTaskModal" class="task-modal-close" type="button" aria-label="关闭">×</button>
+            </header>
+            <form id="taskForm" novalidate>
+                <label class="task-field">
+                    <span class="task-field-label">任务名</span>
+                    <input id="taskName" type="text" maxlength="120" placeholder="如：每日竞品价格巡检" autocomplete="off">
+                </label>
+
+                <div class="task-field">
+                    <span class="task-field-label">执行计划</span>
+                    <div class="task-choice-row" id="scheduleChoices" role="radiogroup" aria-label="执行计划类型">
+                        <button type="button" class="task-choice active" data-schedule-kind="cron">Cron 表达式</button>
+                        <button type="button" class="task-choice" data-schedule-kind="every">间隔</button>
+                        <button type="button" class="task-choice" data-schedule-kind="at">一次性</button>
+                    </div>
+                    <div id="cronFields" class="task-plan-fields">
+                        <input id="cronExpression" class="task-mono" type="text" value="0 8 * * *" placeholder="0 8 * * *" aria-label="Cron 表达式">
+                        <input id="cronTimezone" class="task-mono task-timezone" type="text" placeholder="时区（可选，如 Asia/Shanghai）" aria-label="时区">
+                    </div>
+                    <div id="everyFields" class="task-plan-fields" hidden>
+                        <input id="everyValue" class="task-mono" type="text" value="15m" placeholder="15m / 1h / 30s" aria-label="间隔">
+                    </div>
+                    <div id="atFields" class="task-plan-fields" hidden>
+                        <input id="atValue" class="task-mono" type="text" placeholder="2026-08-14T08:00:00+08:00" aria-label="一次性触发时间">
+                    </div>
+                </div>
+
+                <div class="task-field">
+                    <span class="task-field-label">运行模式</span>
+                    <div class="task-choice-row" id="payloadChoices" role="radiogroup" aria-label="运行模式">
+                        <button type="button" class="task-choice active" data-payload-kind="systemEvent">系统事件（主会话）</button>
+                        <button type="button" class="task-choice" data-payload-kind="agentTurn">对话（独立会话）</button>
+                    </div>
+                </div>
+
+                <label id="agentField" class="task-field" hidden>
+                    <span class="task-field-label">Agent ID</span>
+                    <input id="agentId" class="task-mono" type="text" maxlength="120" placeholder="如：price-watcher" autocomplete="off">
+                </label>
+
+                <label class="task-field">
+                    <span id="contentLabel" class="task-field-label">系统事件文本</span>
+                    <textarea id="taskContentInput" rows="3" maxlength="5000" placeholder="到点提醒我开站会"></textarea>
+                </label>
+
+                <footer class="task-modal-actions">
+                    <button id="cancelTaskButton" class="task-button task-button-ghost" type="button">取消</button>
+                    <button id="submitTaskButton" class="task-button task-button-primary" type="submit">创建</button>
+                </footer>
+            </form>
+        </section>
+    </div>
+
+    <div id="taskToast" class="task-toast" role="status" aria-live="polite"></div>
+    <script src="/static/js/task-manager.js?v=2026.08.20.1786700542"></script>
+</body>
+</html>

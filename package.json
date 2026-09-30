@@ -1,0 +1,13 @@
+{
+  "name": "xiaomei-canvas-desktop-test",
+  "productName": "小美画布-测试版",
+  "version": "0.1.0-test.3",
+  "description": "小美画布测试版",
+  "author": "小美画布",
+  "private": true,
+  "main": "desktop/main.cjs",
+  "devDependencies": {
+    "electron": "31.7.7",
+    "electron-builder": "26.15.3"
+  }
+}

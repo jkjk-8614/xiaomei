@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小美画布正在更新</title>
+    <style>
+        :root { color-scheme: light; font-family: "Microsoft YaHei", "Segoe UI", sans-serif; }
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f5f7fb; color: #18212f; }
+        .card { width: min(460px, calc(100vw - 36px)); padding: 30px 32px 26px; border: 1px solid #e4e9f1; border-radius: 18px; background: rgba(255,255,255,.96); box-shadow: 0 18px 50px rgba(27, 48, 82, .12); }
+        .mark { width: 42px; height: 42px; display: grid; place-items: center; margin-bottom: 17px; border-radius: 13px; background: #2563eb; color: #fff; font-size: 21px; font-weight: 800; }
+        h1 { margin: 0; font-size: 20px; letter-spacing: .01em; }
+        p { min-height: 42px; margin: 10px 0 20px; color: #65738a; font-size: 13px; line-height: 1.65; }
+        .track { height: 9px; overflow: hidden; border-radius: 999px; background: #e7edf5; }
+        .bar { width: 0%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #2563eb, #58a6ff); transition: width .18s ease; }
+        .meta { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; color: #7b8798; font-size: 12px; }
+        .meta strong { color: #2563eb; font-size: 13px; }
+        .actions { display: flex; justify-content: flex-end; margin-top: 22px; }
+        button { min-width: 86px; padding: 8px 16px; border: 1px solid #d8e0eb; border-radius: 9px; background: #fff; color: #526174; cursor: pointer; font: inherit; }
+        button:hover { border-color: #9fb5d3; background: #f8fbff; }
+        button[hidden] { display: none; }
+        .error { color: #c2410c; }
+    </style>
+</head>
+<body>
+    <main class="card" role="dialog" aria-labelledby="title">
+        <div class="mark" aria-hidden="true">↑</div>
+        <h1 id="title">小美画布正在更新</h1>
+        <p id="message">正在准备更新，请稍候…</p>
+        <div class="track" aria-label="下载进度"><div id="bar" class="bar"></div></div>
+        <div class="meta"><span id="size">等待下载</span><strong id="percent">0%</strong></div>
+        <div class="actions"><button id="cancel" type="button">取消</button></div>
+    </main>
+    <script>
+        (() => {
+            const params = new URLSearchParams(location.search);
+            const version = params.get('version') || '';
+            const message = document.getElementById('message');
+            const bar = document.getElementById('bar');
+            const size = document.getElementById('size');
+            const percent = document.getElementById('percent');
+            const cancel = document.getElementById('cancel');
+            const formatBytes = (value) => {
+                const bytes = Number(value) || 0;
+                if(bytes < 1024) return `${bytes} B`;
+                const units = ['KB', 'MB', 'GB', 'TB'];
+                let number = bytes;
+                let index = -1;
+                do { number /= 1024; index += 1; } while(number >= 1024 && index < units.length - 1);
+                return `${number.toFixed(number >= 100 ? 0 : number >= 10 ? 1 : 2)} ${units[index]}`;
+            };
+            const setState = (payload = {}) => {
+                const state = String(payload.state || 'downloading');
+                if(state === 'verifying') message.textContent = '下载完成，正在校验安装包…';
+                else if(state === 'ready') message.textContent = `版本 ${version} 已准备好，正在启动安装程序…`;
+                else if(state === 'downloaded') message.textContent = '更新包已下载并打开，请将新的小美画布拖到“应用程序”文件夹。';
+                else if(state === 'installing') message.textContent = '正在启动安装程序，应用即将重启…';
+                else if(state === 'cancelled') message.textContent = '已取消更新，可以继续使用当前版本。';
+                else if(state === 'error') { message.textContent = payload.message || '更新失败，请稍后重试。'; message.classList.add('error'); }
+                else message.textContent = `正在下载版本 ${version}，请稍候…`;
+                if(['ready', 'downloaded', 'installing', 'cancelled', 'error'].includes(state)) cancel.textContent = '关闭';
+                if(state === 'error') cancel.focus();
+            };
+            const setProgress = (payload = {}) => {
+                const downloaded = Number(payload.downloadedBytes) || 0;
+                const total = Number(payload.totalBytes) || 0;
+                const value = Number.isFinite(Number(payload.percent)) ? Math.max(0, Math.min(100, Number(payload.percent))) : null;
+                if(value !== null) { bar.style.width = `${value}%`; percent.textContent = `${Math.round(value)}%`; }
+                else { bar.style.width = downloaded ? '35%' : '0%'; percent.textContent = '下载中'; }
+                size.textContent = total ? `${formatBytes(downloaded)} / ${formatBytes(total)}` : formatBytes(downloaded);
+            };
+            cancel.addEventListener('click', async () => {
+                if(cancel.textContent === '关闭') { window.close(); return; }
+                cancel.disabled = true;
+                cancel.textContent = '正在取消…';
+                try { await window.updateAPI?.cancel?.(); } catch {}
+            });
+            window.updateAPI?.onState?.(setState);
+            window.updateAPI?.onProgress?.(setProgress);
+            setState({ state: 'downloading' });
+        })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+CainFlow camera-control attribution
+
+The smart-camera node adapts the camera-control behavior and camera prompt
+compilation from CainFlow, by RingoCaviar, for use in 小美画布.
+
+Upstream project: https://github.com/RingoCaviar/CainFlow
+Relevant upstream sources:
+- js/nodes/types/camera-control.js
+- js/features/camera/camera-prompt-utils.js
+- js/features/camera/camera-control-node.js
+
+CainFlow is distributed under the GNU General Public License, version 3
+(GPL-3.0). The adapted camera-control implementation in
+static/js/smart-camera-node.js remains subject to the applicable GPL-3.0
+requirements. This notice does not change the license of unrelated project
+files.

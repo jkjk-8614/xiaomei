@@ -1,0 +1,11 @@
+{
+  "provider": "github",
+  "github": {
+    "owner": "jkjk-8614",
+    "repo": "xiaomei",
+    "releaseTag": "",
+    "allowPrerelease": true
+  },
+  "channel": "stable",
+  "checkOnStartup": true
+}
