@@ -1,0 +1,49 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# User data and generated runtime files
+data/
+assets/
+output/
+storage/
+logs/
+history.json
+ComfyUI/models/
+ComfyUI/input/
+ComfyUI/output/
+ComfyUI/user/
+ComfyUI/comfy_apps/
+ComfyUI/comfy_apps_deleted/
+ComfyUI/comfy_apps_test_archive/
+ComfyUI/comfy_apps_runtime/
+ComfyUI/workflows/custom/app_*.json
+ComfyUI/workflows/custom/app_*.bak
+
+# Local runtimes and dependencies
+python/
+.venv/
+node_modules/
+**/node_modules/
+desktop/node_modules/
+tools/commerce-analysis/node_modules/
+tools/fluent-ui/node_modules/
+
+# Caches and generated files
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.log
+*.tmp
+*.cache
+*.zip
+*.ccx
+.edge-screenshot-profile-warm/
+
+# Local screenshots and test artifacts
+/edge-*.png
+tools/commerce-analysis/.tmp-*

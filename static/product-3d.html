@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-studio-scale="off" data-studio-skin="minimal">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/static/images/logo.png?v=2026.09.30" type="image/png">
+    <title>3D 软装实验室 · 小美画布</title>
+    <script src="/static/vendor/js/lucide.js?v=2026.09.30.1784161005"></script>
+    <script src="/static/js/theme.js?v=2026.09.30.1790178169"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.09.30.1785985827">
+    <link rel="stylesheet" href="/static/css/product-3d.css?v=2026.09.30.1788589363">
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "/static/vendor/js/three-0.160.0.module.js?v=2026.09.30"
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.09.30.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.09.30.1790574407">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.09.30.1790178173"></script>
+</head>
+<body>
+    <main class="lab-shell">
+        <header class="lab-header">
+            <div class="lab-heading">
+                <span class="lab-kicker"><i data-lucide="box"></i> PRODUCT TO SCENE</span>
+                <h1>3D 软装实验室</h1>
+                <p>同一份商品资产贯穿 3D 预演与空间编排；导出的只是可控参考图，最终质感由画布生图完成。</p>
+            </div>
+            <div class="lab-flow" aria-label="工作流">
+                <span class="lab-flow-step"><b>1</b> 商品资产</span>
+                <i data-lucide="arrow-right"></i>
+                <span class="lab-flow-step"><b>2</b> 3D 预演</span>
+                <i data-lucide="arrow-right"></i>
+                <span class="lab-flow-step"><b>3</b> 软装编排</span>
+                <i data-lucide="arrow-right"></i>
+                <span class="lab-flow-step"><b>4</b> 小美画布</span>
+            </div>
+        </header>
+
+        <div class="lab-layout">
+            <aside class="lab-library" aria-label="商品与场景资源">
+                <section class="library-section library-section-assets">
+                    <div class="library-head">
+                        <div>
+                            <span class="section-kicker">商品资产</span>
+                            <h2>产品模型</h2>
+                        </div>
+                        <button id="addAssetButton" class="icon-button accent" type="button" title="添加商品资产" aria-label="添加商品资产"><i data-lucide="plus"></i></button>
+                    </div>
+                    <p class="library-note">至少添加产品图或 GLB / GLTF / OBJ。未上传 3D 模型时，仍可先用产品图绑定的占位体编排。</p>
+                    <div id="assetList" class="asset-list"></div>
+                    <div id="assetEmpty" class="library-empty">
+                        <i data-lucide="package-plus"></i>
+                        <strong>还没有商品资产</strong>
+                        <span>先添加产品图或 3D 模型，另一种素材可稍后补充。</span>
+                        <button class="ghost-button" type="button" data-open-asset-dialog>添加商品</button>
+                    </div>
+                </section>
+
+                <section class="library-section library-section-scenes">
+                    <div class="library-head">
+                        <div>
+                            <span class="section-kicker">空间方案</span>
+                            <h2>软装场景</h2>
+                        </div>
+                        <button id="newSceneButton" class="icon-button" type="button" title="新建软装场景" aria-label="新建软装场景"><i data-lucide="plus"></i></button>
+                    </div>
+                    <div id="sceneList" class="scene-list"></div>
+                    <div id="sceneEmpty" class="library-empty compact">
+                        <i data-lucide="armchair"></i>
+                        <span>新建一个房间编排方案</span>
+                    </div>
+                </section>
+            </aside>
+
+            <section class="lab-workspace">
+                <nav class="mode-tabs" aria-label="实验室模式">
+                    <button class="mode-tab active" type="button" data-mode="studio"><i data-lucide="cuboid"></i><span>3D 商品工作台</span></button>
+                    <button class="mode-tab" type="button" data-mode="scene"><i data-lucide="lamp-desk"></i><span>软装实验室</span></button>
+                </nav>
+
+                <section id="studioPanel" class="mode-panel active" aria-label="3D 商品工作台">
+                    <div class="workspace-topbar">
+                        <div class="workspace-title">
+                            <span class="section-kicker">BLENDER-LIKE PREVIEW</span>
+                            <h2 id="studioTitle">选择一个商品资产</h2>
+                        </div>
+                        <div class="workspace-actions">
+                            <button id="saveStudioButton" class="secondary-button" type="button" disabled><i data-lucide="save"></i><span>保存预演参数</span></button>
+                            <button id="sixViewsButton" class="primary-button" type="button" disabled><i data-lucide="images"></i><span>生成六视图</span></button>
+                        </div>
+                    </div>
+
+                    <div class="studio-grid">
+                        <div class="viewport-card studio-viewport-card">
+                            <div class="viewport-toolbar">
+                                <div class="viewport-status"><span id="studioStatusDot" class="status-dot"></span><span id="studioStatus">等待商品模型</span></div>
+                                <div id="studioViewButtons" class="view-buttons" aria-label="预设视角">
+                                    <button type="button" data-studio-view="front">前</button>
+                                    <button type="button" data-studio-view="back">后</button>
+                                    <button type="button" data-studio-view="left">左</button>
+                                    <button type="button" data-studio-view="right">右</button>
+                                    <button type="button" data-studio-view="top">顶</button>
+                                    <button type="button" data-studio-view="bottom">底</button>
+                                </div>
+                            </div>
+                            <div id="studioViewport" class="lab-viewport" aria-label="3D 商品预览">
+                                <div class="viewport-empty" id="studioViewportEmpty"><i data-lucide="box"></i><strong>添加一个商品资产开始</strong><span>拖拽预览旋转视角，滚轮调整距离。</span><button class="viewport-empty-action" type="button" data-open-asset-dialog><i data-lucide="plus"></i>添加商品资产</button></div>
+                            </div>
+                            <div class="viewport-footer"><span>拖拽旋转</span><i></i><span>滚轮缩放</span><i></i><span>六视图会保存为商品资产预览</span></div>
+                        </div>
+
+                        <aside class="control-panel studio-controls">
+                            <div class="control-section">
+                                <div class="control-heading"><div><span class="section-kicker">视角</span><h3>相机</h3></div><button class="mini-reset" type="button" data-reset-studio title="重置相机"><i data-lucide="rotate-ccw"></i></button></div>
+                                <label class="range-field"><span>水平旋转 <b data-value-for="studioYaw">28°</b></span><input id="studioYaw" type="range" min="-180" max="180" step="1" value="28"></label>
+                                <label class="range-field"><span>俯仰 <b data-value-for="studioPitch">14°</b></span><input id="studioPitch" type="range" min="-70" max="80" step="1" value="14"></label>
+                                <label class="range-field"><span>距离 <b data-value-for="studioDistance">5.2</b></span><input id="studioDistance" type="range" min="1.5" max="14" step="0.1" value="5.2"></label>
+                                <label class="range-field"><span>视野角 <b data-value-for="studioFov">42°</b></span><input id="studioFov" type="range" min="18" max="90" step="1" value="42"></label>
+                            </div>
+                            <div class="control-section">
+                                <div class="control-heading"><div><span class="section-kicker">HDR / 环境</span><h3>环境与灯光</h3></div></div>
+                                <div class="file-line"><button id="environmentSelectButton" class="outline-button" type="button"><i data-lucide="image-up"></i><span>选择环境文件</span></button><span id="environmentName" class="file-name">未使用环境贴图</span></div>
+                                <p class="control-note">HDR/JPG/PNG 可保存为环境参数；HDR 浏览器预览会尝试加载，EXR 保留给后续渲染链路。</p>
+                                <label class="range-field"><span>环境强度 <b data-value-for="studioEnvIntensity">1.0</b></span><input id="studioEnvIntensity" type="range" min="0" max="3" step="0.05" value="1"></label>
+                                <label class="range-field"><span>环境旋转 <b data-value-for="studioEnvRotation">0°</b></span><input id="studioEnvRotation" type="range" min="0" max="360" step="1" value="0"></label>
+                                <label class="range-field"><span>主光 <b data-value-for="studioKeyLight">1.4</b></span><input id="studioKeyLight" type="range" min="0" max="4" step="0.05" value="1.4"></label>
+                                <label class="range-field"><span>补光 <b data-value-for="studioFillLight">0.55</b></span><input id="studioFillLight" type="range" min="0" max="3" step="0.05" value="0.55"></label>
+                            </div>
+                        </aside>
+                    </div>
+
+                    <section class="views-section">
+                        <div class="section-title-row"><div><span class="section-kicker">OUTPUT</span><h3>商品六视图</h3></div><p>基于当前商品、相机和灯光生成的浏览器预演图。</p></div>
+                        <div id="studioViewsGrid" class="studio-views-grid">
+                            <div class="views-placeholder"><i data-lucide="panels-top-left"></i><span>选择商品后可生成前、后、左、右、顶、底六视图</span></div>
+                        </div>
+                    </section>
+                </section>
+
+                <section id="scenePanel" class="mode-panel" aria-label="软装实验室" hidden>
+                    <div class="workspace-topbar">
+                        <div class="workspace-title">
+                            <span class="section-kicker">PHOTO-BASED BLOCKOUT</span>
+                            <h2 id="sceneTitle">新建一个软装场景</h2>
+                        </div>
+                        <div class="workspace-actions">
+                            <button id="saveSceneButton" class="secondary-button" type="button"><i data-lucide="save"></i><span>保存场景</span></button>
+                            <button id="renderSceneButton" class="primary-button" type="button"><i data-lucide="sparkles"></i><span>生成编排图</span></button>
+                        </div>
+                    </div>
+
+                    <div class="scene-grid">
+                        <div class="viewport-card scene-viewport-card">
+                            <div class="viewport-toolbar">
+                                <div class="viewport-status"><span id="sceneStatusDot" class="status-dot"></span><span id="sceneStatus">添加场景图与商品</span></div>
+                                <button id="sceneBackgroundButton" class="outline-button compact" type="button"><i data-lucide="image-up"></i><span>上传场景图</span></button>
+                            </div>
+                            <div id="sceneViewport" class="lab-viewport" aria-label="软装场景预览">
+                                <div class="viewport-empty" id="sceneViewportEmpty"><i data-lucide="lamp-desk"></i><strong>先上传一张室内场景图</strong><span>商品会以真实 3D 模型或可绑定的占位体放入同一视图。</span></div>
+                            </div>
+                            <div class="viewport-footer"><span>拖拽切换构图</span><i></i><span>点击模型选中</span><i></i><span>右侧调整位置、旋转、尺寸</span></div>
+                        </div>
+
+                        <aside class="control-panel scene-controls">
+                            <div class="control-section">
+                                <div class="control-heading"><div><span class="section-kicker">添加模型</span><h3>场景对象</h3></div></div>
+                                <label class="select-field"><span>绑定商品</span><select id="sceneAssetSelect"><option value="">不绑定，使用占位体</option></select></label>
+                                <label class="select-field"><span>占位类型</span><select id="sceneRoleSelect"><option value="sofa">沙发</option><option value="chair">单椅</option><option value="table">茶几</option><option value="rug">地毯</option><option value="bed">床</option><option value="cabinet">柜体</option><option value="other">自由块体</option></select></label>
+                                <button id="addSceneObjectButton" class="full-button" type="button"><i data-lucide="plus"></i><span>添加到场景</span></button>
+                                <div id="scenePalette" class="scene-palette" aria-label="快速添加占位模型">
+                                    <button type="button" data-add-proxy="sofa"><span class="palette-shape sofa"></span>沙发</button>
+                                    <button type="button" data-add-proxy="chair"><span class="palette-shape chair"></span>单椅</button>
+                                    <button type="button" data-add-proxy="table"><span class="palette-shape table"></span>茶几</button>
+                                    <button type="button" data-add-proxy="rug"><span class="palette-shape rug"></span>地毯</button>
+                                </div>
+                            </div>
+                            <div class="control-section scene-prompt-section">
+                                <div class="control-heading"><div><span class="section-kicker">渲染要求</span><h3>画布提示词</h3></div></div>
+                                <textarea id="scenePrompt" maxlength="4000" placeholder="例如：保留当前空间布局和产品位置，真实自然光，产品材质准确，透视关系正确。"></textarea>
+                                <p class="control-note">编排图与提示词会一起送到小美画布；它们用于约束布局，不会替代最终生图。</p>
+                            </div>
+                        </aside>
+                    </div>
+
+                    <div class="scene-bottom-grid">
+                        <section class="scene-object-section">
+                            <div class="section-title-row"><div><span class="section-kicker">已添加模型</span><h3>对象列表</h3></div><p>点击卡片或场景中的模型选择。</p></div>
+                            <div id="sceneObjectList" class="scene-object-list"><div class="views-placeholder"><i data-lucide="box-select"></i><span>还没有对象。先从右侧添加沙发、单椅、茶几或地毯。</span></div></div>
+                        </section>
+                        <section class="control-output-card">
+                            <div class="section-title-row"><div><span class="section-kicker">CONTROL IMAGE</span><h3>场景编排图</h3></div></div>
+                            <div id="sceneRenderPreview" class="scene-render-preview"><div class="views-placeholder"><i data-lucide="image"></i><span>生成后，这张图可以作为小美画布的布局参考。</span></div></div>
+                            <button id="sendCanvasButton" class="send-canvas-button" type="button" disabled><i data-lucide="send"></i><span>发送到小美画布</span></button>
+                        </section>
+                    </div>
+                </section>
+            </section>
+
+            <aside class="lab-inspector" aria-label="模型与对象设置">
+                <div class="inspector-head"><div><span class="section-kicker">设置</span><h2 id="inspectorTitle">产品模型</h2></div><span id="inspectorBadge" class="inspector-badge">未选择</span></div>
+                <div id="inspectorContent" class="inspector-content">
+                    <div class="inspector-empty"><i data-lucide="mouse-pointer-square-dashed"></i><strong>选择一个商品或场景对象</strong><span>商品可编辑尺寸与分类；对象可调整位置、旋转和缩放。</span></div>
+                </div>
+            </aside>
+        </div>
+    </main>
+
+    <input id="assetImageInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+    <input id="assetModelInput" type="file" accept=".glb,.gltf,.obj,model/gltf-binary,model/gltf+json,text/plain" hidden>
+    <input id="environmentInput" type="file" accept=".hdr,.exr,image/png,image/jpeg,image/webp" hidden>
+    <input id="sceneBackgroundInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+
+    <dialog id="assetDialog" class="lab-dialog" aria-labelledby="assetDialogTitle">
+        <form id="assetForm" method="dialog" class="dialog-card">
+            <header class="dialog-head"><div><span class="section-kicker">PRODUCT ASSET</span><h2 id="assetDialogTitle">添加商品资产</h2><p>可先绑定产品图或 3D 模型，另一种素材可稍后补充。</p></div><button id="assetDialogClose" class="icon-button" value="cancel" type="button" aria-label="关闭"><i data-lucide="x"></i></button></header>
+            <div class="dialog-body">
+                <label class="dialog-field"><span>商品名称</span><input id="assetName" type="text" maxlength="120" placeholder="例如：棕色绒面单椅"></label>
+                <label class="dialog-field"><span>占位分类</span><select id="assetCategory"><option value="sofa">沙发</option><option value="chair">单椅</option><option value="table">茶几</option><option value="rug">地毯</option><option value="bed">床</option><option value="cabinet">柜体</option><option value="other">其他</option></select></label>
+                <div class="dialog-upload-grid">
+                    <button id="assetImageButton" class="asset-upload-slot" type="button"><i data-lucide="image-up"></i><strong>产品图</strong><span id="assetImageLabel">可选 · PNG / JPG / WEBP</span></button>
+                    <button id="assetModelButton" class="asset-upload-slot" type="button"><i data-lucide="box"></i><strong>3D 模型</strong><span id="assetModelLabel">可选 · GLB / GLTF / OBJ</span></button>
+                </div>
+                <div class="dimension-grid"><label class="dialog-field"><span>宽（mm）</span><input id="assetWidth" type="number" min="1" max="100000" value="800"></label><label class="dialog-field"><span>深（mm）</span><input id="assetDepth" type="number" min="1" max="100000" value="800"></label><label class="dialog-field"><span>高（mm）</span><input id="assetHeight" type="number" min="1" max="100000" value="800"></label></div>
+            </div>
+            <footer class="dialog-actions"><button id="assetDialogCancel" class="secondary-button" value="cancel" type="button">取消</button><button id="assetDialogSave" class="primary-button" value="default" type="submit"><i data-lucide="plus"></i><span>保存商品资产</span></button></footer>
+        </form>
+    </dialog>
+
+    <div id="labToast" class="lab-toast" role="status" aria-live="polite"></div>
+    <script type="module" src="/static/js/product-3d.js?v=2026.09.30.1788588919"></script>
+</body>
+</html>

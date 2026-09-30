@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN" data-studio-skin="minimal">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>电商工作台 - 小美画布</title>
+    <script src="/static/vendor/js/lucide.js?v=2026.09.30.1784161005"></script>
+<script src="/static/js/theme.js?v=2026.09.30.1790178169"></script>
+<script src="/static/js/generation-notifications.js?v=2026.09.30.1787131165"></script>
+<script src="/static/js/image-task-client.js?v=2026.09.30.1788592790"></script>
+<link rel="stylesheet" href="/static/css/theme.css?v=2026.09.30.1785985827">
+    <link rel="stylesheet" href="/static/css/commerce.css?v=2026.09.30.1788395997">
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.09.30.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.09.30.1790574407">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.09.30.1790178173"></script>
+</head>
+<body>
+    <main class="commerce-page">
+        <header class="page-head">
+            <div>
+                <div class="eyebrow">小美画布 · 电商创作</div>
+                <h1>电商工作台</h1>
+                <p>先规划分段提示词，再进行套图、SKU 与局部编辑；模型均来自你已配置的 API。</p>
+            </div>
+            <div class="page-head-actions">
+                <button id="sharedSkillStatus" class="shared-skill-status" type="button" title="与小美画布共用的 Skill">
+                    <i data-lucide="blocks"></i><span>共享 Skill</span><strong id="sharedSkillStatusText">通用助手</strong>
+                </button>
+                <div class="head-status"><span class="status-dot"></span><span id="apiStatus">正在读取 API 配置</span></div>
+            </div>
+        </header>
+
+        <nav id="workflowTabs" class="workflow-tabs" aria-label="电商工作流"></nav>
+
+        <section class="workspace">
+            <div class="work-panel" role="region" aria-label="工作流参数">
+                <div id="workflowIntro" class="workflow-intro"></div>
+                <div id="workflowForm"></div>
+            </div>
+            <aside class="result-panel" aria-label="任务结果">
+                <div class="result-head">
+                    <div><span class="section-kicker">任务队列</span><h2 id="resultTitle">生成结果</h2></div>
+                    <div class="result-actions"><span id="taskSummary" class="count-pill">0 项</span><button id="clearResults" class="ghost-btn" type="button"><i data-lucide="trash-2"></i>清空</button></div>
+                </div>
+                <div id="taskList" class="task-list"></div>
+            </aside>
+        </section>
+    </main>
+    <dialog id="assetPicker" class="asset-picker">
+        <div class="asset-picker-head"><div><span class="section-kicker">图片资产 · 与素材库管理同步</span><h2 id="assetPickerTitle">从资产库选择素材</h2></div><button id="closeAssetPicker" class="ghost-btn" type="button"><i data-lucide="x"></i>关闭</button></div>
+        <div class="asset-picker-tools">
+            <select id="assetLibrarySelect" class="select" aria-label="选择资产库"></select>
+            <select id="assetCategorySelect" class="select" aria-label="选择素材分组"></select>
+            <input id="assetSearch" class="input" type="search" placeholder="搜索素材名称、分组或标签">
+            <span id="assetPickerCount" class="count-pill">0 项</span>
+        </div>
+        <div id="assetPickerGrid" class="asset-picker-grid"></div>
+    </dialog>
+    <dialog id="skillPicker" class="skill-picker-dialog" aria-labelledby="skillPickerTitle">
+        <div class="skill-picker-head">
+            <div><span class="section-kicker">共享能力 · 与小美画布同步</span><h2 id="skillPickerTitle">选择 Skill</h2></div>
+            <button id="closeSkillPicker" class="ghost-btn" type="button"><i data-lucide="x"></i>关闭</button>
+        </div>
+        <div class="skill-picker-tools">
+            <label class="skill-picker-search"><i data-lucide="search"></i><input id="skillSearch" type="search" placeholder="搜索名称、分类或描述" autocomplete="off"></label>
+            <span id="skillCount" class="count-pill">0 个</span>
+        </div>
+        <p id="skillEmpty" class="skill-picker-empty">正在读取 Skill 库…</p>
+        <div id="skillList" class="skill-picker-list"></div>
+    </dialog>
+    <dialog id="taskPromptEditor" class="prompt-editor-dialog">
+        <div class="prompt-editor-head"><div><span class="section-kicker">单屏修订</span><h2 id="promptEditorTitle">修改提示词</h2></div><button id="closeTaskPromptEditor" class="ghost-btn" type="button"><i data-lucide="x"></i>关闭</button></div>
+        <div class="prompt-editor-body">
+            <label for="taskPromptEditorText">当前屏提示词</label>
+            <textarea id="taskPromptEditorText" class="prompt-editor-text" spellcheck="false"></textarea>
+            <div id="promptEditorRefs" class="prompt-editor-refs"></div>
+        </div>
+        <div class="prompt-editor-foot"><span>只修改当前屏，不影响其他屏。</span><div><button id="saveTaskPrompt" class="ghost-btn" type="button"><i data-lucide="save"></i>仅保存</button><button id="saveAndRetryPrompt" class="prompt-editor-primary" type="button"><i data-lucide="refresh-cw"></i>保存并重新生图</button></div></div>
+    </dialog>
+    <dialog id="longPreview" class="long-preview-dialog">
+        <div class="long-preview-head">
+            <div><span class="section-kicker">详情页拼图</span><h2>长图预览</h2></div>
+            <div class="long-preview-actions"><button id="downloadLongPreview" class="ghost-btn" type="button" disabled><i data-lucide="download"></i>下载长图</button><button id="closeLongPreview" class="ghost-btn" type="button"><i data-lucide="x"></i>关闭</button></div>
+        </div>
+        <div id="longPreviewStage" class="long-preview-stage"></div>
+    </dialog>
+    <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+<script src="/static/js/shared-agent-skill.js?v=2026.09.30.1789201401"></script>
+    <script src="/static/js/commerce.js?v=2026.09.30.1789201401"></script>
+</body>
+</html>

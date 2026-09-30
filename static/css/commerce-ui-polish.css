@@ -1,0 +1,722 @@
+/* 商品分析页视觉层：只调整表面、节奏和状态，不改变页面结构或交互。 */
+
+.commerce-shell {
+  --ui-canvas: var(--colorNeutralBackground3);
+  --ui-surface: var(--colorNeutralBackground1);
+  --ui-surface-soft: var(--colorNeutralBackground2);
+  --ui-border: var(--colorNeutralStroke1);
+  --ui-border-soft: var(--colorNeutralStroke2);
+  --ui-ink: var(--colorNeutralForeground1);
+  --ui-body: var(--colorNeutralForeground2);
+  --ui-muted: var(--colorNeutralForeground3);
+  --ui-accent: var(--colorBrandForeground1);
+  --ui-accent-soft: var(--colorBrandBackground2);
+  --ui-shadow: var(--shadow4);
+  letter-spacing: 0;
+  background: var(--ui-canvas);
+}
+
+.commerce-shell .center-stage {
+  background: var(--ui-canvas);
+}
+
+/* 浏览器工具条 */
+.commerce-shell .browser-chrome {
+  border-bottom-color: var(--ui-border);
+  background: var(--ui-surface);
+  box-shadow: none;
+}
+
+.commerce-shell .tab-strip {
+  height: 38px;
+  padding: 4px 12px 0;
+  gap: 6px;
+  background: var(--ui-surface-soft) !important;
+}
+
+.commerce-shell .browser-tab {
+  height: 34px;
+  min-width: 180px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  color: var(--ui-muted);
+}
+
+.commerce-shell .browser-tab:hover {
+  background: var(--ui-surface-soft) !important;
+  color: var(--ui-ink);
+}
+
+.commerce-shell .browser-tab.is-active {
+  border-color: var(--ui-border);
+  background: var(--ui-surface);
+  color: var(--ui-ink);
+  box-shadow: none;
+}
+
+.commerce-shell .tab-add {
+  color: var(--ui-muted);
+}
+
+.commerce-shell .tab-add:hover,
+.commerce-shell .chrome-icon:hover,
+.commerce-shell .chrome-menu:hover {
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent);
+}
+
+.commerce-shell .address-row {
+  height: 47px;
+  padding: 0 13px 8px;
+  gap: 6px;
+  background: var(--ui-surface);
+}
+
+.commerce-shell .address-box {
+  height: 34px;
+  border-color: var(--ui-border);
+  background: var(--ui-surface-soft) !important;
+  box-shadow: inset 0 1px 2px rgba(37, 67, 101, .025);
+}
+
+.commerce-shell .address-box:focus-within {
+  border-color: var(--ui-accent);
+  background: var(--ui-surface);
+  box-shadow: 0 0 0 2px var(--ui-accent-soft);
+}
+
+.commerce-shell .address-box button,
+.commerce-shell .chrome-login-button {
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease, box-shadow .16s ease;
+}
+
+.commerce-shell .chrome-login-button {
+  border-color: var(--ui-border);
+  background: var(--ui-surface-soft);
+  color: var(--ui-accent);
+}
+
+.commerce-shell .chrome-login-button:hover {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent);
+}
+
+/* 工作台标题和占位页 */
+.commerce-shell .workspace-toolbar {
+  min-height: 62px;
+  padding: 13px 20px 12px;
+  border-bottom-color: var(--ui-border);
+  background: var(--ui-surface);
+}
+
+.commerce-shell .workspace-toolbar strong {
+  color: var(--ui-ink);
+  letter-spacing: 0;
+}
+
+.commerce-shell .toolbar-caption {
+  color: var(--ui-muted);
+}
+
+.commerce-shell .toolbar-actions {
+  gap: 8px;
+}
+
+.commerce-shell .primary-button,
+.commerce-shell .ghost-button {
+  height: 34px;
+  border-radius: 6px;
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+
+.commerce-shell .primary-button:active,
+.commerce-shell .ghost-button:active,
+.commerce-shell .quick-grid button:active {
+  transform: translateY(1px);
+}
+
+.commerce-shell .primary-button {
+  background: var(--ui-accent);
+  box-shadow: none;
+}
+
+.commerce-shell .primary-button:hover {
+  background: var(--colorBrandBackgroundHover);
+  box-shadow: var(--shadow4);
+}
+
+.commerce-shell .ghost-button {
+  border-color: var(--ui-border);
+  background: var(--ui-surface);
+  color: var(--ui-body);
+}
+
+.commerce-shell .ghost-button:hover {
+  border-color: var(--ui-accent);
+  background: var(--ui-surface-soft);
+  color: var(--ui-accent);
+}
+
+.commerce-shell .product-surface {
+  border-color: var(--ui-border);
+  border-radius: 8px;
+  box-shadow: var(--ui-shadow);
+}
+
+.commerce-shell .analysis-strip {
+  border-top-color: var(--ui-border);
+  background: var(--ui-surface);
+}
+
+.commerce-shell .analysis-desktop-scroll {
+  background: var(--ui-canvas);
+}
+
+.commerce-shell .desktop-app-card {
+  border: 1px solid transparent;
+}
+
+.commerce-shell .desktop-app-card:hover,
+.commerce-shell .desktop-app-card:focus-visible {
+  border-color: var(--ui-border);
+  background: var(--ui-surface);
+  box-shadow: 0 10px 24px rgba(50, 88, 135, .08);
+}
+
+.commerce-shell .desktop-app-bar > strong {
+  color: var(--ui-ink);
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+/* 商品资料、对话和输入共用当前外观主题。 */
+.commerce-shell .assistant-panel {
+  --assistant-panel-bg: var(--ui-surface);
+  --assistant-ink: var(--ui-ink);
+  --assistant-body: var(--ui-body);
+  --assistant-muted: var(--ui-muted);
+  container-name: commerce-assistant;
+  gap: 0;
+  padding: 0;
+  border-left-color: var(--ui-border);
+  background: var(--ui-surface) !important;
+  color: var(--ui-body);
+}
+.commerce-shell .assistant-head {
+  height: 52px;
+  flex: 0 0 52px;
+  margin: 0;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--ui-border-soft);
+  background: var(--ui-surface);
+  box-shadow: none;
+}
+.commerce-shell .assistant-mark {
+  width: 28px; height: 28px; flex-basis: 28px;
+  border-radius: 7px; box-shadow: none !important;
+}
+.commerce-shell .assistant-brand strong { color: var(--ui-ink); font-size: 15px; letter-spacing: 0; }
+.commerce-shell .assistant-head-actions { gap: 2px; }
+.commerce-shell .assistant-head-actions button,
+.commerce-shell .chat-head-actions button {
+  display: grid; place-items: center;
+  width: 30px; height: 30px; padding: 0;
+  color: var(--ui-muted); background: transparent;
+}
+.commerce-shell .assistant-panel svg { width: 16px; height: 16px; flex-shrink: 0; stroke-width: 1.7; }
+.commerce-shell .assistant-head-actions button:hover,
+.commerce-shell .chat-head-actions button:hover { background: var(--ui-surface-soft); color: var(--ui-ink); }
+
+.commerce-shell .assistant-panel .info-card,
+.commerce-shell .assistant-panel .chat-card {
+  min-width: 0; min-height: 0; margin: 0;
+  border: 0; border-radius: 0; box-shadow: none;
+  background: var(--ui-surface) !important;
+}
+.commerce-shell .assistant-panel .info-card { flex: 0 0 auto; border-bottom: 1px solid var(--ui-border-soft); }
+.commerce-shell .section-toggle {
+  height: 44px; padding: 0 16px;
+  color: var(--ui-ink); letter-spacing: 0;
+  background: var(--ui-surface-soft) !important;
+}
+.commerce-shell .section-toggle:hover { background: var(--ui-surface-soft) !important; }
+.commerce-shell #productInfoCard .section-toggle > span:first-child { font-size: 16px; font-weight: 700; }
+.commerce-shell .section-toggle span:last-child { display: flex; color: var(--ui-muted); }
+.commerce-shell #productInfoBody {
+  max-height: min(46vh, 460px);
+  padding: 0 16px 16px; overflow: auto; overscroll-behavior: contain;
+  background: var(--ui-surface-soft);
+}
+.commerce-shell .info-empty { font-size: 12px; line-height: 1.6; }
+.commerce-shell .product-summary { gap: 12px; padding: 12px; margin-bottom: 14px; border: 1px solid var(--ui-border-soft); border-radius: 10px; background: var(--ui-surface); }
+.commerce-shell .product-thumb {
+  width: 54px; height: 54px; flex-basis: 54px; border-radius: 8px;
+  border-color: var(--ui-border-soft); background: var(--ui-surface-soft); box-shadow: none;
+}
+.commerce-shell .product-summary-copy > strong { color: var(--ui-ink); font-size: 15px; font-weight: 700; line-height: 1.5; }
+.commerce-shell .product-summary-meta { flex-wrap: wrap; gap: 4px; margin-top: 4px; color: var(--ui-muted); font-size: 11px; }
+.commerce-shell .product-summary-meta b { color: var(--ui-body); font-size: 11px; }
+.commerce-shell .product-summary-meta button { display: grid; place-items: center; width: 18px; height: 18px; color: var(--ui-muted); background: transparent; }
+.commerce-shell .product-summary-meta button svg { width: 12px; height: 12px; }
+.commerce-shell .product-summary-meta button:hover { background: var(--ui-surface-soft); color: var(--ui-accent); }
+.commerce-shell .resource-list { margin: 0; padding: 0; border: 0; }
+.commerce-shell .resource-heading { margin: 4px 0; gap: 8px; color: var(--ui-muted); font-size: 11px; }
+.commerce-shell .resource-heading strong { color: var(--ui-body); font-size: 11px; }
+.commerce-shell .resource-heading span { color: var(--ui-muted); }
+.commerce-shell .research-resource-group { margin: 0; padding: 0; min-width: 0; }
+.commerce-shell .research-resource-group + .research-resource-group { margin-top: 14px; }
+.commerce-shell .research-resource-group h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; color: var(--ui-ink); font-size: 13px; line-height: 20px; font-weight: 700; }
+.commerce-shell .research-resource-group h3::before { content: ''; width: 3px; height: 13px; border-radius: 2px; background: var(--ui-accent); }
+.commerce-shell .resource-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.commerce-shell .resource-card {
+  --resource-color: #bc641d;
+  display: flex; align-items: stretch; min-width: 0; min-height: 60px;
+  border: 1px solid var(--ui-border-soft) !important; border-radius: 9px !important;
+  background: var(--ui-surface); box-shadow: none !important;
+}
+.commerce-shell .resource-card:hover { border-color: var(--ui-border) !important; background: var(--ui-surface) !important; }
+.commerce-shell .resource-card[data-resource-kind="images"],
+.commerce-shell .resource-card[data-resource-kind="questions"] { --resource-color: #287cce; }
+.commerce-shell .resource-card[data-resource-kind="detail"] { --resource-color: #25865b; }
+.commerce-shell .resource-card[data-resource-kind="detail_more"] { --resource-color: #ce5272; }
+.commerce-shell .resource-card[data-resource-kind="sku_list"],
+.commerce-shell .resource-card[data-resource-kind="videos"],
+.commerce-shell .resource-card[data-resource-kind="people"] { --resource-color: #8261c6; }
+.commerce-shell .resource-card.is-selected { border-color: var(--colorBrandStroke1) !important; background: var(--ui-accent-soft) !important; }
+.commerce-shell .resource-card-main {
+  flex: 1; min-width: 0; width: auto;
+  gap: 9px; padding: 9px 4px 9px 10px;
+  background: transparent; border: 0; text-align: left;
+}
+.commerce-shell .resource-card .resource-icon {
+  width: 32px; height: 34px; flex-basis: 32px;
+  border-radius: 8px; color: color-mix(in srgb, var(--resource-color) 75%, var(--ui-ink)); background: color-mix(in srgb, var(--resource-color) 10%, var(--ui-surface));
+}
+.commerce-shell .resource-card .resource-icon svg { width: 19px; height: 19px; }
+.commerce-shell .resource-card .resource-copy { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 0; }
+.commerce-shell .resource-card .resource-title { max-width: 100%; color: var(--ui-ink); font-size: 12px; line-height: 18px; font-weight: 650; }
+.commerce-shell .resource-card .resource-count { max-width: 100%; overflow: hidden; color: var(--ui-muted); font-size: 11px; line-height: 17px; text-overflow: ellipsis; white-space: nowrap; }
+.commerce-shell .resource-card .resource-actions { position: static; flex: 0 0 auto; align-self: center; gap: 0; padding-right: 2px; transform: none; }
+.commerce-shell .resource-card .resource-actions > :is(a, button, span) {
+  display: grid; place-items: center; width: 24px; height: 26px; flex: 0 0 24px;
+  padding: 0; border: 0; border-radius: 4px; color: var(--ui-muted); background: transparent; text-decoration: none;
+}
+.commerce-shell .resource-card .resource-actions > :is(a, button):hover { color: var(--ui-accent); background: var(--ui-accent-soft); }
+.commerce-shell .resource-card.is-selected .resource-icon,
+.commerce-shell .resource-card.is-selected .resource-title,
+.commerce-shell .resource-card .resource-actions .resource-selected { color: var(--ui-accent); }
+.commerce-shell .resource-card.is-error .resource-icon { color: var(--colorPaletteRedForeground1); }
+.commerce-shell .resource-card.is-partial .resource-icon { color: var(--colorPaletteDarkOrangeForeground1); }
+.commerce-shell .resource-card.is-running .resource-icon { color: var(--ui-accent); }
+
+.commerce-shell .assistant-panel .chat-card { flex: 1 1 0; }
+.commerce-shell .chat-head {
+  height: 42px; flex: 0 0 42px; padding: 0 16px;
+  border-bottom: 0; color: var(--ui-ink);
+}
+.commerce-shell .chat-head > div:first-child { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.commerce-shell .chat-head strong { color: var(--ui-ink); font-size: 13px; white-space: nowrap; }
+.commerce-shell .chat-head small { overflow: hidden; margin: 0; color: var(--ui-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.commerce-shell .chat-messages {
+  min-height: 96px; padding: 8px 16px 16px;
+  background: var(--ui-surface);
+}
+.commerce-shell .chat-message.assistant .message-bubble,
+.commerce-shell .chat-message.assistant .md-content { color: var(--ui-body); font-size: 14px; line-height: 1.7; }
+.commerce-shell .chat-message.assistant .md-content strong { color: var(--ui-ink); font-weight: 600; }
+.commerce-shell .chat-message.user .message-bubble { color: var(--ui-ink); background: var(--ui-accent-soft); border-radius: 8px; }
+.commerce-shell .suggestions { gap: 6px; margin-top: 10px; }
+.commerce-shell .suggestions button { min-height: 28px; padding: 4px 8px; border-color: var(--ui-border-soft); border-radius: 6px !important; background: var(--ui-surface-soft); color: var(--ui-body); font-size: 12px; }
+.commerce-shell .suggestions button:hover { border-color: var(--ui-border); color: var(--ui-accent); background: var(--ui-accent-soft); }
+
+.commerce-shell .quick-card { flex: 0 0 auto; margin: 0 16px 16px; padding: 0; border: 0; border-radius: 0; background: transparent !important; }
+.commerce-shell .quick-heading { min-height: 34px; padding: 0 0 12px; color: var(--ui-ink); }
+.commerce-shell .quick-heading strong { display: flex; align-items: center; gap: 9px; color: var(--ui-ink); font-size: 16px; font-weight: 700; }
+.commerce-shell .quick-heading strong::before { content: ''; width: 4px; height: 16px; flex: 0 0 4px; border-radius: 3px; background: var(--ui-accent); }
+.commerce-shell .quick-heading .quick-fold-icon { display: flex; margin-left: auto; }
+.commerce-shell .quick-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.commerce-shell .quick-grid button,
+.commerce-shell .quick-grid button:last-child {
+  --tool-color: #ac742e;
+  grid-column: auto; min-width: 0; min-height: 56px; padding: 10px 12px; gap: 12px;
+  border: 1px solid var(--ui-border-soft); border-radius: 12px !important;
+  background: var(--ui-surface); color: var(--ui-ink); text-align: left; line-height: 1.4;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--ui-ink) 3%, transparent);
+}
+.commerce-shell .quick-grid button[data-module="detail"] { --tool-color: #697c9a; }
+.commerce-shell .quick-grid button[data-module="images"] { --tool-color: #61806c; }
+.commerce-shell .quick-grid button[data-module="videos"] { --tool-color: #b26a62; }
+.commerce-shell .quick-grid button[data-module="operations"] { --tool-color: #8071b7; }
+.commerce-shell .quick-grid button > span { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 9px; background: color-mix(in srgb, var(--tool-color) 12%, var(--ui-surface)); color: color-mix(in srgb, var(--tool-color) 80%, var(--ui-ink)); }
+.commerce-shell .quick-grid button > span svg { width: 20px; height: 20px; }
+.commerce-shell .quick-grid button > b { display: block; margin-left: auto; color: var(--ui-muted); font-size: 21px; font-weight: 400; }
+.commerce-shell .quick-grid button:hover { border-color: var(--colorBrandStroke1) !important; color: var(--ui-accent); background: var(--ui-accent-soft) !important; }
+.commerce-shell .quick-grid button:hover > span { color: inherit; }
+
+.commerce-shell .chat-compose {
+  flex: 0 0 auto; margin: 0 16px 16px; padding: 14px;
+  border: 1px solid var(--ui-border-soft) !important; border-radius: 14px !important;
+  background: var(--ui-surface) !important; box-shadow: 0 3px 12px color-mix(in srgb, var(--ui-ink) 4%, transparent) !important;
+}
+.commerce-shell .chat-compose:focus-within { border-color: var(--colorBrandStroke1) !important; box-shadow: 0 0 0 1px var(--colorBrandStroke1) !important; }
+html body .commerce-shell .chat-compose #chatInput {
+  display: block; min-height: 68px; max-height: 160px; padding: 2px 2px 12px;
+  border: 0 !important; border-radius: 0 !important; outline: none !important; box-shadow: none !important;
+  color: var(--ui-ink) !important; background: transparent !important; font-size: 13px; line-height: 1.6;
+}
+.commerce-shell .chat-compose textarea::placeholder { color: var(--ui-muted) !important; }
+.commerce-shell .compose-row { min-width: 0; gap: 8px; padding-top: 10px; border-top: 1px solid var(--ui-border-soft); }
+.commerce-shell .plus-button,
+.commerce-shell .skill-button,
+.commerce-shell .model-chip,
+.commerce-shell .send-button { height: 36px; border-radius: 9px; }
+.commerce-shell .plus-button { display: grid; place-items: center; width: 36px; flex: 0 0 36px; padding: 0; }
+.commerce-shell .skill-button,
+.commerce-shell .model-chip { min-width: 0; padding: 0 7px; gap: 5px; font-size: 12px; }
+.commerce-shell .skill-button { max-width: 112px; flex-shrink: 0; }
+.commerce-shell .model-chip { max-width: 220px; margin-left: auto; }
+.commerce-shell .skill-button > span,
+.commerce-shell .model-chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commerce-shell .skill-button small,
+.commerce-shell .model-chip small { display: flex; }
+.commerce-shell .skill-button small svg,
+.commerce-shell .model-chip small svg { width: 12px; height: 12px; }
+.commerce-shell .plus-button,
+.commerce-shell .skill-button,
+.commerce-shell .model-chip { border: 1px solid transparent; background: transparent; color: var(--ui-muted); box-shadow: none; }
+.commerce-shell .plus-button:hover,
+.commerce-shell .skill-button:hover,
+.commerce-shell .model-chip:hover { border-color: transparent; background: var(--ui-surface-soft); color: var(--ui-ink); }
+.commerce-shell .context-chip { min-width: 0; flex: 1 1 0; padding-left: 10px; border-left: 1px solid var(--ui-border); overflow: hidden; color: var(--ui-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+html body .commerce-shell #skillPicker,
+html body .commerce-shell #modelPickerButton,
+html body .commerce-shell #attachButton { background: transparent !important; color: var(--ui-body) !important; }
+.commerce-shell .mention-chip { background: var(--ui-accent-soft); color: var(--ui-accent); border-color: var(--colorBrandStroke2); }
+.commerce-shell .product-intro-meta,
+.commerce-shell .product-intro-meta span { color: var(--ui-muted); }
+.commerce-shell #skillPicker > span { color: inherit; }
+.commerce-shell .send-button { display: grid; place-items: center; width: 36px; flex: 0 0 36px; padding: 0; background: var(--colorBrandBackground) !important; color: var(--colorNeutralForegroundOnBrand) !important; box-shadow: none; }
+.commerce-shell .send-button svg, .commerce-shell .plus-button svg { width: 21px; height: 21px; }
+.commerce-shell .send-button:hover { background: var(--colorBrandBackgroundHover) !important; }
+.commerce-shell :is(.plus-icon, .send-icon) { display: flex; align-items: center; justify-content: center; }
+
+/* 弹出层继续使用已有定位与操作逻辑。 */
+/* Fluent 的重要声明在命名层内，需要在同层覆盖输入框表面。 */
+@layer fluent {
+  .commerce-shell #chatInput { background: transparent !important; outline: none !important; }
+  .commerce-shell .quick-grid button { border-radius: 12px !important; font-size: .875rem !important; font-weight: 500 !important; }
+  .commerce-shell #modelPickerButton { background: var(--ui-surface-soft) !important; border-radius: 9px !important; padding-inline: 10px; }
+  .commerce-shell #attachButton { background: var(--ui-surface-soft) !important; border-radius: 50% !important; }
+  .commerce-shell #chatSend { border-radius: 9px !important; }
+}
+.commerce-shell :is(.browser-menu-popover, .conversation-history-popover, .resource-picker-popover, .model-picker-popover, .assistant-skill-picker) {
+  border-color: var(--ui-border); border-radius: 8px; background: var(--ui-surface); color: var(--ui-ink); box-shadow: var(--shadow16);
+}
+.commerce-shell .assistant-panel :is(.resource-picker-head, .model-picker-head, .model-picker-foot, .conversation-history-head) { border-color: var(--ui-border-soft); background: var(--ui-surface); }
+.commerce-shell .assistant-panel :is(.resource-picker-option, .model-provider-option, .model-model-option, .conversation-history-item, .assistant-skill-option) { border-color: var(--ui-border-soft); background: var(--ui-surface); color: var(--ui-body); }
+.commerce-shell .assistant-panel :is(.resource-picker-option, .model-provider-option, .model-model-option, .conversation-history-item, .assistant-skill-option):hover,
+.commerce-shell .assistant-panel :is(.resource-picker-option, .model-provider-option, .model-model-option, .conversation-history-item, .assistant-skill-option).is-selected { background: var(--ui-accent-soft); color: var(--ui-accent); }
+.commerce-shell .assistant-panel :is(.resource-picker-icon, .assistant-skill-icon) { background: var(--ui-surface-soft); color: var(--ui-muted); }
+.commerce-shell .assistant-panel :is(.chat-messages, .info-body, .resource-picker-list, .model-model-list) { scrollbar-color: var(--ui-border) transparent; }
+.commerce-shell .assistant-panel :is(.chat-messages, .info-body)::-webkit-scrollbar-thumb { background: var(--ui-border); background-clip: padding-box; }
+.commerce-shell :where(button, input, textarea, [role="button"]):focus-visible { outline: 2px solid var(--colorStrokeFocus2); outline-offset: 2px; }
+
+@container commerce-assistant (min-width: 620px) {
+  .commerce-shell .research-resource-group:first-of-type .resource-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .commerce-shell .quick-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container commerce-assistant (min-width: 840px) {
+  .commerce-shell .resource-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 20px; }
+  .commerce-shell .resource-list > :is(.research-resource-group:first-of-type, .resource-heading, .resource-auth-notice) { grid-column: 1 / -1; }
+  .commerce-shell .research-resource-group:first-of-type .resource-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .commerce-shell .research-resource-group + .research-resource-group { padding-top: 14px; border-top: 1px solid var(--ui-border); }
+}
+@container commerce-assistant (max-width: 619px) {
+  .commerce-shell #productInfoBody { max-height: 30vh; }
+}
+@container commerce-assistant (max-width: 440px) {
+  .commerce-shell .assistant-head,
+  .commerce-shell .chat-head { padding-inline: 12px; }
+  .commerce-shell #productInfoBody { padding-inline: 10px; max-height: 30vh; }
+  .commerce-shell .chat-messages { padding-inline: 12px; }
+  .commerce-shell .quick-card { margin: 0 10px 10px; padding: 0; }
+  .commerce-shell .quick-heading { min-height: 28px; padding-bottom: 8px; }
+  .commerce-shell .quick-heading strong { font-size: 14px; }
+  .commerce-shell .quick-grid { gap: 6px; }
+  .commerce-shell .quick-grid button, .commerce-shell .quick-grid button:last-child { min-height: 40px; padding: 6px; gap: 6px; }
+  .commerce-shell .quick-grid button > span { width: 24px; height: 26px; flex-basis: 24px; border-radius: 6px; }
+  .commerce-shell .quick-grid button > span svg { width: 17px; height: 17px; }
+  .commerce-shell .quick-grid button > b { display: none; }
+  .commerce-shell .compose-row { gap: 4px; padding-top: 7px; }
+  html body .commerce-shell .chat-compose #chatInput { min-height: 58px; }
+  .commerce-shell .chat-compose { margin-inline: 8px; padding: 8px; }
+  .commerce-shell .product-summary-meta { gap: 3px; }
+  .commerce-shell .model-chip { max-width: 130px; }
+  .commerce-shell .skill-button { max-width: 80px; padding-inline: 4px; }
+  .commerce-shell .chat-head > div:first-child { display: block; }
+  .commerce-shell .context-chip { display: none; }
+}
+@container commerce-assistant (min-width: 700px) {
+  .commerce-shell .product-summary-copy > strong { font-size: 17px; }
+  .commerce-shell .research-resource-group h3 { font-size: 14px; }
+  .commerce-shell .resource-card .resource-title { font-size: 13px; }
+  .commerce-shell .resource-card .resource-icon { width: 36px; height: 36px; flex-basis: 36px; }
+}
+@container commerce-assistant (max-width: 300px) {
+  .commerce-shell .resource-grid, .commerce-shell .quick-grid { grid-template-columns: 1fr; }
+  .commerce-shell .compose-row { flex-wrap: wrap; }
+  .commerce-shell .context-chip { display: none; }
+  .commerce-shell .model-chip { max-width: calc(100% - 116px); }
+}
+@media (max-height: 720px) {
+  .commerce-shell #productInfoBody { max-height: 26vh; }
+  .commerce-shell .chat-messages { min-height: 80px; }
+}
+@media (max-width: 900px) {
+  .commerce-shell .assistant-panel { min-height: 740px; height: 100dvh; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .commerce-shell *,
+  .commerce-shell *::before,
+  .commerce-shell *::after {
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * 浏览器壳的自适应收口：标签数量少时均分可用宽度，数量多到达最小宽度
+ * 后才允许横向滚动。这样窗口缩小时不会把最后一个标签和地址栏推出视口，
+ * 行为更接近 Edge 的标签栏。
+ */
+.commerce-shell .tab-strip {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.commerce-shell .browser-tab {
+  min-width: 84px;
+  max-width: 270px;
+  flex: 1 1 clamp(108px, 12vw, 180px);
+}
+
+.commerce-shell .address-row {
+  min-width: 0;
+}
+
+.commerce-shell .address-box {
+  min-width: 72px;
+}
+
+@media (max-width: 1120px) {
+  .commerce-shell .site-state {
+    display: none;
+  }
+
+  .commerce-shell .address-row {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+}
+
+@media (max-width: 760px) {
+  .commerce-shell .tab-strip {
+    gap: 4px;
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+
+  .commerce-shell .browser-tab {
+    min-width: 76px;
+    flex-basis: 108px;
+    padding-right: 7px;
+    padding-left: 7px;
+    gap: 5px;
+  }
+
+  .commerce-shell .chrome-icon,
+  .commerce-shell .chrome-menu {
+    width: 24px;
+  }
+
+  .commerce-shell .chrome-login-button {
+    width: 30px;
+    min-width: 30px;
+    padding-right: 0;
+    padding-left: 0;
+    overflow: hidden;
+    font-size: 0;
+  }
+
+  .commerce-shell #browserTranslate::before {
+    content: "文";
+    font-size: 11px;
+  }
+
+  .commerce-shell #browserLogin::before {
+    content: "人";
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 600px) {
+  /* commerce-analysis.css 的移动端规则隐藏了菜单按钮，窄屏仍需保留它作为功能兜底。 */
+  .commerce-shell .chrome-menu {
+    display: inline-grid;
+    place-items: center;
+  }
+
+  .commerce-shell .address-row {
+    gap: 3px;
+  }
+
+  .commerce-shell .browser-tab {
+    min-width: 68px;
+    flex-basis: 84px;
+    padding-right: 5px;
+    padding-left: 5px;
+    gap: 4px;
+  }
+
+  .commerce-shell .tab-dot {
+    width: 18px;
+    height: 18px;
+    font-size: 10px;
+  }
+
+  .commerce-shell .tab-close {
+    width: 18px;
+    height: 18px;
+    font-size: 14px;
+  }
+
+  /* 应用桌面也必须以视口为宽度，不能让网格的最小内容宽度把第二列推出屏幕。 */
+  .commerce-shell .analysis-desktop-scroll {
+    width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .commerce-shell .desktop-app-grid {
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 12px;
+  }
+
+  .commerce-shell .desktop-app-card {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+/* Research workspace directory and resource groups. */
+/* 商品工作台的浅色表面固定为白色，不改动应用其它页面的外观偏好。 */
+html:not(.studio-theme-dark):not(.theme-dark) .commerce-shell {
+  --colorNeutralBackground1: #ffffff;
+  --colorNeutralBackground2: #fafafa;
+  --colorNeutralBackground3: #f5f5f5;
+  --colorNeutralForeground1: #242424;
+  --colorNeutralForeground2: #424242;
+  --colorNeutralForeground3: #707070;
+  --colorNeutralStroke1: #d1d1d1;
+  --colorNeutralStroke2: #e0e0e0;
+  --apple-border: var(--colorNeutralStroke1);
+  --apple-border-soft: var(--colorNeutralStroke2);
+  --apple-text: var(--colorNeutralForeground1);
+  --apple-muted: var(--colorNeutralForeground2);
+  --apple-surface: var(--colorNeutralBackground1);
+  --apple-surface-soft: var(--colorNeutralBackground2);
+}
+/* CSS zoom already expands the body layout width; a viewport cap would shrink it twice. */
+html body > .commerce-shell { max-width: none; }
+/* Platform directory: category panels, platform cards, local tools. */
+.commerce-shell .analysis-desktop-scroll { padding:28px; background:color-mix(in srgb, #6c88b0 6%, var(--ui-surface)); }
+.commerce-shell .desktop-app-bar { max-width:none; margin:0 0 24px; }
+.commerce-shell .desktop-app-bar strong { color:var(--ui-ink); font-size:32px; line-height:42px; font-weight:750; letter-spacing:-.5px; }
+.commerce-shell .desktop-app-bar p { margin:6px 0 0; color:var(--ui-muted); font-size:14px; line-height:22px; }
+.commerce-shell .workspace-directory { display:grid; grid-template-columns:minmax(0,1fr) 240px; gap:16px 20px; max-width:none; margin:0; align-items:stretch; }
+.commerce-shell .workspace-group { --category-color:#b56b30; min-width:0; display:grid; grid-template-columns:150px minmax(0,1fr); gap:20px; padding:18px; border:1px solid color-mix(in srgb, var(--category-color) 9%, var(--ui-surface)); border-radius:16px; background:linear-gradient(110deg,color-mix(in srgb,var(--category-color) 7%,var(--ui-surface)),color-mix(in srgb,var(--category-color) 2%,var(--ui-surface))); grid-column:1; }
+.commerce-shell .workspace-group:nth-child(1) { grid-row:1; }
+.commerce-shell .workspace-group:nth-child(2) { grid-row:2; --category-color:#497fe0; }
+.commerce-shell .workspace-group:nth-child(4) { grid-row:3; --category-color:#cc607c; }
+.commerce-shell .cross-border-workspace { grid-row:4; --category-color:#269b87; }
+.commerce-shell .cross-border-workspace .workspace-links { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.commerce-shell .workspace-group header { margin:4px 0 0; align-self:center; }
+.commerce-shell .workspace-category-icon { display:grid; place-items:center; width:34px; height:34px; margin-bottom:8px; border-radius:10px; color:var(--category-color); background:color-mix(in srgb,var(--category-color) 9%,var(--ui-surface)); }
+.commerce-shell .workspace-category-icon svg { width:23px; height:23px; stroke-width:1.8; }
+.commerce-shell .workspace-group header h2 { color:var(--ui-ink); font-size:17px; line-height:24px; font-weight:700; margin:0; }
+.commerce-shell .workspace-group header p { color:var(--ui-muted); font-size:12px; line-height:19px; margin:5px 0 0; }
+.commerce-shell .workspace-links { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; }
+.commerce-shell .workspace-links .desktop-app-card { position:relative; isolation:isolate; overflow:hidden; display:grid; grid-template-columns:44px minmax(0,1fr) 26px; grid-template-rows:auto auto 1fr; text-align:left; align-content:center; align-items:center; column-gap:12px; min-height:114px; padding:16px; border:1px solid color-mix(in srgb,var(--category-color) 8%,var(--ui-surface)); border-radius:12px; background:var(--ui-surface); color:var(--ui-ink); box-shadow:0 4px 14px color-mix(in srgb,var(--category-color) 4%,transparent); transform:none; }
+.commerce-shell .workspace-links .desktop-app-card:hover { border-color:var(--category-color); background:var(--ui-surface) !important; transform:none; box-shadow:0 5px 16px color-mix(in srgb,var(--category-color) 10%,transparent); }
+.commerce-shell .workspace-links .desktop-app-card:focus-visible { outline:2px solid var(--colorStrokeFocus2); outline-offset:2px; }
+.commerce-shell .workspace-links .desktop-app-icon { grid-column:1; grid-row:1/3; width:44px; height:44px; border-radius:10px; font-size:19px; letter-spacing:0; box-shadow:none; }
+.commerce-shell .workspace-links .desktop-app-icon img { width:100%; height:100%; object-fit:contain; }
+.commerce-shell .workspace-links :is(.app-ozon,.app-temu,.app-ebay) .desktop-app-icon { font-size:12px; }
+.commerce-shell .workspace-links .app-amazon .desktop-app-icon::after { width:26px; height:9px; border-bottom-width:2px; transform:translateY(13px) rotate(5deg); }
+.commerce-shell .workspace-links .desktop-app-card strong { grid-column:2; grid-row:1; margin:0; font-size:15px; line-height:22px; color:var(--ui-ink); }
+.commerce-shell .workspace-links .desktop-app-card small { grid-column:2/4; grid-row:2; margin:2px 0 0; max-width:100%; font-size:12px; line-height:18px; color:var(--ui-muted); }
+.commerce-shell .workspace-card-note { grid-column:1/-1; grid-row:3; margin-top:14px; font-size:11px; line-height:18px; color:var(--ui-muted); white-space:normal; }
+.commerce-shell .workspace-card-arrow { grid-column:3; grid-row:1; display:grid; place-items:center; width:26px; height:26px; border:1px solid var(--ui-border-soft); border-radius:50%; color:var(--ui-body); background:var(--ui-surface); }
+.commerce-shell .workspace-card-arrow svg { width:13px; height:13px; }
+.commerce-shell .workspace-card-art { position:absolute; right:20px; bottom:-12px; z-index:-1; color:var(--category-color); opacity:.065; pointer-events:none; transform:rotate(-8deg); }
+.commerce-shell .workspace-card-art svg { width:110px; height:110px; stroke-width:1; }
+.commerce-shell .cross-border-workspace .desktop-app-card { min-height:104px; padding:12px; column-gap:10px; grid-template-columns:38px minmax(0,1fr) 24px; }
+.commerce-shell .cross-border-workspace .desktop-app-icon { width:38px; height:38px; }
+.commerce-shell .cross-border-workspace .workspace-card-note { margin-top:10px; }
+.commerce-shell .local-workspace { grid-column:2; grid-row:1/5; display:block; padding:20px 16px; border:1px solid var(--ui-border-soft); border-radius:16px; background:var(--ui-surface); }
+.commerce-shell .local-workspace header { margin:0 0 24px; }
+.commerce-shell .local-workspace .workspace-links { grid-template-columns:1fr; gap:12px; }
+.commerce-shell .local-workspace .desktop-app-card { min-height:78px; padding:12px 10px; grid-template-columns:30px minmax(0,1fr) 14px; grid-template-rows:auto auto; column-gap:9px; border-color:var(--ui-border-soft); box-shadow:none; }
+.commerce-shell .local-workspace .desktop-app-icon { width:30px; height:30px; background:transparent; color:var(--ui-body); }
+.commerce-shell .local-workspace .desktop-app-icon svg { width:23px; height:23px; }
+.commerce-shell .local-workspace .workspace-card-arrow { width:14px; border:0; grid-row:1/3; }
+.commerce-shell .local-workspace .desktop-app-card small { font-size:11px; }
+@layer fluent {
+ .commerce-shell .workspace-links .desktop-app-card { border-radius:12px !important; }
+}
+@media(max-width:1400px) {
+ .commerce-shell .workspace-directory { grid-template-columns:minmax(0,1fr) 220px; gap:14px; }
+ .commerce-shell .workspace-group { grid-template-columns:120px minmax(0,1fr); gap:14px; padding:14px; }
+ .commerce-shell .cross-border-workspace .workspace-links { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .commerce-shell .workspace-links .desktop-app-card { padding:12px; column-gap:9px; }
+ .commerce-shell .workspace-links { gap:10px; }
+}
+@media(max-width:1100px) {
+ .commerce-shell .workspace-directory { grid-template-columns:minmax(0,1fr); }
+ .commerce-shell .local-workspace { grid-column:1; grid-row:5; padding:18px; }
+ .commerce-shell .local-workspace .workspace-links { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media(max-width:900px) {
+ .commerce-shell .analysis-desktop-scroll { padding:20px 14px; }
+ .commerce-shell .desktop-app-bar strong { font-size:26px; line-height:34px; }
+ .commerce-shell .desktop-app-bar p { font-size:12px; }
+ .commerce-shell .workspace-group { grid-template-columns:1fr; gap:14px; padding:14px; }
+ .commerce-shell .workspace-group header { margin:0; display:grid; grid-template-columns:30px minmax(0,1fr); column-gap:8px; align-items:center; }
+ .commerce-shell .workspace-category-icon { width:30px; height:30px; grid-row:1/3; margin:0; }
+ .commerce-shell .workspace-group header p { grid-column:2; margin-top:2px; }
+ .commerce-shell .workspace-group header h2 { font-size:15px; }
+ .commerce-shell .workspace-links, .commerce-shell .cross-border-workspace .workspace-links { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .commerce-shell .workspace-links .desktop-app-card { padding:10px 8px; gap:0 7px; grid-template-columns:30px minmax(0,1fr); }
+ .commerce-shell .workspace-links .desktop-app-icon { width:30px; height:30px; }
+ .commerce-shell .workspace-links .desktop-app-card strong { font-size:13px; line-height:19px; white-space:normal; overflow-wrap:anywhere; }
+ .commerce-shell .workspace-links .desktop-app-card small { grid-column:2; font-size:10px; overflow-wrap:anywhere; white-space:normal; }
+ .commerce-shell .workspace-card-arrow, .commerce-shell .workspace-card-art { display:none; }
+ .commerce-shell .workspace-card-note { margin-top:10px; font-size:10px; }
+ .commerce-shell .local-workspace header { display:block; }
+ .commerce-shell .local-workspace .desktop-app-card { min-height:72px; }
+}
+
+.commerce-shell .quick-toggle { width:100%; display:flex; align-items:center; gap:10px; text-align:left; background:transparent; border:0; cursor:pointer; }
+.commerce-shell .quick-toggle .quick-caption { margin-left:auto; }
+.commerce-shell .quick-toggle .quick-fold-icon { flex:0 0 auto; margin-left:auto; }
+.commerce-shell #quickToolsBody.is-hidden { display:none; }
+.commerce-shell .quick-toggle[aria-expanded="false"] { padding-bottom:0; }
+.commerce-shell .quick-toggle:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }

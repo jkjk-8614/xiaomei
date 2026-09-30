@@ -1,0 +1,503 @@
+{
+  "RMBG": {
+    "display_name": "Retirer l'arrière-plan (RMBG)",
+    "inputs": {
+      "image": { "name": "Image" },
+      "model": { "name": "Modèle" },
+      "sensitivity": { "name": "Sensibilité" },
+      "process_res": { "name": "Résolution de traitement" },
+      "mask_blur": { "name": "Flou du masque" },
+      "mask_offset": { "name": "Décalage du masque" },
+      "invert_output": { "name": "Inverser la sortie" },
+      "refine_foreground": { "name": "Affiner le premier plan" },
+      "background": { "name": "Arrière-plan" },
+      "background_color": { "name": "Couleur de fond" }
+    },
+    "outputs": {
+      "2": { "name": "IMAGE MASQUE" }
+    }
+  },
+  "BodySegment": {
+    "display_name": "Segmentation des parties du corps (RMBG)",
+    "inputs": {
+      "images": { "name": "Images" },
+      "Hair": { "name": "Cheveux" },
+      "Glasses": { "name": "Lunettes" },
+      "Top-clothes": { "name": "Vêtements du haut" },
+      "Bottom-clothes": { "name": "Vêtements du bas" },
+      "Torso-skin": { "name": "Peau du torse" },
+      "Face": { "name": "Visage" },
+      "Left-arm": { "name": "Bras gauche" },
+      "Right-arm": { "name": "Bras droit" },
+      "Left-leg": { "name": "Jambe gauche" },
+      "Right-leg": { "name": "Jambe droite" },
+      "Left-foot": { "name": "Pied gauche" },
+      "Right-foot": { "name": "Pied droit" },
+      "mask_blur": { "name": "Flou du masque" },
+      "mask_offset": { "name": "Décalage du masque" },
+      "invert_output": { "name": "Inverser la sortie" },
+      "background": { "name": "Arrière-plan" },
+      "background_color": { "name": "Couleur de fond" }
+    },
+    "outputs": {
+      "2": { "name": "IMAGE MASQUE" }
+    }
+  },
+  "BiRefNetRMBG": {
+    "display_name": "Retirer l'arrière-plan BiRefNet (RMBG)",
+    "inputs": {
+      "image": { "name": "Image" },
+      "model": { "name": "Modèle" },
+      "mask_blur": { "name": "Flou du masque" },
+      "mask_offset": { "name": "Décalage du masque" },
+      "invert_output": { "name": "Inverser la sortie" },
+      "refine_foreground": { "name": "Affiner le premier plan" },
+      "background": { "name": "Arrière-plan" },
+      "background_color": { "name": "Couleur de fond" }
+    },
+    "outputs": {
+      "2": { "name": "IMAGE MASQUE" }
+    }
+  },
+  "ClothesSegment": {
+    "display_name": "Segmentation des vêtements (RMBG)",
+    "inputs": {
+      "images": { "name": "Images" },
+      "Hat": { "name": "Chapeau" },
+      "Hair": { "name": "Cheveux" },
+      "Face": { "name": "Visage" },
+      "Sunglasses": { "name": "Lunettes de soleil" },
+      "Upper-clothes": { "name": "Haut" },
+      "Skirt": { "name": "Jupe" },
+      "Dress": { "name": "Robe" },
+      "Belt": { "name": "Ceinture" },
+      "Pants": { "name": "Pantalon" },
+      "Left-arm": { "name": "Bras gauche" },
+      "Right-arm": { "name": "Bras droit" },
+      "Left-leg": { "name": "Jambe gauche" },
+      "Right-leg": { "name": "Jambe droite" },
+      "Bag": { "name": "Sac" },
+      "Scarf": { "name": "Écharpe" },
+      "Left-shoe": { "name": "Chaussure gauche" },
+      "Right-shoe": { "name": "Chaussure droite" },
+      "process_res": { "name": "Résolution de traitement" },
+      "mask_blur": { "name": "Flou du masque" },
+      "mask_offset": { "name": "Décalage du masque" },
+      "invert_output": { "name": "Inverser la sortie" },
+      "background": { "name": "Arrière-plan" },
+      "background_color": { "name": "Couleur de fond" }
+    },
+    "outputs": {
+      "2": { "name": "IMAGE MASQUE" }
+    }
+  },
+  "FaceSegment": {
+    "display_name": "Segmentation du visage (RMBG)",
+    "inputs": {
+      "images": { "name": "Images" },
+      "Skin": { "name": "Peau" },
+      "Nose": { "name": "Nez" },
+      "Eyeglasses": { "name": "Lunettes" },
+      "Left-eye": { "name": "Œil gauche" },
+      "Right-eye": { "name": "Œil droit" },
+      "Left-eyebrow": { "name": "Sourcil gauche" },
+      "Right-eyebrow": { "name": "Sourcil droit" },
+      "Left-ear": { "name": "Oreille gauche" },
+      "Right-ear": { "name": "Oreille droite" },
+      "Mouth": { "name": "Bouche" },
+      "Upper-lip": { "name": "Lèvre supérieure" },
+      "Lower-lip": { "name": "Lèvre inférieure" },
+      "Hair": { "name": "Cheveux" },
+      "Earring": { "name": "Boucle d'oreille" },
+      "Neck": { "name": "Cou" },
+      "process_res": { "name": "Résolution de traitement" },
+      "mask_blur": { "name": "Flou du masque" },
+      "mask_offset": { "name": "Décalage du masque" },
+      "invert_output": { "name": "Inverser la sortie" },
+      "background": { "name": "Arrière-plan" },
+      "background_color": { "name": "Couleur de fond" }
+    },
+    "outputs": {
+      "2": { "name": "IMAGE MASQUE" }
+    }
+  },
+  "FashionSegmentClothing": {
+    "display_name": "Segmentation de mode (RMBG)",
+    "inputs": {
+      "images": { "name": "Images" },
+      "accessories_options": { "name": "Options d'accessoires" },
+      "coat": { "name": "Manteau" },
+      "jacket": { "name": "Veste" },
+      "cardigan": { "name": "Gilet" },
+      "vest": { "name": "Gilet" },
+      "sweater": { "name": "Pull" },
+      "hood": { "name": "Capuche" },
+      "shirt, blouse": { "name": "Chemise, blouse" },
+      "top, t-shirt, sweatshirt": { "name": "haut, t-shirt, sweat-shirtt" },
+      "sleeve": { "name": "Manche" },
+      "dress": { "name": "Robe" },
+      "jumpsuit": { "name": "Combinaison" },
+      "cape": { "name": "Cape" },
+      "pants": { "name": "Pantalon" },
+      "shorts": { "name": "Shorts" },
+      "skirt": { "name": "Jupe" },
+      "tights, stockings": { "name": "Tights, Stockings" },
+      "sock": { "name": "Chaussette" },
+      "shoe": { "name": "Chaussure" },
+      "process_res": { "name": "Résolution de traitement" },
+      "mask_blur": { "name": "Flou du masque" },
+      "mask_offset": { "name": "Décalage du masque" },
+      "invert_output": { "name": "Inverser la sortie" },
+      "background": { "name": "Arrière-plan" },
+      "background_color": { "name": "Couleur de fond" }
+    },
+    "outputs": {
+      "2": { "name": "IMAGE MASQUE" }
+    }
+  },
+  "FashionSegmentAccessories": {
+    "display_name": "Segmentation des accessoires de mode (RMBG)",
+    "inputs": {
+      "images": { "name": "Images" },
+      "hat": { "name": "Chapeau" },
+      "glasses": { "name": "Lunettes" },
+      "headband, head covering, hair accessory": { "name": "Bandeau" },
+      "scarf": { "name": "Écharpe" },
+      "tie": { "name": "Cravate" },
+      "glove": { "name": "Gant" },
+      "watch": { "name": "Montre" },
+      "belt": { "name": "Ceinture" },
+      "leg warmer": { "name": "Chauffe-jambe" },
+      "bag, wallet": { "name": "Sac" },
+      "umbrella": { "name": "Parapluie" },
+      "collar": { "name": "Col" },
+      "lapel": { "name": "Revers" },
+      "neckline": { "name": "Encolure" },
+      "epaulette": { "name": "Épaule" },
+      "pocket": { "name": "Poche" },
+      "buckle": { "name": "Boucle" },
+      "zipper": { "name": "Fermeture éclair" },
+      "applique": { "name": "Appliqué" },
+      "bow": { "name": "Nœud" },
+      "flower": { "name": "Fleur" },
+      "bead": { "name": "Perle" },
+      "fringe": { "name": "Frange" },
+      "ribbon": { "name": "Ruban" },
+      "rivet": { "name": "Rivet" },
+      "ruffle": { "name": "Volant" },
+      "sequin": { "name": "Paillettes" },
+      "tassel": { "name": "Tassel" }
+    },
+    "outputs": {
+      "0": { "name": "Options d'accessoires" }
+    }
+  },
+  "Segment": {
+    "display_name": "Segmentation V1 (RMBG)",
+    "inputs": {
+      "image": { "name": "Image" },
+      "prompt": { "name": "Invite" },
+      "sam_model": { "name": "Modèle SAM" },
+      "dino_model": { "name": "Modèle DINO" },
+      "threshold": { "name": "Seuil" },
+      "mask_blur": { "name": "Flou du masque" },
+      "mask_offset": { "name": "Décalage du masque" },
+      "invert_output": { "name": "Inverser la sortie" },
+      "background": { "name": "Arrière-plan" },
+      "background_color": { "name": "Couleur de fond" }
+    },
+    "outputs": {
+      "2": { "name": "IMAGE MASQUE" }
+    }
+  },
+  "SegmentV2": {
+    "display_name": "Segmentation V2 (RMBG)",
+    "inputs": {
+      "image": { "name": "Image" },
+      "prompt": { "name": "Invite" },
+      "sam_model": { "name": "Modèle SAM" },
+      "dino_model": { "name": "Modèle DINO" },
+      "threshold": { "name": "Seuil" },
+      "mask_blur": { "name": "Flou du masque" },
+      "mask_offset": { "name": "Décalage du masque" },
+      "invert_output": { "name": "Inverser la sortie" },
+      "background": { "name": "Arrière-plan" },
+      "background_color": { "name": "Couleur de fond" }
+    },
+    "outputs": {
+      "2": { "name": "IMAGE MASQUE" }
+    }
+  },
+  "AILab_SAM2Segment": {
+    "display_name": "SAM2Segment (RMBG)",
+    "inputs": {
+      "image": { "name": "Image" },
+      "prompt": { "name": "Invite" }, 
+      "sam_model": { "name": "Modèle SAM" },
+      "dino_model": { "name": "Modèle DINO" },
+      "threshold": { "name": "Seuil" },
+      "mask_blur": { "name": "Flou du masque" },
+      "mask_offset": { "name": "Décalage du masque" },
+      "invert_output": { "name": "Inverser la sortie" },  
+      "background": { "name": "Arrière-plan" },
+      "background_color": { "name": "Couleur de fond" }
+    },
+    "outputs": {
+      "2": { "name": "IMAGE MASQUE" }
+    }
+  },
+  "AILab_Preview": {
+    "display_name": "Aperçu de l'image/mask (RMBG) 🖼️🎭",
+    "inputs": {
+      "image": { "name": "Image" },
+      "mask": { "name": "Masque" }
+    }
+  },
+  "AILab_ImagePreview": {
+    "display_name": "Aperçu de l'image (RMBG) 🖼️",
+    "inputs": {
+      "image": { "name": "Image" }
+    }
+  },
+  "AILab_MaskPreview": {
+    "display_name": "Aperçu du masque (RMBG) 🎭",
+    "inputs": {
+      "mask": { "name": "Masque" }
+    }
+  },
+  "AILab_LoadImage": {
+    "display_name": "Charger l'image (RMBG) 🖼️",
+    "inputs": {
+      "image_path_or_URL": { "name": "Chemin ou URL de l'image" },
+      "image": { "name": "Image" },
+      "upscale_method": { "name": "Méthode d'agrandissement" },
+      "scale_by": { "name": "Échelle" },
+      "resize_mode": { "name": "Mode de redimensionnement" },
+      "size": { "name": "Taille" }
+    },
+    "outputs": {
+      "2": { "name": "LARGEUR" },
+      "3": { "name": "HAUTEUR" }
+    }
+  },
+  "AILab_LoadImageSimple": {
+    "display_name": "Charger l'image simple (RMBG) 🖼️",
+    "inputs": {
+      "image_path_or_URL": { "name": "Chemin ou URL de l'image" },
+      "image": { "name": "Image" }
+    },
+    "outputs": {
+      "1": { "name": "LARGEUR" },
+      "2": { "name": "HAUTEUR" }
+    }
+  },
+  "AILab_LoadImageAdvanced": {
+    "display_name": "Charger l'image avancé (RMBG) 🖼️",
+    "inputs": {
+      "image_path_or_URL": { "name": "Chemin ou URL de l'image" },
+      "image": { "name": "Image" },
+      "mask_channel": { "name": "Canal de masque" },
+      "upscale_method": { "name": "Méthode d'agrandissement" },
+      "scale_by": { "name": "Échelle" },
+      "resize_mode": { "name": "Mode de redimensionnement" },
+      "size": { "name": "Taille" }
+    },
+    "outputs": {
+      "2": { "name": "IMAGE MASQUE" },
+      "3": { "name": "LARGEUR" },
+      "4": { "name": "HAUTEUR" }
+    }
+  },
+  "AILab_ImageCombiner": {
+    "display_name": "Combineur d'images (RMBG) 🖼️",
+    "inputs": {
+      "foreground": { "name": "Premier plan" },
+      "background": { "name": "Arrière-plan" },
+      "mode": { "name": "Mode" },
+      "foreground_opacity": { "name": "Opacité du premier plan" },
+      "foreground_scale": { "name": "Échelle du premier plan" },
+      "position_x": { "name": "Position X" },
+      "position_y": { "name": "Position Y" },
+      "foreground_mask": { "name": "Masque du premier plan" }
+    }
+  },
+  "AILab_MaskCombiner": {
+    "display_name": "Combineur de masques (RMBG) 🎭",
+    "inputs": {
+      "mask_1": { "name": "Masque 1" },
+      "mode": { "name": "Mode" },
+      "mask_2": { "name": "Masque 2" },
+      "mask_3": { "name": "Masque 3" },
+      "mask_4": { "name": "Masque 4" }
+    }
+  },
+  "AILab_MaskEnhancer": {
+    "display_name": "Améliorateur de masque (RMBG) 🖼️",
+    "inputs": {
+      "mask": { "name": "Masque" },
+      "sensitivity": { "name": "Sensibilité" },
+      "mask_blur": { "name": "Flou du masque" },
+      "mask_offset": { "name": "Décalage du masque" },
+      "smooth": { "name": "Lisser" },
+      "fill_holes": { "name": "Remplir les trous" },
+      "invert_output": { "name": "Inverser la sortie" }
+    }
+  },
+  "AILab_ImageMaskConvert": {
+    "display_name": "Conversion image/masque (RMBG) 🖼️🎭",
+    "inputs": {
+      "image": { "name": "Image" },
+      "mask": { "name": "Masque" },
+      "mask_channel": { "name": "Canal de masque" }
+    }
+  },
+  "AILab_MaskExtractor": {
+    "display_name": "Extracteur de masque (RMBG) 🎭",
+    "inputs": {
+      "image": { "name": "Image" },
+      "mask": { "name": "Masque" },
+      "mode": { "name": "Mode" },
+      "background": { "name": "Arrière-plan" }
+    }
+  },
+  "AILab_ImageStitch": {
+    "display_name": "Image stitch (RMBG) 🖼️",
+    "inputs": {
+      "images": { "name": "Images" },
+      "direction": { "name": "Direction" }
+    }
+  },
+  "AILab_ImageCrop": {
+    "display_name": "Rogner l'image (RMBG) 🖼️",
+    "inputs": {
+      "image": { "name": "Image" },
+      "anchor": { "name": "Ancre" },
+      "offset_x": { "name": "Décalage X" },
+      "offset_y": { "name": "Décalage Y" },
+      "split_output": { "name": "Sortie séparée" }
+    },
+    "outputs": {
+      "0": { "name": "ROGNAGE" },
+      "1": { "name": "RESTE" }
+    }
+  },
+  "AILab_ICLoRAConcat": {
+    "display_name": "Concaténer ICLoRA (RMBG) 🖼️",
+    "inputs": {
+      "object_image": { "name": "Image objet" },
+      "layout": { "name": "Disposition" },
+      "pixels": { "name": "Pixels" },
+      "object_mask": { "name": "Masque objet" },
+      "base_image": { "name": "Image de base" },
+      "base_mask": { "name": "Masque de base" }
+    },
+    "outputs": {
+      "0": { "name": "IMAGE" },
+      "1": { "name": "MASQUE OBJET" },
+      "2": { "name": "MASQUE BASE" },
+      "3": { "name": "LARGEUR" },
+      "4": { "name": "HAUTEUR" },
+      "5": { "name": "X" },
+      "6": { "name": "Y" }
+    }
+  },
+  "AILab_CropObject": {
+    "display_name": "Couper à l'objet (RMBG) 🖼️🎭",
+    "inputs": {
+      "image": { "name": "Image" },
+      "mask": { "name": "Masque" },
+      "padding": { "name": "Padding" }
+    },
+    "outputs": {
+      "0": { "name": "IMAGE" },
+      "1": { "name": "MASK" }
+    }
+  },
+  "AILab_ImageCompare": {
+    "display_name": "Comparaison d'images (RMBG) 🖼️🖼️",
+    "inputs": {
+      "image_1": { "name": "Image 1" },
+      "image_2": { "name": "Image 2" },
+      "text_1": { "name": "Texte 1" },
+      "text_2": { "name": "Texte 2" }
+    },
+    "outputs": {
+      "0": { "name": "Image" }
+    }
+  },
+  "AILab_ColorInput": {
+    "display_name": "Couleur d'entrée (RMBG) 🎨",
+    "inputs": {
+      "color": { "name": "Couleur" }
+    }
+  },
+  "AILab_LamaRemover": {
+    "display_name": "Supprimer l'objet (RMBG) 🖼️🎭",
+    "inputs": {
+      "images": { "name": "Images" },
+      "masks": { "name": "Masques" },
+      "removal_strength": { "name": "Intensité de suppression" },
+      "edge_smoothness": { "name": "Lissage des bords" }
+    }
+  },
+  "AILab_ImageMaskResize": {
+    "display_name": "Redimensionner l'image/masque (RMBG) 🖼️🎭",
+    "inputs": {
+      "image": { "name": "Image" },
+      "mask": { "name": "Masque" },
+      "width": { "name": "Largeur" },
+      "height": { "name": "Hauteur" },
+      "scale_by": { "name": "Échelle" },
+      "upscale_method": { "name": "Méthode de redimensionnement" },
+      "resize_mode": { "name": "Mode de redimensionnement" },
+      "pad_color": { "name": "Couleur de remplissage" },
+      "crop_position": { "name": "Position de découpe" },
+      "divisible_by": { "name": "Divisible par" },
+      "device": { "name": "Appareil" }
+    },
+    "outputs": {
+      "0": { "name": "IMAGE" },
+      "1": { "name": "MASK" },
+      "2": { "name": "LARGEUR" },
+      "3": { "name": "HAUTEUR" }
+    }
+  },
+  "AILab_ReferenceLatentMask": {
+    "display_name": "Kontext 参考潜伏遮罩 (RMBG) 🎭",
+    "inputs": {
+      "conditioning": { "name": "条件" },
+      "latent": { "name": "latant" },
+      "mask": { "name": "遮罩" },
+      "expand": { "name": "扩展" },
+      "blur": { "name": "模糊" },
+      "mask_only": { "name": "仅遮罩" }
+    },
+    "outputs": {  
+      "0": { "name": "条件" },
+      "1": { "name": "latant" },
+      "2": { "name": "遮罩" }
+    }
+  },
+  "AILab_SDMatte": {
+    "display_name": "SDMatte Matting (RMBG) 🖼️🎭",
+    "inputs": {
+      "image": { "name": "Image" },
+      "mask": { "name": "Masque" },
+      "model_path": { "name": "Chemin du modèle" },
+      "device": { "name": "Appareil" },
+      "process_res": { "name": "Résolution de traitement" },
+      "transparent_object": { "name": "Objet transparent" },
+      "mask_refine": { "name": "Amélioration du masque" },
+      "sensitivity": { "name": "Sensibilité" },
+      "mask_blur": { "name": "Flou du masque" },
+      "mask_offset": { "name": "Décalage du masque" },
+      "invert_output": { "name": "Inverser la sortie" },
+      "background": { "name": "Arrière-plan" },
+      "background_color": { "name": "Couleur de fond" }
+    },
+    "outputs": {
+      "0": { "name": "Image" },
+      "1": { "name": "Masque" }
+    }
+  }
+}

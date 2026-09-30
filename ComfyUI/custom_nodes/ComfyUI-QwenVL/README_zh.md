@@ -1,0 +1,262 @@
+# **QwenVL for ComfyUI**
+
+ComfyUI-QwenVL 为 ComfyUI 提供全方位的视觉语言与深度推理能力。全面支持阿里巴巴 Qwen3-VL 全系列模型（2B 至 32B，含 Instruct 与 Thinking 深度思考版）、Qwen3.5-VL、Qwen3.6-VL (MoE 混合专家)、Qwen3.8-VL 与 Qwen2.5-VL，以及纯文本 Qwen3 提示词增强器。基于 GGUF (llama.cpp) 与 Transformers (PyTorch + SageAttention) 高性能双后端架构，支持即时图像理解、智能自适应视频长序列分析与零配置自定义模型扩展。
+
+![QwenVL_V1.1.0](https://github.com/user-attachments/assets/13e89746-a04e-41a3-9026-7079b29e149c)
+
+## **📰 新闻与更新**
+
+* **2026/09/13**: **v2.3.2** 支持自定义/跨盘模型路径与 hf-mirror 下载加速！ [[更新说明](update.md#release-notes-v232-2026-09-13)]
+  * **外置盘与跨盘模型直通支持**：直接读取存放于其他盘或现有目录的 HuggingFace 和 GGUF 模型，跳过重复联网下载。无缝兼容 ComfyUI 的 `extra_model_paths.yaml`（不区分大小写支持 `LLM` / `llm` 和 `gguf`），保持 `custom_models.json` 配置纯净统一。
+  * **hf-mirror.com 国内高速镜像**：`AILab_HuggingFaceDownloader` 节点内置一键下载源切换，支持国内网络满速下载完整模型、GGUF 单文件及 `mmproj` 视觉投影文件。
+* **2026/08/31**: **v2.3.1** 修复多项稳定性 Bug！ [[更新说明](https://github.com/1038lab/ComfyUI-QwenVL/blob/main/update.md#release-notes-v231-2026-08-31)]
+* **2026/08/26**: **v2.3.0** 智能视频自适应缩放与自定义模型架构重大升级！
+  * **智能视频自适应缩放与 Token 预算守护**：彻底解决视频抽帧分析时的上下文槽位溢出（`failed to find a memory slot`）与显存爆炸（CUDA OOM）。自动根据 `ctx` 与 `frame_count` 探查计算单帧安全预算；小尺寸视频保持原画质直通，超限高画质视频（1080p/4K）自动等比缩小。所有高级节点新增 `video_frame_size` 控制项。
+  * **精简统一的自定义模型架构 (`custom_models.json`)**：统一为 `hf_models` 与 `gguf_models` 两大板块，视觉与文本节点无缝加载自定义 GGUF / HF 模型。
+  * **强化版模型下载器 (`AILab_HuggingFaceDownloader`)**：支持独立无输出执行（`OUTPUT_NODE = True`）、智能自动分流（`save_folder: "auto"`）、`mmproj` 视觉投影文件自动发现下载及色彩丰富的 UI 状态卡片。
+  * **共享推理引擎与独立 CLI (`qwenvl_engine.py` / `qwenvl_cli.py`)**：提供便捷的 Python 外部接口与命令行工具。
+  * **统一公共媒体工具库 (`AILab_Utils.py`)**：集中管理张量转换、视频抽帧与预算决策，全面覆盖 GGUF 与 Transformers 双后端。
+  * **完整使用指南**：新增全功能技术手册 [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) 与 [`docs/USER_GUIDE_zh.md`](docs/USER_GUIDE_zh.md)。 [[更新说明](update.md#release-notes-v230-2026-08-26)]
+* **2026/08/20**: **v2.2.0** 新增对 Qwen3.5, 3.6 (MoE) 和 3.8 的原生 GGUF 支持。引入原生 `comfy.model_management` 显存清理机制。 [[更新](update.md#release-notes-v220-2026-08-19)]
+* **2025/02/05**: **v2.1.0** 新增 SageAttention 支持，优化 FP8 模型处理，改进注意力模式选择 [[更新](https://github.com/1038lab/ComfyUI-QwenVL/blob/main/update.md#version-210-20250205)]
+  * **SageAttention 支持**: 新增 GPU 架构优化内核（SM80、SM89、SM90、SM120）
+  * **改进 FP8 处理**: 更好的预量化 FP8 模型支持，自动回退到 SDPA
+  * **智能注意力选择**: 自动模式现在尝试 Sage → Flash → SDPA 以获得最佳性能
+  * **进度条**: 新增 ComfyUI 进度条显示模型加载和生成阶段
+  * **更好的内存管理**: 改进切换注意力模式或量化设置时的缓存清理
+* **2025/12/22**: **v2.0.0** 新增 GGUF 支持节点和提示词增强器节点 [[更新](https://github.com/1038lab/ComfyUI-QwenVL/blob/main/update.md#version-200-20251222)]
+  * **GGUF 节点**: 支持 llama.cpp 后端的 GGUF 格式模型
+  * **提示词增强器**: 专用的文本提示词优化节点
+* **2025/11/10**: **v1.1.0** 运行时重构，新增注意力模式选择器、Flash-Attention 自动检测、更智能的缓存机制 [[更新](https://github.com/1038lab/ComfyUI-QwenVL/blob/main/update.md#version-110-20251110)]
+* **2025/10/31**: **v1.0.4** 支持自定义模型 [[更新](https://github.com/1038lab/ComfyUI-QwenVL/blob/main/update.md#version-104-20251031)]
+* **2025/10/22**: **v1.0.3** 更新模型列表 [[更新](https://github.com/1038lab/ComfyUI-QwenVL/blob/main/update.md#version-103-20251022)]
+* **2025/10/17**: **v1.0.0** 初始版本发布
+  * 支持 Qwen3-VL 和 Qwen2.5-VL 系列模型。
+  * 自动从 Hugging Face 下载模型。
+  * 支持即时量化（4-bit、8-bit、FP16）。
+  * 提供预设和自定义提示词系统，使用灵活方便。
+  * **包含**一个标准节点和一个高级**节点**，满足不同层次用户的需求。
+  * 具备硬件感知保护机制，以兼容 FP8 模型。
+  * 支持图像和视频（帧序列）输入。
+  * 提供"保持模型加载"选项，以提高连续运行的性能。
+  * **包含种子（Seed）参数**，用于生成可复现的结果。
+
+## **✨ 功能特性**
+
+* **标准与高级节点**：包含一个用于快速上手的简单 QwenVL 节点，以及一个提供精细生成控制的 QwenVL (Advanced) 节点。
+* **提示词增强器**：专用的文本提示词优化节点，支持 HF 和 GGUF 后端。
+* **预设与自定义提示词**：可从一系列便捷的预设提示词中选择，或自行编写以实现完全控制。
+* **多模型支持**：轻松在各种官方 Qwen-VL 模型之间切换。
+* **自动模型下载**：首次使用时会自动下载所需模型。
+* **智能量化**：通过 4-bit、8-bit 和 FP16 选项，平衡显存占用与性能。
+* **硬件感知**：自动检测 GPU 能力，并防止因模型不兼容（例如 FP8）而导致的错误。
+* **可复现生成**：使用 seed 参数可获得一致的输出结果。
+* **内存管理**："保持模型加载"选项可将模型保留在显存中，以加快处理速度。
+* **图像与视频支持**：接受单个图像和视频帧序列作为输入。
+* **智能视频自适应缩放**：动态计算视频输入的安全 Token 预算，小尺寸视频保持原画质，高分辨率视频自动等比缩放，彻底杜绝显存溢出与槽位溢出。
+* **强大的错误处理**：为硬件或内存问题提供清晰的错误信息。
+* **简洁的控制台输出**：在操作过程中提供最少且信息丰富的控制台日志。
+* **SageAttention 支持**：GPU 优化的注意力机制，支持多种 GPU 架构（Ampere、Ada、Hopper、Blackwell）。
+* **进度条**：模型加载和生成阶段提供可视化反馈。
+* **智能缓存管理**：切换注意力模式或量化设置时自动清理显存。
+
+## **🚀 安装**
+
+1. 将此仓库克隆到您的 ComfyUI/custom\_nodes 目录：
+```
+   cd ComfyUI/custom\_nodes  
+   git clone https://github.com/1038lab/ComfyUI-QwenVL.git\
+```
+2. 安装所需的依赖项：
+```
+   cd ComfyUI/custom\_nodes/ComfyUI-QwenVL  
+   pip install \-r requirements.txt
+```
+3. 重启 ComfyUI。
+
+### **可选：SageAttention 支持**
+为在支持的 GPU 上获得最佳性能，请安装 SageAttention：
+```
+pip install sageattention
+```
+
+## **🧭 节点概览**
+
+### **Transformers (HF) 节点**
+- **QwenVL**: 快速视觉语言推理（图像/视频 + 预设/自定义提示词）。
+- **QwenVL (Advanced)**: 完全控制采样、设备和性能设置。
+- **QwenVL Prompt Enhancer**: 纯文本提示词增强（支持 Qwen3 文本模型和文本模式下的 QwenVL 模型）。
+
+### **实用工具节点 (Utilities)**
+- **HuggingFace Downloader**: 直接从 HuggingFace 下载 GGUF/HF 模型或整个仓库到您的 ComfyUI 目录中。
+
+### **GGUF (llama.cpp) 节点**
+- **QwenVL (GGUF)**: GGUF 视觉语言推理。
+- **QwenVL (GGUF Advanced)**: 扩展 GGUF 控制（上下文、GPU 层等）。
+- **QwenVL Prompt Enhancer (GGUF)**: GGUF 纯文本提示词增强。
+
+## **🧩 GGUF 节点（llama.cpp 后端）**
+
+本仓库包含由 `llama-cpp-python` 驱动的 **GGUF** 节点（与基于 Transformers 的节点分开）。
+
+- **节点**: `QwenVL (GGUF)`、`QwenVL (GGUF Advanced)`、`QwenVL Prompt Enhancer (GGUF)`
+- **模型文件夹**（默认）: `ComfyUI/models/llm/GGUF/`（可通过 `gguf_models.json` 配置）
+- **视觉要求**: 安装支持视觉的 `llama-cpp-python` wheel，提供 `Qwen3VLChatHandler` / `Qwen25VLChatHandler`
+  参见 [docs/LLAMA_CPP_PYTHON_VISION_INSTALL.md](docs/LLAMA_CPP_PYTHON_VISION_INSTALL.md)
+
+## **🗂️ 配置文件**
+
+- **HF 模型**: `hf_models.json`
+  - `hf_vl_models`: 视觉语言模型（由 QwenVL 节点使用）。
+  - `hf_text_models`: 纯文本模型（由提示词增强器使用）。
+- **GGUF 模型**: `gguf_models.json`
+- **系统提示词**: `system_prompts.json`（包含 VL 提示词和提示词增强器样式）。
+
+## **📥 下载模型**
+
+模型将在首次使用时自动下载。如果您希望手动下载，请将它们放置在 ComfyUI/models/LLM/Qwen-VL/ 目录下。
+
+### **HF 视觉模型（Qwen-VL）**
+| 模型 | 链接 |
+| :---- | :---- |
+| Qwen3-VL-2B-Instruct | [下载](https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct) |
+| Qwen3-VL-2B-Thinking | [下载](https://huggingface.co/Qwen/Qwen3-VL-2B-Thinking) |
+| Qwen3-VL-2B-Instruct-FP8 | [下载](https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct-FP8) |
+| Qwen3-VL-2B-Thinking-FP8 | [下载](https://huggingface.co/Qwen/Qwen3-VL-2B-Thinking-FP8) |
+| Qwen3-VL-4B-Instruct | [下载](https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct) |
+| Qwen3-VL-4B-Thinking | [下载](https://huggingface.co/Qwen/Qwen3-VL-4B-Thinking) |
+| Qwen3-VL-4B-Instruct-FP8 | [下载](https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct-FP8) |
+| Qwen3-VL-4B-Thinking-FP8 | [下载](https://huggingface.co/Qwen/Qwen3-VL-4B-Thinking-FP8) |
+| Qwen3-VL-8B-Instruct | [下载](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct) |
+| Qwen3-VL-8B-Thinking | [下载](https://huggingface.co/Qwen/Qwen3-VL-8B-Thinking) |
+| Qwen3-VL-8B-Instruct-FP8 | [下载](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-FP8) |
+| Qwen3-VL-8B-Thinking-FP8 | [下载](https://huggingface.co/Qwen/Qwen3-VL-8B-Thinking-FP8) |
+| Qwen3-VL-32B-Instruct | [下载](https://huggingface.co/Qwen/Qwen3-VL-32B-Instruct) |
+| Qwen3-VL-32B-Thinking | [下载](https://huggingface.co/Qwen/Qwen3-VL-32B-Thinking) |
+| Qwen3-VL-32B-Instruct-FP8 | [下载](https://huggingface.co/Qwen/Qwen3-VL-32B-Instruct-FP8) |
+| Qwen3-VL-32B-Thinking-FP8 | [下载](https://huggingface.co/Qwen/Qwen3-VL-32B-Thinking-FP8) |
+| Qwen2.5-VL-3B-Instruct | [下载](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct) |
+| Qwen2.5-VL-7B-Instruct | [下载](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) |
+
+### **HF 文本模型（Qwen3）**
+| 模型 | 链接 |
+| :---- | :---- |
+| Qwen3-0.6B | [下载](https://huggingface.co/Qwen/Qwen3-0.6B) |
+| Qwen3-4B-Instruct-2507 | [下载](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) |
+| qwen3-4b-Z-Image-Engineer | [下载](https://huggingface.co/BennyDaBall/qwen3-4b-Z-Image-Engineer) |
+
+### **GGUF 模型（手动下载）**
+| 分组 | 模型 | 仓库 | 备用仓库 | 模型文件 | MMProj |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| Qwen 文本 (GGUF) | Qwen3-4B-GGUF | [Qwen/Qwen3-4B-GGUF](https://huggingface.co/Qwen/Qwen3-4B-GGUF) |  | Qwen3-4B-Q4_K_M.gguf, Qwen3-4B-Q5_0.gguf, Qwen3-4B-Q5_K_M.gguf, Qwen3-4B-Q6_K.gguf, Qwen3-4B-Q8_0.gguf |  |
+| Qwen-VL (GGUF) | Qwen3-VL-4B-Instruct-GGUF | [Qwen/Qwen3-VL-4B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct-GGUF) |  | Qwen3VL-4B-Instruct-F16.gguf, Qwen3VL-4B-Instruct-Q4_K_M.gguf, Qwen3VL-4B-Instruct-Q8_0.gguf | mmproj-Qwen3VL-4B-Instruct-F16.gguf |
+| Qwen-VL (GGUF) | Qwen3-VL-8B-Instruct-GGUF | [Qwen/Qwen3-VL-8B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) |  | Qwen3VL-8B-Instruct-F16.gguf, Qwen3VL-8B-Instruct-Q4_K_M.gguf, Qwen3VL-8B-Instruct-Q8_0.gguf | mmproj-Qwen3VL-8B-Instruct-F16.gguf |
+| Qwen-VL (GGUF) | Qwen3-VL-4B-Thinking-GGUF | [Qwen/Qwen3-VL-4B-Thinking-GGUF](https://huggingface.co/Qwen/Qwen3-VL-4B-Thinking-GGUF) |  | Qwen3VL-4B-Thinking-F16.gguf, Qwen3VL-4B-Thinking-Q4_K_M.gguf, Qwen3VL-4B-Thinking-Q8_0.gguf | mmproj-Qwen3VL-4B-Thinking-F16.gguf |
+| Qwen-VL (GGUF) | Qwen3-VL-8B-Thinking-GGUF | [Qwen/Qwen3-VL-8B-Thinking-GGUF](https://huggingface.co/Qwen/Qwen3-VL-8B-Thinking-GGUF) |  | Qwen3VL-8B-Thinking-F16.gguf, Qwen3VL-8B-Thinking-Q4_K_M.gguf, Qwen3VL-8B-Thinking-Q8_0.gguf | mmproj-Qwen3VL-8B-Thinking-F16.gguf |
+| Qwen-VL (GGUF) | Qwen3.5-VL-7B-Instruct-GGUF | [Qwen/Qwen3.5-VL-7B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen3.5-VL-7B-Instruct-GGUF) |  | Qwen3.5VL-7B-Instruct-F16.gguf, Qwen3.5VL-7B-Instruct-Q4_K_M.gguf, Qwen3.5VL-7B-Instruct-Q8_0.gguf | mmproj-Qwen3.5VL-7B-Instruct-F16.gguf |
+| Qwen-VL (GGUF) | Qwen3.6-VL-MoE-Instruct-GGUF | [Qwen/Qwen3.6-VL-MoE-Instruct-GGUF](https://huggingface.co/Qwen/Qwen3.6-VL-MoE-Instruct-GGUF) |  | Qwen3.6VL-MoE-Instruct-F16.gguf, Qwen3.6VL-MoE-Instruct-Q4_K_M.gguf, Qwen3.6VL-MoE-Instruct-Q8_0.gguf | mmproj-Qwen3.6VL-MoE-Instruct-F16.gguf |
+| Qwen-VL (GGUF) | Qwen3.8-VL-14B-Instruct-GGUF | [Qwen/Qwen3.8-VL-14B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen3.8-VL-14B-Instruct-GGUF) |  | Qwen3.8VL-14B-Instruct-F16.gguf, Qwen3.8VL-14B-Instruct-Q4_K_M.gguf, Qwen3.8VL-14B-Instruct-Q8_0.gguf | mmproj-Qwen3.8VL-14B-Instruct-F16.gguf |
+
+## **📖 使用方法**
+
+### **基本用法**
+
+1. 从 🧪AILab/QwenVL 类别中添加 **"QwenVL"** 节点。
+2. 选择您希望使用的 **model\_name**（模型名称）。
+3. 连接一个图像或视频（图像序列）源到该节点。
+4. 使用预设或自定义字段编写您的提示词。
+5. 运行工作流。
+
+### **高级用法**
+
+如需更多控制，请使用 **"QwenVL (Advanced)"** 节点。这使您可以访问详细的生成参数，如温度、top\_p、束搜索和设备选择。
+
+## **⚙️ 参数详解**
+
+| 参数 | 描述 | 默认值 | 范围 | 适用节点 |
+| :---- | :---- | :---- | :---- | :---- |
+| **model\_name** | 要使用的 Qwen-VL 模型。 | Qwen3-VL-4B-Instruct | - | 标准 & 高级 |
+| **quantization** | 即时量化级别。对于预量化模型（如 FP8）将被忽略。 | 8-bit (Balanced) | 4-bit、8-bit、None | 标准 & 高级 |
+| **attention\_mode** | 注意力机制：auto（Sage→Flash→SDPA）、sage、flash\_attention\_2、sdpa | auto | auto、sage、flash\_attention\_2、sdpa | 标准 & 高级 |
+| **preset\_prompt** | 为常见任务预定义的一系列提示词。 | "Describe this..." | 任意文本 | 标准 & 高级 |
+| **custom\_prompt** | 自定义文本提示词。如果提供，将覆盖预设提示词。 |  | 任意文本 | 标准 & 高级 |
+| **max\_tokens** | 要生成的最大新词元（token）数量。 | 1024 | 64-2048 | 标准 & 高级 |
+| **keep\_model\_loaded** | 将模型保留在显存中，以便后续运行更快。 | True | True/False | 标准 & 高级 |
+| **seed** | 随机种子，用于确保生成结果的可复现性。 | 1 | 1 - 2^64-1 | 标准 & 高级 |
+| **temperature** | 控制随机性。值越高 = 更具创造性。（当 num\_beams 为 1 时使用）。 | 0.6 | 0.1-1.0 | 仅高级 |
+| **top\_p** | 核心采样阈值。（当 num\_beams 为 1 时使用）。 | 0.9 | 0.0-1.0 | 仅高级 |
+| **num\_beams** | 用于束搜索（beam search）的光束数量。> 1 时将禁用 temperature/top\_p 采样。 | 1 | 1-10 | 仅高级 |
+| **repetition\_penalty** | 抑制重复词元的惩罚系数。1.0 表示中性。 | 1.2 | 0.0-2.0 | 仅高级 |
+| **frame\_count** | 从视频输入中采样的帧数。 | 16 | 1-64 | 仅高级 |
+| **device** | 覆盖自动设备选择。 | auto | auto、cuda、cpu | 仅高级 |
+| **use\_torch\_compile** | 启用 torch.compile 优化以加快推理速度。 | False | True/False | 仅高级 |
+
+### **💡 量化选项**
+
+| 模式 | 精度 | 显存占用 | 速度 | 质量 | 推荐适用场景 |
+| :---- | :---- | :---- | :---- | :---- | :---- |
+| None (FP16) | 16位浮点 | 高 | 最快 | 最佳 | 高显存 GPU (16GB+) |
+| 8-bit (Balanced) | 8位整数 | 中 | 较快 | 很好 | 追求均衡性能 (8GB+) |
+| 4-bit (VRAM-friendly) | 4位整数 | 低 | 较慢* | 好 | 低显存 GPU (<8GB) |
+
+**\*关于 4-bit 速度的说明**：4-bit 量化能显著减少显存使用，但由于实时反量化的计算开销，在某些系统上可能会导致性能下降。
+
+### **🎯 注意力模式指南**
+
+| 模式 | 描述 | 适用场景 |
+| :---- | :---- | :---- |
+| **auto** | 自动选择最佳可用：Sage → Flash → SDPA | 大多数用户（推荐） |
+| **sage** | SageAttention，GPU 优化内核 | 现代 GPU 上的速度（RTX 40 系列、Hopper、Blackwell） |
+| **flash\_attention\_2** | Flash Attention 2 | Sage 不可用时使用 |
+| **sdpa** | PyTorch SDPA（默认） | 兼容性，FP8/BitsAndBytes 模型 |
+
+**注意**：FP8 模型和 BitsAndBytes 量化无论选择什么都会自动使用 SDPA。
+
+### **🤔 设置技巧**
+
+| 设置 | 建议 |
+| :---- | :---- |
+| **模型选择** | 对于大多数用户，Qwen3-VL-4B-Instruct 是一个很好的起点。如果您有 40 系 GPU，可以尝试 -FP8 版本以获得更好的性能。 |
+| **内存模式** | 如果您计划多次运行该节点，请保持 keep\_model\_loaded 启用（True）以获得最佳性能。仅在其他节点需要更多显存时才禁用它。 |
+| **量化** | 从默认的 8-bit 开始。如果您的显存充裕（>16GB），切换到 None (FP16) 以获得最佳速度和质量。如果显存不足，请使用 4-bit。 |
+| **注意力模式** | 使用 "auto" 获得最佳性能。SageAttention 在支持的 GPU 上提供最快的推理。 |
+| **性能** | 首次加载具有特定量化设置的模型时可能会较慢。后续的运行（在启用 keep\_model\_loaded 的情况下）会快得多。 |
+
+## **🧠 关于模型**
+
+此节点利用了由阿里云 Qwen 团队开发的 Qwen-VL 系列模型。这些是功能强大的开源大型视觉语言模型（LVLMs），旨在理解和处理视觉及文本信息，非常适合用于详细的图像和视频描述等任务。
+
+## **🗺️ 路线图**
+
+### **✅ 已完成 (v2.1.0)**
+
+* ✅ SageAttention 支持，GPU 架构优化
+* ✅ 改进 FP8 模型处理，自动 SDPA 回退
+* ✅ 智能注意力选择（auto: Sage → Flash → SDPA）
+* ✅ 模型加载和生成的进度条
+* ✅ 更好的内存管理和缓存清理
+
+### **✅ 已完成 (v2.0.0)**
+
+* ✅ 通过 llama.cpp 后端支持 GGUF 模型
+* ✅ 用于纯文本优化的提示词增强器节点
+
+### **✅ 已完成 (v1.0.0)**
+
+* ✅ 支持 Qwen3-VL 和 Qwen2.5-VL 模型。
+* ✅ 自动模型下载和管理。
+* ✅ 即时 4-bit、8-bit 和 FP16 量化。
+* ✅ 针对 FP8 模型的硬件兼容性检查。
+* ✅ 支持图像和视频（帧序列）输入。
+
+## **🙏 致谢**
+
+* **Qwen 团队**：[阿里云](https://github.com/QwenLM) - 感谢其开发并开源了强大的 Qwen-VL 模型。
+* **ComfyUI**：[comfyanonymous](https://github.com/comfyanonymous/ComfyUI) - 感谢其创造了如此出色且可扩展的 ComfyUI 平台。
+* **llama-cpp-python**：[JamePeng/llama-cpp-python](https://github.com/JamePeng/llama-cpp-python) - GGUF 后端视觉支持。
+* **SageAttention**：[SageAttention](https://github.com/thu-ml/SageAttention) - 高效的注意力实现，GPU 优化内核。
+* **ComfyUI 集成**：[1038lab](https://github.com/1038lab) - 本自定义节点的开发者。
+
+## **📜 许可证**
+
+此仓库的代码根据 [GPL-3.0 许可证](LICENSE) 发布。

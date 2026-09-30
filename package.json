@@ -1,0 +1,8 @@
+{
+  "name": "dx-os-desktop",
+  "version": "0.2.2",
+  "description": "DX OS desktop shell for Windows and macOS",
+  "author": "DX OS",
+  "private": true,
+  "main": "main.cjs"
+}

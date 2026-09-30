@@ -1,0 +1,15 @@
+{
+  "name": "xiaomei-canvas-desktop",
+  "productName": "小美画布",
+  "version": "0.1.0",
+  "private": true,
+  "description": "小美画布商品洞察台 Windows Electron 壳",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^31.7.7"
+  }
+}

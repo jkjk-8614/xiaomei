@@ -1,0 +1,92 @@
+{
+  "1": {
+    "inputs": {
+      "image": "input.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图片"
+    }
+  },
+  "2": {
+    "inputs": {
+      "tiled_vae": true,
+      "vae_tile_size": 512,
+      "vae_tile_overlap": 64,
+      "preserve_vram": true,
+      "cache_model": false,
+      "enable_debug": false,
+      "device": "cuda:0"
+    },
+    "class_type": "SeedVR2ExtraArgs",
+    "_meta": {
+      "title": "SeedVR2 显存节省配置"
+    }
+  },
+  "3": {
+    "inputs": {
+      "blocks_to_swap": 32,
+      "offload_io_components": true
+    },
+    "class_type": "SeedVR2BlockSwap",
+    "_meta": {
+      "title": "SeedVR2 BlockSwap"
+    }
+  },
+  "4": {
+    "inputs": {
+      "images": [
+        "1",
+        0
+      ],
+      "model": "seedvr2_ema_3b_fp8_e4m3fn.safetensors",
+      "seed": 100,
+      "new_resolution": 2048,
+      "batch_size": 1,
+      "color_correction": "wavelet",
+      "input_noise_scale": 0.0,
+      "latent_noise_scale": 0.0,
+      "block_swap_config": [
+        "3",
+        0
+      ],
+      "extra_args": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "SeedVR2",
+    "_meta": {
+      "title": "SeedVR2 3B FP8 生成式高清"
+    }
+  },
+  "5": {
+    "inputs": {
+      "upscale_method": "lanczos",
+      "width": 4096,
+      "height": 4096,
+      "crop": "disabled",
+      "image": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "ImageScale",
+    "_meta": {
+      "title": "匹配目标分辨率"
+    }
+  },
+  "6": {
+    "inputs": {
+      "filename_prefix": "Xiaomei_SeedVR2",
+      "images": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图片"
+    }
+  }
+}

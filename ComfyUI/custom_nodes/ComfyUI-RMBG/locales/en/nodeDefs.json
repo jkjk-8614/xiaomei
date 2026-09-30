@@ -1,0 +1,505 @@
+{
+  "RMBG": {
+    "display_name": "Remove Background (RMBG)",
+    "inputs": {
+      "image": { "name": "Image" },
+      "model": { "name": "Model" },
+      "sensitivity": { "name": "Sensitivity" },
+      "process_res": { "name": "Processing Resolution" },
+      "mask_blur": { "name": "Mask Blur" },
+      "mask_offset": { "name": "Mask Offset" },
+      "invert_output": { "name": "Invert Output" },
+      "refine_foreground": { "name": "Refine Foreground" },
+      "background": { "name": "Background" },
+      "background_color": { "name": "Background Color" }
+    },
+    "outputs": {
+      "2": { "name": "MASK IMAGE" }
+    }
+  },
+  "BodySegment": {
+    "display_name": "Body Part Segmentation (RMBG)",
+    "inputs": {
+      "images": { "name": "Images" },
+      "Hair": { "name": "Hair" },
+      "Glasses": { "name": "Glasses" },
+      "Top-clothes": { "name": "Top Clothes" },
+      "Bottom-clothes": { "name": "Bottom Clothes" },
+      "Torso-skin": { "name": "Torso Skin" },
+      "Face": { "name": "Face" },
+      "Left-arm": { "name": "Left Arm" },
+      "Right-arm": { "name": "Right Arm" },
+      "Left-leg": { "name": "Left Leg" },
+      "Right-leg": { "name": "Right Leg" },
+      "Left-foot": { "name": "Left Foot" },
+      "Right-foot": { "name": "Right Foot" },
+      "mask_blur": { "name": "Mask Blur" },
+      "mask_offset": { "name": "Mask Offset" },
+      "invert_output": { "name": "Invert Output" },
+      "background": { "name": "Background" },
+      "background_color": { "name": "Background Color" }
+    },
+    "outputs": {
+      "2": { "name": "MASK IMAGE" }
+    }
+  },
+  "BiRefNetRMBG": {
+    "display_name": "BiRefNet Remove Background (RMBG)",
+    "inputs": {
+      "image": { "name": "Image" },
+      "model": { "name": "Model" },
+      "mask_blur": { "name": "Mask Blur" },
+      "mask_offset": { "name": "Mask Offset" },
+      "invert_output": { "name": "Invert Output" },
+      "refine_foreground": { "name": "Refine Foreground" },
+      "background": { "name": "Background" },
+      "background_color": { "name": "Background Color" }
+    },
+    "outputs": {
+      "2": { "name": "MASK IMAGE" }
+    }
+  },
+  "ClothesSegment": {
+    "display_name": "Clothing Segmentation (RMBG)",
+    "inputs": {
+      "images": { "name": "Images" },
+      "Hat": { "name": "Hat" },
+      "Hair": { "name": "Hair" },
+      "Face": { "name": "Face" },
+      "Sunglasses": { "name": "Sunglasses" },
+      "Upper-clothes": { "name": "Upper Clothes" },
+      "Skirt": { "name": "Skirt" },
+      "Dress": { "name": "Dress" },
+      "Belt": { "name": "Belt" },
+      "Pants": { "name": "Pants" },
+      "Left-arm": { "name": "Left Arm" },
+      "Right-arm": { "name": "Right Arm" },
+      "Left-leg": { "name": "Left Leg" },
+      "Right-leg": { "name": "Right Leg" },
+      "Bag": { "name": "Bag" },
+      "Scarf": { "name": "Scarf" },
+      "Left-shoe": { "name": "Left Shoe" },
+      "Right-shoe": { "name": "Right Shoe" },
+      "Background": { "name": "Background" },
+      "process_res": { "name": "Processing Resolution" },
+      "mask_blur": { "name": "Mask Blur" },
+      "mask_offset": { "name": "Mask Offset" },
+      "invert_output": { "name": "Invert Output" },
+      "background": { "name": "Background" },
+      "background_color": { "name": "Background Color" }
+    },
+    "outputs": {
+      "2": { "name": "MASK IMAGE" }
+    }
+  },
+  "FaceSegment": {
+    "display_name": "Face Segmentation (RMBG)",
+    "inputs": {
+      "images": { "name": "Images" },
+      "Skin": { "name": "Skin" },
+      "Nose": { "name": "Nose" },
+      "Eyeglasses": { "name": "Eyeglasses" },
+      "Left-eye": { "name": "Left Eye" },
+      "Right-eye": { "name": "Right Eye" },
+      "Left-eyebrow": { "name": "Left Eyebrow" },
+      "Right-eyebrow": { "name": "Right Eyebrow" },
+      "Left-ear": { "name": "Left Ear" },
+      "Right-ear": { "name": "Right Ear" },
+      "Mouth": { "name": "Mouth" },
+      "Upper-lip": { "name": "Upper Lip" },
+      "Lower-lip": { "name": "Lower Lip" },
+      "Hair": { "name": "Hair" },
+      "Earring": { "name": "Earring" },
+      "Neck": { "name": "Neck" },
+      "process_res": { "name": "Processing Resolution" },
+      "mask_blur": { "name": "Mask Blur" },
+      "mask_offset": { "name": "Mask Offset" },
+      "invert_output": { "name": "Invert Output" },
+      "background": { "name": "Background" },
+      "background_color": { "name": "Background Color" }
+    },
+    "outputs": {
+      "2": { "name": "MASK IMAGE" }
+    }
+  },
+  "FashionSegmentClothing": {
+    "display_name": "Fashion Segmentation (RMBG)",
+    "inputs": {
+      "images": { "name": "Images" },
+      "accessories_options": { "name": "Accessories Options" },
+      "coat": { "name": "Coat" },
+      "jacket": { "name": "Jacket" },
+      "cardigan": { "name": "Cardigan" },
+      "vest": { "name": "Vest" },
+      "sweater": { "name": "Sweater" },
+      "hood": { "name": "Hood" },
+      "shirt, blouse": { "name": "Shirt, Blouse" },
+      "top, t-shirt, sweatshirt": { "name": "Top, T-shirt, Sweatshirt" },
+      "sleeve": { "name": "Sleeve" },
+      "dress": { "name": "Dress" },
+      "jumpsuit": { "name": "Jumpsuit" },
+      "cape": { "name": "Cape" },
+      "pants": { "name": "Pants" },
+      "shorts": { "name": "Shorts" },
+      "skirt": { "name": "Skirt" },
+      "tights, stockings": { "name": "Tights, Stockings" },
+      "sock": { "name": "Sock" },
+      "shoe": { "name": "Shoe" },
+      "process_res": { "name": "Processing Resolution" },
+      "mask_blur": { "name": "Mask Blur" },
+      "mask_offset": { "name": "Mask Offset" },
+      "invert_output": { "name": "Invert Output" },
+      "background": { "name": "Background" },
+      "background_color": { "name": "Background Color" }
+    },
+    "outputs": {
+      "2": { "name": "MASK IMAGE" }
+    }
+  },
+  "FashionSegmentAccessories": {
+    "display_name": "Fashion Accessories Segmentation (RMBG)",
+    "inputs": {
+      "images": { "name": "Images" },
+      "hat": { "name": "Hat" },
+      "glasses": { "name": "Glasses" },
+      "headband, head covering, hair accessory": { "name": "Headband, Head Covering, Hair Accessory" },
+      "scarf": { "name": "Scarf" },
+      "tie": { "name": "Tie" },
+      "glove": { "name": "Glove" },
+      "watch": { "name": "Watch" },
+      "belt": { "name": "Belt" },
+      "leg warmer": { "name": "Leg Warmer" },
+      "bag, wallet": { "name": "Bag, Wallet" },
+      "umbrella": { "name": "Umbrella" },
+      "collar": { "name": "Collar" },
+      "lapel": { "name": "Lapel" },
+      "neckline": { "name": "Neckline" },
+      "epaulette": { "name": "Epaulette" },
+      "pocket": { "name": "Pocket" },
+      "buckle": { "name": "Buckle" },
+      "zipper": { "name": "Zipper" },
+      "applique": { "name": "Applique" },
+      "bow": { "name": "Bow" },
+      "flower": { "name": "Flower" },
+      "bead": { "name": "Bead" },
+      "fringe": { "name": "Fringe" },
+      "ribbon": { "name": "Ribbon" },
+      "rivet": { "name": "Rivet" },
+      "ruffle": { "name": "Ruffle" },
+      "sequin": { "name": "Sequin" },
+      "tassel": { "name": "Tassel" }
+    },
+    "outputs": {
+      "0": { "name": "Accessories Options" }
+    }
+  },
+  "Segment": {
+    "display_name": "Segmentation V1 (RMBG)",
+    "inputs": {
+      "image": { "name": "Image" },
+      "prompt": { "name": "Prompt" },
+      "sam_model": { "name": "SAM Model" },
+      "dino_model": { "name": "DINO Model" },
+      "threshold": { "name": "Threshold" },
+      "mask_blur": { "name": "Mask Blur" },
+      "mask_offset": { "name": "Mask Offset" },
+      "invert_output": { "name": "Invert Output" },
+      "background": { "name": "Background" },
+      "background_color": { "name": "Background Color" }
+    }, 
+    "outputs": {
+      "2": { "name": "MASK IMAGE" }
+    }
+  },
+  "SegmentV2": {
+    "display_name": "Segmentation V2 (RMBG)",
+    "inputs": {
+      "image": { "name": "Image" },
+      "prompt": { "name": "Prompt" },
+      "sam_model": { "name": "SAM Model" },
+      "dino_model": { "name": "DINO Model" },
+      "threshold": { "name": "Threshold" },
+      "mask_blur": { "name": "Mask Blur" },
+      "mask_offset": { "name": "Mask Offset" },
+      "invert_output": { "name": "Invert Output" },
+      "background": { "name": "Background" },
+      "background_color": { "name": "Background Color" }
+    },
+    "outputs": {
+      "2": { "name": "MASK IMAGE" }
+    }
+  },
+  "AILab_SAM2Segment": {
+    "display_name": "SAM2Segment (RMBG)",
+    "inputs": {
+      "image": { "name": "Image" },
+      "prompt": { "name": "Prompt" },
+      "sam_model": { "name": "SAM Model" },
+      "dino_model": { "name": "DINO Model" },
+      "threshold": { "name": "Threshold" },
+      "mask_blur": { "name": "Mask Blur" },
+      "mask_offset": { "name": "Mask Offset" },
+      "invert_output": { "name": "Invert Output" },
+      "background": { "name": "Background" },
+      "background_color": { "name": "Background Color" }
+    },
+    "outputs": {
+      "2": { "name": "MASK IMAGE" }
+    }
+  },
+  "AILab_Preview": {
+    "display_name": "Image / Mask Preview (RMBG) 🖼️🎭",
+    "inputs": {
+      "image": { "name": "Image" },
+      "mask": { "name": "Mask" }
+    }
+  },
+  "AILab_ImagePreview": {
+    "display_name": "Image Preview (RMBG) 🖼️",
+    "inputs": {
+      "image": { "name": "Image" }
+    }
+  },
+  "AILab_MaskPreview": {
+    "display_name": "Mask Preview (RMBG) 🎭",
+    "inputs": {
+      "mask": { "name": "Mask" }
+    }
+  },
+  "AILab_LoadImage": {
+    "display_name": "Load Image (RMBG) 🖼️",
+    "inputs": {
+      "image_path_or_URL": { "name": "Image Path or URL" },
+      "image": { "name": "Image" },
+      "upscale_method": { "name": "Upscale Method" },
+      "scale_by": { "name": "Scale By" },
+      "resize_mode": { "name": "Resize Mode" },
+      "size": { "name": "Size" }
+    },
+    "outputs": {
+      "2": { "name": "WIDTH" },
+      "3": { "name": "HEIGHT" }
+    }
+  },
+  "AILab_LoadImageSimple": {
+    "display_name": "Load Image Simple (RMBG) 🖼️",
+    "inputs": {
+      "image_path_or_URL": { "name": "Image Path or URL" },
+      "image": { "name": "Image" }
+    },
+    "outputs": {
+      "1": { "name": "WIDTH" },
+      "2": { "name": "HEIGHT" }
+    }
+  },
+  "AILab_LoadImageAdvanced": {
+    "display_name": "Load Image Advanced (RMBG) 🖼️",
+    "inputs": {
+      "image_path_or_URL": { "name": "Image Path or URL" },
+      "image": { "name": "Image" },
+      "mask_channel": { "name": "Mask Channel" },
+      "upscale_method": { "name": "Upscale Method" },
+      "scale_by": { "name": "Scale By" },
+      "resize_mode": { "name": "Resize Mode" },
+      "size": { "name": "Size" }
+    },
+    "outputs": {
+      "2": { "name": "MASK IMAGE" },
+      "3": { "name": "WIDTH" },
+      "4": { "name": "HEIGHT" }
+    }
+  },
+    
+  "AILab_ImageCombiner": {
+    "display_name": "Image Combiner (RMBG) 🖼️",
+    "inputs": {
+      "foreground": { "name": "Foreground" },
+      "background": { "name": "Background" },
+      "mode": { "name": "Mode" },
+      "foreground_opacity": { "name": "Foreground Opacity" },
+      "foreground_scale": { "name": "Foreground Scale" },
+      "position_x": { "name": "Position X" },
+      "position_y": { "name": "Position Y" },
+      "foreground_mask": { "name": "Foreground Mask" }
+    }
+  },
+  "AILab_MaskCombiner": {
+    "display_name": "Mask Combiner (RMBG) 🎭",
+    "inputs": {
+      "mask_1": { "name": "Mask 1" },
+      "mode": { "name": "Mode" },
+      "mask_2": { "name": "Mask 2" },
+      "mask_3": { "name": "Mask 3" },
+      "mask_4": { "name": "Mask 4" }
+    }
+  },
+  "AILab_MaskEnhancer": {
+    "display_name": "Mask Enhancer (RMBG) 🖼️",
+    "inputs": {
+      "mask": { "name": "Mask" },
+      "sensitivity": { "name": "Sensitivity" },
+      "mask_blur": { "name": "Mask Blur" },
+      "mask_offset": { "name": "Mask Offset" },
+      "smooth": { "name": "Smooth" },
+      "fill_holes": { "name": "Fill Holes" },
+      "invert_output": { "name": "Invert Output" }
+    }
+  },
+  "AILab_ImageMaskConvert": {
+    "display_name": "Image / Mask Convert (RMBG) 🖼️🎭",
+    "inputs": {
+      "image": { "name": "Image" },
+      "mask": { "name": "Mask" },
+      "mask_channel": { "name": "Mask Channel" }
+    }
+  },
+  "AILab_MaskExtractor": {
+    "display_name": "Mask Extractor (RMBG) 🎭",
+    "inputs": {
+      "image": { "name": "Image" },
+      "mask": { "name": "Mask" },
+      "mode": { "name": "Mode" },
+      "background": { "name": "Background" }
+    }
+  },
+  "AILab_ImageStitch": {
+    "display_name": "Image Stitch (RMBG) 🖼️",
+    "inputs": {
+      "images": { "name": "Images" },
+      "direction": { "name": "Direction" }
+    }
+  },
+  "AILab_ImageCrop": {
+    "display_name": "Image Crop (RMBG) 🖼️",
+    "inputs": {
+      "image": { "name": "Image" },
+      "anchor": { "name": "Anchor" },
+      "offset_x": { "name": "Offset X" },
+      "offset_y": { "name": "Offset Y" },
+      "split_output": { "name": "Split Output" }
+    },
+    "outputs": {
+      "0": { "name": "CROP" },
+      "1": { "name": "REST" }
+    }
+  },
+  "AILab_ICLoRAConcat": {
+    "display_name": "IC LoRA Concat (RMBG) 🖼️",
+    "inputs": {
+      "object_image": { "name": "Object Image" },
+      "layout": { "name": "Layout" },
+      "custom_size": { "name": "Custom Size" },
+      "object_mask": { "name": "Object Mask" },
+      "base_image": { "name": "Base Image" },
+      "base_mask": { "name": "Base Mask" }
+    },
+    "outputs": {
+      "0": { "name": "IMAGE" },
+      "1": { "name": "OBJECT MASK" },
+      "2": { "name": "BASE MASK" },
+      "3": { "name": "WIDTH" },
+      "4": { "name": "HEIGHT" },
+      "5": { "name": "X" },
+      "6": { "name": "Y" }
+    }
+  },
+  "AILab_CropObject": {
+    "display_name": "Crop To Object (RMBG) 🖼️🎭",
+    "inputs": {
+      "image": { "name": "Image" },
+      "mask": { "name": "Mask" },
+      "padding": { "name": "Padding" }
+    },
+    "outputs": {
+      "0": { "name": "IMAGE" },
+      "1": { "name": "MASK" }
+    }
+  },
+  "AILab_ImageCompare": {
+    "display_name": "Image Compare (RMBG) 🖼️🖼️",
+    "inputs": {
+      "image_1": { "name": "Image 1" },
+      "image_2": { "name": "Image 2" },
+      "text_1": { "name": "Text 1" },
+      "text_2": { "name": "Text 2" }
+    },
+    "outputs": {
+      "0": { "name": "IMAGE" }
+    }
+  },
+  "AILab_ColorInput": {
+    "display_name": "Color Input (RMBG) 🎨",
+    "inputs": {
+      "color": { "name": "Color" }
+    }
+  },
+  "AILab_LamaRemover": {
+    "display_name": "Lama Remover (RMBG) 🖼️🎭",
+    "inputs": {
+      "images": { "name": "Images" },
+      "masks": { "name": "Masks" },
+      "removal_strength": { "name": "Removal Strength" },
+      "edge_smoothness": { "name": "Edge Smoothness" }
+    }
+  },
+  "AILab_ImageMaskResize": {
+    "display_name": "Image Mask Resize (RMBG) 🖼️🎭",
+    "inputs": {
+      "image": { "name": "Image" },
+      "mask": { "name": "Mask" },
+      "width": { "name": "Width" },
+      "height": { "name": "Height" },
+      "scale_by": { "name": "Scale By" },
+      "upscale_method": { "name": "Upscale Method" },
+      "resize_mode": { "name": "Resize Mode" },
+      "pad_color": { "name": "Pad Color" },
+      "crop_position": { "name": "Crop Position" },
+      "divisible_by": { "name": "Divisible By" },
+      "device": { "name": "Device" }
+    },
+    "outputs": {
+      "0": { "name": "IMAGE" },
+      "1": { "name": "MASK" },
+      "2": { "name": "WIDTH" },
+      "3": { "name": "HEIGHT" }
+    }
+  },
+  "AILab_ReferenceLatentMask": {
+    "display_name": "Kontext Reference Latent Mask (RMBG) 🎭",
+    "inputs": {
+      "conditioning": { "name": "Conditioning" },
+      "latent": { "name": "Latent" },
+      "mask": { "name": "Mask" },
+      "expand": { "name": "Expand" },
+      "blur": { "name": "Blur" },
+      "mask_only": { "name": "Mask Only" }
+    },
+    "outputs": {
+      "0": { "name": "CONDITIONING" },
+      "1": { "name": "LATENT" },
+      "2": { "name": "MASK" }
+    }
+  },
+  "AILab_SDMatte": {
+    "display_name": "SDMatte Matting (RMBG) 🖼️🎭",
+    "inputs": {
+      "image": { "name": "Image" },
+      "mask": { "name": "Mask" },
+      "model_path": { "name": "Model" },
+      "device": { "name": "Device" },
+      "process_res": { "name": "Processing Resolution" },
+      "transparent_object": { "name": "Transparent Object" },
+      "mask_refine": { "name": "Mask Refine" },
+      "sensitivity": { "name": "Sensitivity" },
+      "mask_blur": { "name": "Mask Blur" },
+      "mask_offset": { "name": "Mask Offset" },
+      "invert_output": { "name": "Invert Output" },
+      "background": { "name": "Background" },
+      "background_color": { "name": "Background Color" }
+    },
+    "outputs": {
+      "0": { "name": "IMAGE" },
+      "1": { "name": "MASK" }
+    }
+  }
+} 

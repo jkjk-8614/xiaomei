@@ -1,0 +1,15 @@
+fastapi
+# Browser UI dependencies: tools/fluent-ui/package.json (bundled in static/vendor/fluent).
+uvicorn
+requests
+pydantic
+python-multipart
+httpx
+websockets>=13,<16
+mcp>=1.12,<2
+pillow
+numpy
+# NVIDIA Windows 优先使用 CUDA；CPU-only 环境可将此行替换为 onnxruntime
+onnxruntime-gpu[cuda,cudnn]
+# ComfyUI custom-node dependencies belong to its separate venv; pinned sources: comfy_node_registry.py.
+# See 交付文档/依赖与资源清单.md for installation and resource details.

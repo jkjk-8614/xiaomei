@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-studio-skin="minimal">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/static/images/logo.png?v=2026.09.30" type="image/png">
+    <title>图片空间</title>
+    <script src="/static/vendor/js/lucide.js?v=2026.09.30.1784161005"></script>
+    <script src="/static/js/theme.js?v=2026.09.30.1790178169"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.09.30.1785985827">
+    <script src="/static/js/canvas-editor-core.js?v=2026.09.30.1786171437"></script>
+    <script src="/static/js/background-removal-bridge.js?v=2026.09.30.1789009721"></script>
+    <link rel="stylesheet" href="/static/css/asset-manager.css?v=2026.09.30.1790494438">
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.09.30.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.09.30.1790574407">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.09.30.1790178173"></script>
+</head>
+<body>
+    <div class="asset-page">
+        <header class="asset-page-head">
+            <div>
+                <div class="asset-title">图片空间</div>
+                <div class="asset-sub">统一管理上传素材、生成素材和本地素材。</div>
+            </div>
+            <div class="asset-head-actions">
+                <button id="storageSettingsBtn" class="asset-btn primary asset-settings-btn" type="button" title="打开图片空间设置" aria-label="打开图片空间设置"><i data-lucide="folder-cog"></i><span>图片空间设置</span></button>
+            </div>
+        </header>
+
+        <div class="asset-tabs">
+            <button id="assetTabAssets" class="active" type="button" data-tab="assets"><i data-lucide="images"></i><span>图片空间</span></button>
+            <button id="assetTabWorkflows" type="button" data-tab="workflows"><i data-lucide="workflow"></i><span>工作流管理</span></button>
+            <button id="assetTabPrompts" type="button" data-tab="prompts"><i data-lucide="text-cursor-input"></i><span>文字模板库</span></button>
+            <button id="assetTabCanvasAssets" type="button" data-tab="canvas-assets"><i data-lucide="layout-dashboard"></i><span>画布资产</span></button>
+        </div>
+
+        <div id="imageSpaceSubtabs" class="image-space-subtabs" hidden>
+            <span class="image-space-label"><i data-lucide="folder-tree"></i><strong>图片空间</strong></span>
+            <button type="button" data-tab="assets"><i data-lucide="upload"></i><span>上传素材</span></button>
+            <button type="button" data-tab="generated"><i data-lucide="sparkles"></i><span>生成素材</span></button>
+            <button type="button" data-tab="local"><i data-lucide="folder-open"></i><span>本地素材</span></button>
+        </div>
+
+        <main id="assetManagerRoot" class="asset-manager-root"></main>
+    </div>
+
+    <input id="assetUploadInput" type="file" accept="image/*,video/*,audio/*,.json,.zip,application/json,application/zip" multiple hidden>
+    <script src="/static/js/image-space.js?v=2026.09.30.1790494351"></script>
+    <script src="/static/js/asset-manager.js?v=2026.09.30.1790494995"></script>
+</body>
+</html>

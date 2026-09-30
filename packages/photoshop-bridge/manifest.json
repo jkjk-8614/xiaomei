@@ -1,0 +1,76 @@
+{
+  "manifestVersion": 5,
+  "id": "com.infinite-canvas.photoshop-bridge",
+  "name": "无限画布 PS 桥接",
+  "version": "1.0.2",
+  "main": "index.html",
+  "icons": [
+    {
+      "width": 48,
+      "height": 48,
+      "path": "icons/bridge-plugin.png",
+      "scale": [1, 2],
+      "theme": ["darkest", "dark", "medium"],
+      "species": ["pluginList"]
+    },
+    {
+      "width": 48,
+      "height": 48,
+      "path": "icons/bridge-plugin-light.png",
+      "scale": [1, 2],
+      "theme": ["lightest", "light"],
+      "species": ["pluginList"]
+    }
+  ],
+  "host": {
+    "app": "PS",
+    "minVersion": "24.0.0"
+  },
+  "requiredPermissions": {
+    "network": {
+      "domains": "all"
+    },
+    "localFileSystem": "plugin"
+  },
+  "entrypoints": [
+    {
+      "type": "panel",
+      "id": "infiniteCanvasBridgePanel",
+      "label": {
+        "default": "无限画布"
+      },
+      "icons": [
+        {
+          "width": 23,
+          "height": 23,
+          "path": "icons/bridge-panel.png",
+          "scale": [1, 2],
+          "theme": ["darkest", "dark", "medium"]
+        },
+        {
+          "width": 23,
+          "height": 23,
+          "path": "icons/bridge-panel-light.png",
+          "scale": [1, 2],
+          "theme": ["lightest", "light"]
+        }
+      ],
+      "minimumSize": {
+        "width": 300,
+        "height": 240
+      },
+      "maximumSize": {
+        "width": 600,
+        "height": 1000
+      },
+      "preferredDockedSize": {
+        "width": 340,
+        "height": 560
+      },
+      "preferredFloatingSize": {
+        "width": 360,
+        "height": 580
+      }
+    }
+  ]
+}

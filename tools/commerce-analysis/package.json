@@ -1,0 +1,11 @@
+{
+  "name": "xiaomei-commerce-analysis-collector",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "playwright": "^1.54.0"
+  }
+}

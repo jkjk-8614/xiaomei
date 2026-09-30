@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' http://127.0.0.1:3000; connect-src 'self' http://127.0.0.1:3000; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';">
+  <title>小美画布 PS 直连桥接</title>
+  <style>
+    :root { color-scheme: dark; font-family: "Microsoft YaHei", sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 280px; background: #202124; color: #f1f3f4; font-size: 12px; }
+    .panel { padding: 14px; }
+    h1 { margin: 0 0 4px; font-size: 17px; }
+    .sub { color: #aeb4bd; margin-bottom: 14px; }
+    .row { display: flex; align-items: center; gap: 8px; margin: 9px 0; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #777; box-shadow: 0 0 0 4px rgba(119,119,119,.16); }
+    .dot.ok { background: #51cf66; box-shadow: 0 0 0 4px rgba(81,207,102,.16); }
+    .dot.bad { background: #ff6b6b; box-shadow: 0 0 0 4px rgba(255,107,107,.16); }
+    label { display: block; color: #aeb4bd; margin: 12px 0 5px; }
+    input { width: 100%; height: 30px; padding: 0 8px; border: 1px solid #4a4e55; border-radius: 5px; background: #292c31; color: #f1f3f4; }
+    button { height: 30px; padding: 0 10px; border: 1px solid #575d66; border-radius: 5px; background: #30343a; color: #f1f3f4; cursor: pointer; }
+    button.primary { background: #1473e6; border-color: #1473e6; }
+    button:disabled { opacity: .55; cursor: default; }
+    .card { margin-top: 12px; padding: 10px; border: 1px solid #3c4148; border-radius: 7px; background: #272a2f; }
+    .title { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .muted { color: #aeb4bd; margin-top: 4px; line-height: 1.45; }
+    .log { max-height: 120px; overflow: auto; white-space: pre-wrap; color: #c9ced6; font-size: 10px; line-height: 1.45; }
+    .actions { display: flex; gap: 8px; margin-top: 12px; }
+    .actions button { flex: 1; }
+  </style>
+</head>
+<body>
+  <main class="panel">
+    <h1>小美画布 PS 直连</h1>
+    <div class="sub">无需 UXP Developer Tool，自动把队列图片置入当前文档。</div>
+    <div class="row"><span id="dot" class="dot"></span><strong id="status">正在连接本地服务…</strong></div>
+    <label for="server">服务地址</label>
+    <input id="server" value="http://127.0.0.1:3000">
+    <section class="card">
+      <div class="title" id="jobTitle">暂无待导入图片</div>
+      <div class="muted" id="jobSub">从小美画布点击“发送到 PS”后会自动处理。</div>
+    </section>
+    <div class="actions">
+      <button id="pull" class="primary">立即导入最新</button>
+      <button id="refresh">刷新状态</button>
+    </div>
+    <section class="card">
+      <div class="title">运行日志</div>
+      <div id="log" class="log"></div>
+    </section>
+  </main>
+  <script src="main.js"></script>
+</body>
+</html>

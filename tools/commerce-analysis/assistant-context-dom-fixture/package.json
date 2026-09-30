@@ -1,0 +1,5 @@
+{
+  "name": "xiaomei-assistant-context-dom-fixture",
+  "private": true,
+  "main": "../assistant-context-dom-test.cjs"
+}

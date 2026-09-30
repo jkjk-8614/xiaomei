@@ -1,0 +1,12 @@
+/* Shared visual feedback for direct-link upload zones. Page styles remain authoritative. */
+.legacy-upload-drop.drag-over {
+    border-color: #000 !important;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+}
+
+@media (prefers-color-scheme: dark) {
+    .legacy-upload-drop.drag-over {
+        border-color: #fff !important;
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+    }
+}

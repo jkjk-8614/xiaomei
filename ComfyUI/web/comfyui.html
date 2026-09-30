@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ComfyUI 简化工作台</title>
+  <script src="/static/js/theme.js?v=2026.09.23.1"></script>
+  <link rel="stylesheet" href="/static/css/theme.css?v=2026.08.20.1785985827">
+  <link rel="stylesheet" href="/static/css/comfyui-workspace.css?v=2026.08.20.1789715595">
+  <link rel="stylesheet" href="/static/css/comfy-apps.css?v=2026.09.23.model-reference1">
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.09.21.1">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.09.23.1">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.09.23.1"></script>
+<script src="/static/js/image-layer-psd.js?v=2026.09.22.3"></script>
+</head>
+<body>
+  <header class="workspace-header">
+    <div class="workspace-brand">
+      <p class="workspace-kicker">小美画布 / 本地工具</p>
+      <h1>ComfyUI 工作台</h1>
+      <p id="status" role="status">正在连接本地服务…</p>
+    </div>
+    <nav aria-label="工作流工具" class="workspace-nav">
+      <button id="library-tab" aria-pressed="true">简化操作</button>
+      <button id="models-tab" aria-pressed="false">本地模型</button>
+      <button id="import-app" class="nav-action">导入工作流</button>
+      <button id="install-missing" class="nav-action" type="button" hidden>自动安装可用模型</button>
+      <details class="workspace-tools">
+        <summary>更多</summary>
+        <div class="workspace-tools-menu">
+          <button id="editor-tab" aria-pressed="false">高级编辑</button>
+          <button id="settings-tab" aria-pressed="false">画布设置</button>
+          <button id="inspect">检查依赖</button>
+          <button id="refresh">重新连接</button>
+          <a id="external" target="_blank" rel="noopener" hidden>独立窗口</a>
+        </div>
+      </details>
+    </nav>
+  </header>
+  <aside class="workspace-guide" aria-label="使用流程">
+    <span class="guide-current">选择应用</span><span>上传素材</span><span>运行</span><span>下载结果</span>
+    <span class="guide-note">复杂节点和模型设置已收进高级编辑</span>
+  </aside>
+  <section id="report" hidden aria-live="polite"><button id="close-report" aria-label="关闭检查结果">关闭</button><div id="report-content"></div></section>
+  <main>
+    <section id="library">
+      <aside class="workflow-sidebar" aria-label="工作流列表">
+      <div class="library-hero">
+        <div>
+          <p class="section-kicker">本地工作流工具</p>
+          <h2>我的工作流</h2>
+          <p>选择工作流，填写后即可生成</p>
+        </div>
+        <div class="library-filters">
+          <label class="app-search" for="app-search"><span>搜索应用</span><input id="app-search" type="search" placeholder="例如：分层、放大" autocomplete="off"></label>
+          <label class="app-filter" for="catalog-filter"><span>显示</span><select id="catalog-filter"><option value="all">全部工作流</option><option value="ready">可运行</option><option value="attention">需要处理</option></select></label>
+        </div>
+      </div>
+      <div id="app-cards"></div>
+      <label class="auto-download-option"><input id="auto-download-models" type="checkbox" checked>导入后自动寻找并下载模型 / LoRA</label>
+      <p class="auto-download-help">搜索公开模型库和网页；匹配文件自动下载并校验，未找到时显示来源和原因。</p>
+      </aside>
+      <div class="workflow-main">
+      <div id="app-notice" role="status" aria-live="polite"></div>
+      <section id="app-detail" hidden></section>
+      </div>
+    </section>
+    <section id="models" class="model-catalog" hidden>
+      <div class="model-catalog-hero">
+        <div>
+          <p class="section-kicker">本地资源清单</p>
+          <h2>本地模型</h2>
+          <p>查看模型位置、大小和引用关系。未被引用且未手动保留的模型可以直接删除；勾选“手动保留”后，删除工作流也不会删除这个模型。</p>
+        </div>
+        <button id="model-refresh" class="nav-action" type="button">刷新扫描</button>
+      </div>
+      <div id="model-notice" role="status" aria-live="polite"></div>
+      <div id="model-summary" class="model-summary"></div>
+      <div class="model-toolbar">
+        <label for="model-search">搜索模型</label>
+        <input id="model-search" type="search" placeholder="名称、目录或工作流" autocomplete="off">
+        <select id="model-status-filter" aria-label="筛选模型状态">
+          <option value="all">全部模型</option>
+          <option value="protected">受保护模型</option>
+          <option value="unused">暂未发现引用</option>
+        </select>
+      </div>
+      <div id="model-list" class="model-list"></div>
+    </section>
+    <section id="offline" class="offline-panel" hidden>
+      <div class="offline-mark" aria-hidden="true">C</div>
+      <div>
+        <p class="section-kicker">高级编辑器</p>
+        <h2>本地 ComfyUI 尚未连接</h2>
+        <p id="offline-detail"></p>
+        <p class="offline-help">已准备好的独立环境可以直接启动；外部 ComfyUI 请先启动服务，再重新连接。</p>
+        <div class="offline-actions">
+          <button id="start-comfyui" class="nav-action" type="button">启动本地 ComfyUI</button>
+          <button id="refresh-offline" type="button">重新连接</button>
+          <button id="open-settings" type="button">打开连接设置</button>
+        </div>
+      </div>
+    </section>
+    <section id="editor-empty" class="editor-empty-panel" hidden>
+      <div class="offline-mark" aria-hidden="true">+</div>
+      <div>
+        <p class="section-kicker">高级编辑器</p>
+        <h2 id="editor-empty-title">先选择一个工作流</h2>
+        <p id="editor-empty-detail">从应用库打开工作流后，这里会加载完整的 ComfyUI 节点布局。不会创建空白的 Unsaved Workflow。</p>
+        <button id="editor-library" class="nav-action" type="button">返回应用库选择</button>
+        <a id="editor-direct" class="editor-direct" target="_blank" rel="noopener" hidden>直接进入 ComfyUI</a>
+      </div>
+    </section>
+    <iframe id="editor" title="ComfyUI 原生节点编辑器" hidden allow="clipboard-read; clipboard-write"></iframe>
+    <iframe id="settings" title="画布工作流参数配置" hidden></iframe>
+  </main>
+  <input id="file" type="file" accept=".json,application/json" hidden>
+  <input id="app-file" type="file" accept=".json,application/json" hidden>
+  <iframe id="converter" title="工作流原生转换桥接" hidden></iframe>
+  <script src="/static/js/comfyui-workspace.js?v=2026.09.23.workflow-selection2"></script>
+  <script src="/static/js/comfy-apps.js?psd=2026.09.22.1&v=2026.09.23.workflow-selection2"></script>
+  <script src="/static/vendor/js/ag-psd-seethrough.bundle.js?readback=2026.09.22.1&v=2026.08.20.1789623403&layers=2026.09.22.3"></script>
+</body>
+</html>

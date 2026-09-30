@@ -1,0 +1,1303 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-studio-skin="minimal">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>历史记录 - 小美画布</title>
+    <script>
+        try {
+            const params = new URLSearchParams(location.search);
+            if(params.get('drawer') === '1') document.documentElement.classList.add('drawer-mode');
+            if(params.get('manager') === '1') document.documentElement.classList.add('manager-mode');
+        } catch(e) {}
+    </script>
+    <script src="/static/vendor/js/lucide.js?v=2026.09.30.1784161005"></script>
+    <script src="/static/js/theme.js?v=2026.09.30.1790178169"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.09.30.1785985827">
+    <style>
+        *{box-sizing:border-box}
+        :root{--bg:#f7faf6;--card:#fff;--text:#111827;--muted:#8993a4;--line:#e5ebe4;--soft:#eef5ec;--accent:#111827;--danger:#d94b4b}
+        html.studio-theme-dark{--bg:#111814;--card:#18211c;--text:#eef4ef;--muted:#9aa89e;--line:#2b3930;--soft:#202c25;--accent:#f1f5f2;--danger:#ff7b7b}
+        html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:Inter,"Microsoft YaHei",system-ui,sans-serif}
+        html.preview-open,body.preview-open{overflow:hidden!important}
+        body{padding:28px 34px 70px}
+        .page{max-width:1500px;margin:0 auto}
+        .head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:22px}
+        h1{font-size:25px;line-height:1;margin:0 0 9px;font-weight:900;letter-spacing:-.04em}
+        .subtitle{margin:0;color:var(--muted);font-size:12px}
+        .toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+        button,.search{height:38px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text)}
+        button{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:0 13px;font-weight:700;cursor:pointer}
+        button:hover{border-color:#aebbb0;transform:translateY(-1px)}
+        button svg{width:15px;height:15px}
+        .search{width:230px;padding:0 13px;outline:none}
+        .search:focus{border-color:var(--text)}
+        .filters{display:flex;gap:7px;margin-bottom:20px;overflow:auto;padding-bottom:2px}
+        .filter{flex:0 0 auto;white-space:nowrap}
+        .filter.active{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+        .summary{margin-left:auto;color:var(--muted);font-size:12px;display:flex;align-items:center;padding:0 6px;white-space:nowrap}
+        .grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+        .card{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:17px;overflow:hidden;transition:.2s ease;box-shadow:0 2px 8px rgba(20,40,25,.025)}
+        .card:hover{transform:translateY(-3px);box-shadow:0 12px 28px rgba(20,40,25,.09)}
+        .thumb{position:relative;aspect-ratio:1/1;background:var(--soft);cursor:grab;overflow:hidden}
+        .thumb.dragging{cursor:grabbing;opacity:.72}
+        .thumb img,.thumb video{width:100%;height:100%;object-fit:cover;display:block;transition:transform .35s ease}
+        .card:hover .thumb img,.card:hover .thumb video{transform:scale(1.025)}
+        .drag-hint{position:absolute;left:50%;bottom:10px;z-index:1;padding:5px 9px;border-radius:99px;background:rgba(15,23,42,.78);color:#fff;font-size:10px;font-weight:800;white-space:nowrap;pointer-events:none;opacity:0;transform:translate(-50%,5px);transition:opacity .16s ease,transform .16s ease}
+        .card:hover .drag-hint,.thumb:focus-visible .drag-hint,html.drawer-mode .drag-hint{opacity:1;transform:translate(-50%,0)}
+        .type{position:absolute;top:10px;left:10px;padding:4px 8px;border-radius:99px;background:rgba(20,30,23,.72);color:#fff;font-size:10px;font-weight:800;backdrop-filter:blur(8px)}
+        .multi{position:absolute;top:10px;right:10px;padding:4px 7px;border-radius:99px;background:rgba(20,30,23,.72);color:#fff;font-size:10px;font-weight:800}
+        .body{padding:12px}
+        .prompt{font-size:12px;font-weight:700;line-height:1.55;height:38px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all}
+        .meta{display:flex;align-items:center;gap:6px;margin-top:9px;color:var(--muted);font-size:10px;white-space:nowrap;overflow:hidden}
+        .meta span{overflow:hidden;text-overflow:ellipsis}
+        .actions{display:flex;align-items:center;gap:2px;margin-top:10px;padding-top:9px;border-top:1px solid var(--line)}
+        .icon-btn{width:27px;height:29px;padding:0;border:0;background:transparent;color:var(--muted)}
+        .icon-btn:hover{color:var(--text);background:var(--soft);transform:none}
+        .icon-btn.copied{color:#15803d;background:#dcfce7}
+        html.studio-theme-dark .icon-btn.copied{color:#86efac;background:rgba(22,101,52,.34)}
+        .icon-btn.danger:hover{color:var(--danger)}
+        .spacer{flex:1}
+        .history-image-context-menu{position:fixed;z-index:40;min-width:142px;padding:6px;border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:0 14px 34px rgba(15,23,42,.2)}
+        .history-image-context-menu[hidden]{display:none}
+        .history-image-context-menu button{width:100%;height:34px;justify-content:flex-start;padding:0 10px;border:0;background:transparent;font-size:12px}
+        .history-image-context-menu button:hover{background:var(--soft);transform:none}
+        .history-image-context-menu button svg{width:15px;height:15px}
+        .history-notice{position:fixed;left:50%;bottom:16px;z-index:60;max-width:calc(100vw - 24px);padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);box-shadow:0 12px 30px rgba(15,23,42,.18);font-size:11px;font-weight:800;line-height:1.45;text-align:center;pointer-events:none;transform:translate(-50%,8px);opacity:0;transition:opacity .16s ease,transform .16s ease}
+        .history-notice:not([hidden]){transform:translate(-50%,0);opacity:1}
+        .history-notice.pending{border-color:color-mix(in srgb,var(--apple-accent) 30%,var(--line));color:var(--apple-accent)}
+        .history-notice.success{border-color:color-mix(in srgb,#15803d 30%,var(--line));color:#15803d}
+        .history-notice.error{border-color:color-mix(in srgb,var(--danger) 35%,var(--line));color:var(--danger)}
+        html.studio-theme-dark .history-notice.success{color:#86efac}
+        .empty,.loading{min-height:390px;border:1px dashed var(--line);border-radius:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);gap:10px;background:color-mix(in srgb,var(--card) 55%,transparent)}
+        .empty svg,.loading svg{width:28px;height:28px}
+        .loading svg{animation:spin 1s linear infinite}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .more{display:flex;justify-content:center;margin-top:24px}
+        .more button{min-width:150px}
+        .modal{position:fixed;inset:0;width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;padding:30px;border:0;z-index:20;background:rgba(7,12,9,.72);backdrop-filter:blur(12px);display:none;align-items:center;justify-content:center;overflow:hidden}
+        .modal[open]{display:flex}
+        .modal::backdrop{background:transparent}
+        .preview{position:relative;max-width:min(1050px,92vw);max-height:calc(100dvh - 60px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px}
+        .preview img,.preview video{display:block;max-width:100%;max-height:calc(100dvh - 120px);object-fit:contain;border-radius:16px;box-shadow:0 18px 70px rgba(0,0,0,.35)}
+        .preview img[hidden],.preview video[hidden]{display:none}
+        .preview-caption{max-width:850px;color:#fff;font-size:12px;line-height:1.6;text-align:center;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+        .modal-close{position:fixed;right:24px;top:22px;width:42px;height:42px;border:0;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;font-size:22px}
+        @media(max-width:1250px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+        @media(max-width:920px){body{padding:22px}.grid{grid-template-columns:repeat(3,minmax(0,1fr))}.head{align-items:flex-start;flex-direction:column}.toolbar{width:100%}.search{flex:1}}
+        @media(max-width:640px){
+            .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+            .summary{display:none}
+            .filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;overflow:visible;padding-bottom:0}
+            .filter{width:100%;min-width:0;height:34px;padding:0 4px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        }
+        html.drawer-mode body{padding:14px 12px 24px}
+        html.drawer-mode .page{max-width:none}
+        html.drawer-mode .head{align-items:flex-start;margin-bottom:12px;padding-right:42px}
+        html.drawer-mode h1{font-size:19px;margin-bottom:5px}
+        html.drawer-mode .subtitle{font-size:10px}
+        html.drawer-mode .toolbar{width:100%;margin-top:10px}
+        html.drawer-mode .search{width:auto;flex:1;min-width:0}
+        html.drawer-mode .filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:12px;overflow:visible;padding-bottom:0}
+        html.drawer-mode .filter{width:100%;min-width:0;height:34px;padding:0 4px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        html.drawer-mode .summary{display:none}
+        html.drawer-mode .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+        html.drawer-mode .card{border-radius:14px}
+        html.drawer-mode .thumb{aspect-ratio:1/1}
+        html.drawer-mode .body{padding:10px}
+        html.drawer-mode .prompt{font-size:11px}
+        html.drawer-mode .empty,html.drawer-mode .loading{min-height:300px}
+
+        .history-manager-sidebar{display:none}
+        .manage-open-button{white-space:nowrap}
+        .manager-media-filters{display:none;align-items:center;gap:6px}
+        .manager-media-filter{height:34px;border-radius:10px;padding:0 12px;font-size:11px;white-space:nowrap}
+        .manager-media-filter.active{background:#e2e6ee;color:#253650;border-color:#d7dce6}
+        .manager-actions{display:none;align-items:center;gap:6px;flex-wrap:wrap}
+        .manager-actions:not([hidden]){display:flex}
+        .manager-action-button{height:34px;border-radius:10px;padding:0 10px;font-size:11px;white-space:nowrap}
+        .manager-action-button svg{width:14px;height:14px}
+        .manager-action-button.primary{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+        .manager-action-button.active{background:#e2e6ee;color:#253650;border-color:#d7dce6}
+        .manager-action-button.danger{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 35%,var(--line))}
+        .manager-action-button.danger:not(:disabled):hover{background:var(--danger);border-color:var(--danger);color:#fff}
+        .manager-action-button:disabled{opacity:.42;cursor:not-allowed;transform:none}
+        .manager-selection-count{color:var(--muted);font-size:11px;white-space:nowrap}
+        .manager-filter{width:100%;height:38px;padding:0 10px;border:0;border-radius:10px;background:transparent;color:var(--text);display:flex;align-items:center;justify-content:flex-start;gap:9px;font-size:12px;font-weight:700;text-align:left}
+        .manager-filter svg{width:16px;height:16px;flex:0 0 auto;color:var(--muted)}
+        .manager-filter span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .manager-filter b{margin-left:auto;color:var(--muted);font-size:11px;font-weight:700}
+        .manager-filter:hover{background:color-mix(in srgb,var(--accent) 7%,transparent);border-color:transparent;transform:none}
+        .manager-filter.active{background:#dfe5f0;color:#253650}
+        .manager-filter.active svg,.manager-filter.active b{color:#466080}
+        .manager-project-filters{display:flex;flex-direction:column;gap:2px}
+        .manager-project-filter-empty{padding:8px 10px;color:var(--muted);font-size:11px;line-height:1.5}
+        .manager-card-check{display:none;position:absolute;top:10px;left:10px;width:24px;height:24px;border:2px solid rgba(255,255,255,.92);border-radius:50%;place-items:center;background:rgba(15,23,42,.38);color:transparent;box-shadow:0 2px 8px rgba(15,23,42,.22);z-index:3;pointer-events:none}
+        .manager-card-check svg{width:14px;height:14px;stroke-width:3}
+        html.manager-mode,html.manager-mode body{height:100%;overflow:hidden}
+        html.manager-mode body{padding:0;background:#f0f2f5}
+        html.manager-mode .page{width:100%;height:100dvh;max-width:none;margin:0;display:grid;grid-template-columns:220px minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto;overflow:hidden}
+        html.manager-mode .history-manager-sidebar{grid-column:1;grid-row:1 / -1;display:flex;min-height:0;flex-direction:column;gap:2px;padding:24px 14px 20px;background:#f4f5f7;border-right:1px solid var(--line);overflow:auto}
+        html.manager-mode .history-manager-sidebar-title{padding:0 10px 20px;font-size:17px;font-weight:900;letter-spacing:-.03em}
+        html.manager-mode .history-manager-sidebar-heading{padding:14px 10px 5px;color:var(--muted);font-size:11px;font-weight:800}
+        html.manager-mode .manager-sidebar-type-heading{padding-top:22px}
+        html.manager-mode .history-manager-sidebar-note{margin: auto 10px 0;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:10px;line-height:1.6}
+        html.manager-mode .head{grid-column:2;grid-row:1;min-width:0;align-items:center;margin:0;padding:22px 28px 16px;border-bottom:1px solid var(--line)}
+        html.manager-mode h1{font-size:23px;margin-bottom:7px}
+        html.manager-mode .subtitle{font-size:11px}
+        html.manager-mode .toolbar{min-width:0;justify-content:flex-end}
+        html.manager-mode .search{width:260px}
+        html.manager-mode .manage-open-button{display:none}
+        html.manager-mode .filters > .filter[data-type="all"],html.manager-mode .filters > .filter[data-type="online"],html.manager-mode .filters > .filter[data-type="chat"],html.manager-mode .filters > .filter[data-type="canvas"],html.manager-mode .filters > .filter[data-type="comfyui"],html.manager-mode .filters > .filter[data-type="commerce"],html.manager-mode .filters > .filter[data-type="video"]{display:none}
+        html.manager-mode .manager-media-filters{display:flex}
+        html.manager-mode .manager-sidebar-project-heading{padding-top:22px}
+        html.manager-mode .filters{grid-column:2;grid-row:2;align-items:center;margin:0;padding:13px 28px 12px;border-bottom:1px solid var(--line)}
+        html.manager-mode .filter{height:34px;border-radius:10px;padding:0 12px;font-size:11px}
+        html.manager-mode .filter.active{background:#e2e6ee;color:#253650;border-color:#d7dce6}
+        html.manager-mode .content-placeholder{grid-column:2}
+        html.manager-mode #content{grid-column:2;grid-row:3;min-width:0;min-height:0;overflow:auto;padding:0 28px 28px;overscroll-behavior:contain;scrollbar-gutter:stable}
+        html.manager-mode #content::-webkit-scrollbar{width:8px!important}
+        html.manager-mode .grid{grid-template-columns:repeat(auto-fill,minmax(188px,1fr));gap:16px}
+        html.manager-mode .card{border-radius:15px;content-visibility:auto;contain-intrinsic-size:320px;transition:none;box-shadow:none}
+        html.manager-mode .card:hover{transform:none;box-shadow:none}
+        html.manager-mode .thumb img,html.manager-mode .thumb video{transition:none}
+        html.manager-mode .thumb{aspect-ratio:1/1}
+        html.manager-mode .more{grid-column:2;grid-row:4;margin:0;padding:0 28px 20px}
+        html.manager-mode body.manager-selection-mode .manager-card-check{display:grid}
+        html.manager-mode body.manager-selection-mode .type{left:42px}
+        html.manager-mode body.manager-selection-mode .card.hbm-selected{outline:3px solid var(--accent);outline-offset:-3px}
+        html.manager-mode body.manager-selection-mode .card.hbm-selected .manager-card-check{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+        html.manager-mode .empty,html.manager-mode .loading{min-height:330px}
+        html.studio-theme-dark.manager-mode body{background:#111814}
+        html.studio-theme-dark.manager-mode .history-manager-sidebar{background:#18211c}
+        html.studio-theme-dark.manager-mode .manager-filter.active{background:#2c3d32;color:#e8f2eb}
+        html.studio-theme-dark.manager-mode .manager-filter.active svg,html.studio-theme-dark.manager-mode .manager-filter.active b{color:#a9c3ae}
+        html.studio-theme-dark.manager-mode .filter.active{background:#2c3d32;color:#e8f2eb;border-color:#3b5042}
+        html.studio-theme-dark.manager-mode .manager-media-filter.active{background:#2c3d32;color:#e8f2eb;border-color:#3b5042}
+        html.studio-theme-dark.manager-mode .manager-action-button.active{background:#2c3d32;color:#e8f2eb;border-color:#3b5042}
+        @media(max-width:760px){
+            html.manager-mode .page{grid-template-columns:1fr;grid-template-rows:auto auto minmax(0,1fr) auto}
+            html.manager-mode .history-manager-sidebar{display:none}
+            html.manager-mode .head{grid-column:1;grid-row:1;align-items:flex-start;flex-direction:column;padding:18px 16px 12px}
+            html.manager-mode .toolbar{width:100%;margin-top:10px;justify-content:flex-start}
+            html.manager-mode .search{flex:1;width:auto;min-width:120px}
+            html.manager-mode .manager-actions{width:100%;padding-top:2px}
+            html.manager-mode .filters{grid-column:1;grid-row:2;padding:10px 16px;overflow:auto}
+            html.manager-mode #content{grid-column:1;grid-row:3;padding:0 16px 20px}
+            html.manager-mode .more{grid-column:1;grid-row:4;padding:0 16px 16px}
+        }
+        @media(prefers-reduced-motion:reduce){
+            *,*::before,*::after{scroll-behavior:auto!important;transition-duration:0.01ms!important;animation-duration:0.01ms!important;animation-iteration-count:1!important}
+        }
+    </style>
+    <style>
+        /* apple-inspired.css 作用于所有独立页面，管理态需要把顶部控件收敛为一个连续面板。 */
+        html.manager-mode body > .page > .head,
+        html.manager-mode body > .page > .filters{
+            border-radius:0 !important;
+            box-shadow:none !important;
+            background:transparent !important;
+        }
+        html.manager-mode body > .page > .head{padding:22px 28px 16px !important;margin:0 !important}
+        html.manager-mode body > .page > .filters{padding:13px 28px 12px !important;margin:0 !important}
+        html.manager-mode body > .page > .filters .filter.active,
+        html.manager-mode body > .page > .filters .manager-media-filter.active{
+            background:#e2e6ee !important;
+            border-color:#d7dce6 !important;
+            color:#253650 !important;
+            box-shadow:none !important;
+        }
+        /* 外部主题会给工具栏按钮设置 display；管理态必须让 hidden 语义优先。 */
+        html.manager-mode body > .page .manager-actions [hidden]{
+            display:none !important;
+        }
+        /* 抽屉态：把标题、搜索和主要操作收敛成一块清晰的操作卡。 */
+        .history-heading{min-width:0}
+        .history-title-row{display:flex;align-items:center;gap:9px;min-width:0}
+        .history-title-icon{display:grid;place-items:center;flex:0 0 31px;width:31px;height:31px;border:1px solid color-mix(in srgb,var(--apple-accent) 25%,var(--line));border-radius:10px;background:var(--apple-accent-soft);color:var(--apple-accent)}
+        .history-title-icon svg{width:16px;height:16px;stroke-width:2.2}
+        .history-heading .subtitle{max-width:390px;line-height:1.55}
+        .history-project-scope{display:none;align-items:center;gap:6px;width:max-content;max-width:100%;margin-top:9px;padding:6px 9px;border:1px solid color-mix(in srgb,var(--apple-accent) 22%,var(--line));border-radius:9px;background:var(--apple-accent-soft);color:var(--apple-accent);font-size:10px;font-weight:800}
+        .history-project-scope:not([hidden]){display:inline-flex}
+        .history-project-scope svg{width:13px;height:13px;flex:0 0 auto}
+        .history-project-scope strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:900}
+        .history-search{display:flex;align-items:center;width:230px;height:38px;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--muted);transition:border-color .2s ease,box-shadow .2s ease,background .2s ease}
+        .history-search>svg{width:15px;height:15px;flex:0 0 auto;color:var(--muted)}
+        .history-search .search{flex:1;min-width:0;width:100%;height:36px;padding:0 0 0 8px;border:0!important;border-radius:0;background:transparent!important;box-shadow:none!important;outline:none!important;color:var(--text)}
+        .history-search .search::placeholder{color:var(--muted)}
+        .history-search:focus-within{border-color:var(--apple-accent)!important;box-shadow:0 0 0 3px var(--apple-accent-soft)!important}
+        .history-refresh-button{white-space:nowrap}
+        html.manager-mode .history-search{width:260px}
+        html.manager-mode .history-search .search{width:100%}
+        html.drawer-mode body > .page > .head{flex-direction:column!important;align-items:stretch!important;gap:0!important;margin-bottom:14px!important;padding:18px 18px 16px!important;border:1px solid var(--line)!important;border-radius:20px!important;background:linear-gradient(145deg,color-mix(in srgb,var(--card) 97%,var(--apple-accent) 3%),var(--card))!important;box-shadow:0 10px 25px rgba(56,40,20,.08)!important}
+        html.drawer-mode .history-heading{width:100%}
+        html.drawer-mode .history-title-row{gap:9px}
+        html.drawer-mode h1{font-size:20px;line-height:1.08;letter-spacing:-.045em;margin-bottom:0}
+        html.drawer-mode .history-heading .subtitle{margin-top:9px;max-width:none;font-size:10.5px;line-height:1.58}
+        html.drawer-mode .toolbar{display:grid!important;grid-template-columns:minmax(0,1fr) auto;gap:8px;width:100%;margin-top:14px}
+        html.drawer-mode .history-search{grid-column:1 / -1;width:100%;height:40px;border-radius:13px;background:color-mix(in srgb,var(--card) 92%,var(--soft) 8%)}
+        html.drawer-mode .manage-open-button{grid-column:1;justify-self:start;min-width:104px;height:36px;border-color:var(--apple-accent)!important;background:var(--apple-accent)!important;color:#fff!important;box-shadow:0 7px 16px var(--apple-accent-soft)!important}
+        html.drawer-mode .history-refresh-button{grid-column:2;justify-self:start;min-width:78px;height:36px;background:var(--card)!important}
+        html.drawer-mode .manage-open-button:hover{border-color:var(--apple-accent)!important;background:var(--apple-accent)!important;filter:brightness(.96);transform:translateY(-1px)}
+        html.drawer-mode .history-refresh-button:hover{border-color:color-mix(in srgb,var(--apple-accent) 38%,var(--line))!important;background:var(--apple-accent-soft)!important;color:var(--apple-accent);transform:translateY(-1px)}
+        html.drawer-mode body > .page > .filters{gap:5px;margin-bottom:14px!important;padding:5px!important;border:1px solid var(--line)!important;border-radius:16px!important;background:color-mix(in srgb,var(--card) 90%,var(--soft) 10%)!important;box-shadow:0 5px 16px rgba(56,40,20,.05)!important}
+        html.drawer-mode .filter{height:34px!important;border-radius:11px!important;font-size:10.5px;font-weight:800}
+        html.drawer-mode .filter:not(.active){border-color:transparent!important;background:transparent!important;color:var(--text)!important}
+        html.drawer-mode .filter:not(.active):hover{border-color:var(--line)!important;background:var(--soft)!important;transform:none}
+        html.drawer-mode body > .page > .filters .filter.active{border-color:var(--apple-accent)!important;background:var(--apple-accent)!important;color:#fff!important;box-shadow:0 5px 12px var(--apple-accent-soft)!important}
+        html.drawer-mode button:focus-visible,.history-search:focus-within{outline:2px solid var(--apple-accent-soft);outline-offset:2px}
+        html.studio-theme-dark.manager-mode body > .page > .filters .filter.active,
+        html.studio-theme-dark.manager-mode body > .page > .filters .manager-media-filter.active{
+            background:#2c3d32 !important;
+            border-color:#3b5042 !important;
+            color:#e8f2eb !important;
+        }
+        @media(max-width:760px){
+            html.manager-mode body > .page > .head{padding:18px 16px 12px !important}
+            html.manager-mode body > .page > .filters{padding:10px 16px !important}
+        }
+    </style>
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.09.30.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.09.30.1790574407">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.09.30.1790178173"></script>
+</head>
+<body>
+    <div class="page">
+        <aside class="history-manager-sidebar" aria-label="历史记录筛选">
+            <div class="history-manager-sidebar-title">历史记录管理</div>
+            <div class="history-manager-sidebar-heading">快速筛选</div>
+            <button class="manager-filter active" type="button" data-manager-scope="all" onclick="setQuickFilter(this)">
+                <i data-lucide="layers-3"></i><span>全部记录</span><b id="managerAllCount">0</b>
+            </button>
+            <button class="manager-filter" type="button" data-manager-scope="recent" onclick="setQuickFilter(this)">
+                <i data-lucide="clock-3"></i><span>最近 7 天</span><b id="managerRecentCount">0</b>
+            </button>
+            <button class="manager-filter" type="button" data-manager-scope="failed" onclick="setQuickFilter(this)">
+                <i data-lucide="archive-x"></i><span>生成失败</span><b id="managerFailedCount">0</b>
+            </button>
+            <div class="history-manager-sidebar-heading manager-sidebar-type-heading">按来源</div>
+            <button class="manager-filter" type="button" data-manager-source="online" onclick="setManagerSourceFilter(this)">
+                <i data-lucide="image"></i><span>在线生图</span><b id="managerOnlineCount">0</b>
+            </button>
+            <button class="manager-filter" type="button" data-manager-source="chat" onclick="setManagerSourceFilter(this)">
+                <i data-lucide="message-square"></i><span>GPT 对话</span><b id="managerChatCount">0</b>
+            </button>
+            <button class="manager-filter" type="button" data-manager-source="canvas" onclick="setManagerSourceFilter(this)">
+                <i data-lucide="layout-dashboard"></i><span>小美画布</span><b id="managerCanvasCount">0</b>
+            </button>
+            <button class="manager-filter" type="button" data-manager-source="comfyui" onclick="setManagerSourceFilter(this)">
+                <i data-lucide="box"></i><span>ComfyUI 工作台</span><b id="managerComfyuiCount">0</b>
+            </button>
+            <button class="manager-filter" type="button" data-manager-source="commerce" onclick="setManagerSourceFilter(this)">
+                <i data-lucide="shopping-bag"></i><span>电商工作台</span><b id="managerCommerceCount">0</b>
+            </button>
+            <div class="history-manager-sidebar-heading manager-sidebar-project-heading">按项目</div>
+            <div id="managerProjectFilters" class="manager-project-filters"></div>
+            <div class="history-manager-sidebar-note">图片可拖到画布继续使用，拖到外部应用会自动压缩副本。</div>
+        </aside>
+        <div class="head">
+        <div class="history-heading">
+            <div class="history-title-row"><span class="history-title-icon" aria-hidden="true"><i data-lucide="history"></i></span><h1 id="historyTitle">历史记录</h1></div>
+            <p id="historySubtitle" class="subtitle">查看、下载和管理所有生成图片和视频；图片拖到画布保留原图，拖到外部会自动压缩。</p>
+            <div id="historyProjectScope" class="history-project-scope" hidden><i data-lucide="folder-open"></i><span>当前项目</span><strong id="historyProjectName"></strong></div>
+        </div>
+            <div class="toolbar">
+                <label class="history-search" aria-label="搜索历史记录">
+                    <i data-lucide="search" aria-hidden="true"></i>
+                    <input id="search" class="search" type="search" placeholder="搜索提示词或模型" oninput="scheduleApplyFilters()">
+                </label>
+                <button class="manage-open-button" type="button" onclick="openFullHistory()" title="进入历史记录管理">
+                    <i data-lucide="panels-top-left"></i><span>管理历史</span>
+                </button>
+                <button class="history-refresh-button" type="button" onclick="loadHistory(true)" title="刷新历史记录" aria-label="刷新历史记录"><i data-lucide="refresh-cw"></i><span>刷新</span></button>
+                <div id="managerActions" class="manager-actions" hidden>
+                    <button id="managerSelectMode" class="manager-action-button" type="button" aria-pressed="false" onclick="toggleSelectionMode()">
+                        <i data-lucide="check-square"></i><span>选择模式</span>
+                    </button>
+                    <span id="managerSelectionCount" class="manager-selection-count" hidden>已选 0 个</span>
+                    <button id="managerSelectAll" class="manager-action-button" type="button" hidden onclick="toggleSelectAll()">全选</button>
+                    <button id="managerDeleteSelected" class="manager-action-button danger" type="button" hidden disabled onclick="deleteSelectedRecords()">
+                        <i data-lucide="trash-2"></i><span>删除所选</span>
+                    </button>
+                    <button id="managerExitSelection" class="manager-action-button primary" type="button" hidden onclick="toggleSelectionMode(false)">完成</button>
+                </div>
+            </div>
+        </div>
+        <div class="filters">
+            <button class="filter active" data-type="all" onclick="setFilter(this)">全部</button>
+            <button class="filter" data-type="online" onclick="setFilter(this)">在线生图</button>
+            <button class="filter" data-type="chat" onclick="setFilter(this)">GPT 对话</button>
+            <button class="filter" data-type="canvas" onclick="setFilter(this)">小美画布</button>
+            <button class="filter" data-type="comfyui" onclick="setFilter(this)">ComfyUI 工作台</button>
+            <button class="filter" data-type="commerce" onclick="setFilter(this)">电商工作台</button>
+            <button class="filter" data-type="video" onclick="setFilter(this)">视频</button>
+            <div class="manager-media-filters" aria-label="媒体类型">
+                <button class="manager-media-filter active" type="button" data-media-type="all" onclick="setMediaFilter(this)">全部</button>
+                <button class="manager-media-filter" type="button" data-media-type="image" onclick="setMediaFilter(this)">图片</button>
+                <button class="manager-media-filter" type="button" data-media-type="video" onclick="setMediaFilter(this)">视频</button>
+            </div>
+            <div id="summary" class="summary">0 条记录</div>
+        </div>
+        <div id="content"><div class="loading"><i data-lucide="loader-circle"></i><span>正在加载历史记录</span></div></div>
+        <div id="historyNotice" class="history-notice" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+        <div id="more" class="more" hidden><button onclick="showMore()">加载更多</button></div>
+    </div>
+    <dialog id="modal" class="modal" onclick="if(event.target===this) closePreview()">
+        <button class="modal-close" onclick="closePreview()" aria-label="关闭">×</button>
+        <div class="preview"><img id="previewImage" alt="历史图片预览" oncontextmenu="openHistoryImageContextMenu(event,this.currentSrc||this.src,'image')"><video id="previewVideo" controls playsinline preload="metadata" hidden oncontextmenu="event.preventDefault()"></video><div id="previewCaption" class="preview-caption"></div></div>
+    </dialog>
+    <div id="historyImageContextMenu" class="history-image-context-menu" role="menu" aria-label="图片操作" hidden>
+        <button id="historyImageContextCopy" type="button" role="menuitem" onclick="copyHistoryContextImage(event)"><i data-lucide="clipboard"></i><span>复制图片</span></button>
+    </div>
+    <script>
+        let allRecords = [];
+        let filteredRecords = [];
+        let activeType = 'all';
+        let activeQuickFilter = 'all';
+        let activeSourceFilter = '';
+        let visibleCount = 60;
+        let selectionMode = false;
+        const selectedTimestamps = new Set();
+        let filterTimer = 0;
+        // A focus message can start a second load while the initial request is
+        // still in flight.  Older responses must not restore a row removed by
+        // a newer delete operation.
+        let historyLoadSerial = 0;
+        let historyNoticeTimer = 0;
+        const pendingHistoryDeletes = new Set();
+        let historyProjectContextSerial = 0;
+        let activeProjectId = '';
+        let activeProjectName = '';
+        let activeProjectFilter = '';
+        let managerProjects = [];
+        let managerProjectsLoaded = false;
+        const HISTORY_THUMB_WIDTH = 448;
+
+        const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+        const VIDEO_URL_RE = /\.(mp4|webm|mov|m4v|avi|mkv|flv)(?:[?#].*)?$/i;
+        const GROUP_LABELS = {online:'在线生图',chat:'GPT 对话',canvas:'小美画布',comfyui:'ComfyUI 工作台',commerce:'电商工作台',video:'视频'};
+        const COMFYUI_PROJECT_ID = '__comfyui__';
+        const UNASSIGNED_PROJECT_ID = '__unassigned__';
+        function mediaUrl(value){
+            if(value && typeof value === 'object') return String(value.url || value.src || value.path || value.uri || '').trim();
+            return String(value || '').trim();
+        }
+        function mediaKind(value,fallback='image'){
+            const hinted = String(value && typeof value === 'object' ? (value.kind || value.mediaKind || value.type || '') : '').trim().toLowerCase();
+            if(hinted.includes('video')) return 'video';
+            if(hinted.includes('image')) return 'image';
+            return VIDEO_URL_RE.test(mediaUrl(value)) ? 'video' : (fallback || 'image');
+        }
+        function recordMediaEntries(item){
+            const entries = [];
+            const seen = new Set();
+            const add = (value,fallback='image') => {
+                if(Array.isArray(value)){ value.forEach(itemValue => add(itemValue,fallback)); return; }
+                const url = mediaUrl(value);
+                if(!url || seen.has(url)) return;
+                seen.add(url);
+                entries.push({url,kind:mediaKind(value,fallback),name:String(value && typeof value === 'object' ? (value.name || '') : '')});
+            };
+            add(item?.video_items,'video');
+            add(item?.videos,'video');
+            add(item?.items,'');
+            add(item?.media_items,'');
+            add(item?.image_items,'image');
+            add(item?.images,'image');
+            add(item?.outputs,'');
+            return entries;
+        }
+        function recordHasVideo(item){
+            if(typeof item?.has_video === 'boolean') return item.has_video;
+            return recordMediaEntries(item).some(media => media.kind === 'video');
+        }
+        function recordSource(item){
+            const raw = [item?.history_source, item?.source, item?.params?.history_source, item?.params?.source]
+                .find(value => String(value || '').trim());
+            return String(raw || '').trim().toLowerCase().replace(/[\s-]+/g,'_');
+        }
+        function recordGroup(item){
+            const hintedGroup = String(item?.history_group || '').trim();
+            if(hintedGroup) return hintedGroup;
+            const type = String(item?.type || '').toLowerCase();
+            const source = recordSource(item);
+            if(recordHasVideo(item) || type === 'video' || type.includes('video')) return 'video';
+            if(source === 'comfyui' || source === 'comfy_ui' || source === 'comfy_app' || source === 'comfyui_workbench' || type === 'comfyui' || type === 'comfy-app' || type === 'comfy_app') return 'comfyui';
+            if(source === 'online' || source === 'online_image') return 'online';
+            if(source === 'chat' || source === 'gpt_chat' || source === 'gpt') return 'chat';
+            if(source === 'canvas' || source === 'smart_canvas') return 'canvas';
+            if(source === 'commerce' || source === 'commerce_workbench' || source === 'ecommerce') return 'commerce';
+            if(type === 'online') return 'online';
+            if(type === 'chat' || type === 'gpt-chat' || type === 'gpt_chat') return 'chat';
+            if(type === 'commerce' || type.includes('commerce')) return 'commerce';
+            if(type === 'canvas' || type.includes('canvas')) return 'canvas';
+            // ComfyUI records from older canvas builds did not carry a source field.
+            if(item.workflow_json || item.prompt_id || item.backend) return 'canvas';
+            return 'other';
+        }
+        function recordIsFailed(item){
+            const status = String(item?.status || item?.state || item?.result || '').toLowerCase();
+            const error = String(item?.error || item?.error_message || item?.message || '').trim();
+            return Boolean(error) || ['failed','failure','error','cancelled','canceled'].includes(status);
+        }
+        function recordTimestamp(item){ return Number(item?.timestamp || 0); }
+        function recordIsRecent(item){
+            const timestamp = recordTimestamp(item);
+            return timestamp > 0 && timestamp >= (Date.now() / 1000) - (7 * 24 * 60 * 60);
+        }
+        function recordProjectIds(item){
+            const values = [
+                ...(Array.isArray(item?.project_ids) ? item.project_ids : []),
+                item?.project_id
+            ];
+            return [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))];
+        }
+        function recordMatchesProject(item, projectId){
+            const id = String(projectId || '').trim();
+            if(!id) return true;
+            if(id === COMFYUI_PROJECT_ID) return recordGroup(item) === 'comfyui';
+            const projectIds = recordProjectIds(item);
+            if(id === UNASSIGNED_PROJECT_ID) return !projectIds.length && recordGroup(item) !== 'comfyui';
+            return projectIds.includes(id);
+        }
+        function projectFilterCount(projectId){
+            return allRecords.filter(item => recordMatchesProject(item, projectId)).length;
+        }
+        function renderManagerProjectFilters(){
+            const target = document.getElementById('managerProjectFilters');
+            if(!target) return;
+            const projects = Array.isArray(managerProjects)
+                ? managerProjects.filter(item => item && !item.deleted_at)
+                : [];
+            const entries = [
+                {id:'', label:'全部项目', icon:'layers-3'},
+                {id:COMFYUI_PROJECT_ID, label:'ComfyUI 工作台', icon:'box'},
+                ...projects
+                    .map(item => ({
+                        id:String(item.id || '').trim(),
+                        label:String(item.name || item.id || '未命名项目'),
+                        icon:'folder-open'
+                    }))
+                    .filter(item => item.id),
+                {id:UNASSIGNED_PROJECT_ID, label:'未归属项目', icon:'folder-minus'}
+            ];
+            target.innerHTML = entries.map(item => `<button class="manager-filter manager-project-filter ${activeProjectFilter === item.id ? 'active' : ''}" type="button" data-manager-project="${esc(item.id)}"><i data-lucide="${esc(item.icon)}"></i><span>${esc(item.label)}</span><b>${projectFilterCount(item.id)}</b></button>`).join('');
+            target.querySelectorAll('[data-manager-project]').forEach(button => {
+                button.onclick = () => setManagerProjectFilter(button);
+            });
+            refreshHistoryIcons(target);
+        }
+        function setManagerProjectFilter(button){
+            activeProjectFilter = String(button?.dataset?.managerProject || '').trim();
+            activeQuickFilter = '';
+            activeSourceFilter = '';
+            activeType = 'all';
+            document.querySelectorAll('.manager-filter[data-manager-scope],.manager-filter[data-manager-source]').forEach(item => item.classList.remove('active'));
+            document.querySelectorAll('.manager-media-filter').forEach(item => item.classList.toggle('active', item.dataset.mediaType === 'all'));
+            document.querySelectorAll('.filter').forEach(item => item.classList.toggle('active', item.dataset.type === 'all'));
+            renderManagerProjectFilters();
+            visibleCount = 60;
+            applyFilters();
+        }
+        async function loadManagerProjects(){
+            if(managerProjectsLoaded){
+                renderManagerProjectFilters();
+                return;
+            }
+            managerProjectsLoaded = true;
+            try{
+                const response = await fetch('/api/projects',{cache:'no-store'});
+                const data = response.ok ? await response.json() : {};
+                managerProjects = Array.isArray(data?.projects) ? data.projects : [];
+            }catch(error){
+                managerProjects = [];
+            }
+            renderManagerProjectFilters();
+        }
+        function typeLabel(item){ return GROUP_LABELS[recordGroup(item)] || '生成记录'; }
+        function formatTime(ts){
+            const date = new Date(Number(ts) * 1000);
+            if(Number.isNaN(date.getTime())) return '--';
+            return date.toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).replace('/','-');
+        }
+        function historyThumbUrl(url, kind='image'){
+            const value = String(url || '').trim();
+            if(!value || kind === 'video' || /^(?:data:|blob:)/i.test(value)) return value;
+            try{
+                const parsed = new URL(value, location.href);
+                if(parsed.origin !== location.origin || parsed.pathname === '/api/media-preview') return value;
+                if(!/^\/(?:assets|output)\//.test(parsed.pathname) && !/^\/api\/storage-files\//.test(parsed.pathname)) return value;
+                return `/api/media-preview?w=${HISTORY_THUMB_WIDTH}&url=${encodeURIComponent(value)}`;
+            }catch(error){ return value; }
+        }
+        function refreshHistoryIcons(root=document){
+            if(!window.lucide?.createIcons) return;
+            try{ lucide.createIcons({root}); }catch(error){ lucide.createIcons(); }
+        }
+        function showHistoryNotice(message, kind='info', duration=2600){
+            const notice = document.getElementById('historyNotice');
+            if(!notice) return;
+            clearTimeout(historyNoticeTimer);
+            notice.className = `history-notice ${kind}`;
+            notice.textContent = String(message || '');
+            notice.hidden = !message;
+            if(message && duration > 0){
+                historyNoticeTimer = setTimeout(() => {
+                    notice.hidden = true;
+                    notice.className = 'history-notice';
+                }, duration);
+            }
+        }
+        function updateHistoryDeleteNotice(){
+            const count = pendingHistoryDeletes.size;
+            const content = document.getElementById('content');
+            if(content) content.setAttribute('aria-busy', count ? 'true' : 'false');
+            if(count) showHistoryNotice(`正在删除 ${count} 条历史记录…`, 'pending', 0);
+        }
+        function finishHistoryDeleteNotice(message, kind='success'){
+            if(pendingHistoryDeletes.size){
+                updateHistoryDeleteNotice();
+                return;
+            }
+            const content = document.getElementById('content');
+            if(content) content.setAttribute('aria-busy', 'false');
+            showHistoryNotice(message, kind, kind === 'error' ? 4600 : 2600);
+        }
+        function optimisticRemoveHistoryRecords(keys){
+            const keySet = new Set(keys.map(key => String(key)));
+            const removed = allRecords.filter(item => keySet.has(String(recordTimestamp(item))));
+            if(!removed.length) return removed;
+            historyLoadSerial += 1;
+            allRecords = allRecords.filter(item => !keySet.has(String(recordTimestamp(item))));
+            keys.forEach(key => selectedTimestamps.delete(String(key)));
+            updateManagerCounts();
+            applyFilters();
+            return removed;
+        }
+        function restoreHistoryRecords(records){
+            if(!records.length) return;
+            const restoredKeys = new Set(records.map(item => String(recordTimestamp(item))));
+            historyLoadSerial += 1;
+            allRecords = [
+                ...allRecords.filter(item => !restoredKeys.has(String(recordTimestamp(item)))),
+                ...records
+            ].sort((left, right) => recordTimestamp(right) - recordTimestamp(left));
+            updateManagerCounts();
+            applyFilters();
+        }
+        function scheduleApplyFilters(){
+            clearTimeout(filterTimer);
+            filterTimer = setTimeout(() => { filterTimer = 0; applyFilters(); }, 90);
+        }
+        function historyProjectIdFromContext(){
+            try{
+                const queryProject = String(new URLSearchParams(location.search).get('project') || '').trim();
+                if(queryProject) return queryProject;
+                // The shell keeps the last canvas project in localStorage.  Do
+                // not let that stale value hide ComfyUI/global history.
+                const activePage = String(localStorage.getItem('studio_active_page') || '').trim();
+                if(activePage && activePage !== 'canvas') return '';
+                return String(localStorage.getItem('canvasListCurrentProjectId') || '').trim();
+            }catch(error){ return ''; }
+        }
+        function historyManagerBaseSubtitle(){
+            return historyManagerEnabled()
+                ? '查看、下载并批量整理当前项目的生成图片和视频。'
+                : '查看、下载和管理当前项目的生成图片和视频；图片拖到画布保留原图，拖到外部会自动压缩。';
+        }
+        function updateHistoryProjectScope(){
+            const scope = document.getElementById('historyProjectScope');
+            const name = document.getElementById('historyProjectName');
+            const subtitle = document.getElementById('historySubtitle');
+            if(scope) scope.hidden = !activeProjectId;
+            if(name) name.textContent = activeProjectName || activeProjectId || '';
+            if(subtitle){
+                subtitle.textContent = activeProjectId
+                    ? historyManagerBaseSubtitle()
+                    : (historyManagerEnabled()
+                        ? '查看、下载并批量整理所有生成图片和视频。'
+                        : '查看、下载和管理所有生成图片和视频；图片拖到画布保留原图，拖到外部会自动压缩。');
+            }
+            refreshHistoryIcons(scope || document);
+        }
+        async function resolveHistoryProjectContext(){
+            const serial = ++historyProjectContextSerial;
+            const projectId = historyProjectIdFromContext();
+            activeProjectId = projectId;
+            activeProjectName = '';
+            updateHistoryProjectScope();
+            if(!projectId) return '';
+            try{
+                const response = await fetch('/api/projects',{cache:'no-store'});
+                if(response.ok){
+                    const data = await response.json();
+                    const project = Array.isArray(data?.projects)
+                        ? data.projects.find(item => String(item?.id || '') === projectId)
+                        : null;
+                    if(serial === historyProjectContextSerial && activeProjectId === projectId){
+                        activeProjectName = String(project?.name || '').trim();
+                        updateHistoryProjectScope();
+                    }
+                }
+            }catch(error){
+                // The project ID is still sufficient for the server-side filter.
+            }
+            return projectId;
+        }
+        async function loadHistory(reset=false){
+            const loadSerial = ++historyLoadSerial;
+            if(reset){
+                visibleCount = 60;
+                // A refresh changes the data snapshot. Never let an old
+                // selection remain actionable while the new snapshot loads.
+                toggleSelectionMode(false);
+            }
+            document.getElementById('content').innerHTML = '<div class="loading"><i data-lucide="loader-circle"></i><span>正在加载历史记录</span></div>';
+            refreshHistoryIcons(document.getElementById('content'));
+            try{
+                const managerMode = historyManagerEnabled();
+                if(managerMode) await loadManagerProjects();
+                const projectId = managerMode ? '' : await resolveHistoryProjectContext();
+                const endpoint = new URL('/api/history', location.href);
+                endpoint.searchParams.set('view','manager');
+                if(projectId && !managerMode) endpoint.searchParams.set('project_id',projectId);
+                const response = await fetch(endpoint.toString(),{cache:'no-store'});
+                if(!response.ok) throw new Error('历史记录加载失败');
+                const records = await response.json();
+                if(loadSerial !== historyLoadSerial) return;
+                allRecords = (Array.isArray(records) ? records : [])
+                    .filter(item => !pendingHistoryDeletes.has(String(recordTimestamp(item))));
+                selectedTimestamps.clear();
+                updateManagerCounts();
+                applyFilters();
+            }catch(error){
+                if(loadSerial !== historyLoadSerial) return;
+                document.getElementById('content').innerHTML = `<div class="empty"><i data-lucide="circle-alert"></i><strong>${esc(error.message)}</strong><button onclick="loadHistory(true)">重新加载</button></div>`;
+                refreshHistoryIcons(document.getElementById('content'));
+            }
+        }
+        function setFilter(button){
+            const filterType = String(button?.dataset?.type || 'all');
+            activeType = filterType === 'video' ? 'video' : 'all';
+            activeSourceFilter = filterType === 'all' || filterType === 'video' ? '' : filterType;
+            activeQuickFilter = '';
+            activeProjectFilter = '';
+            document.querySelectorAll('.filter').forEach(item => item.classList.toggle('active',item===button));
+            document.querySelectorAll('.manager-filter[data-manager-source]').forEach(item => item.classList.remove('active'));
+            document.querySelectorAll('.manager-media-filter').forEach(item => item.classList.toggle('active',item.dataset.mediaType === activeType));
+            renderManagerProjectFilters();
+            visibleCount = 60;
+            applyFilters();
+        }
+        function setMediaFilter(button){
+            activeType = String(button?.dataset?.mediaType || 'all');
+            activeSourceFilter = '';
+            activeQuickFilter = '';
+            activeProjectFilter = '';
+            document.querySelectorAll('.manager-media-filter').forEach(item => item.classList.toggle('active',item === button));
+            document.querySelectorAll('.filter').forEach(item => item.classList.toggle('active',item.dataset.type === 'all'));
+            document.querySelectorAll('.manager-filter[data-manager-source]').forEach(item => item.classList.remove('active'));
+            renderManagerProjectFilters();
+            visibleCount = 60;
+            applyFilters();
+        }
+        function setQuickFilter(button){
+            activeQuickFilter = button?.dataset?.managerScope || 'all';
+            activeSourceFilter = '';
+            activeProjectFilter = '';
+            document.querySelectorAll('.manager-filter').forEach(item => item.classList.toggle('active',item === button));
+            document.querySelectorAll('.filter').forEach(item => item.classList.toggle('active',item.dataset.type === 'all'));
+            document.querySelectorAll('.manager-media-filter').forEach(item => item.classList.toggle('active',item.dataset.mediaType === 'all'));
+            activeType = 'all';
+            renderManagerProjectFilters();
+            visibleCount = 60;
+            applyFilters();
+        }
+        function setManagerSourceFilter(button){
+            activeSourceFilter = String(button?.dataset?.managerSource || '').trim();
+            activeQuickFilter = '';
+            activeProjectFilter = '';
+            document.querySelectorAll('.manager-filter').forEach(item => item.classList.toggle('active',item === button));
+            document.querySelectorAll('.filter').forEach(item => item.classList.toggle('active',item.dataset.type === 'all'));
+            document.querySelectorAll('.manager-media-filter').forEach(item => item.classList.toggle('active',item.dataset.mediaType === 'all'));
+            activeType = 'all';
+            renderManagerProjectFilters();
+            visibleCount = 60;
+            applyFilters();
+        }
+        function applyFilters(){
+            const query = document.getElementById('search').value.trim().toLowerCase();
+            filteredRecords = allRecords.filter(item => {
+                if(activeQuickFilter === 'recent' && !recordIsRecent(item)) return false;
+                if(activeQuickFilter === 'failed' && !recordIsFailed(item)) return false;
+                if(activeSourceFilter && recordGroup(item) !== activeSourceFilter) return false;
+                if(activeProjectFilter && !recordMatchesProject(item, activeProjectFilter)) return false;
+                if(activeType === 'image' && recordHasVideo(item)) return false;
+                if(activeType === 'video' && !recordHasVideo(item)) return false;
+                if(!query) return true;
+                return [item.prompt,item.model,item.provider_name,item.type,item.history_source,item.params?.source].some(value => String(value || '').toLowerCase().includes(query));
+            });
+            const visibleKeys = new Set(filteredRecords.map(item => String(recordTimestamp(item))));
+            selectedTimestamps.forEach(key => {
+                if(!visibleKeys.has(key)) selectedTimestamps.delete(key);
+            });
+            refreshSelectionUi();
+            render();
+        }
+        function render(){
+            document.getElementById('summary').textContent = `${filteredRecords.length} 条记录`;
+            const records = filteredRecords.slice(0,visibleCount);
+            if(!records.length){
+                document.getElementById('content').innerHTML = '<div class="empty"><i data-lucide="history"></i><strong>还没有历史记录</strong><span>生成图片或视频后会自动出现在这里</span></div>';
+                document.getElementById('more').hidden = true;
+                refreshHistoryIcons(document.getElementById('content')); return;
+            }
+            document.getElementById('content').innerHTML = `<div class="grid">${records.map(cardHtml).join('')}</div>`;
+            document.getElementById('more').hidden = records.length >= filteredRecords.length;
+            refreshHistoryIcons(document.getElementById('content'));
+        }
+        function cardHtml(item){
+            const mediaItems = recordMediaEntries(item);
+            const media = mediaItems[0];
+            if(!media) return '';
+            const prompt = item.prompt || '未填写提示词';
+            const model = item.model || item.params?.model || '未知模型';
+            const ts = Number(item.timestamp || 0);
+            const recordKey = String(ts);
+            const selected = selectedTimestamps.has(recordKey);
+            const thumbUrl = historyThumbUrl(media.url,media.kind);
+            const mediaMarkup = media.kind === 'video'
+                ? `<video class="thumb-media" src="${esc(media.url)}" poster="${esc(historyThumbUrl(media.url,'image'))}" muted controls preload="none" playsinline onclick="event.stopPropagation()" onmousedown="event.stopPropagation()"></video>`
+                : `<img class="thumb-media" src="${esc(thumbUrl)}" data-original-src="${esc(media.url)}" alt="生成图片" loading="lazy" decoding="async" fetchpriority="low" onerror="this.onerror=null;this.src=this.dataset.originalSrc">`;
+            const copyButton = media.kind === 'video' ? '' : `<button class="icon-btn" title="复制图片" aria-label="复制图片" onclick="copyImage(this.closest('.card').querySelector('.thumb').dataset.mediaUrl,this)"><i data-lucide="clipboard"></i></button>`;
+            const dragHint = media.kind === 'image' ? '<span class="drag-hint">拖到画布 · 拖出自动压缩</span>' : '';
+            const countBadge = mediaItems.length > 1 ? `<span class="multi">${mediaItems.length} 个</span>` : '';
+            return `<article class="card${selected ? ' hbm-selected' : ''}" data-ts="${esc(recordKey)}" data-history-ts="${esc(recordKey)}">
+                <div class="thumb" draggable="${media.kind === 'image'}" data-media-url="${esc(media.url)}" data-media-kind="${media.kind}" data-media-name="${esc(media.name || '')}" onclick="openPreview(this.dataset.mediaUrl,this.closest('.card').querySelector('.prompt').dataset.full,this.dataset.mediaKind)" oncontextmenu="openHistoryImageContextMenu(event,this.dataset.mediaUrl,this.dataset.mediaKind)" ondragstart="startHistoryMediaDrag(event,this)" ondragend="endHistoryMediaDrag(event,this)" title="${media.kind === 'video' ? '点击播放视频' : '拖到画布保留原图；拖到外部自动压缩'}">
+                    ${mediaMarkup}<span class="manager-card-check" aria-hidden="true"><i data-lucide="check"></i></span><span class="type">${esc(typeLabel(item))}</span>${countBadge}${dragHint}
+                </div>
+                <div class="body"><div class="prompt" data-full="${esc(prompt)}">${esc(prompt)}</div>
+                    <div class="meta"><span>${esc(formatTime(ts))}</span><b>·</b><span>${esc(model)}</span></div>
+                    <div class="actions"><button class="icon-btn" title="预览" aria-label="预览" onclick="openPreview(this.closest('.card').querySelector('.thumb').dataset.mediaUrl,this.closest('.card').querySelector('.prompt').dataset.full,this.closest('.card').querySelector('.thumb').dataset.mediaKind)"><i data-lucide="maximize-2"></i></button><button class="icon-btn" title="下载" aria-label="下载" onclick="downloadMedia(this.closest('.card').querySelector('.thumb').dataset.mediaUrl,this.closest('.card').querySelector('.thumb').dataset.mediaKind)"><i data-lucide="download"></i></button>${copyButton}<button class="icon-btn" title="复制提示词" aria-label="复制提示词" onclick="copyPrompt(this)"><i data-lucide="copy"></i></button><span class="spacer"></span><button class="icon-btn danger" title="从历史记录移除" aria-label="从历史记录移除" onclick="deleteRecord(${ts},this)"><i data-lucide="trash-2"></i></button></div>
+                </div></article>`;
+        }
+        function setManagerCount(id, value){
+            const element = document.getElementById(id);
+            if(element) element.textContent = String(value);
+        }
+        function updateManagerCounts(){
+            const counts = {all:allRecords.length, recent:0, failed:0, online:0, chat:0, canvas:0, comfyui:0, commerce:0};
+            allRecords.forEach(item => {
+                if(recordIsRecent(item)) counts.recent += 1;
+                if(recordIsFailed(item)) counts.failed += 1;
+                const group = recordGroup(item);
+                if(Object.prototype.hasOwnProperty.call(counts, group)) counts[group] += 1;
+            });
+            setManagerCount('managerAllCount', counts.all);
+            setManagerCount('managerRecentCount', counts.recent);
+            setManagerCount('managerFailedCount', counts.failed);
+            setManagerCount('managerOnlineCount', counts.online);
+            setManagerCount('managerChatCount', counts.chat);
+            setManagerCount('managerCanvasCount', counts.canvas);
+            setManagerCount('managerComfyuiCount', counts.comfyui);
+            setManagerCount('managerCommerceCount', counts.commerce);
+            renderManagerProjectFilters();
+        }
+        function historyManagerEnabled(){
+            return document.documentElement.classList.contains('manager-mode');
+        }
+        function refreshSelectionUi(){
+            const count = selectedTimestamps.size;
+            const countElement = document.getElementById('managerSelectionCount');
+            const selectAllButton = document.getElementById('managerSelectAll');
+            const deleteButton = document.getElementById('managerDeleteSelected');
+            const exitButton = document.getElementById('managerExitSelection');
+            const modeButton = document.getElementById('managerSelectMode');
+            if(countElement){
+                countElement.hidden = !selectionMode;
+                countElement.textContent = `已选 ${count} 个`;
+            }
+            if(selectAllButton){
+                selectAllButton.hidden = !selectionMode;
+                const visibleKeys = filteredRecords.map(item => String(recordTimestamp(item)));
+                const allSelected = visibleKeys.length > 0 && visibleKeys.every(key => selectedTimestamps.has(key));
+                selectAllButton.textContent = allSelected ? '取消全选' : '全选';
+            }
+            if(deleteButton){
+                deleteButton.hidden = !selectionMode;
+                deleteButton.disabled = count === 0;
+            }
+            if(exitButton) exitButton.hidden = !selectionMode;
+            if(modeButton){
+                modeButton.setAttribute('aria-pressed', selectionMode ? 'true' : 'false');
+                modeButton.classList.toggle('active', selectionMode);
+            }
+        }
+        function toggleSelectionMode(force){
+            const next = typeof force === 'boolean' ? force : !selectionMode;
+            selectionMode = next;
+            document.body.classList.toggle('manager-selection-mode', selectionMode);
+            if(!selectionMode) selectedTimestamps.clear();
+            syncRenderedSelectionState();
+            refreshSelectionUi();
+        }
+        function syncRenderedSelectionState(){
+            document.querySelectorAll('#content .card[data-history-ts]').forEach(card => {
+                const selected = selectedTimestamps.has(String(card.dataset.historyTs || ''));
+                card.classList.toggle('hbm-selected',selected);
+            });
+        }
+        function toggleSelectAll(){
+            if(!selectionMode) return;
+            const visibleKeys = filteredRecords.map(item => String(recordTimestamp(item)));
+            const allSelected = visibleKeys.length > 0 && visibleKeys.every(key => selectedTimestamps.has(key));
+            visibleKeys.forEach(key => {
+                if(allSelected) selectedTimestamps.delete(key);
+                else selectedTimestamps.add(key);
+            });
+            refreshSelectionUi();
+            syncRenderedSelectionState();
+        }
+        function setManagerMode(enabled){
+            const active = Boolean(enabled);
+            const wasActive = historyManagerEnabled();
+            document.documentElement.classList.toggle('manager-mode', active);
+            const title = document.getElementById('historyTitle');
+            const subtitle = document.getElementById('historySubtitle');
+            const actions = document.getElementById('managerActions');
+            if(title) title.textContent = active ? '历史记录管理' : '历史记录';
+            if(actions) actions.hidden = !active;
+            if(!active){
+                activeProjectFilter = '';
+                toggleSelectionMode(false);
+            }else {
+                activeProjectFilter = '';
+                activeProjectId = '';
+                activeProjectName = '';
+                activeQuickFilter = 'all';
+                activeSourceFilter = '';
+                activeType = 'all';
+                document.querySelectorAll('.manager-filter[data-manager-scope]').forEach(item => item.classList.toggle('active', item.dataset.managerScope === 'all'));
+                document.querySelectorAll('.manager-filter[data-manager-source]').forEach(item => item.classList.remove('active'));
+                document.querySelectorAll('.filter').forEach(item => item.classList.toggle('active', item.dataset.type === 'all'));
+                document.querySelectorAll('.manager-media-filter').forEach(item => item.classList.toggle('active', item.dataset.mediaType === 'all'));
+                updateManagerCounts();
+                refreshSelectionUi();
+                render();
+                if(!wasActive || !allRecords.length) void loadHistory(true);
+                else void loadManagerProjects();
+            }
+            updateHistoryProjectScope();
+            renderManagerProjectFilters();
+            refreshHistoryIcons(document.getElementById('managerActions'));
+        }
+        function openFullHistory(){
+            if(window.parent && window.parent !== window){
+                try { window.parent.postMessage({type:'history-manager-open'}, location.origin); } catch(e) {}
+                return;
+            }
+            setManagerMode(true);
+        }
+        async function deleteSelectedRecords(){
+            if(!selectionMode || !historyManagerEnabled() || pendingHistoryDeletes.size) return;
+            // Search input is debounced; recompute before submitting so a
+            // recent filter change cannot carry hidden selections into delete.
+            applyFilters();
+            const visibleKeys = new Set(filteredRecords.map(item => String(recordTimestamp(item))));
+            const keys = Array.from(selectedTimestamps).filter(key => visibleKeys.has(key));
+            if(!keys.length) return;
+            if(!confirm(`确定删除选中的 ${keys.length} 条记录吗？仍被引用的原图会保留，未引用素材会移入回收站。`)) return;
+            const button = document.getElementById('managerDeleteSelected');
+            if(button) button.disabled = true;
+            keys.forEach(key => pendingHistoryDeletes.add(String(key)));
+            updateHistoryDeleteNotice();
+            const removedRecords = optimisticRemoveHistoryRecords(keys);
+            toggleSelectionMode(false);
+            let failure = null;
+            try{
+                const response = await fetch('/api/history/delete-batch', {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({timestamps:keys.map(Number)})
+                });
+                let data = {};
+                try { data = await response.json(); } catch(e) {}
+                if(!response.ok || !data.success) throw new Error(data.message || '删除失败');
+            }catch(error){
+                failure = error;
+                restoreHistoryRecords(removedRecords);
+            }finally{
+                keys.forEach(key => pendingHistoryDeletes.delete(String(key)));
+                historyLoadSerial += 1;
+                if(failure){
+                    finishHistoryDeleteNotice(`删除失败，记录已恢复：${failure.message || '请稍后重试'}`, 'error');
+                }else{
+                    finishHistoryDeleteNotice(`已删除 ${keys.length} 条历史记录`, 'success');
+                }
+            }
+        }
+        document.getElementById('content').addEventListener('click', event => {
+            if(!selectionMode || !historyManagerEnabled()) return;
+            const card = event.target.closest('.card');
+            if(!card || !event.currentTarget.contains(card)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const key = String(card.dataset.historyTs || '');
+            if(!key) return;
+            if(selectedTimestamps.has(key)) selectedTimestamps.delete(key);
+            else selectedTimestamps.add(key);
+            card.classList.toggle('hbm-selected',selectedTimestamps.has(key));
+            refreshSelectionUi();
+        }, true);
+        function showMore(){ visibleCount += 60; render(); }
+        function notifyHistoryDragState(active){
+            if(window.parent === window) return;
+            try { window.parent.postMessage({type:'history-drag-state', active:Boolean(active)}, location.origin); } catch(e) {}
+        }
+        const HISTORY_DRAG_MAX_EDGE = 2048;
+        const HISTORY_DRAG_JPEG_QUALITY = .82;
+        const HISTORY_DRAG_WEBP_QUALITY = .84;
+        function historyDragFileName(thumb, extension){
+            let name = String(thumb?.dataset?.mediaName || '').trim();
+            if(!name){
+                try{
+                    const url = new URL(thumb?.dataset?.mediaUrl || '',location.href);
+                    name = decodeURIComponent(url.pathname.split('/').pop() || '');
+                }catch(e){}
+            }
+            name = name.replace(/\.[^.]+$/,'').replace(/[<>:"/\\|?*\u0000-\u001f]/g,'_').trim();
+            return `${name || '小美画布图片'}.${extension}`;
+        }
+        function compressHistoryImageForDrag(thumb){
+            const image = thumb?.querySelector('img.thumb-media');
+            if(!image?.complete || !image.naturalWidth || !image.naturalHeight) return null;
+            const scale = Math.min(1,HISTORY_DRAG_MAX_EDGE / image.naturalWidth,HISTORY_DRAG_MAX_EDGE / image.naturalHeight);
+            const width = Math.max(1,Math.round(image.naturalWidth * scale));
+            const height = Math.max(1,Math.round(image.naturalHeight * scale));
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            try{
+                const context = canvas.getContext('2d',{willReadFrequently:true});
+                if(!context) return null;
+                context.imageSmoothingEnabled = true;
+                context.imageSmoothingQuality = 'high';
+                context.drawImage(image,0,0,width,height);
+                let hasTransparency = false;
+                const pixels = context.getImageData(0,0,width,height).data;
+                for(let index = 3; index < pixels.length; index += 4){
+                    if(pixels[index] < 255){ hasTransparency = true; break; }
+                }
+                let dataUrl = '';
+                let mime = 'image/jpeg';
+                let extension = 'jpg';
+                if(hasTransparency){
+                    const webp = canvas.toDataURL('image/webp',HISTORY_DRAG_WEBP_QUALITY);
+                    if(/^data:image\/webp;base64,/i.test(webp)){
+                        dataUrl = webp;
+                        mime = 'image/webp';
+                        extension = 'webp';
+                    }else{
+                        dataUrl = canvas.toDataURL('image/png');
+                        mime = 'image/png';
+                        extension = 'png';
+                    }
+                }else{
+                    dataUrl = canvas.toDataURL('image/jpeg',HISTORY_DRAG_JPEG_QUALITY);
+                }
+                if(!/^data:image\/(?:jpeg|png|webp);base64,/i.test(dataUrl)) return null;
+                return {dataUrl,mime,extension,width,height};
+            }catch(error){
+                // 跨域图片可能禁止画布读取；这种情况下继续使用原始 URL，保证拖拽仍可用。
+                console.warn('[history] drag compression skipped',error);
+                return null;
+            }finally{
+                canvas.width = 0;
+                canvas.height = 0;
+            }
+        }
+        function startHistoryMediaDrag(event, thumb){
+            const transfer = event?.dataTransfer;
+            const rawUrl = thumb?.dataset?.mediaUrl || '';
+            const kind = thumb?.dataset?.mediaKind || 'image';
+            if(!transfer || !rawUrl || kind !== 'image') { event?.preventDefault?.(); return; }
+            let url = rawUrl;
+            try { url = new URL(rawUrl, location.href).href; } catch(e) {}
+            if(!/^https?:\/\//i.test(url) && !/^data:image\//i.test(url)) {
+                event.preventDefault();
+                return;
+            }
+            transfer.effectAllowed = 'copy';
+            // 画布继续读取原始 URL；DownloadURL 和 image/* 类型提供给外部应用使用的压缩副本。
+            const dragExport = compressHistoryImageForDrag(thumb);
+            const externalUrl = dragExport?.dataUrl || url;
+            const externalMime = dragExport?.mime || 'image/png';
+            const externalExtension = dragExport?.extension || 'png';
+            const externalName = historyDragFileName(thumb,externalExtension);
+            try { transfer.setData('application/x-smart-history-image', JSON.stringify({url, source:'history', kind:'image', compressed:Boolean(dragExport), width:dragExport?.width || 0, height:dragExport?.height || 0})); } catch(e) {}
+            try { transfer.setData('text/uri-list', url); } catch(e) {}
+            transfer.setData('text/plain', url);
+            try { transfer.setData('DownloadURL', `${externalMime}:${externalName}:${externalUrl}`); } catch(e) {}
+            if(dragExport){
+                try { transfer.setData(externalMime, externalUrl); } catch(e) {}
+            }
+            thumb.classList.add('dragging');
+            notifyHistoryDragState(true);
+        }
+        function endHistoryMediaDrag(event, thumb){
+            thumb?.classList.remove('dragging');
+            notifyHistoryDragState(false);
+        }
+        let historyContextImageUrl = '';
+        function closeHistoryImageContextMenu(){
+            const menu = document.getElementById('historyImageContextMenu');
+            if(!menu) return;
+            menu.hidden = true;
+            menu.style.left = '';
+            menu.style.top = '';
+            historyContextImageUrl = '';
+        }
+        function openHistoryImageContextMenu(event,url,kind='image'){
+            if(!url || kind === 'video') return;
+            event.preventDefault();
+            event.stopPropagation();
+            const menu = document.getElementById('historyImageContextMenu');
+            if(!menu) return;
+            historyContextImageUrl = String(url);
+            menu.hidden = false;
+            const margin = 8;
+            const maxLeft = Math.max(margin,window.innerWidth - menu.offsetWidth - margin);
+            const maxTop = Math.max(margin,window.innerHeight - menu.offsetHeight - margin);
+            menu.style.left = `${Math.min(Math.max(margin,event.clientX),maxLeft)}px`;
+            menu.style.top = `${Math.min(Math.max(margin,event.clientY),maxTop)}px`;
+            menu.querySelector('button')?.focus({preventScroll:true});
+        }
+        async function copyHistoryContextImage(event){
+            event?.preventDefault();
+            event?.stopPropagation();
+            const button = document.getElementById('historyImageContextCopy');
+            const url = historyContextImageUrl;
+            closeHistoryImageContextMenu();
+            await copyImage(url,button);
+        }
+        function historyElectronApi(){
+            if(window.electronAPI?.writeImageToClipboard) return window.electronAPI;
+            try{
+                if(window.parent && window.parent !== window && window.parent.electronAPI?.writeImageToClipboard){
+                    return window.parent.electronAPI;
+                }
+            }catch(error){}
+            return null;
+        }
+        async function imageBlobToPng(blob){
+            if(String(blob?.type || '').toLowerCase() === 'image/png') return blob;
+            const objectUrl = URL.createObjectURL(blob);
+            try{
+                const imageEl = await new Promise((resolve,reject) => {
+                    const image = new Image();
+                    image.onload = () => resolve(image);
+                    image.onerror = () => reject(new Error('图片解码失败'));
+                    image.src = objectUrl;
+                });
+                const canvasEl = document.createElement('canvas');
+                canvasEl.width = Math.max(1,imageEl.naturalWidth || imageEl.width || 1);
+                canvasEl.height = Math.max(1,imageEl.naturalHeight || imageEl.height || 1);
+                const context = canvasEl.getContext('2d');
+                if(!context) throw new Error('无法创建图片画布');
+                context.drawImage(imageEl,0,0,canvasEl.width,canvasEl.height);
+                const png = await new Promise(resolve => canvasEl.toBlob(resolve,'image/png'));
+                if(!png) throw new Error('无法转换图片格式');
+                return png;
+            }finally{ URL.revokeObjectURL(objectUrl); }
+        }
+        async function loadHistoryImagePng(url){
+            const response = await fetch(url,{credentials:'same-origin'});
+            if(!response.ok) throw new Error(`图片读取失败（${response.status}）`);
+            const blob = await response.blob();
+            if(!/^image\//i.test(String(blob.type || ''))) throw new Error('读取到的内容不是图片');
+            return imageBlobToPng(blob);
+        }
+        function markImageCopied(button){
+            if(!button) return;
+            clearTimeout(button._copyTimer);
+            button.classList.add('copied');
+            button.title = '已复制图片';
+            button.setAttribute('aria-label','已复制图片');
+            button.innerHTML = '<i data-lucide="check"></i>';
+            refreshHistoryIcons(button);
+            button._copyTimer = setTimeout(() => {
+                button.classList.remove('copied');
+                button.title = '复制图片';
+                button.setAttribute('aria-label','复制图片');
+                button.innerHTML = '<i data-lucide="clipboard"></i>';
+                refreshHistoryIcons(button);
+            },1600);
+        }
+        async function copyImage(url,button){
+            if(!url || button?.disabled) return false;
+            if(button) button.disabled = true;
+            try{
+                const electron = historyElectronApi();
+                if(electron?.writeImageToClipboard){
+                    const png = await loadHistoryImagePng(url);
+                    const result = await electron.writeImageToClipboard(await png.arrayBuffer());
+                    if(!result?.ok) throw new Error(result?.message || '桌面剪贴板写入失败');
+                }else{
+                    const ClipboardItemCtor = window.ClipboardItem;
+                    if(!navigator.clipboard?.write || typeof ClipboardItemCtor !== 'function') throw new Error('当前浏览器不支持复制图片');
+                    // 在用户点击的同步调用栈内先发起写入，避免图片读取完成后失去临时授权。
+                    const pngPromise = loadHistoryImagePng(url);
+                    await navigator.clipboard.write([new ClipboardItemCtor({'image/png':pngPromise})]);
+                }
+                markImageCopied(button);
+                return true;
+            }catch(error){
+                console.warn('[history] copy image failed',error);
+                alert('复制图片失败，请使用下载按钮');
+                return false;
+            }finally{ if(button) button.disabled = false; }
+        }
+        function openPreview(url,prompt,kind='image'){
+            if(!url) return;
+            if(window.parent && window.parent !== window){
+                const items = filteredRecords.map(item => {
+                    const media = recordMediaEntries(item)[0];
+                    return {
+                        url: media?.url || '',
+                        kind: media?.kind || 'image',
+                        prompt: item.prompt || '',
+                        model: item.model || item.params?.model || '',
+                        timestamp: Number(item.timestamp || 0)
+                    };
+                }).filter(item => item.url);
+                const index = Math.max(0,items.findIndex(item => item.url === url && item.kind === kind));
+                window.parent.postMessage({ type:'history-preview-open', items, index }, location.origin);
+                return;
+            }
+            const modal = document.getElementById('modal');
+            const image = document.getElementById('previewImage');
+            const video = document.getElementById('previewVideo');
+            if(kind === 'video'){
+                image.hidden = true;
+                image.removeAttribute('src');
+                video.hidden = false;
+                video.src = url;
+                video.load();
+            }else{
+                video.pause();
+                video.hidden = true;
+                video.removeAttribute('src');
+                video.load();
+                image.hidden = false;
+                image.src = url;
+            }
+            document.getElementById('previewCaption').textContent = prompt || '';
+            document.documentElement.classList.add('preview-open');
+            document.body.classList.add('preview-open');
+            if(!modal.open) modal.showModal();
+            modal.scrollTop = 0;
+        }
+        function closePreview(){
+            const modal = document.getElementById('modal');
+            if(modal.open) modal.close();
+            document.documentElement.classList.remove('preview-open');
+            document.body.classList.remove('preview-open');
+            document.getElementById('previewImage').src='';
+            const video = document.getElementById('previewVideo');
+            video.pause();
+            video.hidden = true;
+            video.removeAttribute('src');
+            video.load();
+        }
+        async function downloadMedia(url,kind='image'){
+            if(!url) return;
+            try{
+                const response = await fetch(url); if(!response.ok) throw new Error();
+                const blob = await response.blob(); const link = document.createElement('a');
+                const pathExt = String(new URL(url,location.href).pathname.match(/\.([a-z0-9]+)$/i)?.[1] || '').toLowerCase();
+                const mime = String(blob.type || '').toLowerCase();
+                const videoExt = ['mp4','webm','mov','m4v','avi','mkv','flv'];
+                const extension = kind === 'video'
+                    ? (videoExt.includes(pathExt) ? pathExt : mime.includes('webm') ? 'webm' : mime.includes('quicktime') ? 'mov' : 'mp4')
+                    : (mime.includes('jpeg') ? 'jpg' : 'png');
+                link.href=URL.createObjectURL(blob); link.download=`小美画布-${Date.now()}.${extension}`; link.click();
+                setTimeout(()=>URL.revokeObjectURL(link.href),1500);
+            }catch(e){ alert('下载失败，请稍后重试'); }
+        }
+        async function copyPrompt(button){
+            const prompt = button?.closest('.card')?.querySelector('.prompt')?.dataset.full || '';
+            if(!prompt) return;
+            let copied = false;
+            try{
+                if(navigator.clipboard?.writeText){
+                    await navigator.clipboard.writeText(prompt);
+                    copied = true;
+                }
+            }catch(e){}
+            if(!copied){
+                const textarea = document.createElement('textarea');
+                textarea.value = prompt;
+                textarea.setAttribute('readonly','');
+                textarea.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
+                document.body.appendChild(textarea);
+                textarea.select();
+                try{ copied = document.execCommand('copy'); }catch(e){}
+                textarea.remove();
+            }
+            if(!copied){ alert('复制失败，请手动复制'); return; }
+            clearTimeout(button._copyTimer);
+            button.classList.add('copied');
+            button.title = '已复制完整提示词';
+            button.setAttribute('aria-label','已复制完整提示词');
+            button.innerHTML = '<i data-lucide="check"></i>';
+            refreshHistoryIcons(button);
+            button._copyTimer = setTimeout(() => {
+                button.classList.remove('copied');
+                button.title = '复制提示词';
+                button.setAttribute('aria-label','复制提示词');
+                button.innerHTML = '<i data-lucide="copy"></i>';
+                refreshHistoryIcons(button);
+            }, 1600);
+        }
+        async function deleteRecord(timestamp,button){
+            if(!confirm('确定从历史记录移除这条记录吗？仍被引用的原图会保留，未引用素材会移入回收站。')) return;
+            const key = String(timestamp);
+            if(pendingHistoryDeletes.has(key)) return;
+            button.disabled=true;
+            pendingHistoryDeletes.add(key);
+            updateHistoryDeleteNotice();
+            const removedRecords = optimisticRemoveHistoryRecords([key]);
+            let failure = null;
+            try{
+                const response=await fetch('/api/history/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({timestamp})});
+                const data=await response.json(); if(!response.ok||!data.success) throw new Error(data.message||'删除失败');
+            }catch(error){
+                failure = error;
+                restoreHistoryRecords(removedRecords);
+                button.disabled=false;
+            }finally{
+                pendingHistoryDeletes.delete(key);
+                historyLoadSerial += 1;
+                if(failure){
+                    finishHistoryDeleteNotice(`删除失败，记录已恢复：${failure.message || '请稍后重试'}`, 'error');
+                }else{
+                    finishHistoryDeleteNotice('已删除 1 条历史记录', 'success');
+                }
+            }
+        }
+        window.addEventListener('message',event=>{
+            if(event.data?.type === 'history-focus') loadHistory(true);
+            if(event.data?.type === 'history-manager-mode') setManagerMode(Boolean(event.data.enabled));
+        });
+        window.addEventListener('dragend', () => notifyHistoryDragState(false));
+        window.addEventListener('blur', () => notifyHistoryDragState(false));
+        document.getElementById('modal').addEventListener('cancel',event=>{event.preventDefault();closePreview()});
+        if(document.documentElement.classList.contains('manager-mode')) {
+            setManagerMode(true);
+        } else {
+            loadHistory(true);
+        }
+        refreshHistoryIcons(document);
+    </script>
+</body>
+</html>

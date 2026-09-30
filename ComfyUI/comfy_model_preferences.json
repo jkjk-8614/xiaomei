@@ -1,0 +1,25 @@
+{
+  "models": {
+    "15ab39ac6b44424d8a51c60e46086c72": {
+      "protected": true,
+      "name": "z_image_turbo_bf16.safetensors",
+      "root_label": "主 ComfyUI 模型",
+      "relative_path": "diffusion_models/z_image_turbo_bf16.safetensors",
+      "updated_at": 1789712539.9514794
+    },
+    "9fa04963a60ac777b6625bb835ea7d92": {
+      "protected": true,
+      "name": "z_image_turbo_bf16_nsfw_v2.safetensors",
+      "root_label": "主 ComfyUI 模型",
+      "relative_path": "diffusion_models/z_image_turbo_bf16_nsfw_v2.safetensors",
+      "updated_at": 1790122425.4794931
+    },
+    "e4026d57faf75db996bfd2c6f3ebd561": {
+      "protected": true,
+      "name": "qwen_3_8b_fp8mixed.safetensors",
+      "root_label": "主 ComfyUI 模型",
+      "relative_path": "text_encoders/qwen_3_8b_fp8mixed.safetensors",
+      "updated_at": 1790122462.212773
+    }
+  }
+}

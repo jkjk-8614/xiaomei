@@ -1,0 +1,503 @@
+{
+ "RMBG": {
+   "display_name": "去除背景 (RMBG)",
+   "inputs": {
+     "image": { "name": "图像" },
+     "model": { "name": "模型" },
+     "sensitivity": { "name": "灵敏度" },
+     "process_res": { "name": "处理分辨率" },
+     "mask_blur": { "name": "遮罩模糊" },
+     "mask_offset": { "name": "遮罩偏移" },
+     "invert_output": { "name": "反转输出" },
+     "refine_foreground": { "name": "精细前景优化" },
+     "background": { "name": "背景类型" },
+     "background_color": { "name": "背景颜色" }
+   },
+   "outputs": {
+     "2": { "name": "遮罩图像" }
+   }
+ },
+ "BodySegment": {
+   "display_name": "身体部位分割 (RMBG)",
+   "inputs": {
+     "images": { "name": "图像" },
+     "Hair": { "name": "头发" },
+     "Glasses": { "name": "眼镜" },
+     "Top-clothes": { "name": "上身服饰" },
+     "Bottom-clothes": { "name": "下身服饰" },
+     "Torso-skin": { "name": "躯干皮肤" },
+     "Face": { "name": "面部" },
+     "Left-arm": { "name": "左臂" },
+     "Right-arm": { "name": "右臂" },
+     "Left-leg": { "name": "左腿" },
+     "Right-leg": { "name": "右腿" },
+     "Left-foot": { "name": "左脚" },
+     "Right-foot": { "name": "右脚" },
+     "mask_blur": { "name": "遮罩模糊" },
+     "mask_offset": { "name": "遮罩偏移" },
+     "invert_output": { "name": "反转输出" },
+     "background": { "name": "背景类型" },
+     "background_color": { "name": "背景颜色" }
+   },
+   "outputs": {
+     "2": { "name": "遮罩图像" }
+   }
+ },
+ "BiRefNetRMBG": {
+   "display_name": "BiRefNet 去除背景 (RMBG)",
+   "inputs": {
+     "image": { "name": "图像" },
+     "model": { "name": "模型" },
+     "mask_blur": { "name": "遮罩模糊" },
+     "mask_offset": { "name": "遮罩偏移" },
+     "invert_output": { "name": "反转输出" },
+     "refine_foreground": { "name": "精细前景优化" },
+     "background": { "name": "背景类型" },
+     "background_color": { "name": "背景颜色" }
+   },
+   "outputs": {
+     "2": { "name": "遮罩图像" }
+   }
+ },
+ "ClothesSegment": {
+   "display_name": "衣物分割 (RMBG)",
+   "inputs": {
+     "images": { "name": "图像" },
+     "Hat": { "name": "帽子" },
+     "Hair": { "name": "头发" },
+     "Face": { "name": "面部" },
+     "Sunglasses": { "name": "太阳镜" },
+     "Upper-clothes": { "name": "上衣" },
+     "Skirt": { "name": "裙子" },
+     "Dress": { "name": "连衣裙" },
+     "Belt": { "name": "腰带" },
+     "Pants": { "name": "裤子" },
+     "Left-arm": { "name": "左臂" },
+     "Right-arm": { "name": "右臂" },
+     "Left-leg": { "name": "左腿" },
+     "Right-leg": { "name": "右腿" },
+     "Bag": { "name": "背包" },
+     "Scarf": { "name": "围巾" },
+     "Left-shoe": { "name": "左鞋" },
+     "Right-shoe": { "name": "右鞋" },
+     "mask_blur": { "name": "遮罩模糊" },
+     "mask_offset": { "name": "遮罩偏移" },
+     "invert_output": { "name": "反转输出" },
+     "process_res": { "name": "处理分辨率" },
+     "background": { "name": "背景类型" },
+     "background_color": { "name": "背景颜色" }
+   },
+   "outputs": {
+     "2": { "name": "遮罩图像" }
+   }
+ },
+ "FaceSegment": {
+   "display_name": "面部分割 (RMBG)",
+   "inputs": {
+     "images": { "name": "图像" },
+     "Skin": { "name": "皮肤" },
+     "Nose": { "name": "鼻子" },
+     "Eyeglasses": { "name": "眼镜" },
+     "Left-eye": { "name": "左眼" },
+     "Right-eye": { "name": "右眼" },
+     "Left-eyebrow": { "name": "左眉毛" },
+     "Right-eyebrow": { "name": "右眉毛" },
+     "Left-ear": { "name": "左耳" },
+     "Right-ear": { "name": "右耳" },
+     "Mouth": { "name": "嘴巴" },
+     "Upper-lip": { "name": "上唇" },
+     "Lower-lip": { "name": "下唇" },
+     "Hair": { "name": "头发" },
+     "Earring": { "name": "耳环" },
+     "Neck": { "name": "脖子" },
+     "mask_blur": { "name": "遮罩模糊" },
+     "mask_offset": { "name": "遮罩偏移" },
+     "invert_output": { "name": "反转输出" },
+     "process_res": { "name": "处理分辨率" },
+     "background": { "name": "背景类型" },
+     "background_color": { "name": "背景颜色" }
+   },
+   "outputs": {
+     "2": { "name": "遮罩图像" }
+   }
+ },
+ "FashionSegmentClothing": {
+   "display_name": "时尚分割 (RMBG)",
+   "inputs": {
+     "images": { "name": "图像" },
+     "accessories_options": { "name": "配件选项" },
+     "coat": { "name": "外套" },
+     "jacket": { "name": "夹克" },
+     "cardigan": { "name": "开衫" },
+     "vest": { "name": "背心" },
+     "sweater": { "name": "毛衣" },
+     "hood": { "name": "帽子" },
+     "shirt, blouse": { "name": "衬衫, 上衣" },
+     "top, t-shirt, sweatshirt": { "name": "上衣、T恤、卫衣" },
+     "sleeve": { "name": "袖子" },
+     "dress": { "name": "连衣裙" },
+     "jumpsuit": { "name": "连体衣" },
+     "cape": { "name": "斗篷" },
+     "pants": { "name": "裤子" },
+     "shorts": { "name": "短裤" },
+     "skirt": { "name": "裙子" },
+     "tights, stockings": { "name": "紧身裤, 丝袜" },
+     "sock": { "name": "袜子" },
+     "shoe": { "name": "鞋子" },
+     "mask_blur": { "name": "遮罩模糊" },
+     "mask_offset": { "name": "遮罩偏移" },
+     "invert_output": { "name": "反转输出" },
+     "process_res": { "name": "处理分辨率" },
+     "background": { "name": "背景类型" },
+     "background_color": { "name": "背景颜色" }
+   },
+   "outputs": {
+     "2": { "name": "遮罩图像" }
+   }
+ },
+ "FashionSegmentAccessories": {
+   "display_name": "时尚分割配件 (RMBG)",
+   "inputs": {
+     "images": { "name": "图像" },
+     "hat": { "name": "帽子" },
+     "glasses": { "name": "眼镜" },
+     "headband, head covering, hair accessory": { "name": "头带, 头饰, 发饰" },
+     "scarf": { "name": "围巾" },
+     "tie": { "name": "领带" },
+     "glove": { "name": "手套" },
+     "watch": { "name": "手表" },
+     "belt": { "name": "腰带" },
+     "leg warmer": { "name": "护腿" },
+     "bag, wallet": { "name": "包, 钱包" },
+     "umbrella": { "name": "雨伞" },
+     "collar": { "name": "领子" },
+     "lapel": { "name": "领口" },
+     "neckline": { "name": "领口" },
+     "epaulette": { "name": "肩章" },
+     "pocket": { "name": "口袋" },
+     "buckle": { "name": "扣子" },
+     "zipper": { "name": "拉链" },
+     "applique": { "name": "刺绣" },
+     "bow": { "name": "蝴蝶结" },
+     "flower": { "name": "花" },
+     "bead": { "name": "珠子" },
+     "fringe": { "name": "流苏" },
+     "ribbon": { "name": "丝带" },
+     "rivet": { "name": "铆钉" },
+     "ruffle": { "name": "褶皱" },
+     "sequin": { "name": "亮片" },
+     "tassel": { "name": "流苏" }
+   },
+   "outputs": {
+     "0": { "name": "配件选项" }
+   }
+ },
+ "Segment": {
+   "display_name": "局部分割 V1 (RMBG)",
+   "inputs": {
+     "image": { "name": "图像" },
+     "prompt": { "name": "提示" },
+     "sam_model": { "name": "SAM模型" },
+     "dino_model": { "name": "DINO模型" },
+     "threshold": { "name": "阈值" },
+     "mask_blur": { "name": "遮罩模糊" },
+     "mask_offset": { "name": "遮罩偏移" },
+     "invert_output": { "name": "反转输出" },
+     "background": { "name": "背景类型" },
+     "background_color": { "name": "背景颜色" }
+   },
+   "outputs": {
+     "2": { "name": "遮罩图像" }
+   }
+ },
+ "SegmentV2": {
+   "display_name": "局部分割 V2 (RMBG)",
+   "inputs": {
+     "image": { "name": "图像" },
+     "prompt": { "name": "提示" },
+     "sam_model": { "name": "SAM模型" },
+     "dino_model": { "name": "DINO模型" },
+     "threshold": { "name": "阈值" },
+     "mask_blur": { "name": "遮罩模糊" },
+     "mask_offset": { "name": "遮罩偏移" },
+     "invert_output": { "name": "反转输出" },
+     "background": { "name": "背景类型" },
+     "background_color": { "name": "背景颜色" }
+   },
+   "outputs": {
+     "2": { "name": "遮罩图像" }
+   }
+ },
+ "AILab_SAM2Segment": {
+   "display_name": "SAM2Segment (RMBG)",
+   "inputs": {
+     "image": { "name": "图像" },
+     "prompt": { "name": "提示" },  
+     "sam_model": { "name": "SAM模型" },
+     "dino_model": { "name": "DINO模型" },
+     "threshold": { "name": "阈值" },
+     "mask_blur": { "name": "遮罩模糊" },
+     "mask_offset": { "name": "遮罩偏移" },
+     "invert_output": { "name": "反转输出" },
+     "background": { "name": "背景类型" },
+     "background_color": { "name": "背景颜色" }
+   },
+   "outputs": {
+     "2": { "name": "遮罩图像" }
+   }
+ },
+ "AILab_Preview": {
+   "display_name": "图像/遮罩 预览 (RMBG) 🖼️🎭",
+   "inputs": {
+     "image": { "name": "图像" },
+     "mask": { "name": "遮罩" }
+   }
+ },
+ "AILab_ImagePreview": {
+   "display_name": "图像预览 (RMBG) 🖼️",
+   "inputs": {
+     "image": { "name": "图像" }
+   }
+ },
+ "AILab_MaskPreview": {
+   "display_name": "遮罩预览 (RMBG) 🎭",
+   "inputs": {
+     "mask": { "name": "遮罩" }
+   }
+ },
+ "AILab_LoadImage": {
+   "display_name": "加载图像 (RMBG) 🖼️",
+   "inputs": {
+     "image_path_or_URL": { "name": "图像路径或URL" },
+     "image": { "name": "图像" },
+     "upscale_method": { "name": "放大方法" },
+     "scale_by": { "name": "缩放比例" },
+     "resize_mode": { "name": "缩放模式" },
+     "size": { "name": "缩放大小" }
+   },
+   "outputs": {
+     "2": { "name": "宽度" },
+     "3": { "name": "高度" }
+   }
+ },
+ "AILab_LoadImageSimple": {
+   "display_name": "加载图像 简单(RMBG) 🖼️",
+   "inputs": {
+     "image_path_or_URL": { "name": "图像路径或URL" },
+     "image": { "name": "图像" }
+   },
+   "outputs": {
+     "1": { "name": "宽度" },
+     "2": { "name": "高度" }
+   }
+ },
+  "AILab_LoadImageAdvanced": {
+   "display_name": "加载图像 高级(RMBG) 🖼️",
+   "inputs": {
+     "image_path_or_URL": { "name": "图像路径或URL" },
+     "image": { "name": "图像" },
+     "mask_channel": { "name": "遮罩通道" },
+     "upscale_method": { "name": "放大方法" },
+     "scale_by": { "name": "缩放比例" },
+     "resize_mode": { "name": "缩放模式" },
+     "size": { "name": "缩放大小" }
+   },
+   "outputs": {
+     "2": { "name": "图像" },
+     "3": { "name": "宽度" },
+     "4": { "name": "高度" }
+   }
+ },
+ "AILab_ImageCombiner": {
+   "display_name": "图像组合 (RMBG) 🖼️",
+   "inputs": {
+     "foreground": { "name": "前景" },
+     "background": { "name": "背景" },
+     "mode": { "name": "模式" },
+     "foreground_opacity": { "name": "前景透明度" },
+     "foreground_scale": { "name": "前景缩放" },
+     "position_x": { "name": "位置X" },
+     "position_y": { "name": "位置Y" },
+     "foreground_mask": { "name": "前景遮罩" }
+   }
+ },
+ "AILab_MaskCombiner": {
+   "display_name": "遮罩组合 (RMBG) 🎭",
+   "inputs": {
+     "mask_1": { "name": "遮罩 1" },
+     "mode": { "name": "模式" },
+     "mask_2": { "name": "遮罩 2" },
+     "mask_3": { "name": "遮罩 3" },
+     "mask_4": { "name": "遮罩 4" }
+   }
+ },
+ "AILab_MaskEnhancer": {
+   "display_name": "遮罩增强 (RMBG) 🖼️",
+   "inputs": {
+     "mask": { "name": "遮罩" },
+     "sensitivity": { "name": "灵敏度" },
+     "mask_blur": { "name": "遮罩模糊" },
+     "mask_offset": { "name": "遮罩偏移" },
+     "smooth": { "name": "平滑" },
+     "fill_holes": { "name": "填充空洞" },
+     "invert_output": { "name": "反转输出" }
+   }
+ },
+ "AILab_ImageMaskConvert": {
+   "display_name": "图像/遮罩转换 (RMBG) 🖼️🎭",
+   "inputs": {
+     "image": { "name": "图像" },
+     "mask": { "name": "遮罩" },
+     "mask_channel": { "name": "遮罩通道" }
+   }
+ },
+ "AILab_MaskExtractor": {
+   "display_name": "遮罩提取 (RMBG) 🎭",
+   "inputs": {
+     "image": { "name": "图像" },
+     "mask": { "name": "遮罩" },
+     "mode": { "name": "模式" },
+     "background": { "name": "背景" }
+   }
+ },
+ "AILab_ImageStitch": {
+   "display_name": "图像拼接 (RMBG) 🖼️",
+   "inputs": {
+     "images": { "name": "图像" },
+     "direction": { "name": "方向" }
+   }
+ },
+ "AILab_ImageCrop": {
+   "display_name": "图像裁剪 (RMBG) 🖼️",
+   "inputs": {
+     "image": { "name": "图像" },
+     "anchor": { "name": "锚点" },
+     "offset_x": { "name": "偏移X" },
+     "offset_y": { "name": "偏移Y" },
+     "split_output": { "name": "分离输出" }
+   },
+   "outputs": {
+     "0": { "name": "裁剪部分" },
+     "1": { "name": "剩余部分" }
+   }
+ },
+ "AILab_ICLoRAConcat": {
+   "display_name": "ICLoRA 拼接 (RMBG) 🖼️",
+   "inputs": {
+     "object_image": { "name": "目标图像" },
+     "layout": { "name": "布局" },
+     "pixels": { "name": "像素" },
+     "object_mask": { "name": "目标遮罩" },
+     "base_image": { "name": "基础图像" },
+     "base_mask": { "name": "基础遮罩" }
+   },
+   "outputs": {
+     "0": { "name": "图像" },
+     "1": { "name": "目标遮罩" },
+     "2": { "name": "基础遮罩" },
+     "3": { "name": "宽度" },
+     "4": { "name": "高度" },
+     "5": { "name": "X" },
+     "6": { "name": "Y" }
+   }
+ },
+ "AILab_CropObject": {
+   "display_name": "裁剪到对象 (RMBG) 🖼️🎭",
+   "inputs": {
+     "image": { "name": "图像" },
+     "mask": { "name": "遮罩" },
+     "padding": { "name": "填充" }
+   },
+   "outputs": {
+     "0": { "name": "裁剪图像" },
+     "1": { "name": "裁剪遮罩" }
+   }
+ },
+ "AILab_ImageCompare": {
+   "display_name": "图像比较 (RMBG) 🖼️🖼️",
+   "inputs": {
+     "image_1": { "name": "图像 1" },
+     "image_2": { "name": "图像 2" },
+     "text_1": { "name": "文本 1" },
+     "text_2": { "name": "文本 2" }
+   },
+   "outputs": {
+     "0": { "name": "图像" }
+   }
+ },
+ "AILab_ColorInput": {
+   "display_name": "颜色输入 (RMBG) 🎨",
+   "inputs": {
+     "color": { "name": "颜色" }
+   }
+ },
+ "AILab_LamaRemover": {
+   "display_name": "对象去除 (RMBG) 🖼️🎭",
+   "inputs": {
+     "images": { "name": "图像" },
+     "masks": { "name": "遮罩" },
+     "removal_strength": { "name": "去除强度" },
+     "edge_smoothness": { "name": "边缘平滑" }
+   }
+ },
+ "AILab_ImageMaskResize": {
+   "display_name": "图像/遮罩调整大小 (RMBG) 🖼️🎭",
+   "inputs": {
+     "image": { "name": "图像" },
+     "mask": { "name": "遮罩" },
+     "width": { "name": "宽度" },
+     "height": { "name": "高度" },
+     "scale_by": { "name": "缩放比例" },
+     "upscale_method": { "name": "放大方法" },
+     "resize_mode": { "name": "调整大小模式" },
+     "pad_color": { "name": "填充颜色" },
+     "crop_position": { "name": "裁剪位置" },
+     "divisible_by": { "name": "可整除" },
+     "device": { "name": "设备" }
+   },
+   "outputs": {
+     "0": { "name": "图像" },
+     "1": { "name": "遮罩" },
+     "2": { "name": "宽度" },
+     "3": { "name": "高度" }
+   }
+ },
+ "AILab_ReferenceLatentMask": {
+   "display_name": "Kontext 参考潜伏遮罩 (RMBG) 🎭",
+   "inputs": {
+     "conditioning": { "name": "条件" },
+     "latent": { "name": "latant" },
+     "mask": { "name": "遮罩" },
+     "expand": { "name": "扩展" },
+     "blur": { "name": "模糊" },
+     "mask_only": { "name": "仅遮罩" }
+   },
+   "outputs": {
+     "0": { "name": "条件" },
+     "1": { "name": "latant" },
+     "2": { "name": "遮罩" }
+   }
+ },
+ "AILab_SDMatte": {
+   "display_name": "SDMatte Matting (RMBG) 🖼️🎭",
+   "inputs": {
+     "image": { "name": "图像" },
+     "mask": { "name": "遮罩" },
+     "model_path": { "name": "模型路径" },
+     "device": { "name": "设备" },
+     "process_res": { "name": "处理分辨率" },
+     "transparent_object": { "name": "透明对象" },
+     "mask_refine": { "name": "遮罩细化" },
+     "sensitivity": { "name": "灵敏度" },
+     "mask_blur": { "name": "遮罩模糊" },
+     "mask_offset": { "name": "遮罩偏移" },
+     "invert_output": { "name": "反转输出" },
+     "background": { "name": "背景" },
+     "background_color": { "name": "背景颜色" }
+   },
+   "outputs": {
+     "0": { "name": "图像" },
+     "1": { "name": "遮罩" }
+   }
+ }
+}
