@@ -62,7 +62,7 @@ jobs:
       - name: Install desktop build tools
         run: npm install --no-audit --no-fund --ignore-scripts
       - name: Build macOS packages
-        run: npx electron-builder --mac dmg zip --x64 --arm64 --publish never
+        run: npx electron-builder --mac zip --x64 --arm64 --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-macos
@@ -101,4 +101,8 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           generate_release_notes: true
-          files: release-assets/*
+          files: |
+            release-assets/*-Setup-x64.exe
+            release-assets/*-macOS-x64.zip
+            release-assets/*-macOS-arm64.zip
+            release-assets/update.json

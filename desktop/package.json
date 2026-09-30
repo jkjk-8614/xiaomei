@@ -1,7 +1,7 @@
 {
   "name": "xiaomei-canvas-desktop-test",
   "productName": "小美画布-测试版",
-  "version": "0.1.0-test.5",
+  "version": "0.1.0-test.6",
   "private": true,
   "description": "小美画布达笔风格商品分析台 Windows Electron 壳",
   "main": "main.cjs",
