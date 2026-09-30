@@ -95,8 +95,8 @@ jobs:
       - name: Prepare release manifest
         shell: bash
         env:
-          RELEASE_TAG: ${{ startsWith(github.ref_name, 'republish-v1.0.0') && 'v1.0.0' || (github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name) }}
-          RELEASE_VERSION: ${{ startsWith(github.ref_name, 'republish-v1.0.0') && 'v1.0.0' || (github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name) }}
+          RELEASE_TAG: ${{ startsWith(github.ref_name, 'v1.0.0-republish') && 'v1.0.0' || (github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name) }}
+          RELEASE_VERSION: ${{ startsWith(github.ref_name, 'v1.0.0-republish') && 'v1.0.0' || (github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name) }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           VERSION="${RELEASE_VERSION#v}"
@@ -109,7 +109,7 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref_name, 'republish-v1.0.0') && 'v1.0.0' || (github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name) }}
+          tag_name: ${{ startsWith(github.ref_name, 'v1.0.0-republish') && 'v1.0.0' || (github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name) }}
           name: 小美画布v1.0
           body: |
             小美画布 v1.0 正式版。
