@@ -80,9 +80,9 @@ mac:
       arch:
         - x64
         - arm64
-  artifactName: ${productName}-${version}-macOS-${arch}.${ext}
+  artifactName: xiaomei-canvas-${version}-macOS-${arch}.${ext}
 nsis:
-  artifactName: ${productName}-${version}-Setup-${arch}.${ext}
+  artifactName: xiaomei-canvas-${version}-Setup-${arch}.${ext}
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
@@ -90,5 +90,5 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: 小美画布-测试版
 portable:
-  artifactName: ${productName}-${version}-Portable-${arch}.${ext}
+  artifactName: xiaomei-canvas-${version}-Portable-${arch}.${ext}
   requestExecutionLevel: user
