@@ -35,6 +35,12 @@ function classify(fileName) {
   return null;
 }
 
+function releaseAssetName(fileName) {
+  // GitHub keeps the Chinese label but normalizes the stored asset filename;
+  // use the normalized URL name so the updater can download the asset reliably.
+  return fileName.replace(/^小美画布(?=-v\d)/, '');
+}
+
 const entries = [];
 for (const fileName of await readdir(directory)) {
   const classification = classify(fileName);
@@ -47,7 +53,7 @@ for (const fileName of await readdir(directory)) {
     ...classification,
     version,
     fileName,
-    downloadUrl: `https://github.com/${repository}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(fileName)}`,
+    downloadUrl: `https://github.com/${repository}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(releaseAssetName(fileName))}`,
     size: info.size,
     sha256: sha256(content),
   });
