@@ -28,6 +28,8 @@ jobs:
       - name: Verify release inputs
         shell: pwsh
         run: node scripts/verify-release-inputs.mjs
+      - name: Set desktop build revision
+        run: node -e "const fs=require('node:fs'); const pkg=require('./package.json'); pkg.buildRevision=Number(process.env.GITHUB_RUN_NUMBER); fs.writeFileSync('package.json', JSON.stringify(pkg,null,2)+'\n');"
       - name: Build bundled Windows API runtime
         shell: pwsh
         run: |
@@ -67,6 +69,8 @@ jobs:
           python-version: '3.12'
       - name: Verify release inputs
         run: node scripts/verify-release-inputs.mjs
+      - name: Set desktop build revision
+        run: node -e "const fs=require('node:fs'); const pkg=require('./package.json'); pkg.buildRevision=Number(process.env.GITHUB_RUN_NUMBER); fs.writeFileSync('package.json', JSON.stringify(pkg,null,2)+'\n');"
       - name: Build bundled macOS API runtime
         run: |
           python -m pip install --upgrade pip
@@ -116,6 +120,7 @@ jobs:
             --directory release-assets \
             --output release-assets/update.json \
             --version "$VERSION" \
+            --build-revision "$GITHUB_RUN_NUMBER" \
             --tag "$RELEASE_TAG" \
             --repository "$GITHUB_REPOSITORY"
       - name: Publish GitHub release

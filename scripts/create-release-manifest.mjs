@@ -15,6 +15,7 @@ for (let index = 2; index < process.argv.length; index += 1) {
 const directory = path.resolve(String(args.get('directory') || 'dist-package'));
 const output = path.resolve(String(args.get('output') || path.join(directory, 'update.json')));
 const version = String(args.get('version') || '').trim().replace(/^v/i, '');
+const buildRevision = Number(args.get('build-revision') || 0);
 const tag = String(args.get('tag') || `v${version}`).trim();
 const repository = String(args.get('repository') || process.env.GITHUB_REPOSITORY || 'jkjk-8614/xiaomei').trim();
 const notes = String(args.get('notes') || '').split(/\r?\n/).map((item) => item.trim()).filter(Boolean).slice(0, 30);
@@ -23,6 +24,7 @@ if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) {
   throw new Error(`无效版本号：${version || '(空)'}`);
 }
 if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) throw new Error(`无效 GitHub 仓库：${repository}`);
+if (!Number.isSafeInteger(buildRevision) || buildRevision < 0) throw new Error('无效构建编号');
 
 function sha256(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
@@ -65,6 +67,7 @@ if (!entries.some((item) => item.platform === 'darwin')) throw new Error('没有
 const manifest = {
   schemaVersion: 2,
   version,
+  buildRevision,
   channel: 'stable',
   publishedAt: new Date().toISOString(),
   notes,

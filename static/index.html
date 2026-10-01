@@ -3434,7 +3434,8 @@
                 appInfo.version = current;
                 setProjectVersionBadge(current);
             }
-            if(result.status === 'available') showUpdateNotice(current, result.version);
+            if(result.displayVersion) appInfo.displayVersion = result.displayVersion;
+            if(result.status === 'available') showUpdateNotice(current, result.displayVersion || result.version);
             if(result.status === 'current') clearUpdateNotice();
         }
 
@@ -3995,6 +3996,7 @@
                 try {
                     const desktopInfo = await getDesktopUpdateInfo();
                     if(window.electronAPI?.checkForUpdates && desktopInfo?.isPackaged !== false) {
+                        if(desktopInfo?.displayVersion) appInfo.displayVersion = desktopInfo.displayVersion;
                         if(desktopInfo?.version) {
                             appInfo.version = desktopInfo.version;
                             setProjectVersionBadge(desktopInfo.version);

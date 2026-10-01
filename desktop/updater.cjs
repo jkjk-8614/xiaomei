@@ -103,6 +103,10 @@ function normalizeManifest(payload, { platform = process.platform, arch = proces
   if (!version) {
     return { ok: false, code: 'invalid_version', message: '更新清单缺少有效的 semver 版本号' };
   }
+  const buildRevision = source.buildRevision === undefined ? 0 : source.buildRevision;
+  if (!Number.isSafeInteger(buildRevision) || buildRevision < 0) {
+    return { ok: false, code: 'invalid_build_revision', message: '更新清单中的构建编号无效' };
+  }
   if (source.platform && String(source.platform).trim() !== platform) {
     return { ok: false, code: 'platform_mismatch', message: '更新清单不适用于当前操作系统' };
   }
@@ -145,6 +149,7 @@ function normalizeManifest(payload, { platform = process.platform, arch = proces
   return {
     ok: true,
     version,
+    buildRevision,
     platform,
     arch,
     channel: manifestChannel || channel || 'stable',
@@ -228,11 +233,12 @@ function updateError(message, code = 'update_failed') {
 }
 
 class DesktopUpdater {
-  constructor({ app, runtimeRoot, configPath, allowInsecure = false } = {}) {
+  constructor({ app, runtimeRoot, configPath, allowInsecure = false, buildRevision = 0 } = {}) {
     this.app = app;
     this.runtimeRoot = runtimeRoot || process.cwd();
     this.configPath = configPath || path.join(__dirname, 'update-config.json');
     this.allowInsecure = Boolean(allowInsecure);
+    this.buildRevision = Number.isSafeInteger(buildRevision) && buildRevision >= 0 ? buildRevision : 0;
   }
 
   readConfig() {
@@ -341,7 +347,9 @@ class DesktopUpdater {
       channel: config.channel,
     });
     if (!manifest.ok) return { status: 'invalid', version: current, message: manifest.message, code: manifest.code };
-    if (compareVersions(manifest.version, current) <= 0) {
+    const versionOrder = compareVersions(manifest.version, current);
+    const hasUpdate = versionOrder > 0 || (versionOrder === 0 && manifest.buildRevision > this.buildRevision);
+    if (!hasUpdate) {
       return { status: 'current', version: current, latestVersion: manifest.version, message: `当前已经是最新版本（${current}）` };
     }
     return { status: 'available', version: current, ...manifest };

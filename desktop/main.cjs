@@ -26,9 +26,11 @@ const {
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const APP_NAME = '小美画布';
 let APP_DISPLAY_VERSION = '1.0';
+let APP_BUILD_REVISION = 0;
 try {
   const packageInfo = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8'));
   APP_DISPLAY_VERSION = String(packageInfo.displayVersion || packageInfo.version || APP_DISPLAY_VERSION).trim() || APP_DISPLAY_VERSION;
+  if (Number.isSafeInteger(packageInfo.buildRevision) && packageInfo.buildRevision >= 0) APP_BUILD_REVISION = packageInfo.buildRevision;
 } catch {}
 const TEST_API_PORT = 3300;
 const TEST_BROWSER_PORT = 9327;
@@ -1601,6 +1603,7 @@ try {
 
 const desktopUpdater = new DesktopUpdater({
   app,
+  buildRevision: APP_BUILD_REVISION,
   runtimeRoot: TEST_RUNTIME_DATA_ROOT,
   configPath: path.join(__dirname, 'update-config.json'),
   allowInsecure: !app.isPackaged && process.env.XIAOMEI_UPDATE_ALLOW_HTTP === '1',
@@ -1776,7 +1779,7 @@ async function promptDesktopUpdate(result) {
   const options = desktopUpdatePromptOptions(result);
   const answer = owner ? await dialog.showMessageBox(owner, options) : await dialog.showMessageBox(options);
   if (answer.response !== 0) {
-    writeDesktopUpdateState({ dismissedVersion: result.version, dismissedAt: Date.now() });
+    writeDesktopUpdateState({ dismissedVersion: result.version, dismissedBuildRevision: result.buildRevision || 0, dismissedAt: Date.now() });
     return { ...result, status: 'available', dismissed: true, message: '用户选择稍后更新' };
   }
   return startDesktopUpdate(result);
@@ -1788,7 +1791,7 @@ function startDesktopUpdate(result) {
   desktopUpdateLaunchInProgress = false;
   desktopUpdateWindowState = { state: 'downloading', version: result.version };
   desktopUpdateWindowProgress = null;
-  showDesktopUpdateWindow(result.version);
+  showDesktopUpdateWindow(APP_DISPLAY_VERSION);
   desktopUpdateOperationPromise = (async () => {
     try {
       setDesktopUpdateWindowState('downloading', { version: result.version });
@@ -1842,14 +1845,14 @@ async function checkDesktopUpdate({ manual = false } = {}) {
   const check = desktopUpdateCheckPromise || (desktopUpdateCheckPromise = desktopUpdater.check().finally(() => {
     desktopUpdateCheckPromise = null;
   }));
-  const result = { ...await check, currentVersion: app.getVersion() };
+  const result = { ...await check, currentVersion: app.getVersion(), displayVersion: APP_DISPLAY_VERSION };
   desktopUpdateLastResult = result;
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('app:update-status', result);
   }
   if (result.status === 'available') {
     const state = readDesktopUpdateState();
-    if (!manual && state.dismissedVersion === result.version) return result;
+    if (!manual && state.dismissedVersion === result.version && (state.dismissedBuildRevision || 0) === (result.buildRevision || 0)) return result;
     if (!desktopUpdatePromptPromise) {
       desktopUpdatePromptPromise = promptDesktopUpdate(result).finally(() => {
         desktopUpdatePromptPromise = null;

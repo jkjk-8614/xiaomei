@@ -68,6 +68,47 @@ test('selects the matching platform asset from a multi-platform release manifest
   assert.equal(result.sha256, 'b'.repeat(64));
 });
 
+test('checks build revisions without changing the application version', async (t) => {
+  const artifact = process.platform === 'darwin' ? 'zip' : 'nsis';
+  let manifest = {
+    ...VALID_MANIFEST,
+    version: '1.0.0',
+    platform: process.platform,
+    arch: process.arch,
+    artifact,
+    buildRevision: 42,
+    fileName: artifact === 'zip' ? 'xiaomei.zip' : 'xiaomei.exe',
+  };
+  const server = http.createServer((_request, response) => {
+    response.setHeader('content-type', 'application/json');
+    response.end(JSON.stringify(manifest));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'xiaomei-revision-'));
+  t.after(() => {
+    server.close();
+    fs.rmSync(temporaryRoot, { recursive: true, force: true });
+  });
+  const configPath = path.join(temporaryRoot, 'update-config.json');
+  fs.writeFileSync(configPath, JSON.stringify({ manifestUrl: `http://127.0.0.1:${server.address().port}/update.json` }));
+  const makeUpdater = (version, revision) => new DesktopUpdater({
+    app: { isPackaged: true, getVersion: () => version }, configPath, buildRevision: revision,
+  });
+  assert.equal((await makeUpdater('1.0.0', 41).check()).status, 'available');
+  assert.equal((await makeUpdater('1.0.0', 42).check()).status, 'current');
+  assert.equal((await makeUpdater('1.0.0', 43).check()).status, 'current');
+  assert.equal((await makeUpdater('1.0.10', 0).check()).status, 'current');
+  manifest.version = '1.1.0';
+  assert.equal((await makeUpdater('1.0.0', 43).check()).status, 'available');
+  manifest.buildRevision = 'bad';
+  assert.equal((await makeUpdater('1.0.0', 41).check()).code, 'invalid_build_revision');
+  delete manifest.buildRevision;
+  assert.equal((await makeUpdater('1.0.0', 41).check()).status, 'available');
+  manifest.version = '1.0.0';
+  assert.equal((await makeUpdater('1.0.0', 41).check()).status, 'current');
+});
+
 test('checks, downloads, and verifies a local update artifact', { skip: process.platform !== 'win32' }, async (t) => {
   const installer = Buffer.from('xiaomei-updater-test-installer');
   const sha256 = crypto.createHash('sha256').update(installer).digest('hex');

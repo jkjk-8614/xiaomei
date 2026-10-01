@@ -23,7 +23,7 @@ files:
   - build/win-api/**
   - build/mac-api/**
   - python/**
-  - data/agent_skills/**
+  - "!**/data/agent_skills{,/**}"
   - API/.env.example
   - assets/**
   - ComfyUI/integration/**
