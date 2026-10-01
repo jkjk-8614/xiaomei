@@ -10,6 +10,7 @@ directories:
 files:
   - package.json
   - main.py
+  - "*.py"
   - asset_registry.py
   - bridge_api.py
   - agent_skill_store.py
@@ -25,6 +26,9 @@ files:
   - data/agent_skills/**
   - API/.env.example
   - assets/**
+  - ComfyUI/integration/**
+  - ComfyUI/web/**
+  - ComfyUI/tools/comfy-app-bridge/**
   - "!desktop/node_modules{,/**}"
   - "!**/.git{,/**}"
   - "!**/__pycache__"

@@ -5,6 +5,7 @@ const { spawn } = require('node:child_process');
 const net = require('node:net');
 const path = require('node:path');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const { DesktopUpdater } = require('./updater.cjs');
 const {
   MODULE_TARGETS: DABI_MODULE_TARGETS,
@@ -24,6 +25,10 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const APP_NAME = '小美画布';
 const TEST_API_PORT = 3300;
 const TEST_BROWSER_PORT = 9327;
+// A running process on port 3300 may belong to an older install (and may have
+// that install's API settings).  Only reuse a server started for this desktop
+// session; otherwise start the bundled backend on a free port.
+const API_SESSION_ID = crypto.randomUUID();
 const APP_DATA_ROOT = process.platform === 'win32'
   ? (process.env.LOCALAPPDATA || app.getPath('appData'))
   : app.getPath('appData');
@@ -2540,7 +2545,9 @@ async function probeApiAt(port, timeout = 900) {
   const timer = setTimeout(() => controller.abort(), Math.max(200, Number(timeout) || 900));
   try {
     const response = await fetch(`http://127.0.0.1:${port}/api/app-info`, { signal: controller.signal });
-    return response.ok;
+    if (!response.ok) return false;
+    const info = await response.json();
+    return String(info?.desktop_session_id || '') === API_SESSION_ID;
   } catch {
     return false;
   } finally {
@@ -2577,6 +2584,7 @@ function startApi(port = API_PORT) {
     ...process.env,
     XIAOMEI_CANVAS_PROJECT_ROOT: PROJECT_ROOT,
     XIAOMEI_CANVAS_DATA_ROOT: TEST_RUNTIME_DATA_ROOT,
+    XIAOMEI_CANVAS_SESSION_ID: API_SESSION_ID,
     XIAOMEI_CANVAS_PORT: String(API_PORT),
     COMMERCE_ANALYSIS_BROWSER_PORT: String(TEST_BROWSER_PORT),
     TEMP: TEST_TEMP_ROOT,

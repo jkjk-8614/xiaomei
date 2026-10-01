@@ -94,13 +94,17 @@ class QuietAccessLogFilter(logging.Filter):
 logging.getLogger("uvicorn.access").addFilter(QuietAccessLogFilter())
 
 def _runtime_root():
-    """Resolve the persistent application directory in source and PyInstaller builds."""
+    """Resolve the code directory in source and PyInstaller builds."""
     if getattr(sys, "frozen", False):
         return os.path.dirname(os.path.abspath(sys.executable))
     return os.path.dirname(os.path.abspath(__file__))
 
 
-PROJECT_ROOT = _runtime_root()
+PROJECT_ROOT = os.path.abspath(os.environ.get("XIAOMEI_CANVAS_PROJECT_ROOT") or _runtime_root())
+# Keep shipped code separate from mutable user data in desktop builds.  This
+# prevents API keys, history and local media from entering release packages.
+_configured_data_root = os.environ.get("XIAOMEI_CANVAS_DATA_ROOT")
+BASE_DIR = os.path.abspath(_configured_data_root) if _configured_data_root else PROJECT_ROOT
 # 保持运行时根目录也在搜索路径中，兼容便携 Python 与打包环境。
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
@@ -638,10 +642,9 @@ async def canvas_collaboration_endpoint(
 # --- 配置区域 ---
 
 CLIENT_ID = str(uuid.uuid4())
-BASE_DIR = PROJECT_ROOT
 WORKFLOW_DIR = os.path.join(BASE_DIR, "ComfyUI", "workflows")
 WORKFLOW_PATH = os.path.join(WORKFLOW_DIR, "Z-Image.json")
-STATIC_DIR = os.path.join(BASE_DIR, "static")
+STATIC_DIR = os.path.join(PROJECT_ROOT, "static")
 STATIC_RUNNINGHUB_DIR = os.path.join(STATIC_DIR, "runninghub")
 STATIC_RUNNINGHUB_THUMBNAIL_DIR = os.path.join(STATIC_RUNNINGHUB_DIR, "thumbnails")
 STATIC_RUNNINGHUB_API_PROVIDERS_FILE = os.path.join(STATIC_RUNNINGHUB_DIR, "api_providers.json")
@@ -2970,7 +2973,7 @@ os.makedirs(CANVAS_DIR, exist_ok=True)
 
 class ProjectStaticFiles(StaticFiles):
     async def get_response(self, path, scope):
-        comfy_web = os.path.join(BASE_DIR, "ComfyUI", "web")
+        comfy_web = os.path.join(PROJECT_ROOT, "ComfyUI", "web")
         candidate = os.path.abspath(os.path.join(comfy_web, path))
         if os.path.commonpath([candidate, comfy_web]) == comfy_web and os.path.isfile(candidate):
             response = await StaticFiles(directory=comfy_web).get_response(path, scope)
@@ -2987,7 +2990,7 @@ app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 # --- Pydantic 模型 ---
 
 def current_app_version():
-    version_file = os.path.join(BASE_DIR, "VERSION")
+    version_file = os.path.join(PROJECT_ROOT, "VERSION")
     try:
         if os.path.exists(version_file):
             with open(version_file, "r", encoding="utf-8") as f:
@@ -3280,6 +3283,7 @@ def app_info():
     version = current_app_version()
     return {
         "version": version,
+        "desktop_session_id": str(os.environ.get("XIAOMEI_CANVAS_SESSION_ID") or ""),
         "repo_url": GITHUB_REPO_URL,
         "version_url": GITHUB_VERSION_URL,
         "tree_url": GITHUB_TREE_URL,
@@ -45715,4 +45719,3 @@ if __name__ == "__main__":
 
     uvicorn.run(app, host="0.0.0.0", port=port,
                 ws_ping_interval=None, ws_ping_timeout=None)
-

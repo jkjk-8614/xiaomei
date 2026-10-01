@@ -25,6 +25,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Verify release inputs
+        shell: pwsh
+        run: node scripts/verify-release-inputs.mjs
       - name: Build bundled Windows API runtime
         shell: pwsh
         run: |
@@ -60,6 +63,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Verify release inputs
+        run: node scripts/verify-release-inputs.mjs
       - name: Build bundled macOS API runtime
         run: |
           python -m pip install --upgrade pip
