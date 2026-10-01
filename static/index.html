@@ -3339,7 +3339,7 @@
         function compactVersion(value) {
             const text = String(value || '').trim();
             const parts = text.match(/\d+/g) || [];
-            if(parts.length >= 3) return `${parts[1]}.${parts[2]}`;
+            if(parts.length >= 3 && Number(parts[0]) >= 2000) return `${parts[1]}.${parts[2]}`;
             return text.replace(/^v/i, '') || '-';
         }
 
@@ -3417,6 +3417,36 @@
             updateBtn.dataset.localVersion = localVersion || '';
             updateBtn.dataset.remoteVersion = remoteVersion || '';
             updateProjectUpdateTitle();
+        }
+
+        function clearUpdateNotice() {
+            const btn = document.getElementById('update-now-btn');
+            btn?.classList.remove('update-available', 'show');
+            if(btn) { delete btn.dataset.remoteVersion; delete btn.dataset.localVersion; }
+            refreshUpdateButtonText();
+        }
+
+        function applyDesktopUpdateStatus(result) {
+            if(!result) return;
+            const current = result.currentVersion || (result.status === 'current' ? result.version : '');
+            if(current) {
+                appInfo.version = current;
+                setProjectVersionBadge(current);
+            }
+            if(result.status === 'available') showUpdateNotice(current, result.version);
+            if(result.status === 'current') clearUpdateNotice();
+        }
+
+        let desktopUpdateInfoPromise = null;
+        function getDesktopUpdateInfo() {
+            if(!window.electronAPI?.getUpdateInfo) return Promise.resolve(null);
+            if(!desktopUpdateInfoPromise) {
+                desktopUpdateInfoPromise = window.electronAPI.getUpdateInfo().catch(() => {
+                    desktopUpdateInfoPromise = null;
+                    return null;
+                });
+            }
+            return desktopUpdateInfoPromise;
         }
 
         function setProjectUpdateNotes(notes) {
@@ -3699,26 +3729,6 @@
 
         async function runProjectUpdate() {
             if(projectUpdateRunning || projectUpdateCheckPromise) return;
-            if(window.electronAPI?.checkForUpdates) {
-                projectUpdateRunning = true;
-                const btn = document.getElementById('update-now-btn');
-                const text = document.getElementById('update-now-text');
-                const oldText = text?.textContent || '';
-                if(btn) btn.disabled = true;
-                if(text) text.textContent = window.StudioI18n?.lang?.() === 'en' ? 'Checking...' : '检查中...';
-                try {
-                    const result = await window.electronAPI.checkForUpdates({manual: true});
-                    if(result?.status === 'available' && result.version) showUpdateNotice(result.current || appInfo.version, result.version);
-                } catch(e) {
-                    alert(window.StudioI18n?.lang?.() === 'en' ? 'Update check failed.' : '检测更新失败。');
-                } finally {
-                    projectUpdateRunning = false;
-                    if(btn) btn.disabled = false;
-                    if(text) text.textContent = oldText || (window.StudioI18n?.lang?.() === 'en' ? 'Check for updates' : '检查更新');
-                    refreshUpdateButtonText();
-                }
-                return;
-            }
             await checkForUpdates(true);
         }
 
@@ -3850,6 +3860,7 @@
         }
 
         async function confirmProjectUpdate() {
+            if(projectUpdateRunning || window.electronAPI?.checkForUpdates && (await getDesktopUpdateInfo())?.isPackaged !== false) return;
             const isEn = window.StudioI18n?.lang?.() === 'en';
             const btn = document.getElementById('update-now-btn');
             const text = document.getElementById('update-now-text');
@@ -3867,6 +3878,7 @@
             setUpdateSummary('warn', isEn ? 'Updating' : '正在更新', isEn ? `Downloading files from ${sourceName} and creating a local backup.` : `正在从 ${sourceName} 下载文件，并创建本地备份。`);
             // 客户端兜底超时：即使后端异常挂起，UI 也能恢复，不会永远停在「更新中」
             const ac = new AbortController();
+            projectUpdateAbort = ac;
             const killer = setTimeout(() => ac.abort(), 300000);
             try {
                 const res = await fetch('/api/update-from-github', {
@@ -3896,10 +3908,10 @@
                             ? `Updated ${data.count || 0} files. Please restart the backend, then refresh this page.`
                             : `已更新 ${data.count || 0} 个文件。请重启后端，然后刷新页面。`)) + fallbackNote
                 );
-                const updateBtn = document.getElementById('update-now-btn');
-                updateBtn?.classList.remove('update-available', 'show');
-                if(updateBtn) { delete updateBtn.dataset.remoteVersion; delete updateBtn.dataset.localVersion; }
-                setProjectVersionBadge(data.version || updateBtn?.dataset.remoteVersion || appInfo.version);
+                const newVersion = data.version || btn?.dataset.remoteVersion || appInfo.version;
+                appInfo.version = newVersion;
+                setProjectVersionBadge(newVersion);
+                clearUpdateNotice();
                 if(restarting) waitForBackendAndReload();
             } catch(e) {
                 const msg = (e && e.name === 'AbortError')
@@ -3966,73 +3978,95 @@
         window.rollbackProjectUpdate = rollbackProjectUpdate;
 
         async function checkForUpdates(manual = false) {
-            if(window.electronAPI?.checkForUpdates) return null;
+            if(projectUpdateRunning) return;
             if(projectUpdateCheckPromise) return projectUpdateCheckPromise;
             const isEn = window.StudioI18n?.lang?.() === 'en';
-            projectUpdateCheckPromise = (async () => {
+            const btn = document.getElementById('update-now-btn');
+            const text = document.getElementById('update-now-text');
             const badge = document.getElementById('project-version-badge');
-            if(manual && badge) badge.classList.add('checking');
-            try {
-                const info = await fetch('/api/app-info', { cache:'no-store' }).then(r => r.json()).catch(() => ({}));
-                appInfo = {...appInfo, ...info};
-                let current = String(appInfo.version || '').trim();
-                setProjectVersionBadge(current);
-                let best = null;
-                let reachable = false;
-                let serverChecked = false;
-                // 优先走后端检测：服务端用系统代理同时检测 GitHub 和 ModelScope，避免浏览器跨域/被墙
-                try {
-                    const r = await fetch('/api/check-update', { cache:'no-store' });
-                    if(r.ok) {
-                        const d = await r.json();
-                        serverChecked = true;
-                        reachable = !!d.reachable;
-                        if(d.current) { current = String(d.current).trim(); setProjectVersionBadge(current); }
-                        if(d.latest?.version) best = {source:d.latest.source, version:d.latest.version, update_notes:d.latest.update_notes || d.update_notes || null};
-                    }
-                } catch(e) {}
-                // 兜底：旧后端无 /api/check-update 时，浏览器直接拉取双源 VERSION
-                if(!serverChecked) {
-                    const sources = appInfo.sources || {};
-                    const candidates = [
-                        {source:'github', url:sources.github?.version_url || appInfo.version_url || ''},
-                        {source:'modelscope', url:sources.modelscope?.version_url || ''},
-                    ].filter(item => item.url);
-                    for(const item of candidates) {
-                        try {
-                            const remoteText = await fetch(`${item.url}${item.url.includes('?') ? '&' : '?'}t=${Date.now()}`, { cache:'no-store' }).then(r => r.ok ? r.text() : '');
-                            const remote = String(remoteText || '').trim().split(/\r?\n/)[0].trim();
-                            if(remote){ reachable = true; if(!best || compareVersions(remote, best.version) > 0) best = {source:item.source, version:remote}; }
-                        } catch(e) {}
-                    }
-                }
-                const hasUpdate = !!(current && best?.version && compareVersions(best.version, current) > 0);
-                if(hasUpdate) {
-                    if(best.source === 'modelscope') setUpdateSource('modelscope');
-                    setProjectUpdateNotes(best.update_notes || null);
-                    showUpdateNotice(current, best.version);
-                }
-                if(manual) {
-                    if(hasUpdate) {
-                        openProjectUpdateModal();
-                    } else if(reachable) {
-                        // 手动点击也不打断用户；版本号会在侧栏徽标中保持最新。
-                        setProjectVersionBadge(current);
-                    } else {
-                        alert(isEn ? 'Could not reach GitHub or ModelScope. Check your network/proxy and try again.' : '无法连接 GitHub 或 ModelScope 更新源，请检查网络或代理后重试。');
-                    }
-                }
-            } catch(e) {
-                // 离线包里没有网络时保持安静，不影响本地使用。
-                if(manual) alert(isEn ? 'Update check failed.' : '检测更新失败。');
-            } finally {
-                if(badge) badge.classList.remove('checking');
+            if(manual) {
+                badge?.classList.add('checking');
+                if(btn) btn.disabled = true;
+                if(text) text.textContent = isEn ? 'Checking...' : '检查中...';
             }
+            projectUpdateCheckPromise = (async () => {
+                let timeout;
+                try {
+                    const desktopInfo = await getDesktopUpdateInfo();
+                    if(window.electronAPI?.checkForUpdates && desktopInfo?.isPackaged !== false) {
+                        if(desktopInfo?.version) {
+                            appInfo.version = desktopInfo.version;
+                            setProjectVersionBadge(desktopInfo.version);
+                        }
+                        if(desktopInfo?.result) applyDesktopUpdateStatus(desktopInfo.result);
+                        // 启动检查由主进程执行，避免页面和主进程重复提醒。
+                        if(!manual) return;
+                        const result = await window.electronAPI.checkForUpdates({manual: true});
+                        applyDesktopUpdateStatus(result);
+                        return result;
+                    }
+                    const controller = new AbortController();
+                    timeout = setTimeout(() => controller.abort(), 30000);
+                    const fetchOptions = { cache:'no-store', signal:controller.signal };
+                    const info = await fetch('/api/app-info', fetchOptions).then(r => r.json()).catch(() => ({}));
+                    appInfo = {...appInfo, ...info};
+                    let current = String(appInfo.version || '').trim();
+                    setProjectVersionBadge(current);
+                    let best = null;
+                    let reachable = false;
+                    let serverChecked = false;
+                    try {
+                        const r = await fetch('/api/check-update', fetchOptions);
+                        if(r.ok) {
+                            const d = await r.json();
+                            serverChecked = true;
+                            reachable = !!d.reachable;
+                            if(d.current) {
+                                current = String(d.current).trim();
+                                appInfo.version = current;
+                                setProjectVersionBadge(current);
+                            }
+                            if(d.latest?.version) best = {source:d.latest.source, version:d.latest.version, update_notes:d.latest.update_notes || d.update_notes || null};
+                        }
+                    } catch(e) {}
+                    if(!serverChecked) {
+                        const sources = appInfo.sources || {};
+                        const candidates = [
+                            {source:'github', url:sources.github?.version_url || appInfo.version_url || ''},
+                            {source:'modelscope', url:sources.modelscope?.version_url || ''},
+                        ].filter(item => item.url);
+                        for(const item of candidates) {
+                            try {
+                                const remoteText = await fetch(`${item.url}${item.url.includes('?') ? '&' : '?'}t=${Date.now()}`, fetchOptions).then(r => r.ok ? r.text() : '');
+                                const remote = String(remoteText || '').trim().split(/\r?\n/)[0].trim();
+                                if(remote){ reachable = true; if(!best || compareVersions(remote, best.version) > 0) best = {source:item.source, version:remote}; }
+                            } catch(e) {}
+                        }
+                    }
+                    const hasUpdate = !!(current && best?.version && compareVersions(best.version, current) > 0);
+                    if(hasUpdate) {
+                        if(best.source === 'modelscope') setUpdateSource('modelscope');
+                        setProjectUpdateNotes(best.update_notes || null);
+                        showUpdateNotice(current, best.version);
+                        if(manual) openProjectUpdateModal();
+                    } else if(reachable) {
+                        clearUpdateNotice();
+                    } else if(manual) {
+                        alert(isEn ? 'Could not reach the update server. Check your network and try again.' : '无法连接更新源，请检查网络或代理后重试。');
+                    }
+                } catch(e) {
+                    if(manual) alert(isEn ? 'Update check failed. Please try again.' : '检测更新失败，请重试。');
+                } finally {
+                    clearTimeout(timeout);
+                    badge?.classList.remove('checking');
+                    if(manual && btn) btn.disabled = false;
+                    refreshUpdateButtonText();
+                }
             })();
             try { return await projectUpdateCheckPromise; } finally { projectUpdateCheckPromise = null; }
         }
-        // 安装版由 Electron 更新器统一检查并提示；浏览器/开发模式保留源码检查。
-        window.setTimeout(() => { if(!window.electronAPI?.checkForUpdates) checkForUpdates(false); }, 900);
+        window.electronAPI?.onUpdateStatus?.(applyDesktopUpdateStatus);
+        window.setTimeout(() => checkForUpdates(false), 900);
     </script>
     <link rel="stylesheet" href="/static/css/mcp-settings.css?v=2026.10.01.1789283121">
     <script src="/static/js/mcp-settings.js?v=2026.10.01.1789283281"></script>

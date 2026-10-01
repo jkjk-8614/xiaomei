@@ -226,6 +226,7 @@ let desktopUpdateLaunchInProgress = false;
 let desktopUpdateWindowState = null;
 let desktopUpdateWindowProgress = null;
 let desktopUpdateStartupTimer = null;
+let desktopUpdateLastResult = null;
 
 let productUrl = '';
 let lastSurfaceBounds = null;
@@ -1836,7 +1837,11 @@ async function checkDesktopUpdate({ manual = false } = {}) {
   const check = desktopUpdateCheckPromise || (desktopUpdateCheckPromise = desktopUpdater.check().finally(() => {
     desktopUpdateCheckPromise = null;
   }));
-  const result = await check;
+  const result = { ...await check, currentVersion: app.getVersion() };
+  desktopUpdateLastResult = result;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('app:update-status', result);
+  }
   if (result.status === 'available') {
     const state = readDesktopUpdateState();
     if (!manual && state.dismissedVersion === result.version) return result;
@@ -1847,7 +1852,6 @@ async function checkDesktopUpdate({ manual = false } = {}) {
     }
     return desktopUpdatePromptPromise;
   }
-  // 手动检查在“已是最新版”时保持安静；只有失败或发现新版本才打扰用户。
   if (manual && result.status !== 'current') await showDesktopUpdateResult(result);
   return result;
 }
@@ -5616,6 +5620,11 @@ ipcMain.handle('app:check-update', async (event, options = {}) => {
   const owner = BrowserWindow.fromWebContents(event.sender);
   if (!owner || owner !== mainWindow) return { status: 'denied', message: '只能从小美画布主窗口检查更新' };
   return checkDesktopUpdate({ manual: options?.manual !== false });
+});
+ipcMain.handle('app:update-info', (event) => {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  if (!owner || owner !== mainWindow) return null;
+  return { version: app.getVersion(), isPackaged: app.isPackaged, result: desktopUpdateLastResult };
 });
 ipcMain.handle('app:update-cancel', (event) => {
   const owner = BrowserWindow.fromWebContents(event.sender);

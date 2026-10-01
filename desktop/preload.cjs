@@ -2,6 +2,12 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   checkForUpdates: (options) => ipcRenderer.invoke('app:check-update', options || {}),
+  getUpdateInfo: () => ipcRenderer.invoke('app:update-info'),
+  onUpdateStatus: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('app:update-status', listener);
+    return () => ipcRenderer.removeListener('app:update-status', listener);
+  },
   writeImageToClipboard: (bytes) => ipcRenderer.invoke('clipboard:write-image', bytes),
   showGenerationNotification: (payload) => ipcRenderer.invoke('generation:notify', payload || {}),
   openExternal: (url) => ipcRenderer.invoke('app:open-external', String(url || '')),
