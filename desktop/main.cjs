@@ -1,5 +1,6 @@
 const { app, BrowserWindow, WebContentsView, ipcMain, session, shell, dialog, Notification, Menu, clipboard, nativeImage } = require('electron');
-// 让内嵌跨境平台优先按简体中文协商页面语言；站点仍可依据自己的能力或已保存偏好决定最终显示。
+// 让内嵌跨境平台优先按简体中文协商页面语言；页面是否真的切换成功，
+// 由加载后的本地检查决定，未生效时再进入本机翻译兜底。
 app.commandLine.appendSwitch('lang', 'zh-CN');
 const { spawn } = require('node:child_process');
 const net = require('node:net');
@@ -7,19 +8,20 @@ const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { DesktopUpdater } = require('./updater.cjs');
+const { installWindowLifecycle } = require('./window-lifecycle.cjs');
 const {
-  MODULE_TARGETS: DABI_MODULE_TARGETS,
-  createDabiNetworkCapture,
-  createDabiVisibleAgent,
-} = require('./dabi-agent.cjs');
-const { collectDabiSkuCaptureScript, collectDabiSkuRevealScript } = require('../tools/commerce-analysis/sku-page-state.cjs');
+  MODULE_TARGETS: COMMERCE_MODULE_TARGETS,
+  createCommerceNetworkCapture,
+  createCommerceVisibleAgent,
+} = require('./commerce-agent.cjs');
+const { collectCommerceSkuCaptureScript, collectCommerceSkuRevealScript } = require('../tools/commerce-analysis/commerce-sku-state.cjs');
 const {
-  collectDabiProductCaptureScript,
-  collectDabiDetailRevealScript,
-  collectDabiVideoRevealScript,
-  enrichDabiProductCategory,
-  filterDabiMainImages,
-} = require('../tools/commerce-analysis/product-page-state.cjs');
+  collectCommerceProductCaptureScript,
+  collectCommerceDetailRevealScript,
+  collectCommerceVideoRevealScript,
+  enrichCommerceProductCategory,
+  filterCommerceMainImages,
+} = require('../tools/commerce-analysis/commerce-product-state.cjs');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const APP_NAME = '小美画布';
@@ -54,6 +56,7 @@ try {
     fs.cpSync(bundledSkills, runtimeSkills, { recursive: true });
   }
 } catch {}
+
 const APP_ICON_PATH = path.join(PROJECT_ROOT, 'static', 'images', 'app-icon.ico');
 const CONFIGURED_API_PORT = TEST_API_PORT;
 let API_PORT = CONFIGURED_API_PORT;
@@ -92,9 +95,9 @@ const TRANSLATION_MAX_SEGMENTS = 240;
 const TRANSLATION_MAX_CHARS = 24000;
 const TRANSLATION_BATCH_ITEMS = 32;
 const TRANSLATION_BATCH_CHARS = 6000;
-const configuredReviewSamples = process.env.XIAOMEI_DABI_MAX_REVIEW_SAMPLES
+const configuredReviewSamples = process.env.XIAOMEI_COMMERCE_MAX_REVIEW_SAMPLES
   || process.env.COMMERCE_ANALYSIS_MAX_REVIEW_SAMPLES
-  || readApiEnvValue('XIAOMEI_DABI_MAX_REVIEW_SAMPLES')
+  || readApiEnvValue('XIAOMEI_COMMERCE_MAX_REVIEW_SAMPLES')
   || readApiEnvValue('COMMERCE_ANALYSIS_MAX_REVIEW_SAMPLES');
 if (configuredReviewSamples && !process.env.COMMERCE_ANALYSIS_MAX_REVIEW_SAMPLES) {
   process.env.COMMERCE_ANALYSIS_MAX_REVIEW_SAMPLES = String(configuredReviewSamples);
@@ -137,12 +140,28 @@ const MARKETPLACE_HOST_FAMILIES = Object.freeze({
   aliexpress: ['aliexpress.com', 'aliexpress.ru', 'aliexpress.us'],
   shein: ['shein.com', 'shein.co.uk', 'shein.de', 'shein.fr', 'shein.it', 'shein.es'],
 });
+// 这些参数只是在入口处请求平台自己的中文页面，不代表平台一定会遵守。
+// 真正显示中文前还要在页面加载后检查语言标记和可见文字；检查失败才走
+// 本机翻译服务，避免用户每次打开平台都手动点第三方翻译。
+const MARKETPLACE_LANGUAGE_PROFILES = Object.freeze({
+  amazon: Object.freeze({ label: '亚马逊', query: Object.freeze({ language: 'zh_CN' }) }),
+  tiktok: Object.freeze({ label: 'TikTok Shop', query: Object.freeze({ lang: 'zh-Hans' }) }),
+  temu: Object.freeze({ label: 'Temu', query: Object.freeze({ language: 'zh' }) }),
+  shopee: Object.freeze({ label: '虾皮 Shopee', query: Object.freeze({ language: 'zh-Hans' }) }),
+  ozon: Object.freeze({ label: 'Ozon', query: Object.freeze({ language: 'zh' }) }),
+  ebay: Object.freeze({ label: 'eBay', query: Object.freeze({ locale: 'zh-CN' }) }),
+  aliexpress: Object.freeze({ label: '速卖通', query: Object.freeze({ lang: 'zh_CN' }) }),
+  shein: Object.freeze({ label: 'SHEIN', query: Object.freeze({ language: 'zh' }) }),
+});
 const MARKETPLACE_NAVIGATION_HOSTS = Object.freeze([
   ...new Set(Object.values(MARKETPLACE_HOST_FAMILIES).flat()),
 ]);
 const NAVIGATION_HOSTS = [...ALLOWED_HOSTS, ...MARKETPLACE_NAVIGATION_HOSTS];
 const AMAZON_PREFERRED_LANGUAGE = 'zh_CN';
 const AMAZON_ACCEPT_LANGUAGE = 'zh-CN,zh;q=0.9,en;q=0.7';
+const MARKETPLACE_LANGUAGE_URL_PATTERNS = Object.freeze(
+  Object.values(MARKETPLACE_HOST_FAMILIES).flatMap((hosts) => hosts.flatMap((host) => [`*://${host}/*`, `*://*.${host}/*`])),
+);
 const AMAZON_LANGUAGE_URL_PATTERNS = Object.freeze(
   MARKETPLACE_HOST_FAMILIES.amazon.flatMap((host) => [`*://${host}/*`, `*://*.${host}/*`]),
 );
@@ -153,18 +172,28 @@ const TAOBAO_CHROME_URL_PATTERNS = Object.freeze([
   '*://tb.cn/*', '*://*.tb.cn/*',
 ]);
 const COMMERCE_REQUEST_HEADER_URL_PATTERNS = Object.freeze([
-  ...new Set([...AMAZON_LANGUAGE_URL_PATTERNS, ...TAOBAO_CHROME_URL_PATTERNS]),
+  ...new Set([...MARKETPLACE_LANGUAGE_URL_PATTERNS, ...AMAZON_LANGUAGE_URL_PATTERNS, ...TAOBAO_CHROME_URL_PATTERNS]),
 ]);
 const COMMERCE_REQUEST_HEADER_SESSIONS = new WeakSet();
 const SELLER_HOSTS = ['myseller.taobao.com', 'qianniu.taobao.com', 'sycm.taobao.com', '1688.com'];
 const ASSISTANT_CONTEXT_HOSTS = ['myseller.taobao.com', 'qianniu.taobao.com', 'sycm.taobao.com', 'dmp.taobao.com', '1688.com', 'xiaohongshu.com', 'rednote.com', 'douyin.com'];
-// 淘宝、1688 和千牛必须使用不同的 Chromium 持久会话。保留旧的淘宝
-// partition 作为淘宝侧，避免升级后让已有淘宝登录态失效；1688 使用新的
-// 独立分区，避免淘宝页面/登录态覆盖 1688 页面。
-const TAOBAO_SESSION_PARTITION = 'persist:xiaomei-canvas-test-commerce';
-const SESSION_1688_PARTITION = 'persist:xiaomei-canvas-test-1688';
-const SELLER_SESSION_PARTITION = 'persist:xiaomei-canvas-test-qianniu';
-const OZON_DIRECT_SESSION_PARTITION = 'persist:xiaomei-canvas-test-ozon';
+// 淘宝和 1688 继续复用历史的电商 Chromium 会话。1688 的登录链除了
+// Cookie 还会使用 Local Storage、IndexedDB 和页面缓存；拆到新 partition
+// 只能搬 Cookie，旧版本登录后打开新链接就会再次落到登录页。沿用旧会话
+// 能让已有登录态和同一窗口内新开的 1688 标签保持一致。
+const TAOBAO_SESSION_PARTITION = 'persist:xiaomei-commerce';
+const SESSION_1688_PARTITION = TAOBAO_SESSION_PARTITION;
+const SELLER_SESSION_PARTITION = 'persist:xiaomei-qianniu';
+const OZON_DIRECT_SESSION_PARTITION = 'persist:xiaomei-ozon-direct';
+// 旧版本曾尝试把 1688 拆到独立分区。保留这组兼容配置和迁移函数，便于
+// 读取已经留下的旧数据；当前 1688 直接复用 TAOBAO_SESSION_PARTITION，
+// 因而不会再因只迁移 Cookie 而丢失站点存储。
+const LEGACY_1688_COOKIE_URLS = Object.freeze([
+  'https://www.1688.com/',
+  'https://login.1688.com/',
+  'https://pass.1688.com/',
+  'https://login.taobao.com/',
+]);
 const SHARED_CANVAS_PRELOAD_PATH = path.join(__dirname, 'shared-canvas-preload.cjs');
 const VERIFICATION_HOST_RE = /(?:^|\.)(?:captcha|verify|security|sec|punish)\.(?:taobao|tmall)\.com$/i;
 const SAFE_AGENT_ACTIONS = new Set(['inspect', 'scroll', 'click_tab', 'expand', 'paginate', 'extract', 'wait', 'finish']);
@@ -183,12 +212,12 @@ const SAFE_AGENT_LABELS = new Set([
 ]);
 
 let mainWindow;
-let updateWindow;
 let productView;
 const productViews = new Map();
 const sharedCanvasWindows = new Map();
 let activeProductTabId = '';
 let apiProcess;
+let updateWindow;
 let desktopUpdateCheckPromise = null;
 let desktopUpdatePromptPromise = null;
 let desktopUpdateOperationPromise = null;
@@ -197,6 +226,7 @@ let desktopUpdateLaunchInProgress = false;
 let desktopUpdateWindowState = null;
 let desktopUpdateWindowProgress = null;
 let desktopUpdateStartupTimer = null;
+
 let productUrl = '';
 let lastSurfaceBounds = null;
 let ozonDirectSessionReady = false;
@@ -213,15 +243,15 @@ let commercePageActiveRevision = 0;
 let commerceSurfaceBlocked = false;
 let commerceSurfaceWasVisible = false;
 let commerceSurfaceWasVisibleTabId = '';
-const activeDabiCollections = new Map();
-const INTERACTIVE_DABI_MODULES = new Set(['reviews', 'questions', 'reviews_questions']);
+const activeCommerceCollections = new Map();
+const INTERACTIVE_COMMERCE_MODULES = new Set(['reviews', 'questions', 'reviews_questions']);
 
-// 注入到商品 WebContentsView 的达笔式操作提示。商品页是独立的顶层视图，
+// 注入到商品 WebContentsView 的操作提示。商品页是独立的顶层视图，
 // 因此提示必须跟随页面注入，不能只放在小美 iframe 后面的 HTML 层。
-const ELECTRON_DABI_OPERATION_OVERLAY_SCRIPT = String.raw`(({ visible, message }) => {
-  const rootId = '__xiaomei_dabi_operation_overlay__';
-  const styleId = '__xiaomei_dabi_operation_overlay_style__';
-  const stopSignal = '__XIAOMEI_DABI_STOP__';
+const ELECTRON_COMMERCE_OPERATION_OVERLAY_SCRIPT = String.raw`(({ visible, message }) => {
+  const rootId = '__xiaomei_commerce_operation_overlay__';
+  const styleId = '__xiaomei_commerce_operation_overlay_style__';
+  const stopSignal = '__XIAOMEI_COMMERCE_STOP__';
   const existing = document.getElementById(rootId);
   if (!visible) {
     existing?.remove();
@@ -232,7 +262,7 @@ const ELECTRON_DABI_OPERATION_OVERLAY_SCRIPT = String.raw`(({ visible, message }
   if (!document.getElementById(styleId)) {
     const style = document.createElement('style');
     style.id = styleId;
-    style.textContent = '#__xiaomei_dabi_operation_overlay__{position:fixed;inset:7px;z-index:2147483647;pointer-events:none;border:2px solid rgba(54,120,239,.82);border-radius:10px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.72),0 0 0 4px rgba(74,137,244,.08);animation:__xiaomei_agent_frame_pulse 1.8s ease-in-out infinite}#__xiaomei_dabi_operation_overlay__ .x-agent-banner{display:flex;align-items:center;gap:8px;min-width:min(510px,92%);max-width:calc(100% - 18px);margin:12px auto 0;padding:8px 10px;border:1px solid #9fc3ff;border-radius:18px;background:rgba(239,247,255,.96);color:#1d5dbd;box-shadow:0 7px 17px rgba(47,104,202,.16);pointer-events:auto;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}#__xiaomei_dabi_operation_overlay__ .x-agent-icon{position:relative;display:grid;place-items:center;width:21px;height:21px;flex:0 0 21px;border-radius:50%;background:#2f76e9;color:#fff;font-size:11px;animation:__xiaomei_agent_icon_pulse 1.2s ease-in-out infinite}#__xiaomei_dabi_operation_overlay__ .x-agent-icon:after{position:absolute;inset:-4px;border:1px solid rgba(47,118,233,.35);border-radius:50%;content:"";animation:__xiaomei_agent_icon_ring 1.2s ease-out infinite}#__xiaomei_dabi_operation_overlay__ .x-agent-copy{display:flex;align-items:baseline;gap:7px;min-width:0;flex:1}#__xiaomei_dabi_operation_overlay__ .x-agent-copy strong{color:#1b5bb9;font-size:12px;white-space:nowrap}#__xiaomei_dabi_operation_overlay__ .x-agent-copy span{min-width:0;overflow:hidden;color:#5575a5;font-size:10px;text-overflow:ellipsis;white-space:nowrap}#__xiaomei_dabi_operation_overlay__ button{height:24px;padding:0 11px;border:1px solid #6ca1f2;border-radius:13px;background:#fff;color:#2e6fd5;font-size:10px;font-weight:700;cursor:pointer}#__xiaomei_dabi_operation_overlay__ button:hover{border-color:#2f76e9;background:#edf5ff}@keyframes __xiaomei_agent_frame_pulse{0%,100%{opacity:.78}50%{opacity:1}}@keyframes __xiaomei_agent_icon_pulse{0%,100%{transform:scale(.9)}50%{transform:scale(1)}}@keyframes __xiaomei_agent_icon_ring{0%{opacity:.7;transform:scale(.7)}100%{opacity:0;transform:scale(1.35)}}';
+    style.textContent = '#__xiaomei_commerce_operation_overlay__{position:fixed;inset:7px;z-index:2147483647;pointer-events:none;border:2px solid rgba(54,120,239,.82);border-radius:10px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.72),0 0 0 4px rgba(74,137,244,.08);animation:__xiaomei_agent_frame_pulse 1.8s ease-in-out infinite}#__xiaomei_commerce_operation_overlay__ .x-agent-banner{display:flex;align-items:center;gap:8px;min-width:min(510px,92%);max-width:calc(100% - 18px);margin:12px auto 0;padding:8px 10px;border:1px solid #9fc3ff;border-radius:18px;background:rgba(239,247,255,.96);color:#1d5dbd;box-shadow:0 7px 17px rgba(47,104,202,.16);pointer-events:auto;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}#__xiaomei_commerce_operation_overlay__ .x-agent-icon{position:relative;display:grid;place-items:center;width:21px;height:21px;flex:0 0 21px;border-radius:50%;background:#2f76e9;color:#fff;font-size:11px;animation:__xiaomei_agent_icon_pulse 1.2s ease-in-out infinite}#__xiaomei_commerce_operation_overlay__ .x-agent-icon:after{position:absolute;inset:-4px;border:1px solid rgba(47,118,233,.35);border-radius:50%;content:"";animation:__xiaomei_agent_icon_ring 1.2s ease-out infinite}#__xiaomei_commerce_operation_overlay__ .x-agent-copy{display:flex;align-items:baseline;gap:7px;min-width:0;flex:1}#__xiaomei_commerce_operation_overlay__ .x-agent-copy strong{color:#1b5bb9;font-size:12px;white-space:nowrap}#__xiaomei_commerce_operation_overlay__ .x-agent-copy span{min-width:0;overflow:hidden;color:#5575a5;font-size:10px;text-overflow:ellipsis;white-space:nowrap}#__xiaomei_commerce_operation_overlay__ button{height:24px;padding:0 11px;border:1px solid #6ca1f2;border-radius:13px;background:#fff;color:#2e6fd5;font-size:10px;font-weight:700;cursor:pointer}#__xiaomei_commerce_operation_overlay__ button:hover{border-color:#2f76e9;background:#edf5ff}@keyframes __xiaomei_agent_frame_pulse{0%,100%{opacity:.78}50%{opacity:1}}@keyframes __xiaomei_agent_icon_pulse{0%,100%{transform:scale(.9)}50%{transform:scale(1)}}@keyframes __xiaomei_agent_icon_ring{0%{opacity:.7;transform:scale(.7)}100%{opacity:0;transform:scale(1.35)}}';
     document.documentElement.appendChild(style);
   }
   let root = document.getElementById(rootId);
@@ -265,10 +295,10 @@ const ELECTRON_DABI_OPERATION_OVERLAY_SCRIPT = String.raw`(({ visible, message }
   return { ok: true, visible: true };
 })`;
 
-function setDabiAgentOverlay(entry, visible, message = '') {
+function setCommerceAgentOverlay(entry, visible, message = '') {
   const webContents = entry?.view?.webContents;
   if (!webContents || webContents.isDestroyed()) return Promise.resolve();
-  const task = () => webContents.executeJavaScript(`(${ELECTRON_DABI_OPERATION_OVERLAY_SCRIPT})(${JSON.stringify({ visible: Boolean(visible), message: String(message || '') })})`, true).catch(() => null);
+  const task = () => webContents.executeJavaScript(`(${ELECTRON_COMMERCE_OPERATION_OVERLAY_SCRIPT})(${JSON.stringify({ visible: Boolean(visible), message: String(message || '') })})`, true).catch(() => null);
   entry.agentOverlayPromise = (entry.agentOverlayPromise || Promise.resolve()).then(task).catch(() => null);
   return entry.agentOverlayPromise;
 }
@@ -277,20 +307,19 @@ function setDabiAgentOverlay(entry, visible, message = '') {
 // 当前可见 DOM 或页面初始化状态中。桌面版不能直接复用 CDP 采集器，因此
 // 在 WebContentsView 内执行一个只读提取脚本，把真实可见的规格、选项和当前
 // 组合带回 FastAPI；没有找到时仍返回空结构，不生成样例数据。
-const ELECTRON_DABI_STRUCTURED_SKU_SCRIPT = collectDabiSkuCaptureScript();
-const ELECTRON_DABI_SKU_REVEAL_SCRIPT = collectDabiSkuRevealScript();
+const ELECTRON_COMMERCE_STRUCTURED_SKU_SCRIPT = collectCommerceSkuCaptureScript();
+const ELECTRON_COMMERCE_SKU_REVEAL_SCRIPT = collectCommerceSkuRevealScript();
 
-// 达比在淘宝新版页面上直接读取初始化状态，不等待整页滚动或逐个点击标签。
-// Electron 商品页先使用同一份可见页面状态读取商品、主图、视频和 SKU，
-// 再通过下方的达比式可见操作链采集评价和问大家样本，不把整棵页面状态外传。
-const ELECTRON_DABI_PRODUCT_STATE_SCRIPT = collectDabiProductCaptureScript();
-const ELECTRON_DABI_DETAIL_REVEAL_SCRIPT = collectDabiDetailRevealScript();
-const ELECTRON_DABI_VIDEO_REVEAL_SCRIPT = collectDabiVideoRevealScript();
+// Electron 商品页先读取同一份可见页面状态中的商品、主图、视频和 SKU，
+// 再通过下方的可见操作链采集评价和问大家样本，不把整棵页面状态外传。
+const ELECTRON_COMMERCE_PRODUCT_STATE_SCRIPT = collectCommerceProductCaptureScript();
+const ELECTRON_COMMERCE_DETAIL_REVEAL_SCRIPT = collectCommerceDetailRevealScript();
+const ELECTRON_COMMERCE_VIDEO_REVEAL_SCRIPT = collectCommerceVideoRevealScript();
 
 // 商品基础信息先从页面可见状态读取；评价正文由目标 mtop 响应提供，问大家在
-// 响应不可回读时只读取已打开抽屉里的可见问答卡。这里不扫描整页，也不注入
+// 响应不可回读时只读取点击后打开的问答区域里的可见问答卡。这里不扫描整页，也不注入
 // 外部脚本、不读取 Cookie、不提交订单或修改商品。
-const ELECTRON_DABI_QUESTION_VISIBLE_ACTION_SCRIPT = String.raw`(() => {
+const ELECTRON_COMMERCE_QUESTION_VISIBLE_ACTION_SCRIPT = String.raw`(() => {
   const tidy = (value, limit = 2400) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
   const visible = (node) => {
     if (!node) return false;
@@ -305,18 +334,54 @@ const ELECTRON_DABI_QUESTION_VISIBLE_ACTION_SCRIPT = String.raw`(() => {
   const countPattern = /(?:问大家|买家问答|常见问题)\s*[·:：]?\s*([0-9.万千kK+]+)/i;
   const parseQuestionPairs = (value) => {
     const compact = String(value || '').replace(/\s+/g, ' ').trim()
-      .replace(/^.*?问大家\s*[·:：]?\s*\d+(?:\.\d+)?[万千kK+]?\s*/i, '')
+      .replace(/^.*?(?:问大家|买家问答|常见问题)\s*[·:：]?\s*(?:\d+(?:\.\d+)?[万千kK+]?\s*)?/i, '')
       .replace(/\s*(?:查看全部问答|查看全部回答|查看更多问答).*$/i, '');
-    const parts = compact.split(/\s+(?=问\s*[:：]?)/).filter((part) => /^问\s*[:：]?/.test(part));
+    const parts = compact.split(/\s+(?=(?:问|问题|买家提问)\s*[:：]?)/).filter((part) => /^(?:问|问题|买家提问)\s*[:：]?/.test(part));
     return parts.map((part) => {
-      const clean = part.replace(/^问\s*[:：]?\s*/i, '').replace(/\s*更多回答(?:\s+\d+)?\s*$/i, '').trim();
+      const clean = part.replace(/^(?:问|问题|买家提问)\s*[:：]?\s*/i, '').replace(/\s*更多回答(?:\s+\d+)?\s*$/i, '').trim();
+      const ellipsisQa = clean.match(/^(.+?(?:…|\.{2,3}))(?:\s+(.+))?$/);
+      if (ellipsisQa && /[?？]|吗|呢|啊|呀|怎样|怎么样|如何|怎么|多少|哪里|多久|什么|能不能|可不可以|好不好|是否/.test(ellipsisQa[1])) {
+        return { question: ellipsisQa[1].trim(), answer: tidy(ellipsisQa[2] || '', 1200) };
+      }
       const qa = clean.match(/^(.+?(?:[?？]|吗|呢|啊|呀|怎样|怎么样|如何|怎么|多少|哪里|多久|什么|能不能|可不可以|好不好|是否)[。！？!?]?)(?:\s+(.+))?$/);
       return qa ? { question: qa[1].trim(), answer: tidy(qa[2] || '', 1200) } : null;
     }).filter((item) => item && item.question.length >= 4);
   };
-  const questionRoot = () => [...document.querySelectorAll('[class*="AskAnswersWrap--"] [class*="ContentArea--"], [class*="AskAnswersWrap--"], [class*="leftDrawer"]')]
-    .filter(visible)
-    .sort((left, right) => textOf(left).length - textOf(right).length)[0] || null;
+  const questionRoot = () => {
+    const selectors = [
+      '[class*="AskAnswersWrap--"] [class*="ContentArea--"]',
+      '[class*="AskAnswersWrap--"]', '[class*="leftDrawer"]',
+      '[role="dialog"]', '[aria-modal="true"]',
+      '[class*="QuestionDrawer"]', '[class*="questionDrawer"]',
+      '[class*="AskDrawer"]', '[class*="askDrawer"]',
+      '[class*="QuestionList"]', '[class*="question-list"]',
+      '[class*="AskList"]', '[class*="ask-list"]',
+      '[role="region"]', 'section', 'article',
+      '[data-question-id]', '[data-ask-id]', '[data-qa-id]',
+    ];
+    const candidates = [...new Set(selectors.flatMap((selector) => [...document.querySelectorAll(selector)]))]
+      .filter(visible)
+      .filter((node) => node !== document.body && node !== document.documentElement)
+      .filter((node) => {
+        const text = textOf(node);
+        const marker = String(node.id || '') + ' ' + String(node.className || '') + ' ' + String(node.getAttribute?.('role') || '');
+        const hasQuestionText = /问大家|买家问答|常见问题|查看全部问答|查看全部回答|回答/.test(text);
+        const hasQuestionShape = /[?？]/.test(text) || /暂无问答|暂无问题/.test(text);
+        const explicitQuestionSection = /查看全部问答|查看全部回答|查看更多问答/.test(text);
+        const identityHint = /ask|question|answer|qa|drawer|modal|问答|问大家/i.test(marker)
+          || node.hasAttribute?.('data-question-id') || node.hasAttribute?.('data-ask-id') || node.hasAttribute?.('data-qa-id');
+        return text.length <= 20000 && hasQuestionText && hasQuestionShape && (identityHint || explicitQuestionSection);
+      });
+    const score = (node) => {
+      const text = textOf(node);
+      const marker = String(node.id || '') + ' ' + String(node.className || '') + ' ' + String(node.getAttribute?.('role') || '');
+      return (text.match(/[?？]/g) || []).length * 900
+        + (/ask|question|answer|qa/i.test(marker) ? 1500 : 0)
+        + (/drawer|modal/i.test(marker) || node.getAttribute?.('role') === 'dialog' ? 800 : 0)
+        + Math.min(text.length, 12000) / 20;
+    };
+    return candidates.sort((left, right) => score(right) - score(left) || textOf(left).length - textOf(right).length)[0] || null;
+  };
   const questionItems = () => {
     const root = questionRoot();
     if (!root) return [];
@@ -361,23 +426,23 @@ function sendCollectionProgress(entry, payload = {}) {
   const requestedModule = String(progress.module || '').trim();
   const interactionMode = String(
     progress.interactionMode
-      || (INTERACTIVE_DABI_MODULES.has(requestedModule) ? 'visible' : 'passive'),
+      || (INTERACTIVE_COMMERCE_MODULES.has(requestedModule) ? 'visible' : 'passive'),
   ).toLowerCase() === 'visible' ? 'visible' : 'passive';
   progress.interactionMode = interactionMode;
-  if (status === 'running') void setDabiAgentOverlay(entry, interactionMode === 'visible', progress.message || '');
-  else if (['ready', 'partial', 'stopped', 'error'].includes(status)) void setDabiAgentOverlay(entry, false, progress.message || '');
+  if (status === 'running') void setCommerceAgentOverlay(entry, interactionMode === 'visible', progress.message || '');
+  else if (['ready', 'partial', 'stopped', 'error'].includes(status)) void setCommerceAgentOverlay(entry, false, progress.message || '');
   mainWindow.webContents.send('commerce:collection-progress', progress);
 }
 
-function stopActiveDabiCollection(entry = activeProductEntry()) {
+function stopActiveCommerceCollection(entry = activeProductEntry()) {
   let targetEntry = entry;
   let webContents = targetEntry?.view?.webContents;
   let key = webContents?.id;
-  let token = key ? activeDabiCollections.get(key) : null;
+  let token = key ? activeCommerceCollections.get(key) : null;
   if (!token) {
     for (const candidate of productViews.values()) {
       const candidateContents = candidate?.view?.webContents;
-      const candidateToken = candidateContents ? activeDabiCollections.get(candidateContents.id) : null;
+      const candidateToken = candidateContents ? activeCommerceCollections.get(candidateContents.id) : null;
       if (candidateToken) { targetEntry = candidate; webContents = candidateContents; key = candidateContents.id; token = candidateToken; break; }
     }
   }
@@ -408,13 +473,13 @@ function mergeVisibleRecords(left, right, field, limit = 200) {
   return output;
 }
 
-// 桌面版的真实采集器：截图/固定目标定位/鼠标点击/滚轮由 Dabi 风格 CDP
+// 桌面版的真实采集器：截图/固定目标定位/鼠标点击/滚轮由 CDP
 // Agent 完成，评价样本优先由同一时间窗里的目标 mtop 响应解析；问大家在
-// 页面已预载入但没有可回读响应时，只从已打开抽屉的可见问答卡精确提取，
+// 页面已预载入但没有可回读响应时，只从点击后打开的问答区域可见卡精确提取，
 // 不把整页 innerText 当作评价或问大家记录。
-async function collectDabiNetworkModule(entry, webContents, module, collection, capture, agent, options = {}) {
-  const target = DABI_MODULE_TARGETS[module];
-  if (!target) throw new Error(`未知达比采集模块：${module}`);
+async function collectCommerceNetworkModule(entry, webContents, module, collection, capture, agent, options = {}) {
+  const target = COMMERCE_MODULE_TARGETS[module];
+  if (!target) throw new Error(`未知商品采集模块：${module}`);
   const maxPasses = Math.max(4, Math.min(200, Number(options.maxPasses) || 40));
   const delay = Math.max(220, Math.min(1200, Number(options.delay) || 360));
   const pageTotalCount = String(options.pageTotalCount || options.knownTotalCount || '').trim();
@@ -432,10 +497,10 @@ async function collectDabiNetworkModule(entry, webContents, module, collection, 
   const sampleLimit = module === 'reviews' ? COMMERCE_REVIEW_SAMPLE_LIMIT : 2000;
   let visibleTotalCount = pageTotalCount;
   let visibleSamples = [];
-  const dismissDabiPanels = async () => {
+  const dismissCommercePanels = async () => {
     // 淘宝新版问大家抽屉的关闭按钮会随模板变化，固定 closeWrap
     // 选择器可能找不到；Esc 是同一可见页面操作链里的安全兜底。
-    for (const close of [DABI_MODULE_TARGETS.reviews.close, DABI_MODULE_TARGETS.questions.close]) {
+    for (const close of [COMMERCE_MODULE_TARGETS.reviews.close, COMMERCE_MODULE_TARGETS.questions.close]) {
       await agent.clickSelector(close).catch(() => {});
     }
     for (let pass = 0; pass < 2; pass += 1) {
@@ -445,7 +510,7 @@ async function collectDabiNetworkModule(entry, webContents, module, collection, 
   };
   const inspectVisibleQuestions = async () => {
     if (module !== 'questions') return null;
-    const script = ELECTRON_DABI_QUESTION_VISIBLE_ACTION_SCRIPT;
+    const script = ELECTRON_COMMERCE_QUESTION_VISIBLE_ACTION_SCRIPT;
     const result = await webContents.executeJavaScript(script, true).catch(() => null);
     if (result?.totalCount) visibleTotalCount = String(result.totalCount).trim();
     if (Array.isArray(result?.samples)) visibleSamples = mergeVisibleRecords(visibleSamples, result.samples, 'question', 2000);
@@ -458,9 +523,9 @@ async function collectDabiNetworkModule(entry, webContents, module, collection, 
   // 页面可能在上一次模块关闭动画中；先关闭两个固定抽屉并用 Esc
   // 清理没有稳定 closeWrap 类名的问大家抽屉，再点击当前模块入口。
   if (isCancelled()) return { samples: [], stats: {}, networkCount: capture.records[module].length - beforeResponses, screenshotCount, opened: false, stopped: true };
-  await dismissDabiPanels();
+  await dismissCommercePanels();
   if (isCancelled()) return { samples: [], stats: {}, networkCount: capture.records[module].length - beforeResponses, screenshotCount, opened: false, stopped: true };
-  // 达笔脚本会先逐步滚动到“查看全部评价/问大家”入口，再点击；
+  // 采集流程会先逐步滚动到“查看全部评价/问大家”入口，再点击；
   // 淘宝新版页面常在滚动后才挂载这个懒加载控件，不能只查一次 DOM。
   const focus = await agent.clickSelector(target.entry, { scrollUntil: true, maxScrollPasses: 24 });
   collection.actions.push({ action: 'click_tab', module, target: label, clicked: focus.text || '', ok: Boolean(focus.ok), input: 'cdp-mouse' });
@@ -474,7 +539,14 @@ async function collectDabiNetworkModule(entry, webContents, module, collection, 
     if (isCancelled()) return { samples: [], stats: {}, networkCount: capture.records[module].length - beforeResponses, screenshotCount, opened: true, stopped: true };
     const result = await agent.scrollSelector(target.content, 600).catch(() => ({ ok: false, changed: false, atEnd: true }));
     if (result?.targetMissing) {
-      // 内容抽屉没有打开时，不能回退滚动商品整页；否则会在没有任何
+      // 新版问答区域有时没有可滚动容器选择器，但其中的第一批问答
+      // 已经可见；先保留这批真实卡片，不要因选择器变化把它丢掉。
+      await inspectVisibleQuestions();
+      if (visibleSamples.length) {
+        collection.actions.push({ action: 'scroll', module, pass, amount: 600, changed: false, atEnd: true, status: 'visible_only', visibleSampleCount: visibleSamples.length });
+        break;
+      }
+      // 问答内容区域没有打开时，不能回退滚动商品整页；否则会在没有任何
       // 新响应/样本的情况下连续运行几十轮，让用户误以为智能体卡死。
       if (pass === 1) {
         await wait(900);
@@ -482,6 +554,12 @@ async function collectDabiNetworkModule(entry, webContents, module, collection, 
         if (!retry?.targetMissing) {
           // 首轮只是抽屉动画尚未结束，继续使用重试后的结果。
           Object.assign(result, retry);
+        } else {
+          await inspectVisibleQuestions();
+          if (visibleSamples.length) {
+            collection.actions.push({ action: 'scroll', module, pass, amount: 600, changed: false, atEnd: true, status: 'visible_only', visibleSampleCount: visibleSamples.length });
+            break;
+          }
         }
       }
       if (result?.targetMissing) {
@@ -533,7 +611,7 @@ async function collectDabiNetworkModule(entry, webContents, module, collection, 
   const responseStats = module === 'reviews' ? (parsed.reviewStats || {}) : (parsed.questionStats || {});
   const responseTotalCount = String(responseStats.totalCount || '').trim();
   const totalCount = pageTotalCount || responseTotalCount || visibleTotalCount;
-  const sampleSource = visibleFallback ? 'dabi-visible-question' : 'mtop-rateList/questionList';
+  const sampleSource = visibleFallback ? 'commerce-visible-question' : 'mtop-rateList/questionList';
   const resolvedPageTotalCount = pageTotalCount || (visibleFallback ? visibleTotalCount : '');
   const stats = {
     ...responseStats,
@@ -553,7 +631,7 @@ async function collectDabiNetworkModule(entry, webContents, module, collection, 
   return { samples, stats, networkCount: capture.records[module].length - beforeResponses, screenshotCount, opened: true, stopped: false, visibleFallback, sampleSource };
 }
 
-// 搜索结果页采用达比式的轻量页面策略：只读取当前可见商品卡片和搜索条件，
+// 搜索结果页采用轻量页面策略：只读取当前可见商品卡片和搜索条件，
 // 不滚动、不点击、不创建商品详情页任务。这样“问问小美”可以先回答市场概览，
 // 用户需要评价/详情等深度数据时仍走原有商品采集链路。
 const ELECTRON_SEARCH_CONTEXT_SCRIPT = String.raw`(() => {
@@ -1157,7 +1235,7 @@ const ELECTRON_ASSISTANT_CONTEXT_SCRIPT = String.raw`(() => {
         addFact(facts, '收藏', interaction.collects, 48);
         addFact(facts, '分享', interaction.shares, 48);
         if (tags.length) addFact(facts, '话题', tags.join(' '), 300);
-        // 达比的小红书当前笔记只有“图文/视频”和已实际出现的评论是可引用资源；
+        // 小红书当前笔记只有“图文/视频”和已实际出现的评论是可引用资源；
         // 不把图片数量、评论总数自动当成已读完的图片或评论正文。
         const noteReady = Boolean(title || author || mediaCount || scopedVideos);
         addResource(resources, 'xhs-content', isVideo ? '@视频' : '@图文', isVideo ? '视频' : '图文', noteReady);
@@ -1218,7 +1296,7 @@ const ELECTRON_ASSISTANT_CONTEXT_SCRIPT = String.raw`(() => {
         addFact(facts, '收藏', interaction.collects, 48);
         addFact(facts, '转发', interaction.shares, 48);
         if (tags.length) addFact(facts, '话题', tags.join(' '), 300);
-        // 达比的抖音当前作品不复用小红书的“评论资源”。它只按作品类型引用
+        // 抖音当前作品不复用小红书的“评论资源”。它只按作品类型引用
         // 视频、图文或文章；直播明确不能发起作品分析。
         addResource(resources, 'douyin-content', contentToken, contentLabel, !isLive && Boolean(title || author || scopedImages || scopedVideos || isArticle || /^\/video\//.test(path)));
         return { title: contentTitle, kind: isLive ? 'douyin-live' : 'douyin-work', facts, resources, excerpt: excerptFrom(scopeText, title, author) };
@@ -1267,7 +1345,7 @@ const ELECTRON_ASSISTANT_CONTEXT_SCRIPT = String.raw`(() => {
       if (queriedConversationCount) addFact(facts, '查询会话', /(?:个|条)$/.test(queriedConversationCount) ? queriedConversationCount : String(queriedConversationCount) + ' 个', 48);
       if (capturedConversationCount) addFact(facts, '已读会话', /(?:个|条)$/.test(capturedConversationCount) ? capturedConversationCount : String(capturedConversationCount) + ' 个', 48);
       if (messageCount) addFact(facts, '聊天消息', String(messageCount) + ' 条', 48);
-      // 与达比一致，千牛只有实际出现聊天记录时才提供聊天分析；不能把
+      // 千牛只有实际出现聊天记录时才提供聊天分析；不能把
       // 经营看板中的 PV、成交额等通用指标误混入客服数据。
       addResource(resources, 'qianniu-chat-records', queryCountNumber > 120 ? '@聊天记录-前100' : '@聊天记录', queryCountNumber > 120 ? '聊天记录（前100）' : '聊天记录', Boolean(isService && messageCount));
       return { title: isService ? '客服 > 聊天记录' : '千牛工作台', kind: isService ? 'qianniu-service' : 'qianniu-page', facts, resources, excerpt: isService ? excerptFrom(scopeText, conversation, '') : '' };
@@ -1836,6 +1914,20 @@ function navigationHostFamily(value) {
   return host;
 }
 
+function marketplaceLanguageProfile(value) {
+  const family = navigationHostFamily(value);
+  const profile = MARKETPLACE_LANGUAGE_PROFILES[family];
+  return profile ? { family, label: profile.label, query: profile.query } : null;
+}
+
+function marketplaceLanguageLooksChinese(info = {}) {
+  const tag = String(info?.languageTag || '').trim();
+  if (/^zh(?:[-_]|$)/i.test(tag)) return true;
+  const chineseChars = Number(info?.chineseChars || 0);
+  const foreignChars = Number(info?.foreignChars || 0);
+  return chineseChars >= 12 && (foreignChars === 0 || chineseChars >= foreignChars * 0.45);
+}
+
 function amazonHostSuffix(value) {
   let host = '';
   try { host = new URL(String(value || '')).hostname.toLowerCase().replace(/\.$/, ''); } catch { return ''; }
@@ -1915,10 +2007,14 @@ function applyTaobaoChromeRequestHeaders(requestHeaders) {
 
 function preferAmazonChineseUrl(value) {
   const raw = String(value || '').trim();
-  if (!raw || !isAmazonUrl(raw)) return raw;
+  const profile = marketplaceLanguageProfile(raw);
+  if (!raw || !profile) return raw;
   try {
     const parsed = new URL(raw);
-    if (!parsed.searchParams.get('language')) parsed.searchParams.set('language', AMAZON_PREFERRED_LANGUAGE);
+    Object.entries(profile.query).forEach(([key, preferredValue]) => {
+      const currentValue = String(parsed.searchParams.get(key) || '').trim();
+      if (!currentValue || !/^zh(?:[-_]|$)/i.test(currentValue)) parsed.searchParams.set(key, preferredValue);
+    });
     return parsed.toString();
   } catch {
     return raw;
@@ -1954,7 +2050,7 @@ function configureCommerceRequestHeaders(commerceSession) {
     { urls: COMMERCE_REQUEST_HEADER_URL_PATTERNS },
     (details, callback) => {
       const requestHeaders = { ...(details.requestHeaders || {}) };
-      if (isAmazonUrl(details.url)) {
+      if (marketplaceLanguageProfile(details.url)) {
         setRequestHeader(requestHeaders, 'Accept-Language', AMAZON_ACCEPT_LANGUAGE);
       }
       if (isTaobaoChromeCompatibleUrl(details.url)) {
@@ -2031,13 +2127,16 @@ function safeSite(value) {
   } catch { return '商品页'; }
 }
 
-function commerceSessionPartition(kind = '', site = '', url = '') {
+function commerceSessionPartition(kind = '', site = '', url = '', sourcePartition = '') {
   const kindValue = String(kind || '').trim().toLowerCase();
   const siteValue = String(site || '').trim().toLowerCase();
   let host = '';
   try { host = new URL(String(url || '')).hostname.toLowerCase().replace(/\.$/, ''); } catch {}
   if (host === 'ozon.ru' || host.endsWith('.ozon.ru') || (!host && siteValue === 'ozon')) return OZON_DIRECT_SESSION_PARTITION;
   if (host === '1688.com' || host.endsWith('.1688.com') || (!host && siteValue === '1688')) return SESSION_1688_PARTITION;
+  // 统一登录可能经过淘宝域名；重建为淘宝会话会让登录结果与 1688 商品页分离。
+  if (is1688LoginTarget(url) || is1688LoginBridgeUrl(url)
+    || (isLoginUrl(url) && (siteValue === '1688' || sourcePartition === SESSION_1688_PARTITION))) return SESSION_1688_PARTITION;
   if (/(?:^|\.)(?:myseller|qianniu|sycm)\.taobao\.com$/.test(host)) return SELLER_SESSION_PARTITION;
   // 只要有明确 URL，就以实际站点为准，避免从千牛标签跳转到淘宝时
   // 因为旧的 site/kind 标记而继续沿用公司会话。
@@ -2052,17 +2151,19 @@ function commerceSessionProfile(partition, site = '') {
       ? { id: 'ozon-direct', label: 'Ozon 直连会话' }
       : { id: 'ozon', label: 'Ozon 独立会话' };
   }
-  if (partition === SESSION_1688_PARTITION) return { id: '1688', label: '1688独立会话' };
+  if (partition === SESSION_1688_PARTITION && String(site || '').trim() === '1688') {
+    return { id: '1688', label: '1688/淘宝共享会话' };
+  }
   if (partition === SELLER_SESSION_PARTITION) return { id: 'qianniu', label: '千牛工作台独立会话' };
   return String(site || '').trim() === '1688'
-    ? { id: '1688', label: '1688独立会话' }
+    ? { id: '1688', label: '1688/淘宝共享会话' }
     : { id: 'taobao', label: '淘宝独立会话' };
 }
 
 function ensureProductNetworkCapture(entry) {
   if (!entry?.view?.webContents || entry.view.webContents.isDestroyed()) return null;
   if (entry.networkCapture) return entry.networkCapture;
-  entry.networkCapture = createDabiNetworkCapture(entry.view.webContents);
+  entry.networkCapture = createCommerceNetworkCapture(entry.view.webContents);
   entry.networkCapture.ready.catch(() => {});
   return entry.networkCapture;
 }
@@ -2075,11 +2176,15 @@ function releaseProductNetworkCapture(entry) {
 }
 
 async function configureCommerceSessions() {
-  for (const partition of [TAOBAO_SESSION_PARTITION, SESSION_1688_PARTITION, SELLER_SESSION_PARTITION, OZON_DIRECT_SESSION_PARTITION]) {
+  for (const partition of new Set([TAOBAO_SESSION_PARTITION, SESSION_1688_PARTITION, SELLER_SESSION_PARTITION, OZON_DIRECT_SESSION_PARTITION])) {
     const commerceSession = session.fromPartition(partition);
     commerceSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
     configureCommerceRequestHeaders(commerceSession);
   }
+
+  // 兼容旧版本曾创建过的独立 1688 分区；当前 1688 复用历史电商会话，
+  // 不需要等到页面打开后再补迁移。
+  await migrateLegacy1688Cookies();
 
   // Ozon 会把 Windows 系统代理识别为 VPN；仅它的独立会话绕过该代理，
   // 不改变其他工作应用的网络路径或既有登录会话。
@@ -2089,6 +2194,56 @@ async function configureCommerceSessions() {
   } catch (error) {
     ozonDirectSessionReady = false;
     console.warn('Ozon 直连会话配置失败，将沿用系统网络设置：', error?.message || error);
+  }
+}
+
+function isLegacy1688Cookie(cookie) {
+  const domain = String(cookie?.domain || '').replace(/^\.+/, '').toLowerCase();
+  return domain === '1688.com'
+    || domain.endsWith('.1688.com')
+    || domain === 'taobao.com'
+    || domain.endsWith('.taobao.com');
+}
+
+function cookieMigrationKey(cookie) {
+  return [String(cookie?.domain || '').toLowerCase(), String(cookie?.path || '/'), String(cookie?.name || '')].join('\u0000');
+}
+
+async function migrateLegacy1688Cookies() {
+  if (TAOBAO_SESSION_PARTITION === SESSION_1688_PARTITION) return { ok: true, copied: 0, reused: true };
+  const source = session.fromPartition(TAOBAO_SESSION_PARTITION);
+  const target = session.fromPartition(SESSION_1688_PARTITION);
+  try {
+    const [sourceCookies, targetCookies] = await Promise.all([
+      Promise.all(LEGACY_1688_COOKIE_URLS.map((url) => source.cookies.get({ url }))).then((groups) => groups.flat()),
+      Promise.all(LEGACY_1688_COOKIE_URLS.map((url) => target.cookies.get({ url }))).then((groups) => groups.flat()),
+    ]);
+    const existing = new Set(targetCookies.map(cookieMigrationKey));
+    const copied = new Set();
+    for (const cookie of sourceCookies) {
+      if (!isLegacy1688Cookie(cookie)) continue;
+      const key = cookieMigrationKey(cookie);
+      if (existing.has(key) || copied.has(key) || !cookie.name) continue;
+      const domain = String(cookie.domain || '').replace(/^\.+/, '');
+      const url = `${cookie.secure === false ? 'http' : 'https'}://${domain}${cookie.path || '/'}`;
+      const details = {
+        url,
+        name: String(cookie.name),
+        value: String(cookie.value || ''),
+        domain: cookie.domain,
+        path: cookie.path || '/',
+        secure: Boolean(cookie.secure),
+        httpOnly: Boolean(cookie.httpOnly),
+      };
+      if (cookie.sameSite) details.sameSite = cookie.sameSite;
+      if (cookie.expirationDate && Number.isFinite(Number(cookie.expirationDate))) details.expirationDate = Number(cookie.expirationDate);
+      await target.cookies.set(details);
+      copied.add(key);
+    }
+    return { ok: true, copied: copied.size };
+  } catch (error) {
+    // 登录迁移是兼容补救，不能阻止官方页面打开；当前共享会话下通常不会触发。
+    return { ok: false, copied: 0, message: String(error?.message || error || 'cookie_migration_failed').slice(0, 180) };
   }
 }
 
@@ -2105,13 +2260,52 @@ function isVerificationUrl(value, title = '') {
   }
 }
 
-function isLoginUrl(value) {
+function isCommerceLoginRedirectUrl(value) {
   try {
-    const host = new URL(String(value || '')).hostname.toLowerCase();
-    return /^(?:login|passport|havanalogin|pass)\.(?:taobao|tmall|1688)\.com$/i.test(host);
+    const parsed = new URL(String(value || ''));
+    const host = parsed.hostname.toLowerCase();
+    const path = parsed.pathname.toLowerCase();
+    return /(?:taobao|tmall|1688)\.com$/i.test(host)
+      && /(?:^|\/)login_jump(?:\/|$)/i.test(path);
   } catch {
     return false;
   }
+}
+
+function isLoginUrl(value) {
+  try {
+    const parsed = new URL(String(value || ''));
+    const host = parsed.hostname.toLowerCase();
+    return /^(?:login|passport|havanalogin|pass)\.(?:taobao|tmall|1688)\.com$/i.test(host)
+      || isCommerceLoginRedirectUrl(parsed.toString());
+  } catch {
+    return false;
+  }
+}
+
+async function waitForCommerceProductAfterLoginRedirect(webContents, requestedUrl, timeoutMs = 8000) {
+  const expectedKey = detailProductKey(requestedUrl);
+  if (!expectedKey || !webContents?.getURL) return '';
+  const deadline = Date.now() + Math.max(1000, Number(timeoutMs) || 8000);
+  let stableUrl = '';
+  let stableSince = 0;
+  while (Date.now() < deadline) {
+    let current = '';
+    try { current = normalizeNavigationUrl(webContents.getURL() || ''); } catch {}
+    if (!isLoginUrl(current) && detailProductKey(current) === expectedKey) {
+      if (current !== stableUrl) {
+        stableUrl = current;
+        stableSince = Date.now();
+      } else if (Date.now() - stableSince >= 350) {
+        return current;
+      }
+    } else {
+      stableUrl = '';
+      stableSince = 0;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return '';
 }
 
 function isTaobaoWebsiteUrl(value) {
@@ -2120,9 +2314,9 @@ function isTaobaoWebsiteUrl(value) {
 
 function surfaceSite(entry, value) {
   const currentUrl = String(value || '');
-  // 1688 的官方登录链会短暂经过 login.taobao.com；这是阿里统一登录
-  // 的桥接地址，不代表当前标签已经切换成淘宝。
-  if (entry?.loginSite === '1688' && (isLoginUrl(currentUrl) || isTaobaoWebsiteUrl(currentUrl))) return '1688';
+  // 1688 的官方登录链会短暂经过淘宝统一登录或带回跳参数的官方中转页；
+  // 它们不代表当前标签已经切换成淘宝。
+  if (entry?.loginSite === '1688' && (isLoginUrl(currentUrl) || is1688LoginBridgeUrl(currentUrl))) return '1688';
   if (entry?.partition === SESSION_1688_PARTITION && isLoginUrl(currentUrl)) return '1688';
   return safeSite(currentUrl);
 }
@@ -2164,7 +2358,8 @@ function is1688LoginTarget(value) {
     const parsed = new URL(String(value || ''));
     const host = parsed.hostname.toLowerCase().replace(/\.$/, '');
     const direct1688Login = host.endsWith('.1688.com');
-    const targetParam = String(parsed.searchParams.get('target') || parsed.searchParams.get('redirect_url') || '').toLowerCase();
+    const targets1688 = ['target', 'redirect_url', 'redirectUrl', 'Done', 'done', 'return_url', 'returnUrl']
+      .some((name) => encodedValueTargets1688(parsed.searchParams.get(name)));
     const from1688 = String(parsed.searchParams.get('from') || '').toLowerCase() === '1688web';
     // 1688 首页当前使用 login.1688.com/member/signin.htm；登录后有时
     // 还会先跳到 login.taobao.com/jump，再经过 pass.1688.com。只要
@@ -2173,11 +2368,44 @@ function is1688LoginTarget(value) {
     return isLoginUrl(parsed.toString())
       && (direct1688Login
         || String(parsed.searchParams.get('bizName') || '').trim() === '1688'
-        || targetParam.includes('1688.com')
+        || targets1688
         || from1688);
   } catch {
     return false;
   }
+}
+
+function encodedValueTargets1688(value) {
+  let candidate = String(value || '').trim();
+  for (let attempt = 0; candidate && attempt < 3; attempt += 1) {
+    if (/(?:^|[./])1688\.com(?:[/?#:]|$)/i.test(candidate)) return true;
+    try {
+      const decoded = decodeURIComponent(candidate);
+      if (decoded === candidate) break;
+      candidate = decoded;
+    } catch {
+      break;
+    }
+  }
+  return false;
+}
+
+function is1688LoginBridgeUrl(value) {
+  if (!isTaobaoWebsiteUrl(value)) return false;
+  try {
+    const parsed = new URL(String(value || ''));
+    // 登录完成前，阿里统一登录偶尔会短暂经过非 login.* 的淘宝官方页。
+    // 只在 URL 明确声明会回到 1688 时放行，不能把任意淘宝页面带进 1688 会话。
+    if (String(parsed.searchParams.get('from') || '').toLowerCase() === '1688web') return true;
+    return ['target', 'redirect_url', 'redirectUrl', 'Done', 'done', 'return_url', 'returnUrl']
+      .some((name) => encodedValueTargets1688(parsed.searchParams.get(name)));
+  } catch {
+    return false;
+  }
+}
+
+function is1688LoginNavigationUrl(value) {
+  return is1688WebsiteUrl(value) || isLoginUrl(value) || is1688LoginBridgeUrl(value);
 }
 
 function matchesPending1688Navigation(entry, value) {
@@ -2188,18 +2416,17 @@ function matchesPending1688Navigation(entry, value) {
   // 打开 1688 首页时只接受 1688 自身的提交；登录页由显式“登录1688”动作
   // 打开，避免上一轮遗留的淘宝登录页也被误当作新首页完成。
   if (is1688WebsiteUrl(target)) return is1688WebsiteUrl(value);
-  return is1688WebsiteUrl(value) || isLoginUrl(value);
+  return is1688LoginNavigationUrl(value);
 }
 
 function navigationMatchesTarget(entry, value) {
   const target = String(entry?.navigationTarget || entry?.pendingNavigation || '').trim();
   if (!target) return true;
   if (!matchesPending1688Navigation(entry, value)) return false;
-  // 1688 的登录页可能在 login.1688.com 与淘宝统一登录域名之间切换；
-  // 这里只放行 1688 自身页面或已识别的登录域名。不能对登录目标无条件
-  // 返回 true，否则统一登录页跳到 www.taobao.com 的错误页时，会把淘宝内容
-  // 当成 1688 当前页面，造成“地址栏是 1688、页面却是淘宝”的错位。
-  if (is1688LoginTarget(target)) return is1688WebsiteUrl(value) || isLoginUrl(value);
+  // 1688 登录可在 1688、淘宝统一登录和带显式 1688 回跳参数的官方中转页
+  // 之间切换；不能对登录目标无条件返回 true，否则淘宝错误落地页会被当成
+  // 1688 当前页面，造成“地址栏是 1688、页面却是淘宝”的错位。
+  if (is1688LoginTarget(target) || (entry?.loginSite === '1688' && isLoginUrl(target))) return is1688LoginNavigationUrl(value);
   return navigationHostFamily(target) === navigationHostFamily(value);
 }
 
@@ -2372,6 +2599,32 @@ function detailProductKey(value) {
   } catch {
     return '';
   }
+}
+
+// 天猫商品页在客户端切换页面状态时，偶尔会短暂把 location.href 改成
+// detail.tmall.com/.../page/login_jump。此时页面 DOM 仍然是当前商品，
+// 而外层 WebContentsView 的稳定地址仍指向原商品；如果直接把这个临时
+// 路由交给 FastAPI，身份校验会把一份有效快照误判为登录失败。
+// 只在候选稳定地址与请求商品的 detailProductKey 完全一致时修正，不能
+// 用它放宽跨商品保护，也不能把真正停留在登录页的页面伪装成商品页。
+function reconcileCommerceCapturePayload(payload, requestedUrl, candidateUrls = []) {
+  if (!payload || typeof payload !== 'object') return payload;
+  const capturedUrl = [payload.final_url, payload.finalUrl, payload.original_url, payload.originalUrl]
+    .map((value) => normalizeNavigationUrl(value))
+    .find(Boolean);
+  if (!capturedUrl || !isCommerceLoginRedirectUrl(capturedUrl)) return payload;
+  const expectedKey = detailProductKey(requestedUrl);
+  if (!expectedKey) return payload;
+  const stableUrl = [...candidateUrls]
+    .map((value) => normalizeNavigationUrl(value))
+    .filter(Boolean)
+    .find((value) => isDetailUrl(value) && detailProductKey(value) === expectedKey);
+  if (!stableUrl) return payload;
+  return {
+    ...payload,
+    original_url: stableUrl,
+    final_url: stableUrl,
+  };
 }
 
 function redact(value, limit = 24000) {
@@ -2610,12 +2863,12 @@ async function ensureApi() {
   return waitForApi();
 }
 
-async function waitForApi(timeout = 15000) {
+async function waitForApi(timeout = 60000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     try {
       const response = await fetch(`${LOCAL_ORIGIN}/api/app-info`);
-      if (response.ok) return true;
+      if (response.ok && (await response.json()).desktop_session_id === API_SESSION_ID) return true;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
@@ -2629,6 +2882,128 @@ function activeProductEntry(tabId = activeProductTabId) {
 function productEntryForTab(tabId = '') {
   const id = String(tabId || '').trim();
   return id ? productViews.get(id) || null : activeProductEntry();
+}
+
+const MARKETPLACE_LANGUAGE_CHECK_DELAYS_MS = Object.freeze([900, 1400, 2200]);
+const MARKETPLACE_LANGUAGE_FINAL_MODES = new Set(['native', 'plugin', 'plugin_unavailable', 'manual']);
+
+function clearMarketplaceLanguageCheck(entry) {
+  if (!entry) return;
+  if (entry.languageCheckTimer) clearTimeout(entry.languageCheckTimer);
+  entry.languageCheckTimer = null;
+}
+
+function setMarketplaceLanguageState(entry, mode, message = '') {
+  if (!entry) return;
+  entry.languageMode = String(mode || 'not_applicable');
+  entry.languageMessage = String(message || '').trim();
+  if (entry.id === activeProductTabId) {
+    sendSurfaceState({
+      tabId: entry.id,
+      languageMode: entry.languageMode,
+      languageMessage: entry.languageMessage,
+    });
+  }
+}
+
+function resetMarketplaceLanguageState(entry, url = '', revision = entry?.navigationRevision) {
+  if (!entry) return;
+  clearMarketplaceLanguageCheck(entry);
+  const profile = marketplaceLanguageProfile(url);
+  entry.languageFamily = profile?.family || '';
+  entry.languageTargetUrl = normalizeNavigationUrl(url || '');
+  entry.languageNavigationRevision = Number(revision || 0);
+  entry.languageInspectionAttempts = 0;
+  entry.languageAutoRunRevision = 0;
+  entry.languageAutoRunning = false;
+  entry.languageMode = profile ? 'checking' : 'not_applicable';
+  entry.languageMessage = profile ? `正在检查${profile.label}是否提供中文页面…` : '';
+}
+
+function scheduleMarketplaceLanguageCheck(entry, url = '') {
+  if (!entry || !productEntryIsLive(entry) || entry.loadFailed || entry.verification || !entry.pageLoaded) return;
+  const currentUrl = normalizeNavigationUrl(url || entry.url || entry.view?.webContents?.getURL?.() || '');
+  const profile = marketplaceLanguageProfile(currentUrl);
+  if (!profile) return;
+  const revision = Number(entry.navigationRevision || 0);
+  if (entry.languageNavigationRevision !== revision
+    || entry.languageFamily !== profile.family
+    || normalizeNavigationUrl(entry.languageTargetUrl || '') !== currentUrl) {
+    resetMarketplaceLanguageState(entry, currentUrl, revision);
+  }
+  if (MARKETPLACE_LANGUAGE_FINAL_MODES.has(entry.languageMode)
+    || entry.languageAutoRunning
+    || entry.languageAutoRunRevision === revision
+    || entry.languageCheckTimer) return;
+  const attempt = Number(entry.languageInspectionAttempts || 0);
+  if (attempt >= MARKETPLACE_LANGUAGE_CHECK_DELAYS_MS.length) return;
+  const delay = MARKETPLACE_LANGUAGE_CHECK_DELAYS_MS[Math.min(attempt, MARKETPLACE_LANGUAGE_CHECK_DELAYS_MS.length - 1)];
+  entry.languageCheckTimer = setTimeout(() => {
+    entry.languageCheckTimer = null;
+    void resolveMarketplaceLanguage(entry, revision, currentUrl);
+  }, delay);
+}
+
+async function resolveMarketplaceLanguage(entry, revision, targetUrl) {
+  const expectedUrl = normalizeNavigationUrl(targetUrl || '');
+  if (!productNavigationIsCurrent(entry, revision) || entry.loadFailed || entry.verification
+    || normalizeNavigationUrl(entry.languageTargetUrl || '') !== expectedUrl) return;
+  const currentUrl = normalizeNavigationUrl(entry.url || entry.view?.webContents?.getURL?.() || targetUrl || '');
+  const profile = marketplaceLanguageProfile(currentUrl);
+  if (!profile || marketplaceLanguageProfile(targetUrl)?.family !== profile.family) return;
+  entry.languageAutoRunning = true;
+  entry.languageInspectionAttempts = Number(entry.languageInspectionAttempts || 0) + 1;
+  try {
+    const info = await entry.view.webContents.executeJavaScript(PAGE_LANGUAGE_CHECK_SCRIPT, true);
+    if (!productNavigationIsCurrent(entry, revision)
+      || entry.languageNavigationRevision !== revision
+      || normalizeNavigationUrl(entry.languageTargetUrl || '') !== expectedUrl
+      || normalizeNavigationUrl(entry.url || entry.view?.webContents?.getURL?.() || '') !== expectedUrl
+      || marketplaceLanguageProfile(entry.url || currentUrl)?.family !== profile.family) return;
+    if (info?.alreadyTranslated) {
+      entry.languageAutoRunRevision = revision;
+      setMarketplaceLanguageState(entry, 'plugin', `已使用本机翻译插件显示${profile.label}页面`);
+      return;
+    }
+    const insufficientContent = !info?.hasContent || Number(info?.textChars || 0) < 20;
+    if (insufficientContent && entry.languageInspectionAttempts < MARKETPLACE_LANGUAGE_CHECK_DELAYS_MS.length) {
+      entry.languageAutoRunning = false;
+      scheduleMarketplaceLanguageCheck(entry, currentUrl);
+      return;
+    }
+    entry.languageAutoRunRevision = revision;
+    if (marketplaceLanguageLooksChinese(info)) {
+      setMarketplaceLanguageState(entry, 'native', `已使用${profile.label}平台原生中文，无需第三方翻译`);
+      return;
+    }
+    if (!info?.hasContent) {
+      setMarketplaceLanguageState(entry, 'plugin_unavailable', `${profile.label}页面没有可检查的可见文字，暂时无法确认或修改为中文`);
+      return;
+    }
+    setMarketplaceLanguageState(entry, 'translating', `未检测到${profile.label}平台原生中文，正在使用本机翻译插件…`);
+    const result = await translateProductPage(entry.id, { auto: true, expectedRevision: revision, expectedUrl });
+    if (!productNavigationIsCurrent(entry, revision)
+      || entry.languageNavigationRevision !== revision
+      || normalizeNavigationUrl(entry.languageTargetUrl || '') !== expectedUrl
+      || normalizeNavigationUrl(entry.url || entry.view?.webContents?.getURL?.() || '') !== expectedUrl) return;
+    if (result?.ok && result?.translated) {
+      const scope = result.truncated ? '当前可见部分' : '当前可见文字';
+      setMarketplaceLanguageState(entry, 'plugin', `${profile.label}未提供可识别的原生中文，已用本机翻译插件翻译${scope}`);
+    } else {
+      const detail = String(result?.message || '本机翻译插件未能应用').trim();
+      setMarketplaceLanguageState(entry, 'plugin_unavailable', `${profile.label}未提供可识别的原生中文，自动翻译未能应用：${detail}`);
+    }
+  } catch (error) {
+    if (!productNavigationIsCurrent(entry, revision)
+      || entry.languageNavigationRevision !== revision
+      || normalizeNavigationUrl(entry.languageTargetUrl || '') !== expectedUrl) return;
+    entry.languageAutoRunRevision = revision;
+    const detail = String(error?.message || '页面语言检查失败').trim();
+    setMarketplaceLanguageState(entry, 'plugin_unavailable', `${profile.label}的中文处理失败：${detail}`);
+  } finally {
+    if (entry.languageNavigationRevision === revision
+      && normalizeNavigationUrl(entry.languageTargetUrl || '') === expectedUrl) entry.languageAutoRunning = false;
+  }
 }
 
 function browserSurfaceState(entry) {
@@ -2705,6 +3080,50 @@ const PAGE_TRANSLATION_COLLECT_SCRIPT = [
   '  return { active: false, segments, truncated };',
   '})()',
 ].join('\n');
+
+// 先读取页面自己的语言声明和当前视口已经渲染的可见文字。这个检查只在
+// 跨境平台页完成加载后运行，不改写页面，也不把页面内容发给任何服务。
+const PAGE_LANGUAGE_CHECK_SCRIPT = String.raw`(() => {
+  const body = document.body;
+  if (!body) return { languageTag: '', chineseChars: 0, foreignChars: 0, textChars: 0, hasContent: false, alreadyTranslated: false };
+  const blockedSelector = 'script,style,noscript,template,svg,canvas,video,audio,textarea,input,select,option,[contenteditable="true"],[aria-hidden="true"],[data-xiaomei-no-translate]';
+  const isVisible = (element) => {
+    if (!element || !element.closest || element.closest(blockedSelector)) return false;
+    let style;
+    try { style = window.getComputedStyle(element); } catch { return false; }
+    if (!style || style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+  const parts = [];
+  const walker = document.createTreeWalker(body, window.NodeFilter ? window.NodeFilter.SHOW_TEXT : 4);
+  let node;
+  let chars = 0;
+  while ((node = walker.nextNode())) {
+    if (parts.length >= 180 || chars >= 16000) break;
+    if (!isVisible(node.parentElement)) continue;
+    const normalized = String(node.nodeValue || '').replace(/\s+/g, ' ').trim();
+    if (normalized.length < 2) continue;
+    parts.push(normalized.slice(0, 1000));
+    chars += normalized.length;
+  }
+  const renderedText = String(body.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 16000);
+  const text = renderedText || parts.join(' ');
+  const languageValues = [
+    document.documentElement?.lang,
+    body.lang,
+    ...Array.from(document.querySelectorAll('meta[http-equiv="content-language"],meta[property="og:locale"],meta[name="language"]')).map((meta) => meta.content),
+  ].map((value) => String(value || '').trim()).filter(Boolean);
+  const languageTag = languageValues.find((value) => /^zh(?:[-_]|$)/i.test(value)) || languageValues[0] || '';
+  return {
+    languageTag,
+    chineseChars: (text.match(/[\u3400-\u9fff]/g) || []).length,
+    foreignChars: (text.match(/[A-Za-z\u00c0-\u024f\u0370-\u03ff\u0400-\u04ff\u3040-\u30ff]/g) || []).length,
+    textChars: text.length,
+    hasContent: Boolean(text.trim()),
+    alreadyTranslated: Boolean(window.__xiaomeiPageTranslationState?.active),
+  };
+})()`;
 
 const PAGE_TRANSLATION_RESTORE_SCRIPT = [
   '(() => {',
@@ -2835,11 +3254,18 @@ async function clearPageTranslationState(webContents) {
   } catch {}
 }
 
-async function translateProductPage(tabId = '') {
+async function translateProductPage(tabId = '', options = {}) {
   const entry = productEntryForTab(tabId);
   const webContents = entry?.view?.webContents;
   if (!entry || !webContents || webContents.isDestroyed()) {
     return { ok: false, code: 'no_page', message: '当前没有可翻译的官方页面' };
+  }
+  const expectedRevision = Number(options?.expectedRevision || 0);
+  const expectedUrl = normalizeNavigationUrl(options?.expectedUrl || '');
+  const expectedPageIsCurrent = () => (!expectedRevision || productNavigationIsCurrent(entry, expectedRevision))
+    && (!expectedUrl || normalizeNavigationUrl(entry.url || webContents.getURL?.() || '') === expectedUrl);
+  if (!expectedPageIsCurrent()) {
+    return { ok: false, code: 'stale_page', stale: true, message: '页面已切换，未继续翻译旧页面' };
   }
   const endpoint = translationEndpointConfig();
   if (!endpoint.ok) return endpoint;
@@ -2849,7 +3275,12 @@ async function translateProductPage(tabId = '') {
       true,
     );
     if (alreadyTranslated) {
+      if (options?.auto) {
+        return { ok: true, translated: true, alreadyTranslated: true, count: 0, message: '当前页面已经由本机翻译插件处理' };
+      }
       const restored = await webContents.executeJavaScript(PAGE_TRANSLATION_RESTORE_SCRIPT, true);
+      const profile = marketplaceLanguageProfile(entry.url || webContents.getURL?.());
+      if (profile) setMarketplaceLanguageState(entry, 'manual', `已恢复${profile.label}页面原文，可重新点击“翻译中文”`);
       return {
         ok: true,
         translated: false,
@@ -2859,6 +3290,10 @@ async function translateProductPage(tabId = '') {
       };
     }
     const collected = await webContents.executeJavaScript(PAGE_TRANSLATION_COLLECT_SCRIPT, true);
+    if (!expectedPageIsCurrent()) {
+      await clearPageTranslationState(webContents);
+      return { ok: false, code: 'stale_page', stale: true, message: '页面已切换，未继续翻译旧页面' };
+    }
     const segments = Array.isArray(collected?.segments)
       ? collected.segments
         .map((item) => ({ index: Number(item?.index), text: String(item?.text || '').trim() }))
@@ -2883,21 +3318,33 @@ async function translateProductPage(tabId = '') {
     const updates = segments
       .map((segment) => ({ index: segment.index, text: translatedByText.get(segment.text) || '' }))
       .filter((item) => item.text);
+    if (!expectedPageIsCurrent()) {
+      await clearPageTranslationState(webContents);
+      return { ok: false, code: 'stale_page', stale: true, message: '页面已切换，未继续翻译旧页面' };
+    }
     const applied = await webContents.executeJavaScript(pageTranslationApplyScript(updates), true);
     if (!applied?.ok || !Number(applied.count)) {
       await clearPageTranslationState(webContents);
       return { ok: false, code: 'translation_not_applied', message: '翻译结果暂未能应用到当前页面，请刷新后重试' };
+    }
+    const message = collected?.truncated
+      ? '已将页面中的部分外文翻译为中文'
+      : '已将当前页面外文翻译为中文';
+    if (!options?.auto) {
+      const profile = marketplaceLanguageProfile(entry.url || webContents.getURL?.());
+      if (profile) setMarketplaceLanguageState(entry, 'plugin', `${profile.label}页面已由本机翻译插件处理`);
     }
     return {
       ok: true,
       translated: true,
       count: Number(applied.count) || 0,
       truncated: Boolean(collected?.truncated),
-      message: collected?.truncated
-        ? '已将页面中的部分外文翻译为中文'
-        : '已将当前页面外文翻译为中文',
+      message,
     };
   } catch (error) {
+    if (!expectedPageIsCurrent()) {
+      return { ok: false, code: 'stale_page', stale: true, message: '页面已切换，未继续翻译旧页面' };
+    }
     await clearPageTranslationState(webContents);
     const rawMessage = String(error?.message || '').trim();
     const serviceUnavailable = /failed to fetch|fetch failed|econnrefused|networkerror|aborted|连接被拒绝|无法连接/i.test(rawMessage);
@@ -3022,16 +3469,7 @@ async function syncProductSurfaceBoundsFromRenderer() {
     const bounds = await mainWindow.webContents.executeJavaScript(`(() => {
       const frame = document.getElementById('frame-commerce-analysis');
       if (!frame || !frame.classList.contains('active')) return null;
-      const surface = frame.contentDocument?.getElementById('commerceBrowserSurface');
-      if (!surface) return null;
-      const frameRect = frame.getBoundingClientRect();
-      const surfaceRect = surface.getBoundingClientRect();
-      return {
-        x: frameRect.left + surfaceRect.left,
-        y: frameRect.top + surfaceRect.top,
-        width: surfaceRect.width,
-        height: surfaceRect.height,
-      };
+      return frame.contentWindow?.xiaomeiCommerceSurfaceBounds?.() || null;
     })()`, true);
     if (!hasUsableSurfaceBounds(bounds)) return false;
     updateViewBounds(bounds, activeProductTabId);
@@ -3108,6 +3546,9 @@ function sendSurfaceState(extra = {}) {
     ready: Boolean(stateEntry?.pageLoaded),
     verification: Boolean(verification),
     verificationMessage: verification ? `当前是${site}官方验证页面，请手动完成验证；小美不会自动跳转。` : '',
+    languageFamily: String(stateEntry?.languageFamily || ''),
+    languageMode: String(stateEntry?.languageMode || 'not_applicable'),
+    languageMessage: String(stateEntry?.languageMessage || ''),
     ...browserSurfaceState(stateEntry),
     ...extra,
     // These values describe the committed document and must not be overridden
@@ -3137,6 +3578,29 @@ const TRANSIENT_COMMERCE_NAVIGATION_ERROR_CODES = new Set([
   -118, // ERR_CONNECTION_TIMED_OUT
   -324, // ERR_EMPTY_RESPONSE
 ]);
+const CHROMIUM_NAVIGATION_ERROR_CODES = Object.freeze({
+  ERR_FAILED: -2,
+  ERR_ABORTED: -3,
+  ERR_TIMED_OUT: -7,
+  ERR_CONNECTION_RESET: -101,
+  ERR_CONNECTION_REFUSED: -102,
+  ERR_CONNECTION_FAILED: -104,
+  ERR_NAME_NOT_RESOLVED: -105,
+  ERR_INTERNET_DISCONNECTED: -106,
+  ERR_CONNECTION_TIMED_OUT: -118,
+  ERR_EMPTY_RESPONSE: -324,
+});
+
+function navigationErrorCode(error) {
+  const rawCode = error?.errno ?? error?.errorCode ?? error?.code;
+  const directCode = Number(rawCode);
+  if (Number.isInteger(directCode)) return directCode;
+  const message = `${String(rawCode || '')} ${String(error?.message || error || '')}`;
+  const numericMatch = message.match(/\((-?\d+)\)/);
+  if (numericMatch) return Number(numericMatch[1]);
+  const nameMatch = message.match(/(?:net::)?(ERR_[A-Z_]+)/i);
+  return nameMatch ? (CHROMIUM_NAVIGATION_ERROR_CODES[String(nameMatch[1]).toUpperCase()] ?? NaN) : NaN;
+}
 const COMMERCE_NAVIGATION_RETRY_DELAY_MS = 500;
 
 function clearProductNavigationRetry(entry, { resetCount = true } = {}) {
@@ -3186,6 +3650,7 @@ function retryProductNavigation(entry, attemptedUrl, errorCode) {
         navigationRevision: next.navigationRevision,
         attemptedUrl: next.targetUrl,
         message: redact(error?.message || '页面加载失败'),
+        errorCode: navigationErrorCode(error),
       });
     });
   }, COMMERCE_NAVIGATION_RETRY_DELAY_MS);
@@ -3212,6 +3677,21 @@ function failProductNavigation(entry, {
   entry.domReady = false;
   entry.loadFailed = true;
   entry.verification = false;
+  clearMarketplaceLanguageCheck(entry);
+  const failedLanguageProfile = marketplaceLanguageProfile(entry.navigationTarget || entry.pendingNavigation || attemptedUrl || entry.url);
+  if (failedLanguageProfile) {
+    entry.languageFamily = failedLanguageProfile.family;
+    entry.languageTargetUrl = normalizeNavigationUrl(attemptedUrl || entry.url);
+    entry.languageNavigationRevision = Number(navigationRevision || 0);
+    entry.languageAutoRunRevision = Number(navigationRevision || 0);
+    entry.languageMode = 'plugin_unavailable';
+    entry.languageMessage = `${failedLanguageProfile.label}页面加载失败，未能检查或修改为中文`;
+  } else {
+    entry.languageFamily = '';
+    entry.languageTargetUrl = '';
+    entry.languageMode = 'not_applicable';
+    entry.languageMessage = '';
+  }
   entry.requestedUrl = '';
   entry.pendingNavigation = '';
   entry.navigationTarget = '';
@@ -3238,7 +3718,15 @@ function updateViewBounds(bounds, tabId = activeProductTabId) {
   if (!id) return;
   const entry = productViews.get(id);
   if (!entry || !mainWindow || !bounds) return;
-  const numeric = ['x', 'y', 'width', 'height'].reduce((out, key) => { const value = Number(bounds[key]); out[key] = Number.isFinite(value) ? Math.round(value) : 0; return out; }, {});
+  const raw = ['x', 'y', 'width', 'height'].reduce((out, key) => { const value = Number(bounds[key]); out[key] = Number.isFinite(value) ? value : NaN; return out; }, {});
+  if (!Object.values(raw).every(Number.isFinite)) return;
+  // WebContentsView 是顶层原生视图，不能因小数像素被四舍五入到工作区外。
+  // 左/上边界向内取整，右/下边界向内收齐，确保网页不会压住应用侧栏或工具栏。
+  const left = Math.ceil(raw.x);
+  const top = Math.ceil(raw.y);
+  const right = Math.floor(raw.x + raw.width);
+  const bottom = Math.floor(raw.y + raw.height);
+  const numeric = { x: left, y: top, width: right - left, height: bottom - top };
   if (numeric.width < 80 || numeric.height < 80) return;
   lastSurfaceBounds = numeric;
   entry.view.setBounds(numeric);
@@ -3295,7 +3783,11 @@ function shouldPromote1688Login(entry, targetUrl) {
 }
 
 function shouldRecover1688LoginLanding(entry, targetUrl) {
-  return entry?.loginSite === '1688' && isTaobaoWebsiteUrl(targetUrl);
+  // 有明确 1688 回跳参数的淘宝官方页仍是单点登录链的一环，不能把它当作
+  // 错误落地页提前打断；没有回跳声明的淘宝页面则继续恢复到 1688 首页。
+  return entry?.loginSite === '1688'
+    && isTaobaoWebsiteUrl(targetUrl)
+    && !is1688LoginBridgeUrl(targetUrl);
 }
 
 function recover1688LoginLanding(entry) {
@@ -3325,6 +3817,7 @@ function beginProductNavigation(entry, value, { preserveRetry = false } = {}) {
   entry.loading = true;
   entry.loadFailed = false;
   entry.verification = false;
+  resetMarketplaceLanguageState(entry, targetUrl, navigationRevision);
   setProductViewVisibilityState(entry, false);
   refreshProductViewVisibility();
   sendSurfaceState({ tabId: entry.id, title: '', ready: false, loading: true });
@@ -3359,7 +3852,7 @@ function attachProductView(entry) {
   });
   view.webContents.on('console-message', (_event, _level, message) => {
     const value = String(message || '').trim();
-    if (value === '__XIAOMEI_DABI_STOP__') stopActiveDabiCollection(entry);
+    if (value === '__XIAOMEI_COMMERCE_STOP__') stopActiveCommerceCollection(entry);
   });
   view.webContents.setWindowOpenHandler(({ url }) => {
     if (shouldRecover1688LoginLanding(entry, url)) {
@@ -3378,6 +3871,7 @@ function attachProductView(entry) {
           navigationRevision: next.navigationRevision,
           attemptedUrl: next.targetUrl,
           message: redact(error?.message || '页面加载失败'),
+          errorCode: navigationErrorCode(error),
         });
       });
       return { action: 'deny' };
@@ -3392,6 +3886,7 @@ function attachProductView(entry) {
             navigationRevision: next.navigationRevision,
             attemptedUrl: next.targetUrl,
             message: redact(error?.message || '页面加载失败'),
+            errorCode: navigationErrorCode(error),
           });
         });
       } else {
@@ -3409,11 +3904,13 @@ function attachProductView(entry) {
         navigationRevision: next.navigationRevision,
         attemptedUrl: next.targetUrl,
         message: redact(error?.message || '页面加载失败'),
+        errorCode: navigationErrorCode(error),
       });
     });
     return { action: 'deny' };
   });
-  view.webContents.on('will-frame-navigate', (event, url, isMainFrame) => {
+  view.webContents.on('will-frame-navigate', (event) => {
+    const { url, isMainFrame } = event;
     if (!isMainFrame && shouldRecover1688LoginLanding(entry, url)) {
       event.preventDefault();
       recover1688LoginLanding(entry);
@@ -3473,7 +3970,7 @@ function attachProductView(entry) {
     }
     // 1688 若把首页主框架重定向到统一登录页，也走同一个显式顶层登录
     // 路径，确保新的 navigationTarget 先建立，再允许登录页提交。
-    if (is1688WebsiteUrl(entry.navigationTarget) && isLoginUrl(normalized)) {
+    if (shouldPromote1688Login(entry, normalized)) {
       event.preventDefault();
       promote1688LoginToTopLevel(entry, normalized);
       return;
@@ -3491,7 +3988,7 @@ function attachProductView(entry) {
       releaseProductNetworkCapture(entry);
       applyCommerceUserAgent(entry, normalized);
     }
-    // 后退/前进由 Electron 的 navigationHistory 发起。达比会让这类导航
+    // 后退/前进由 Electron 的 navigationHistory 发起。应用会让这类导航
     // 穿过普通的“不同商品开新标签”拦截逻辑，否则浏览器后退会被误判成新商品。
     if (entry.historyTraversal) { entry.networkCapture?.reset?.(); entry.pendingNavigation = ''; return; }
     if (entry.pendingNavigation && entry.pendingNavigation === normalized) { entry.networkCapture?.reset?.(); entry.pendingNavigation = ''; return; }
@@ -3523,6 +4020,7 @@ function attachProductView(entry) {
   });
   view.webContents.on('did-navigate', (_event, url) => {
     const normalized = normalizeNavigationUrl(url);
+    const previousUrl = normalizeNavigationUrl(entry.url || '');
     if (!navigationEventMatchesCurrent(entry, normalized)) return;
     if (shouldRecover1688LoginLanding(entry, normalized)) {
       recover1688LoginLanding(entry);
@@ -3534,6 +4032,7 @@ function attachProductView(entry) {
     }
     if (entry.navigationTarget || entry.pendingNavigation) entry.navigationStartedRevision = Number(entry.navigationRevision || 0);
     if (!commitProductNavigation(entry, normalized)) return;
+    if (normalized !== previousUrl) resetMarketplaceLanguageState(entry, normalized, entry.navigationRevision);
     entry.historyTraversal = false;
     const title = view.webContents.getTitle();
     if (entry.loginSite === '1688' && is1688WebsiteUrl(normalized)) entry.loginSite = '';
@@ -3552,6 +4051,7 @@ function attachProductView(entry) {
   });
   view.webContents.on('did-navigate-in-page', (_event, url, isMainFrame) => {
     const normalized = normalizeNavigationUrl(url);
+    const previousUrl = normalizeNavigationUrl(entry.url || '');
     if (!navigationEventMatchesCurrent(entry, normalized)) return;
     if (shouldRecover1688LoginLanding(entry, normalized)) {
       recover1688LoginLanding(entry);
@@ -3563,6 +4063,7 @@ function attachProductView(entry) {
     }
     if (entry.navigationTarget || entry.pendingNavigation) entry.navigationStartedRevision = Number(entry.navigationRevision || 0);
     if (!commitProductNavigation(entry, normalized)) return;
+    if (normalized !== previousUrl) resetMarketplaceLanguageState(entry, normalized, entry.navigationRevision);
     const fromHistory = Boolean(entry.historyTraversal);
     entry.historyTraversal = false;
     const title = view.webContents.getTitle();
@@ -3597,6 +4098,7 @@ function attachProductView(entry) {
             navigationRevision: restore.navigationRevision,
             attemptedUrl: restore.targetUrl,
             message: redact(error?.message || '页面加载失败'),
+            errorCode: navigationErrorCode(error),
           });
         });
       }
@@ -3612,6 +4114,7 @@ function attachProductView(entry) {
     if (!isDetailUrl(normalized) && !entry.restoringNavigation) entry.stableUrl = normalized;
     if (entry.id === activeProductTabId) productUrl = normalized;
     sendSurfaceState({ tabId: entry.id, url: normalized, title, verification: false });
+    scheduleMarketplaceLanguageCheck(entry, normalized);
   });
   view.webContents.on('dom-ready', () => {
     if (!productEntryIsLive(entry) || navigationIsBlocked(entry)) return;
@@ -3664,6 +4167,7 @@ function attachProductView(entry) {
     refreshProductViewVisibility();
     if (entry.id === activeProductTabId) scheduleCommerceSurfaceResync();
     sendSurfaceState({ tabId: entry.id, url: current || entry.url, title, verification: entry.verification });
+    if (!entry.verification) scheduleMarketplaceLanguageCheck(entry, current);
   });
   view.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     if (!isMainFrame || Number(errorCode) === -3) return;
@@ -3727,6 +4231,7 @@ function attachProductView(entry) {
       entry.navigationTarget = '';
       refreshProductViewVisibility();
     }
+    if (!entry.verification) scheduleMarketplaceLanguageCheck(entry, current);
     sendSurfaceState({ tabId: entry.id });
   });
   view.webContents.on('page-title-updated', (_event, title) => {
@@ -3743,10 +4248,11 @@ function attachProductView(entry) {
 function disposeProductView(entry) {
   if (!entry) return;
   clearProductNavigationRetry(entry);
+  clearMarketplaceLanguageCheck(entry);
   releaseProductNetworkCapture(entry);
   setProductViewVisibilityState(entry, false);
   try { mainWindow?.contentView?.removeChildView(entry.view); } catch {}
-  try { if (!entry.view.webContents.isDestroyed()) entry.view.webContents.destroy(); } catch {}
+  try { if (!entry.view.webContents.isDestroyed()) entry.view.webContents.close(); } catch {}
 }
 
 function ensureProductView(tabId = 'commerce-default', options = {}) {
@@ -3754,7 +4260,7 @@ function ensureProductView(tabId = 'commerce-default', options = {}) {
   const existing = productViews.get(id);
   const hasPartitionHint = Boolean(options && (options.partition || options.kind || options.site || options.url));
   const requestedPartition = hasPartitionHint
-    ? String(options.partition || commerceSessionPartition(options.kind, options.site, options.url))
+    ? String(options.partition || commerceSessionPartition(options.kind, options.site, options.url, existing?.partition))
     : existing?.partition || TAOBAO_SESSION_PARTITION;
   if (existing && existing.partition === requestedPartition) return existing;
   if (existing) {
@@ -3764,7 +4270,7 @@ function ensureProductView(tabId = 'commerce-default', options = {}) {
   }
   const view = new WebContentsView({ webPreferences: { partition: requestedPartition, contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false } });
   try { view.webContents.setBackgroundThrottling(false); } catch {}
-  const entry = { id, view, partition: requestedPartition, defaultUserAgent: String(view.webContents.getUserAgent?.() || ''), url: '', requestedUrl: '', stableUrl: '', pendingNavigation: '', navigationTarget: '', navigationSourceUrl: '', navigationRevision: 0, committedNavigationRevision: 0, blockedNavigationRevision: 0, navigationStartedRevision: 0, navigationRetryCount: 0, navigationRetryTimer: null, retryingNavigation: false, restoreUrl: '', restoringNavigation: false, historyTraversal: false, loading: false, loadFailed: false, kind: 'home', loginSite: '', recovering1688Login: false, pageLoaded: false, domReady: false, verification: false, visible: false, lastRequestedKey: '', lastRequestedAt: 0, lastInPageKey: '', lastInPageAt: 0, networkCapture: null, promoting1688Login: false };
+  const entry = { id, view, partition: requestedPartition, defaultUserAgent: String(view.webContents.getUserAgent?.() || ''), url: '', requestedUrl: '', stableUrl: '', pendingNavigation: '', navigationTarget: '', navigationSourceUrl: '', navigationRevision: 0, committedNavigationRevision: 0, blockedNavigationRevision: 0, navigationStartedRevision: 0, navigationRetryCount: 0, navigationRetryTimer: null, retryingNavigation: false, restoreUrl: '', restoringNavigation: false, historyTraversal: false, loading: false, loadFailed: false, kind: 'home', loginSite: '', recovering1688Login: false, pageLoaded: false, domReady: false, verification: false, visible: false, lastRequestedKey: '', lastRequestedAt: 0, lastInPageKey: '', lastInPageAt: 0, networkCapture: null, promoting1688Login: false, languageFamily: '', languageTargetUrl: '', languageNavigationRevision: 0, languageInspectionAttempts: 0, languageAutoRunRevision: 0, languageAutoRunning: false, languageCheckTimer: null, languageMode: 'not_applicable', languageMessage: '' };
   productViews.set(id, entry);
   mainWindow.contentView.addChildView(view);
   setProductViewVisibilityState(entry, false);
@@ -3780,6 +4286,7 @@ function activateProductView(tabId, options = {}) {
   hideProductViews();
   refreshProductViewVisibility();
   if (lastSurfaceBounds) updateViewBounds(lastSurfaceBounds, entry.id);
+  if (entry.pageLoaded) scheduleMarketplaceLanguageCheck(entry);
   return entry;
 }
 
@@ -3788,9 +4295,12 @@ async function loadProduct(url, tabId = 'commerce-default', kind = '') {
   if (!navigationHostAllowed(requestedEntryUrl)) throw new Error('官方页面域名不在白名单内');
   const requestedUrl = normalizeNavigationUrl(requestedEntryUrl);
   const requestedKind = kind || (isDetailUrl(requestedUrl) ? 'detail' : 'home');
-  const entry = activateProductView(tabId, { kind: requestedKind, url: requestedUrl });
+  const partition = commerceSessionPartition(requestedKind, '', requestedUrl, productViews.get(String(tabId))?.partition);
+  if (partition === SESSION_1688_PARTITION) await migrateLegacy1688Cookies();
+  const entry = activateProductView(tabId, { kind: requestedKind, url: requestedUrl, partition });
   const requested1688Login = requestedKind === 'login'
-    && (is1688LoginTarget(requestedUrl) || is1688WebsiteUrl(requestedUrl));
+    && partition === SESSION_1688_PARTITION
+    && is1688LoginNavigationUrl(requestedUrl);
   entry.kind = requestedKind;
   entry.loginSite = requested1688Login ? '1688' : '';
   entry.recovering1688Login = false;
@@ -3827,6 +4337,7 @@ async function loadProduct(url, tabId = 'commerce-default', kind = '') {
       navigationRevision,
       attemptedUrl: requestedUrl,
       message: redact(error?.message || '页面加载失败'),
+      errorCode: navigationErrorCode(error),
     });
     if (outcome === 'retrying') {
       return { ok: false, retrying: true, url: entry.url || '', tabId: entry.id };
@@ -3934,6 +4445,7 @@ function reloadProduct(tabId = '', options = {}) {
           navigationRevision,
           attemptedUrl: targetUrl,
           message: redact(error?.message || '刷新页面失败'),
+          errorCode: navigationErrorCode(error),
         });
       });
     }
@@ -3949,6 +4461,7 @@ function reloadProduct(tabId = '', options = {}) {
       navigationRevision,
       attemptedUrl: targetUrl,
       message: redact(error?.message || '刷新页面失败'),
+      errorCode: navigationErrorCode(error),
     });
     return { ok: false, message: error.message || '刷新页面失败' };
   }
@@ -4070,7 +4583,7 @@ function sessionStatus(tabId = activeProductTabId) {
 }
 
 async function clearCommerceSession() {
-  const commercePartitions = [TAOBAO_SESSION_PARTITION, SESSION_1688_PARTITION];
+  const commercePartitions = [...new Set([TAOBAO_SESSION_PARTITION, SESSION_1688_PARTITION])];
   await Promise.all(commercePartitions.map(async (partition) => {
     const commerceSession = session.fromPartition(partition);
     await commerceSession.clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage'] });
@@ -4099,7 +4612,7 @@ async function clearCommerceSession() {
     ...sessionStatus(),
     state: 'cleared',
     clearedProfile: 'taobao-1688',
-    message: '已清除淘宝/1688独立会话，不会影响千牛工作台公司账号',
+    message: '已清除淘宝/1688共享电商会话，不会影响千牛工作台公司账号',
   };
 }
 
@@ -4250,18 +4763,23 @@ async function captureProduct(options = {}) {
   if (requestedTabId && !entry) return { ok: false, status: 'tab_not_found', message: '当前商品标签页不存在或已关闭' };
   const webContents = entry?.view?.webContents || productView?.webContents;
   if (!webContents) return { ok: false, message: '桌面商品页面尚未打开' };
-  const current = webContents.getURL();
+  let current = webContents.getURL();
+  const requestedUrl = entry?.url || entry?.requestedUrl || productUrl || current;
+  if (isCommerceLoginRedirectUrl(current)) {
+    const recoveredUrl = await waitForCommerceProductAfterLoginRedirect(webContents, requestedUrl);
+    if (recoveredUrl) current = recoveredUrl;
+  }
   if (!hostAllowed(current)) return { ok: false, message: '当前页面不是允许的商品页' };
   if (isLoginUrl(current)) return { ok: false, status: 'login_required', message: `当前仍在${safeSite(current)}官方登录页，请完成登录后再采集商品` };
   if (isVerificationUrl(current, webContents.getTitle())) return { ok: false, status: 'verification_required', message: `当前是${safeSite(current)}官方验证页面，请手动完成验证后再采集商品` };
-  if (activeDabiCollections.has(webContents.id)) return { ok: false, status: 'running', message: '桌面智能体正在操作，请等待当前采集完成' };
+  if (activeCommerceCollections.has(webContents.id)) return { ok: false, status: 'running', message: '桌面智能体正在操作，请等待当前采集完成' };
   const collectionToken = { cancelled: false, stopMessage: '' };
-  activeDabiCollections.set(webContents.id, collectionToken);
+  activeCommerceCollections.set(webContents.id, collectionToken);
   const requestedModule = String(options?.module || '').trim();
   const combinedReviewsAndQuestions = requestedModule === 'reviews_questions';
   const baseModules = ['images', 'detail', 'sku', 'videos'];
   const baseOnly = !requestedModule || requestedModule === 'base';
-  const interactionMode = INTERACTIVE_DABI_MODULES.has(requestedModule) ? 'visible' : 'passive';
+  const interactionMode = INTERACTIVE_COMMERCE_MODULES.has(requestedModule) ? 'visible' : 'passive';
   const collectionTrigger = String(options?.trigger || (baseOnly ? 'auto_open' : 'resource_click')).trim() || 'resource_click';
   const modulesToCollect = combinedReviewsAndQuestions
     ? ['reviews', 'questions']
@@ -4269,13 +4787,13 @@ async function captureProduct(options = {}) {
       ? [requestedModule]
       : [];
   // 基础采集只读取商品页初始化状态和可见基础内容；用户点击评价/问大家
-  // 资源卡后，才由达比式可见操作链截图识别固定目标，使用 CDP 鼠标点击/滚轮
+  // 资源卡后，才由可见操作链截图识别固定目标，使用 CDP 鼠标点击/滚轮
   // 打开目标模块并监听对应 mtop 响应。只读操作不触碰登录凭据、订单、购物车或商品编辑控件。
   const collection = {
     ok: true,
     actions: [],
-    mode: 'dabi-network',
-    source: 'electron-dabi-network',
+    mode: 'commerce-network',
+    source: 'electron-commerce-network',
     fastMode: true,
     modules: {},
     agent: interactionMode === 'visible' ? 'cdp-screenshot-mouse-keyboard' : 'none',
@@ -4291,7 +4809,7 @@ async function captureProduct(options = {}) {
     interactionMode,
     trigger: collectionTrigger,
     message: baseOnly
-      ? '正在自动读取商品信息、主图、详情、SKU 和视频；评价和问大家仅保留数量…'
+      ? '正在自动读取商品信息、主图、详情、SKU 和视频；评价、问大家、运营报表和人群结构按需采集…'
       : interactionMode === 'visible'
         ? combinedReviewsAndQuestions
           ? '已启动桌面智能体，准备采集评价和问大家…'
@@ -4309,7 +4827,7 @@ async function captureProduct(options = {}) {
   let ownsNetworkCapture = false;
   if (!networkCapture && entry) networkCapture = ensureProductNetworkCapture(entry);
   if (!networkCapture) {
-    networkCapture = createDabiNetworkCapture(webContents);
+    networkCapture = createCommerceNetworkCapture(webContents);
     ownsNetworkCapture = true;
   }
   const captureStartCounts = Object.fromEntries(
@@ -4319,13 +4837,29 @@ async function captureProduct(options = {}) {
     ? () => networkCapture.dispose().catch(() => {})
     : () => Promise.resolve();
   await networkCapture.ready.catch(() => null);
+  // 商品基础采集只需要等待已经发出的详情响应；响应体读取异常时不能把整次
+  // 采集卡住。评价/问大家的可见采集仍使用自己的完整等待策略。
+  const settleNetwork = async (milliseconds = 450, timeoutMs = 1200) => {
+    let timer = null;
+    const settlePromise = (async () => {
+      try { await networkCapture.settle(milliseconds); } catch {}
+    })();
+    try {
+      await Promise.race([
+        settlePromise,
+        new Promise((resolve) => { timer = setTimeout(resolve, Math.max(0, Number(timeoutMs) || 0)); }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
   // 只有评价/问大家正文采集需要可见鼠标键盘操作。打开商品页的基础读取
   // 只使用页面状态、DOM 和网络响应，不创建可视化 Agent，也不显示遮罩。
   let visibleAgent = null;
   if (interactionMode === 'visible') {
     // 先完成 CDP 调试器初始化，再创建可见操作 Agent，避免两个初始化协程
     // 同时 attach 同一个 WebContents，导致偶发丢失 Network 响应监听。
-    visibleAgent = createDabiVisibleAgent(webContents, {
+    visibleAgent = createCommerceVisibleAgent(webContents, {
       isBackgrounded: () => {
         try {
           return Boolean(
@@ -4342,9 +4876,9 @@ async function captureProduct(options = {}) {
     });
     await visibleAgent.ready.catch(() => null);
   }
-  let dabiState = {};
+  let commerceState = {};
   try {
-    dabiState = await webContents.executeJavaScript(ELECTRON_DABI_PRODUCT_STATE_SCRIPT, true) || {};
+    commerceState = await webContents.executeJavaScript(ELECTRON_COMMERCE_PRODUCT_STATE_SCRIPT, true) || {};
   } catch {
     // 淘宝旧模板可能没有页面初始化状态，继续使用同一次可见 DOM 读取。
   }
@@ -4365,7 +4899,7 @@ async function captureProduct(options = {}) {
   try {
     payload = await webContents.executeJavaScript(String.raw`(() => {
       // 商品基础字段来自页面初始化状态和下方的单次可见读取；评价/问大家
-      // 正文只允许由达笔触发的 mtop 响应提供，不保留旧版 body 扫描兜底。
+      // 正文只允许由当前采集动作触发的 mtop 响应提供，不保留旧版 body 扫描兜底。
     const visible = (node) => { if (!node) return false; const r = node.getBoundingClientRect(); const s = getComputedStyle(node); return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden'; };
      const tidy = (value, limit = 6000) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
      const absolute = (value) => { try { return new URL(value, location.href).href; } catch { return ''; } };
@@ -4412,18 +4946,28 @@ async function captureProduct(options = {}) {
     })()`, true);
   } catch {
     // 可见 DOM 在淘宝模板切换或 WebContentsView 切换瞬间可能暂时不可执行；
-    // 达比式初始化状态已经包含商品、主图、视频和 SKU，不能因此丢弃整次采集。
+    // 页面初始化状态已经包含商品、主图、视频和 SKU，不能因此丢弃整次采集。
     collection.domFallback = true;
   }
-  const visibleMaxPasses = Number(process.env.XIAOMEI_DABI_VISIBLE_SCROLL_PASSES || 40);
-  const visibleDelay = Number(process.env.XIAOMEI_DABI_VISIBLE_SCROLL_DELAY || 360);
+  if (baseOnly) {
+    sendCollectionProgress(entry, {
+      status: 'running',
+      action: 'stage',
+      module: 'base',
+      interactionMode,
+      trigger: collectionTrigger,
+      message: '商品基础信息已读取，正在整理主图、详情、SKU 和视频…',
+    });
+  }
+  const visibleMaxPasses = Number(process.env.XIAOMEI_COMMERCE_VISIBLE_SCROLL_PASSES || 40);
+  const visibleDelay = Number(process.env.XIAOMEI_COMMERCE_VISIBLE_SCROLL_DELAY || 360);
   for (const module of modulesToCollect) {
     if (collectionToken.cancelled) break;
     try {
       const pageTotalCount = module === 'reviews'
-        ? String(dabiState.product?.reviewCount || payload.product?.reviewCount || payload.reviewStats?.totalCount || '').trim()
-        : String(dabiState.product?.questionCount || payload.product?.questionCount || payload.questionStats?.totalCount || '').trim();
-      const captured = await collectDabiNetworkModule(entry, webContents, module, collection, networkCapture, visibleAgent, { maxPasses: visibleMaxPasses, delay: visibleDelay, pageTotalCount, isCancelled: () => collectionToken.cancelled });
+        ? String(commerceState.product?.reviewCount || payload.product?.reviewCount || payload.reviewStats?.totalCount || '').trim()
+        : String(commerceState.product?.questionCount || payload.product?.questionCount || payload.questionStats?.totalCount || '').trim();
+      const captured = await collectCommerceNetworkModule(entry, webContents, module, collection, networkCapture, visibleAgent, { maxPasses: visibleMaxPasses, delay: visibleDelay, pageTotalCount, isCancelled: () => collectionToken.cancelled });
       payload[module] = Array.isArray(captured.samples) ? captured.samples : [];
       const stats = captured.stats || {};
       if (module === 'reviews') payload.reviewStats = { ...(payload.reviewStats || {}), ...stats };
@@ -4444,7 +4988,7 @@ async function captureProduct(options = {}) {
         source: sampleSource,
         sourceStepIds: [],
         reason: payload[module].length
-          ? (visibleFallback ? '已从问大家抽屉的可见问答卡精确提取真实样本' : '已从对应 mtop 真实响应归一化样本')
+          ? (visibleFallback ? '已从点击后的问大家区域提取可见问答卡真实样本' : '已从对应 mtop 真实响应归一化样本')
           : captured.networkCount
             ? '捕获到对应 mtop 响应但未解析出可展示样本'
             : `未捕获${module === 'questions' ? '问大家 questionList' : '评价 rateList'}真实响应；未使用演示数据`,
@@ -4461,8 +5005,8 @@ async function captureProduct(options = {}) {
     for (const module of ['reviews', 'questions']) {
       const stats = module === 'reviews' ? payload.reviewStats : payload.questionStats;
       const pageTotalCount = module === 'reviews'
-        ? String(dabiState.product?.reviewCount || stats?.totalCount || '').trim()
-        : String(dabiState.product?.questionCount || stats?.totalCount || '').trim();
+        ? String(commerceState.product?.reviewCount || stats?.totalCount || '').trim()
+        : String(commerceState.product?.questionCount || stats?.totalCount || '').trim();
       collection.modules[module] = {
         status: 'deferred',
         sampleCount: 0,
@@ -4483,7 +5027,7 @@ async function captureProduct(options = {}) {
   // 旧的可见 DOM SKU 推断只能拿到当前选中项或尺码表，已经移除出基础采集；
   // 下方只接受带真实 SKU ID + 规格路径的共享页面状态结果。
   const mergeUnique = (left, right, limit = 20) => [...new Set([...(left || []), ...(right || [])].filter(Boolean))].slice(0, limit);
-  const mergeMainImages = (left, right) => filterDabiMainImages([...(left || []), ...(right || [])], 5);
+  const mergeMainImages = (left, right) => filterCommerceMainImages([...(left || []), ...(right || [])], 5);
   const mergeSkuData = (primary = {}, secondary = {}) => {
     const result = { ...(secondary || {}), ...(primary || {}) };
     const specs = [];
@@ -4522,7 +5066,7 @@ async function captureProduct(options = {}) {
       const specs = Array.isArray(rawItem.specs)
         ? rawItem.specs.filter((item) => item && (item.value || item.name)).length
         : String(rawItem.specs || rawItem.specText || '').trim().length;
-      return Boolean(id && (path || specs || rawItem.source === 'dabi-root-sku'));
+      return Boolean(id && (path || specs || rawItem.source === 'commerce-root-sku'));
     };
     for (const source of [secondary, primary]) {
       for (const rawItem of (source?.items || [])) {
@@ -4560,7 +5104,7 @@ async function captureProduct(options = {}) {
   };
   let structuredSku = null;
   try {
-    structuredSku = await webContents.executeJavaScript(ELECTRON_DABI_STRUCTURED_SKU_SCRIPT, true) || null;
+    structuredSku = await webContents.executeJavaScript(ELECTRON_COMMERCE_STRUCTURED_SKU_SCRIPT, true) || null;
   } catch {
     // 页面还未完成初始化时会暂时没有结构化 SKU；保持空列表，不能补当前选中项。
   }
@@ -4586,11 +5130,11 @@ async function captureProduct(options = {}) {
   const refreshDetailState = async () => {
     const beforeResponses = networkCapture.records.detail.length;
     try {
-      detailRevealResult = await webContents.executeJavaScript(ELECTRON_DABI_DETAIL_REVEAL_SCRIPT, true);
+      detailRevealResult = await webContents.executeJavaScript(ELECTRON_COMMERCE_DETAIL_REVEAL_SCRIPT, true);
       // 详情读取脚本只检查当前页面和初始化状态，不触发滚动或点击。
-      // 它返回的真实图片 URL 直接并入详情状态，后端随后按达笔方式下载拼接。
+      // 它返回的真实图片 URL 直接并入详情状态，后端随后按受控详情资源下载拼接。
       if (detailRevealResult && typeof detailRevealResult === 'object') {
-        dabiState = mergePageState(dabiState, {
+        commerceState = mergePageState(commerceState, {
           detail: {
             text: String(detailRevealResult.text || ''),
             images: Array.isArray(detailRevealResult.images) ? detailRevealResult.images : [],
@@ -4600,10 +5144,10 @@ async function captureProduct(options = {}) {
       }
       // 保留很短的 settle，用来接收页面已经在本次采集开始前后产生的
       // detail.getdesc 响应；不再等待滚动触发的网络请求。
-      await networkCapture.settle(450);
-      const refreshedDetailState = await webContents.executeJavaScript(ELECTRON_DABI_PRODUCT_STATE_SCRIPT, true) || {};
-      if (refreshedDetailState && typeof refreshedDetailState === 'object') dabiState = mergePageState(dabiState, refreshedDetailState);
-      await networkCapture.settle(250);
+      await settleNetwork(420, 1000);
+      const refreshedDetailState = await webContents.executeJavaScript(ELECTRON_COMMERCE_PRODUCT_STATE_SCRIPT, true) || {};
+      if (refreshedDetailState && typeof refreshedDetailState === 'object') commerceState = mergePageState(commerceState, refreshedDetailState);
+      await settleNetwork(160, 420);
       const parsedNew = networkCapture.parseModule('detail', beforeResponses, webContents.getURL());
       const parsedAll = networkCapture.parseModule('detail', 0, webContents.getURL());
       const candidates = [parsedNew?.detail, parsedAll?.detail]
@@ -4631,86 +5175,121 @@ async function captureProduct(options = {}) {
       collection.actions.push({ action: 'inspect', module: 'detail', target: '已挂载的详情页图文', clicked: false, scrolled: false, ok: false, source: 'product-page-state', reason: detailRevealResult.reason });
     }
   };
-  if (baseOnly || requestedModule === 'detail') await refreshDetailState();
+  if (baseOnly || requestedModule === 'detail') {
+    await refreshDetailState();
+    if (baseOnly) sendCollectionProgress(entry, {
+      status: 'running',
+      action: 'stage',
+      module: 'detail',
+      interactionMode,
+      trigger: collectionTrigger,
+      message: '主图和详情已读取，正在整理 SKU 和视频…',
+    });
+  }
   let videoRevealResult = null;
   const refreshVideoState = async () => {
-    if (dabiState.videos?.length || payload.videos?.length) return;
+    if (commerceState.videos?.length || payload.videos?.length) return false;
     try {
       // 先打开商品画廊的视频入口，再处理可能会弹出的规格面板；否则
       // 规格弹层会挡住视频标签，导致基础自动采集漏掉主图视频。
-      videoRevealResult = await webContents.executeJavaScript(ELECTRON_DABI_VIDEO_REVEAL_SCRIPT, true);
-      // 播放器地址通常在标签点击后的异步资源加载阶段才出现；短轮询
-      // 同一页面状态，最多等待约 2.5 秒，不播放视频也不生成地址。
-      for (let attempt = 0; attempt < 6 && !dabiState.videos?.length; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 720 : 360));
-        const refreshedMediaState = await webContents.executeJavaScript(ELECTRON_DABI_PRODUCT_STATE_SCRIPT, true) || {};
-        if (refreshedMediaState && typeof refreshedMediaState === 'object') dabiState = mergePageState(dabiState, refreshedMediaState);
+      videoRevealResult = await webContents.executeJavaScript(ELECTRON_COMMERCE_VIDEO_REVEAL_SCRIPT, true);
+      // 没有可见视频入口时立即结束；只有实际点击成功才等待播放器异步挂载。
+      // 同一页面状态最多重读 3 次，避免无视频商品反复扫描整页状态。
+      if (!videoRevealResult?.ok || !videoRevealResult?.clicked) return false;
+      for (let attempt = 0; attempt < 3 && !commerceState.videos?.length; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 480 : 300));
+        const refreshedMediaState = await webContents.executeJavaScript(ELECTRON_COMMERCE_PRODUCT_STATE_SCRIPT, true) || {};
+        if (refreshedMediaState && typeof refreshedMediaState === 'object') commerceState = mergePageState(commerceState, refreshedMediaState);
       }
+      return Boolean(commerceState.videos?.length);
     } catch {
       // 页面没有可读取的真实视频时保持 missing，由前端显示“暂无视频”。
+      return false;
     }
   };
-  if (!dabiState.videos?.length && !payload.videos?.length && (baseOnly || requestedModule === 'videos')) {
+  if (!commerceState.videos?.length && !payload.videos?.length && (baseOnly || requestedModule === 'videos')) {
     await refreshVideoState();
   }
-  // 达笔的 SKU 查询不点击某一个颜色/尺码，而是读取规格区加载后的完整
+  // SKU 查询不点击某一个颜色/尺码，而是读取规格区加载后的完整
   // skuBase + skuCore。首屏没有初始化矩阵时，只检查已经可见的规格入口，
   // 不为补采而移动商品页；随后重新读取同一份页面状态，仍没有真实组合就保持 missing。
-  if (!hasSkuState(structuredSku) && (baseOnly || requestedModule === 'sku')) {
+  const skuNeedsVisibleImages = requestedModule === 'sku' && !Number(structuredSku?.specImageCount || 0);
+  if ((!hasSkuState(structuredSku) || skuNeedsVisibleImages) && (baseOnly || requestedModule === 'sku')) {
     try {
-      await webContents.executeJavaScript(ELECTRON_DABI_SKU_REVEAL_SCRIPT, true);
-      await new Promise((resolve) => setTimeout(resolve, 720));
-      const refreshedState = await webContents.executeJavaScript(ELECTRON_DABI_PRODUCT_STATE_SCRIPT, true) || {};
-      if (refreshedState && typeof refreshedState === 'object') dabiState = mergePageState(dabiState, refreshedState);
-      structuredSku = await webContents.executeJavaScript(ELECTRON_DABI_STRUCTURED_SKU_SCRIPT, true) || structuredSku;
+      const skuRevealResult = await webContents.executeJavaScript(ELECTRON_COMMERCE_SKU_REVEAL_SCRIPT, true);
+      if (skuRevealResult?.ok && skuRevealResult?.clicked) {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+        const refreshedState = await webContents.executeJavaScript(ELECTRON_COMMERCE_PRODUCT_STATE_SCRIPT, true) || {};
+        if (refreshedState && typeof refreshedState === 'object') commerceState = mergePageState(commerceState, refreshedState);
+        structuredSku = await webContents.executeJavaScript(ELECTRON_COMMERCE_STRUCTURED_SKU_SCRIPT, true) || structuredSku;
+      }
     } catch {
       // 规格区不是所有淘宝模板都会渲染；继续保留真实空状态，不补选中项。
     }
   }
-  // 如果页面在规格区加载过程中才挂载播放器，再做一次同页重读；不播放、
-  // 不伪造 URL，也不把详情图当成视频。
-  if (!dabiState.videos?.length && !payload.videos?.length && (baseOnly || requestedModule === 'videos')) await refreshVideoState();
+  if (baseOnly) sendCollectionProgress(entry, {
+    status: 'running',
+    action: 'stage',
+    module: 'base',
+    interactionMode,
+    trigger: collectionTrigger,
+    message: '商品基础数据已读取，正在整理结果…',
+  });
   collection.pageStateSignals = {
-    product: dabiState.diagnostics || {},
+    product: commerceState.diagnostics || {},
     sku: structuredSku?.diagnostics || {},
     videoReveal: videoRevealResult && typeof videoRevealResult === 'object'
       ? { ok: Boolean(videoRevealResult.ok), clicked: Boolean(videoRevealResult.clicked), reason: String(videoRevealResult.reason || '').slice(0, 120), text: String(videoRevealResult.text || '').slice(0, 80) }
       : {},
   };
-  dabiState = await enrichDabiProductCategory(dabiState).catch(() => dabiState);
-  const directProduct = Object.fromEntries(Object.entries(dabiState.product || {}).filter(([, value]) => value !== null && value !== undefined && value !== ''));
+  commerceState = await enrichCommerceProductCategory(commerceState).catch(() => commerceState);
+  const directProduct = Object.fromEntries(Object.entries(commerceState.product || {}).filter(([, value]) => value !== null && value !== undefined && value !== ''));
   const mergedPayload = {
     ...payload,
     product: { ...(payload.product || {}), ...directProduct },
-    mainImages: mergeMainImages(dabiState.mainImages, payload.mainImages),
-    images: mergeMainImages(dabiState.mainImages || dabiState.images, payload.images),
-    videos: [...new Map([...(dabiState.videos || []), ...(payload.videos || [])].map((item) => [item.url || item, typeof item === 'string' ? { url: item, type: 'video', source: 'visible-page' } : item])).values()].slice(0, 20),
+    mainImages: mergeMainImages(commerceState.mainImages, payload.mainImages),
+    images: mergeMainImages(commerceState.mainImages || commerceState.images, payload.images),
+    videos: [...new Map([...(commerceState.videos || []), ...(payload.videos || [])].map((item) => [item.url || item, typeof item === 'string' ? { url: item, type: 'video', source: 'visible-page' } : item])).values()].slice(0, 20),
     detail: {
       ...(payload.detail || {}),
-      ...(dabiState.detail || {}),
+      ...(commerceState.detail || {}),
       ...(networkDetailState || {}),
       source: networkDetailState.images?.length || networkDetailState.text
         ? 'mtop-detail-getdesc'
-        : (dabiState.detail?.source || payload.detail?.source || 'product-page-state'),
+        : (commerceState.detail?.source || payload.detail?.source || 'commerce-product-state'),
       // mtop.detail.getdesc is the authoritative detail layout. Do not append
       // the page-wide DOM image list after a successful response: that list
       // also contains gallery, review and recommendation assets, which turn
       // the long image into the unrelated collage seen in older tasks.
       images: Array.isArray(networkDetailState.images) && networkDetailState.images.length
         ? networkDetailState.images.slice(0, 240)
-        : mergeUnique(dabiState.detail?.images, payload.detail?.images, 240),
+        : mergeUnique(commerceState.detail?.images, payload.detail?.images, 240),
     },
   };
+  const reconciledPayload = reconcileCommerceCapturePayload(
+    mergedPayload,
+    requestedUrl,
+    [
+      (() => { try { return webContents.getURL?.() || ''; } catch { return ''; } })(),
+      entry?.stableUrl,
+      entry?.url,
+      current,
+    ],
+  );
+  if (reconciledPayload !== mergedPayload) {
+    Object.assign(mergedPayload, reconciledPayload);
+    collection.captureUrlReconciled = true;
+  }
   if (structuredSku) sku = mergeSkuData(structuredSku, sku);
-  const directSku = dabiState.sku && (dabiState.sku.items?.length || dabiState.sku.specs?.length || dabiState.sku.totalCount) ? dabiState.sku : null;
+  const directSku = commerceState.sku && (commerceState.sku.items?.length || commerceState.sku.specs?.length || commerceState.sku.totalCount) ? commerceState.sku : null;
   if (directSku) sku = mergeSkuData(directSku, sku);
   const skuTotalCount = Number(sku.totalCount || 0);
   const skuItemCount = Number(sku.itemCount || sku.items?.length || 0);
   if (skuTotalCount) mergedPayload.product = { ...(mergedPayload.product || {}), skuCount: skuTotalCount };
   // 仅保留不含 URL、标题、Cookie 或响应正文的字段信号，便于确认淘宝模板
-  // 是否把 SKU/视频挂到了达笔同一条页面状态链上；具体数据仍只从解析结果输出。
+  // 是否把 SKU/视频挂到了同一条页面状态链上；具体数据仍只从解析结果输出。
   collection.pageStateSignals = {
-    product: dabiState.diagnostics || collection.pageStateSignals?.product || {},
+    product: commerceState.diagnostics || collection.pageStateSignals?.product || {},
     sku: structuredSku?.diagnostics || {},
     detailReveal: detailRevealResult && typeof detailRevealResult === 'object'
       ? { ok: Boolean(detailRevealResult.ok), clicked: Boolean(detailRevealResult.clicked), scrolled: false, rootFound: Boolean(detailRevealResult.rootFound), imageCount: Number(detailRevealResult.imageCount || 0) || 0, passes: Number(detailRevealResult.passes || 0) || 0, changedPasses: Number(detailRevealResult.changedPasses || 0) || 0, reason: String(detailRevealResult.reason || '').slice(0, 120) }
@@ -4724,7 +5303,7 @@ async function captureProduct(options = {}) {
     responseCount: 0,
     totalCount: skuTotalCount || skuItemCount || '',
     totalCountSource: skuTotalCount ? 'product-page-sku-count' : skuItemCount ? 'sku-page-state-rows' : '未返回',
-    source: 'dabi-page-state',
+    source: 'commerce-page-state',
     sourceStepIds: [],
     reason: skuTotalCount && !sku.matrixComplete
       ? `页面返回 SKU 总量 ${skuTotalCount}，当前已解析 ${skuItemCount} 条真实明细`
@@ -4759,7 +5338,7 @@ async function captureProduct(options = {}) {
     ? '先读取商品页初始化状态、主图、详情、SKU、视频和评价/问大家数量；评价/问大家正文仅在点击对应资源卡后，通过可见操作触发 mtop rateList/questionList。'
     : baseModules.includes(requestedModule)
       ? `只读取用户点击的${({ images: '主图', detail: '详情页图文', sku: 'SKU', videos: '视频' })[requestedModule]}模块；详情模块只读取当前已挂载图片 URL，不滚动、不改变商品页位置。`
-    : '可见页面截图识别入口，CDP 鼠标点击/滚轮触发；评价优先取 mtop rateList，问大家无可回读响应时从已打开抽屉的可见问答卡精确提取';
+    : '可见页面截图识别入口，CDP 鼠标点击/滚轮触发；评价优先取 mtop rateList，问大家无可回读响应时从点击后的问答区域可见卡精确提取';
   collection.finishedAt = new Date().toISOString();
   const sourceSteps = collection.actions.map((action, index) => ({
     id: action.id || `step-${String(index + 1).padStart(2, '0')}`,
@@ -4767,7 +5346,7 @@ async function captureProduct(options = {}) {
     action: action.action || 'inspect',
     target: action.target || '商品页可见状态',
     status: action.status || (action.ok === false ? 'failed' : 'completed'),
-    source: action.source || (action.module === 'reviews' || action.module === 'questions' ? 'mtop-rateList/questionList' : 'electron-dabi-network'),
+    source: action.source || (action.module === 'reviews' || action.module === 'questions' ? 'mtop-rateList/questionList' : 'electron-commerce-network'),
     responseCount: Number(action.networkResponses || action.responseCount || 0) || 0,
     realResponseSampleCount: Number(action.realResponseSampleCount || action.sampleCount || 0) || 0,
   }));
@@ -4809,14 +5388,14 @@ async function captureProduct(options = {}) {
           : `评价和问大家已采集完成：评价 ${payload.reviews.length} 条，问大家 ${payload.questions.length} 条。`;
   collection.message = finishMessage;
   sendCollectionProgress(entry, { status: finishStatus, action: 'finish', message: finishMessage, reviews: payload.reviews.length, questions: payload.questions.length, reviewTotalCount: payload.reviewStats?.totalCount || '', questionTotalCount: payload.questionStats?.totalCount || '', deferredModules: collection.deferredModules, missingModules: collection.missingModules, interactionMode, trigger: collectionTrigger });
-  activeDabiCollections.delete(webContents.id);
+  activeCommerceCollections.delete(webContents.id);
   if (ownsNetworkCapture) await networkCapture.dispose().catch(() => {});
   return {
     ok: true,
     status: finishStatus,
     message: finishMessage,
     backend: 'electron',
-    source: 'electron-dabi-network',
+    source: 'electron-commerce-network',
     session_id: 'electron-window',
     tab_id: entry?.id || activeProductTabId,
     web_contents_id: String(webContents.id),
@@ -4951,15 +5530,24 @@ function createWindow() {
     show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   });
-  mainWindow.on('page-title-updated', (event) => {
-    event.preventDefault();
-    mainWindow.setTitle(APP_NAME);
-  });
   try { mainWindow.webContents.setBackgroundThrottling(false); } catch {}
   mainWindow.setMenuBarVisibility(false);
   ensureProductView('commerce-default');
+  const lifecycle = installWindowLifecycle(mainWindow, () => {
+    commercePageActive = false;
+    commerceSurfaceResyncToken += 1;
+    for (const entry of productViews.values()) {
+      stopActiveCommerceCollection(entry);
+      disposeProductView(entry);
+    }
+    productViews.clear();
+    productView = null;
+    activeProductTabId = '';
+    mainWindow = null;
+  });
   let mainWindowPresented = false;
   const revealMainWindow = () => {
+    if (lifecycle.isClosing()) return;
     if (mainWindow && !mainWindow.isDestroyed()) {
       try { if (mainWindow.isMinimized()) mainWindow.restore(); } catch {}
       if (!mainWindowPresented) {
@@ -4977,11 +5565,11 @@ function createWindow() {
   revealMainWindow();
   mainWindow.once('ready-to-show', revealMainWindow);
   mainWindow.webContents.once('did-finish-load', () => {
-    setTimeout(revealMainWindow, 150);
-    [0, 150, 600, 1500].forEach((delay) => setTimeout(() => { void syncCommercePageActiveFromRenderer(); }, delay));
+    lifecycle.schedule(revealMainWindow, 150);
+    [0, 150, 600, 1500].forEach((delay) => lifecycle.schedule(() => { void syncCommercePageActiveFromRenderer(); }, delay));
     scheduleCommerceSurfaceResync();
   });
-  [200, 700, 1500, 3000, 6000, 10000].forEach((delay) => setTimeout(revealMainWindow, delay));
+  [200, 700, 1500, 3000, 6000, 10000].forEach((delay) => lifecycle.schedule(revealMainWindow, delay));
   // The renderer owns the surface layout. Re-applying the previous bounds on
   // resize leaves a maximized window with a view sized for the old window,
   // which shows up as a white strip beside the official page. Re-read the
@@ -4992,7 +5580,7 @@ function createWindow() {
     scheduleCommerceSurfaceResync();
   });
   // Electron 的顶层页面必须是完整的小美画布；商品分析台通过 iframe 作为其中一个工作区加载。
-  mainWindow.loadURL(`${LOCAL_ORIGIN}/static/index.html?page=${encodeURIComponent(START_PAGE)}&v=2026.09.15.desktop-update1`);
+  mainWindow.loadURL(`${LOCAL_ORIGIN}/static/index.html?page=${encodeURIComponent(START_PAGE)}&v=2026.09.27.image-model-picker3`);
 }
 
 app.whenReady().then(async () => {
@@ -5113,7 +5701,10 @@ ipcMain.on('commerce:set-page-active', (_event, active) => {
   }
 });
 ipcMain.on('commerce:set-overlay-active', (_event, active) => setCommerceSurfaceBlocked(active));
-ipcMain.on('commerce:set-product-bounds', (_event, bounds, tabId) => updateViewBounds(bounds, String(tabId || activeProductTabId)));
+ipcMain.on('commerce:set-product-bounds', (_event, bounds, tabId) => {
+  updateViewBounds(bounds, String(tabId || activeProductTabId));
+  scheduleCommerceSurfaceResync();
+});
 ipcMain.on('commerce:set-product-visible', (_event, visible, tabId) => {
   const requestedTabId = String(tabId || '').trim();
   if (!visible) {
@@ -5146,18 +5737,18 @@ ipcMain.handle('commerce:capture-product', async (_event, options) => {
   const capturedWebContents = capturedEntry?.view?.webContents;
   // 若已有采集在运行，本次调用只是重复请求，不能在 finally 中清掉第一条
   // 采集的运行锁；否则下一次点击会并发启动第二套评价/问大家采集。
-  const hadActiveCollection = Boolean(capturedWebContents && activeDabiCollections.has(capturedWebContents.id));
+  const hadActiveCollection = Boolean(capturedWebContents && activeCommerceCollections.has(capturedWebContents.id));
   try { return await captureProduct(options || {}); }
   finally {
     if (capturedWebContents && !hadActiveCollection) {
-      const activeToken = activeDabiCollections.get(capturedWebContents.id);
-      activeDabiCollections.delete(capturedWebContents.id);
+      const activeToken = activeCommerceCollections.get(capturedWebContents.id);
+      activeCommerceCollections.delete(capturedWebContents.id);
       void activeToken?.cleanup?.();
-      void setDabiAgentOverlay(capturedEntry, false, '');
+      void setCommerceAgentOverlay(capturedEntry, false, '');
     }
   }
 });
-ipcMain.handle('commerce:stop-collection', () => stopActiveDabiCollection());
+ipcMain.handle('commerce:stop-collection', () => stopActiveCommerceCollection());
 ipcMain.handle('commerce:capture-page-context', (_event, options) => capturePageContext(options || {}));
 ipcMain.handle('commerce:capture-assistant-context', (_event, options) => captureAssistantContext(options || {}));
 ipcMain.handle('commerce:session-status', () => sessionStatus());
@@ -5183,6 +5774,9 @@ ipcMain.handle('commerce:status', () => {
     tabId: entry?.id || activeProductTabId,
     ready: Boolean(entry?.pageLoaded),
     verification,
+    languageFamily: String(entry?.languageFamily || ''),
+    languageMode: String(entry?.languageMode || 'not_applicable'),
+    languageMessage: String(entry?.languageMessage || ''),
     ...browserSurfaceState(entry),
     visible: isProductViewVisible(entry),
   };
@@ -5199,4 +5793,3 @@ app.on('before-quit', () => {
   }
   if (apiProcess && !apiProcess.killed) apiProcess.kill();
 });
-
