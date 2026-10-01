@@ -1,0 +1,91 @@
+appId: com.xiaomei.canvas.desktop
+productName: 小美画布
+electronVersion: 31.7.7
+asar: false
+npmRebuild: false
+compression: normal
+directories:
+  output: dist-package
+  buildResources: build
+files:
+  - package.json
+  - main.py
+  - asset_registry.py
+  - bridge_api.py
+  - agent_skill_store.py
+  - VERSION
+  - desktop/**
+  - static/**
+  - tools/**
+  - workflows/**
+  - packages/**
+  - build/win-api/**
+  - build/mac-api/**
+  - python/**
+  - data/agent_skills/**
+  - API/.env.example
+  - assets/**
+  - "!desktop/node_modules{,/**}"
+  - "!**/.git{,/**}"
+  - "!**/__pycache__"
+  - "!**/__pycache__/**"
+  - "!**/*.pyc"
+  - "!**/*.pyo"
+  - "!**/user_data{,/**}"
+  - "!**/history.json"
+  - "!**/logs{,/**}"
+  - "!**/output{,/**}"
+  - "!**/storage{,/**}"
+  - "!**/data/canvases{,/**}"
+  - "!**/data/conversations{,/**}"
+  - "!**/data/commerce_analysis{,/**}"
+  - "!**/data/browser_agent_profile{,/**}"
+  - "!**/data/commerce_analysis_browser_profile{,/**}"
+  - "!**/data/media_previews{,/**}"
+  - "!**/data/models{,/**}"
+  - "!**/assets/图片空间{,/**}"
+  - "!**/assets/input{,/**}"
+  - "!**/assets/uploads{,/**}"
+  - "!**/assets/output{,/**}"
+  - "!**/assets/agent_skills{,/**}"
+  - "!**/assets/canvases{,/**}"
+  - "!**/assets/commerce_analysis{,/**}"
+  - "!**/assets/conversations{,/**}"
+  - "!**/assets/media_previews{,/**}"
+  - "!**/assets/models{,/**}"
+  - "!**/assets/asset_library.json"
+  - "!**/assets/projects.json"
+  - "!**/assets/prompt_cases.json"
+  - "!**/assets/prompt_libraries.json"
+  - "!**/assets/library{,/**}"
+  - "!**/assets/prompt_cases{,/**}"
+  - "!**/API/.env"
+  - "!dist{,/**}"
+win:
+  icon: static/images/app-icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+mac:
+  target:
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  artifactName: xiaomei-canvas-${version}-macOS-${arch}.${ext}
+nsis:
+  artifactName: xiaomei-canvas-${version}-Setup-${arch}.${ext}
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 小美画布
+portable:
+  artifactName: xiaomei-canvas-${version}-Portable-${arch}.${ext}
+  requestExecutionLevel: user
+

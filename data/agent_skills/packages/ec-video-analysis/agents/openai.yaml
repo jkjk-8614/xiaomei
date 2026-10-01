@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ec-video-analysis"
+  short_description: "分析视频帧、视觉文案、节奏与情绪"
+  default_prompt: "使用 $ec-video-analysis 分析这段视频：提取视频帧，通过视觉识别读取画面文案，分析节奏和情绪；聊天里给报告总结，并生成一个详细的 ec-video-analysis 文件。"

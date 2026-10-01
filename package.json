@@ -1,8 +1,13 @@
 {
-  "name": "dx-os-desktop",
-  "version": "0.2.2",
-  "description": "DX OS desktop shell for Windows and macOS",
-  "author": "DX OS",
+  "name": "xiaomei-canvas-desktop",
+  "productName": "小美画布",
+  "version": "1.0.1",
+  "description": "小美画布桌面端",
+  "author": "小美画布",
   "private": true,
-  "main": "main.cjs"
+  "main": "desktop/main.cjs",
+  "devDependencies": {
+    "electron": "31.7.7",
+    "electron-builder": "26.15.3"
+  }
 }

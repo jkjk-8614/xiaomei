@@ -1,49 +1,83 @@
 # Secrets and local configuration
-.env
-.env.*
-!.env.example
-**/.env
-**/.env.*
-!**/.env.example
+API/.env
+API/.env.*
+!API/.env.example
+!API/.env.example.*
+*.key
+*.pem
 
-# User data and generated runtime files
-data/
-assets/
+# User data, history, generated media and caches
+user_data/
+data/*
+!data/agent_skills/
+!data/agent_skills/**
+assets/图片空间/
+assets/input/
+assets/uploads/
+assets/output/
+assets/library/
+assets/prompt_cases/
+assets/agent_skills/
+assets/canvases/
+assets/commerce_analysis/
+assets/conversations/
+assets/media_previews/
+assets/models/
+assets/asset_library.json
+assets/projects.json
+assets/prompt_cases.json
+assets/prompt_libraries.json
+history.json
+logs/
 output/
 storage/
-logs/
-history.json
-ComfyUI/models/
-ComfyUI/input/
-ComfyUI/output/
-ComfyUI/user/
-ComfyUI/comfy_apps/
-ComfyUI/comfy_apps_deleted/
-ComfyUI/comfy_apps_test_archive/
-ComfyUI/comfy_apps_runtime/
-ComfyUI/workflows/custom/app_*.json
-ComfyUI/workflows/custom/app_*.bak
+tmp/
+*.log
 
-# Local runtimes and dependencies
-python/
-.venv/
+# Local installs, build output and test artifacts
 node_modules/
-**/node_modules/
 desktop/node_modules/
-tools/commerce-analysis/node_modules/
-tools/fluent-ui/node_modules/
-
-# Caches and generated files
+python/
+.builder-cache/
+.builder-cache-local/
+dist/
+dist-package/
+dist-package-update-test/
+build/electron-dist/
+build/win-api/
+build/win-api-work/
+build/win-api-spec/
+build/mac-api/
+build/mac-api-work/
+build/mac-api-spec/
 __pycache__/
 **/__pycache__/
-*.py[cod]
-*.log
-*.tmp
-*.cache
-*.zip
-*.ccx
-.edge-screenshot-profile-warm/
+*.pyc
+*.pyo
 
-# Local screenshots and test artifacts
-/edge-*.png
-tools/commerce-analysis/.tmp-*
+# Local update state and temporary manifests
+data/desktop-update-state.json
+desktop/update-config.local.json
+
+# Temporary visual QA screenshots
+**/.tmp-*.png
+
+ComfyUI/custom_nodes/*.disabled/
+
+
+# Local ComfyUI runtime, models and generated files
+ComfyUI/.venv/
+ComfyUI/models/
+ComfyUI/output/
+ComfyUI/input/
+ComfyUI/user/
+ComfyUI/temp/
+ComfyUI/model-downloads/
+ComfyUI/*-*.log
+ComfyUI/comfy_apps/
+ComfyUI/comfy_apps_deleted/
+ComfyUI/comfy_apps_runtime/
+ComfyUI/comfy_apps_test_archive/
+
+ComfyUI/
+

@@ -1,187 +1,73 @@
-# 小美画布（Xiaomei Canvas）
+# Infinite-Canvas
+Supports comfyui/API calls/modelscope calls
 
-**小美画布（Xiaomei Canvas）** 是一款面向 AI 图像、视频、提示词整理与工作流编排的无限画布工具。
+配套的chrome采集插件已经上线：https://chromewebstore.google.com/detail/infinite-canvas-%E5%9B%BE%E5%83%8F%E8%A7%86%E9%A2%91%E6%96%87%E5%AD%97%E6%8A%93%E5%8F%96%E5%B7%A5/ajfhnbklbmpfaaookhfakohabnpmlcic?authuser=0&hl=en
 
-本项目基于 [Infinite-Canvas](https://github.com/hero8152/Infinite-Canvas) 进行二次开发，在原项目基础上对界面、功能及部分交互进行了修改和扩展。
+详细教程：[https://youtu.be/1y9ShTvgC_w](https://youtu.be/r_y_9ALr7fg)
 
-> 当前项目仍在持续开发中，部分功能可能还会继续调整或完善。
+由于最近很多API网址关停，我找到一个稳定的网址：
 
----
+https://apib.ai/register?aff=1uyAbb （包含所有生图模型/视频模型/LLM模型）
 
-## 软件界面
+https://www.fhl.mom/register?aff=86L574B4T2N9  （包含codex和GPT image 2模型）
 
-![小美画布主界面](./docs/images/main-ui.webp)
+功能请求/功能更新/视频教程/联系我，都可以在B站评论或私信：https://space.bilibili.com/78652351
 
-上图为小美画布当前主界面。  
-软件以可视化画布为核心，支持在画布中组合节点、整理素材、调用模型与工作流，并尽量将常用 AI 功能集中到统一界面中。
 
----
+----
 
-## 项目介绍
+【新增了version文件，我每次更新都会更新version的版本号，如果你下载version文件，打开项目后，导航栏的GitHub按键就会提示新版本，如果不想查看更新提示，就删除version文件】
 
-小美画布希望把 AI 相关的常用能力整合到一个自由画布中，方便用户在一个界面里完成：
+【A version file has been added. I update the version number with each update. If you download the version file, the GitHub button in the navigation bar will indicate the new version after opening the project. If you don't want to see update notifications, delete the version file.】
 
-- 图片生成与编辑
-- 视频处理与控制
-- 提示词整理
-- 多模型调用
-- ComfyUI 工作流接入
-- 素材管理
-- 节点组合与流程编排
+----
 
-相比传统单一功能工具，小美画布更强调“在一个画布内完成多步骤工作流”的使用体验。
+支持的功能：
+1. 支持几乎所有OpenAI协议的API/异步协议/Gemini协议/方舟协议
+2. RunningHub的工作流/AI应用/收费模型调用
+3. 火山引擎调用（人脸认证还在修复bug）
+4. Modelscope免费LLM模型和图像模型调用
+5. 即梦CLI调用，可直接调用即梦高级会员的积分，支持文生图/图生图/文生视频/图生视频
+6. 支持调用本地局域网的ComfyUI
+7. 扩展图片/360全景图预览截图/视频帧抽取/循环节点等诸多功能
+8. tools文件夹中，增加了chrome批量采集到素材库的插件，PS直连画布调用所有功能的插件
 
----
+--------
 
-## 主要功能
+已经申请著作权，禁止商业用途
 
-### 1. 无限画布
+Commercial use is prohibited.
 
-以无限画布为核心工作区，可自由摆放不同节点，并通过连接关系组织工作流程。
 
-### 2. 节点式工作流
+* 可以自己使用和公司使用，禁止用于任何形式的修改封装成商业产品，商用须取得授权。
 
-支持通过节点来完成不同任务的组合，例如上传素材、绘图、提示词生成、分组、对比、批量生成等。
+* 根据代码二次开发的软件必须保持开源并注明来源作者
 
-### 3. AI 图像相关功能
+* This software is for personal and company use only, but is prohibited from being modified or packaged into commercial products in any way. Commercial use requires authorization.
 
-支持图像生成、参考图处理、色彩还原、手绘板辅助等功能，适合图片创作与素材整理场景。
+* Software developed based on this code must remain open source and the original author must be credited.
 
-### 4. 视频相关功能
+--------
 
-支持视频控制、视频时间线等相关功能，可用于视频片段处理与工作流扩展。
 
-### 5. ComfyUI 接入
+<img width="2079" height="665" alt="image" src="https://github.com/user-attachments/assets/8469923b-f7a2-403c-9c37-e6e789211f28" />
 
-支持接入 ComfyUI 工作流，便于将本地或局域网中的工作流能力整合到画布中统一调用。
+<img width="1865" height="1503" alt="image" src="https://github.com/user-attachments/assets/f4030201-67c6-4845-b08b-b6fdf304afaa" />
 
-### 6. 提示词与素材管理
 
-支持提示词整理、图片分组、素材归档与对比查看，提高多图、多步骤创作时的整理效率。
+<img width="1696" height="1350" alt="b68e144c5b04a322bfd035da4d89aba3" src="https://github.com/user-attachments/assets/0a6090fb-a8dd-4c3d-adee-b1f9233a2d91" />
 
-### 7. 多种工作场景
+   
+<img width="1525" height="1473" alt="image" src="https://github.com/user-attachments/assets/6f61fcf9-746c-425b-9e36-cfc8d252da7c" />
 
-小美画布目前提供了多个功能入口，例如：
+   <img width="1261" height="864" alt="image" src="https://github.com/user-attachments/assets/57f3e230-3134-488f-8179-d97e7d15383a" />
+<img width="1530" height="858" alt="image" src="https://github.com/user-attachments/assets/9990e42d-22d5-4a10-a1e1-ad35a634edd2" />
 
-- ComfyUI
-- GPT 对话
-- 小美画布
-- 商品分析
-- 电商工作台
-- 3D 软装
-- 图片空间
-- 提示词库
-- 历史记录
+<img width="1735" height="1400" alt="image" src="https://github.com/user-attachments/assets/d8328ff8-bbe0-4f1c-9ffa-7b56e8a1a51d" />
+<img width="2258" height="969" alt="image" src="https://github.com/user-attachments/assets/4a752d99-885d-4ba9-8b86-91b495786b5c" />
 
-后续会根据开发进度继续完善。
 
----
+<img width="1531" height="1374" alt="image" src="https://github.com/user-attachments/assets/0af79e38-0955-4740-9e65-5c9bb057f58c" />
 
-## 使用场景
-
-小美画布适合以下类型的使用需求：
-
-- AI 生图与改图
-- 多张图片素材整理
-- 提示词管理与复用
-- ComfyUI 工作流调用
-- 电商图像处理辅助
-- 图片对比与批量生成
-- 视频创作辅助
-- 多步骤创作流程编排
-
----
-
-## 下载与使用
-
-当前项目可通过 GitHub 仓库获取源码。
-
-仓库地址：
-
-https://github.com/jkjk-8614/xiaomei
-
-如后续提供发布版，可通过 GitHub Releases 下载。
-
-> 如果你只是普通用户，后续建议直接下载发布版使用。  
-> 如果你希望自行修改功能或参与开发，可以直接使用源码。
-
----
-
-## 开发说明
-
-本项目目前为持续开发中的二次开发项目。
-
-如需自行研究或修改，可先克隆仓库：
-
-```bash
-git clone https://github.com/jkjk-8614/xiaomei.git
-```
-
-后续运行方式、依赖安装方法及发布说明会继续补充。
-
----
-
-## 项目来源与致谢
-
-**小美画布（Xiaomei Canvas）** 是基于 [Infinite-Canvas](https://github.com/hero8152/Infinite-Canvas) 进行二次开发的开源项目。
-
-原项目：
-
-- 项目名称：Infinite-Canvas
-- 原作者：[hero8152](https://github.com/hero8152)
-- 原项目地址：https://github.com/hero8152/Infinite-Canvas
-
-感谢原作者开发并公开 Infinite-Canvas。
-
-小美画布在原项目基础上对界面、功能及部分交互进行了修改和扩展。  
-本项目为非官方二次开发版本，与 Infinite-Canvas 原作者不存在官方从属关系。
-
-原项目代码及相关版权归原作者所有，本项目新增和修改的内容由本项目维护者负责。
-
----
-
-## 开源与使用说明
-
-本项目基于 Infinite-Canvas 进行二次开发，并遵循原项目的许可要求。
-
-根据原项目 LICENSE：
-
-- 本项目必须保持开源；
-- 必须注明原项目及原作者；
-- 可以用于个人使用和公司内部使用；
-- 禁止将本项目修改、封装后作为商业产品；
-- 商业使用需要获得原作者授权。
-
-原项目许可证地址：
-
-https://github.com/hero8152/Infinite-Canvas/blob/main/LICENSE
-
-本仓库保留相应 LICENSE 文件，请在使用、修改或分发本项目之前仔细阅读许可说明。
-
----
-
-## 免责声明
-
-本项目主要用于个人学习、研究、工作流探索与效率辅助。
-
-项目中调用的第三方模型、API、服务或平台，均由其各自提供方负责。  
-使用者在使用相关功能时，应自行遵守对应服务条款及当地法律法规。
-
-因使用本项目或第三方服务产生的数据、费用、账号风险或其他问题，由使用者自行承担。
-
----
-
-## 项目状态
-
-小美画布目前仍处于持续开发与调整阶段。
-
-后续计划包括但不限于：
-
-- 完善画布交互体验
-- 持续优化节点系统
-- 增强图片 / 视频相关能力
-- 丰富工作流接入方式
-- 改进设置与管理功能
-- 完善文档与发布版本
-
-如果你有功能建议或发现 Bug，欢迎通过 GitHub Issues 反馈。
+<img width="2196" height="1040" alt="image" src="https://github.com/user-attachments/assets/6d823668-cde2-4836-8332-1858efe5f520" />
+<img width="2214" height="771" alt="image" src="https://github.com/user-attachments/assets/52e10958-753f-45ba-a50e-3bbec27be436" />

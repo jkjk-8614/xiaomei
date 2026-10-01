@@ -1,20 +1,18 @@
 Option Explicit
 
-Dim shell, fso, root, shellApp, brandedExe, electronExe, message
+Dim shell, fso, root, shellApp, electronExe, message
 Set shell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 root = fso.GetParentFolderName(fso.GetParentFolderName(WScript.ScriptFullName))
 shell.CurrentDirectory = root
-brandedExe = root & "\desktop\node_modules\electron\dist\" & ChrW(&H5C0F) & ChrW(&H7F8E) & ChrW(&H753B) & ChrW(&H5E03) & ".exe"
 electronExe = root & "\desktop\node_modules\electron\dist\electron.exe"
 
-If fso.FileExists(brandedExe) Then
-  shell.Environment("Process")("XIAOMEI_CANVAS_PORT") = "3000"
-  Set shellApp = CreateObject("Shell.Application")
-  shellApp.ShellExecute brandedExe, ".", root & "\desktop", "open", 1
-  WScript.Quit 0
-ElseIf fso.FileExists(electronExe) Then
-  shell.Environment("Process")("XIAOMEI_CANVAS_PORT") = "3000"
+If fso.FileExists(electronExe) Then
+  shell.Environment("Process")("XIAOMEI_CANVAS_DATA_ROOT") = root
+  shell.Environment("Process")("XIAOMEI_CANVAS_PORT") = "3300"
+  shell.Environment("Process")("COMMERCE_ANALYSIS_BROWSER_PORT") = "9327"
+  shell.Environment("Process")("TEMP") = root & "\user_data\tmp"
+  shell.Environment("Process")("TMP") = root & "\user_data\tmp"
   Set shellApp = CreateObject("Shell.Application")
   shellApp.ShellExecute electronExe, ".", root & "\desktop", "open", 1
   WScript.Quit 0
