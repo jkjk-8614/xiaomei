@@ -13,6 +13,8 @@ const DEFAULT_GITHUB_REPO = 'xiaomei';
 
 function normalizeVersion(value) {
   const text = String(value || '').trim().replace(/^v/i, '');
+  const short = text.match(/^(\d+)\.(\d+)((?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/);
+  if (short) return `${short[1]}.${short[2]}.0${short[3]}`;
   return VERSION_PATTERN.test(text) ? text : '';
 }
 

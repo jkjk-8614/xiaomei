@@ -2765,17 +2765,18 @@ def normalize_provider(item):
     }
 
 def load_api_providers():
-    defaults = default_api_providers()
+    # 新安装不预置任何第三方平台；用户在 API 设置中自行添加并保存。
+    # 已保存的 provider 仍按原有规则规范化，避免升级时覆盖用户配置。
     if not os.path.exists(API_PROVIDERS_FILE):
-        return merge_default_api_providers(defaults)
+        return []
     try:
         with open(API_PROVIDERS_FILE, "r", encoding="utf-8") as f:
             raw = json.load(f)
         providers = [normalize_provider(item) for item in raw if isinstance(item, dict)]
-        return merge_default_api_providers(providers or defaults, inject_missing=not bool(providers))
+        return merge_default_api_providers(providers, inject_missing=False)
     except Exception as e:
         print(f"加载 API 平台配置失败: {e}")
-        return defaults
+        return []
 
 def save_api_providers(providers):
     os.makedirs(DATA_DIR, exist_ok=True)

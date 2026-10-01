@@ -109,7 +109,7 @@ jobs:
           RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          VERSION="${RELEASE_VERSION#v}"
+          VERSION=$(node -p "require('./package.json').version")
           DISPLAY_VERSION=$(node -p "const pkg=require('./package.json'); pkg.displayVersion || pkg.version")
           echo "display_version=$DISPLAY_VERSION" >> "$GITHUB_OUTPUT"
           node scripts/create-release-manifest.mjs \
@@ -138,6 +138,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for tag in v0.1.0-test.4 v0.1.0-test.5 v0.1.0-test.6 v1.0.0 v1.0.1 v1.0.2 v1.0.3 v1.0.4 v1.0.5 v1.0.6; do
+          for tag in v0.1.0-test.4 v0.1.0-test.5 v0.1.0-test.6 v1.0.0 v1.0.1 v1.0.2 v1.0.3 v1.0.4 v1.0.5 v1.0.6 v1.0.7; do
             gh release delete "$tag" --cleanup-tag --yes || true
           done

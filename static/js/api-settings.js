@@ -2810,7 +2810,13 @@ function renderCliProviderRow(item, active, stateClass, protocolLabel, kind){
     `;
 }
 function renderProviderList(){
-    providerList.innerHTML = sortedProviders().map(item => {
+    const items = sortedProviders();
+    if(!items.length){
+        providerList.innerHTML = `<div class="provider-empty"><i data-lucide="mouse-pointer-click" class="w-4 h-4"></i><span>还没有添加 API 平台，请点击“新增平台”或从“推荐API”中选择。</span></div>`;
+        refreshIcons();
+        return;
+    }
+    providerList.innerHTML = items.map(item => {
         const active = item.id === selectedId ? 'active' : '';
         const itemProtocol = String(item.protocol || 'openai').toLowerCase();
         const stateClass = item.id === 'comfyui'

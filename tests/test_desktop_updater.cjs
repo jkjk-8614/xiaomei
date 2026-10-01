@@ -33,6 +33,7 @@ test('compares stable and prerelease desktop versions', () => {
 
 test('normalizes only semver versions', () => {
   assert.equal(normalizeVersion('v0.1.0-test.3'), '0.1.0-test.3');
+  assert.equal(normalizeVersion('v1.0'), '1.0.0');
   assert.equal(normalizeVersion('2026.9.15'), '2026.9.15');
   assert.equal(normalizeVersion('latest'), '');
 });

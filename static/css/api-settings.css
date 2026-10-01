@@ -6081,6 +6081,18 @@ html.studio-theme-dark body .recommend-tag.recommend-free-tag svg {
         display:none !important;
     }
 }
+.provider-empty {
+    display:flex;
+    align-items:flex-start;
+    gap:8px;
+    padding:14px 10px;
+    border:1px dashed var(--line);
+    border-radius:12px;
+    color:var(--faint);
+    font-size:11.5px;
+    line-height:1.55;
+    font-weight:700;
+}
 
 /* 推荐分组在同一网格内续排：下一组首卡补齐上一组的单卡空位。 */
 .recommend-inline-body .recommend-flow-grid {
