@@ -3696,7 +3696,8 @@
         });
 
         async function runProjectUpdate() {
-            openProjectUpdateModal();
+            // 先检查版本；已经是最新版时保持安静，不打开更新窗口。
+            await checkForUpdates(true);
         }
 
         function computeConnectivitySources(results) {
@@ -3989,7 +3990,8 @@
                     if(hasUpdate) {
                         openProjectUpdateModal();
                     } else if(reachable) {
-                        alert(isEn ? `You are on the latest version (${versionLabel(current)}).` : `已是最新版本（${versionLabel(current)}）。`);
+                        // 手动点击也不打断用户；版本号会在侧栏徽标中保持最新。
+                        setProjectVersionBadge(current);
                     } else {
                         alert(isEn ? 'Could not reach GitHub or ModelScope. Check your network/proxy and try again.' : '无法连接 GitHub 或 ModelScope 更新源，请检查网络或代理后重试。');
                     }
