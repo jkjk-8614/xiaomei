@@ -1738,7 +1738,7 @@ async function showDesktopUpdateResult(result) {
   const status = String(result?.status || 'error');
   const title = status === 'current' ? '检查更新' : status === 'disabled' ? '桌面版更新' : '更新检查失败';
   const message = status === 'current'
-    ? `当前已经是最新版本（${result.version || app.getVersion()}）`
+    ? `当前已经是最新版本（v${APP_DISPLAY_VERSION}）`
     : String(result?.message || '暂时无法检查更新');
   const options = {
     type: status === 'current' || status === 'disabled' ? 'info' : 'error',
@@ -1762,8 +1762,8 @@ function desktopUpdatePromptOptions(result) {
   return {
     type: 'info',
     title: `${APP_NAME} · 发现新版本`,
-    message: `发现新版本 ${result.version}`,
-    detail: `当前版本：${result.version ? app.getVersion() : '未知'}\n${process.platform === 'darwin' ? '更新会在后台下载 macOS ZIP，完成后打开文件位置供你替换应用。个人数据不会被删除。' : '更新会在后台下载新的安装程序，完成后自动重启。个人数据不会被删除。'}${notes}`,
+    message: `发现新版本 v${APP_DISPLAY_VERSION}`,
+    detail: `当前版本：v${APP_DISPLAY_VERSION}\n${process.platform === 'darwin' ? '更新会在后台下载 macOS ZIP，完成后打开文件位置供你替换应用。个人数据不会被删除。' : '更新会在后台下载新的安装程序，完成后自动重启。个人数据不会被删除。'}${notes}`,
     buttons: result.mandatory ? ['立即更新'] : ['立即更新', '稍后提醒'],
     defaultId: 0,
     cancelId: result.mandatory ? 0 : 1,
