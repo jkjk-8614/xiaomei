@@ -28,6 +28,12 @@ function sha256(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
 }
 
+// GitHub Release keeps the Chinese label but normalizes the actual asset URL
+// filename when uploading files whose names begin with "小美画布-v".
+function releaseAssetName(fileName) {
+  return fileName.replace(/^小美画布(?=-v\d)/, '');
+}
+
 function classify(fileName) {
   if (/(?:Setup-x64|Windows-x64)\.exe$/i.test(fileName)) return { platform: 'win32', arch: 'x64', artifact: 'nsis' };
   const mac = fileName.match(/macOS-(x64|arm64|universal)\.zip$/i);
@@ -47,7 +53,7 @@ for (const fileName of await readdir(directory)) {
     ...classification,
     version,
     fileName,
-    downloadUrl: `https://github.com/${repository}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(fileName)}`,
+    downloadUrl: `https://github.com/${repository}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(releaseAssetName(fileName))}`,
     size: info.size,
     sha256: sha256(content),
   });
