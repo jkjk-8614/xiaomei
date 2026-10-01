@@ -25,6 +25,11 @@ const {
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const APP_NAME = '小美画布';
+let APP_DISPLAY_VERSION = '1.0';
+try {
+  const packageInfo = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8'));
+  APP_DISPLAY_VERSION = String(packageInfo.displayVersion || packageInfo.version || APP_DISPLAY_VERSION).trim() || APP_DISPLAY_VERSION;
+} catch {}
 const TEST_API_PORT = 3300;
 const TEST_BROWSER_PORT = 9327;
 // A running process on port 3300 may belong to an older install (and may have
@@ -5624,7 +5629,7 @@ ipcMain.handle('app:check-update', async (event, options = {}) => {
 ipcMain.handle('app:update-info', (event) => {
   const owner = BrowserWindow.fromWebContents(event.sender);
   if (!owner || owner !== mainWindow) return null;
-  return { version: app.getVersion(), isPackaged: app.isPackaged, result: desktopUpdateLastResult };
+  return { version: app.getVersion(), displayVersion: APP_DISPLAY_VERSION, isPackaged: app.isPackaged, result: desktopUpdateLastResult };
 });
 ipcMain.handle('app:update-cancel', (event) => {
   const owner = BrowserWindow.fromWebContents(event.sender);

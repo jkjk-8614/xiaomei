@@ -2176,7 +2176,7 @@
         const PROMPT_CASE_PENDING_KEY = 'studio_pending_prompt_case';
         const PROMPT_CASE_PENDING_TTL = 10 * 60 * 1000;
         const PROMPT_CASE_OPEN_PENDING_KEY = 'studio_pending_prompt_case_open';
-        let appInfo = { version:'', version_url:'https://raw.githubusercontent.com/jkjk-8614/xiaomei/main/VERSION' };
+        let appInfo = { version:'', displayVersion:'1.0', version_url:'https://raw.githubusercontent.com/jkjk-8614/xiaomei/main/VERSION' };
         let updateConnectivityResult = null;
         let projectUpdateRunning = false;
         let projectUpdateAbort = null;  // 当前更新请求的 AbortController，便于用户中途取消
@@ -3352,12 +3352,13 @@
         function setProjectVersionBadge(version) {
             const badge = document.getElementById('project-version-badge');
             if(!badge) return;
-            const full = versionLabel(version);
+            const displayVersion = String(appInfo.displayVersion || '').trim() || version;
+            const full = versionLabel(displayVersion);
             badge.replaceChildren();
-            if(version) {
+            if(displayVersion) {
                 const compactSpan = document.createElement('span');
                 compactSpan.className = 'project-version-compact';
-                compactSpan.textContent = versionLabel(version, 'compact');
+                compactSpan.textContent = versionLabel(displayVersion, 'compact');
                 const fullSpan = document.createElement('span');
                 fullSpan.className = 'project-version-full';
                 fullSpan.textContent = full;

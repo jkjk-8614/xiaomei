@@ -10,6 +10,7 @@ const MAX_MANIFEST_BYTES = 1024 * 1024;
 const MAX_UPDATE_BYTES = 8 * 1024 * 1024 * 1024;
 const DEFAULT_GITHUB_OWNER = 'jkjk-8614';
 const DEFAULT_GITHUB_REPO = 'xiaomei';
+const UPDATE_REQUEST_TIMEOUT_MS = 30000;
 
 function normalizeVersion(value) {
   const text = String(value || '').trim().replace(/^v/i, '');
@@ -164,14 +165,14 @@ function withCacheBust(value) {
   return parsed.toString();
 }
 
-async function fetchText(url, { timeoutMs = 10000, maxBytes = MAX_MANIFEST_BYTES, allowInsecure = false } = {}) {
+async function fetchText(url, { timeoutMs = UPDATE_REQUEST_TIMEOUT_MS, maxBytes = MAX_MANIFEST_BYTES, allowInsecure = false } = {}) {
   if (!isAllowedUpdateUrl(url, { allowInsecure })) {
     const error = new Error('更新地址必须使用 HTTPS');
     error.code = 'invalid_update_url';
     throw error;
   }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), Math.max(1000, Number(timeoutMs) || 10000));
+  const timer = setTimeout(() => controller.abort(), Math.max(1000, Number(timeoutMs) || UPDATE_REQUEST_TIMEOUT_MS));
   try {
     const response = await fetch(withCacheBust(url), {
       signal: controller.signal,
@@ -317,9 +318,19 @@ class DesktopUpdater {
     if (!current) return { status: 'error', message: '当前桌面版本号无效，无法检查更新' };
     let payload;
     try {
-      payload = config.provider === 'github'
-        ? await this.fetchGitHubManifest(config)
-        : JSON.parse(await fetchText(config.manifestUrl, { allowInsecure: this.allowInsecure }));
+      if (config.manifestUrl) {
+        try {
+          payload = JSON.parse(await fetchText(config.manifestUrl, { allowInsecure: this.allowInsecure }));
+        } catch (directError) {
+          if (config.provider !== 'github') throw directError;
+          // GitHub 的下载地址偶尔会被网络策略拦截，保留 API 路径作为备用来源。
+          payload = await this.fetchGitHubManifest(config);
+        }
+      } else {
+        payload = config.provider === 'github'
+          ? await this.fetchGitHubManifest(config)
+          : JSON.parse(await fetchText(config.manifestUrl, { allowInsecure: this.allowInsecure }));
+      }
     } catch (error) {
       return { status: 'unavailable', version: current, message: error?.message || '无法连接更新服务器' };
     }

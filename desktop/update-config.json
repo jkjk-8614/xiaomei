@@ -1,9 +1,10 @@
 {
   "provider": "github",
+  "manifestUrl": "https://github.com/jkjk-8614/xiaomei/releases/download/v1.0/update.json",
   "github": {
     "owner": "jkjk-8614",
     "repo": "xiaomei",
-    "releaseTag": "",
+    "releaseTag": "v1.0",
     "allowPrerelease": true
   },
   "channel": "stable",
