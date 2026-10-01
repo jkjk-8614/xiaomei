@@ -98,7 +98,7 @@ test('checks build revisions without changing the application version', async (t
   assert.equal((await makeUpdater('1.0.0', 41).check()).status, 'available');
   assert.equal((await makeUpdater('1.0.0', 42).check()).status, 'current');
   assert.equal((await makeUpdater('1.0.0', 43).check()).status, 'current');
-  assert.equal((await makeUpdater('1.0.10', 0).check()).status, 'current');
+  assert.equal((await makeUpdater('1.0.10', 0).check()).status, 'available');
   manifest.version = '1.1.0';
   assert.equal((await makeUpdater('1.0.0', 43).check()).status, 'available');
   manifest.buildRevision = 'bad';

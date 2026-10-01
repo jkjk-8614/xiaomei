@@ -348,7 +348,16 @@ class DesktopUpdater {
     });
     if (!manifest.ok) return { status: 'invalid', version: current, message: manifest.message, code: manifest.code };
     const versionOrder = compareVersions(manifest.version, current);
-    const hasUpdate = versionOrder > 0 || (versionOrder === 0 && manifest.buildRevision > this.buildRevision);
+    // 1.0.8/1.0.10 是切换到公开版本号 v1.0 前的历史内部版本。
+    // 仅允许它们迁移一次；后续版本由 buildRevision 单调判断。
+    const legacyPublicVersionMigration = this.buildRevision === 0
+      && manifest.version === '1.0.0'
+      && manifest.buildRevision > 0
+      && /^1\.0\.\d+$/.test(current)
+      && versionOrder < 0;
+    const hasUpdate = versionOrder > 0
+      || (versionOrder === 0 && manifest.buildRevision > this.buildRevision)
+      || legacyPublicVersionMigration;
     if (!hasUpdate) {
       return { status: 'current', version: current, latestVersion: manifest.version, message: `当前已经是最新版本（${current}）` };
     }
