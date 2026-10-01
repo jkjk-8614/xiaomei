@@ -2180,6 +2180,7 @@
         let updateConnectivityResult = null;
         let projectUpdateRunning = false;
         let projectUpdateAbort = null;  // 当前更新请求的 AbortController，便于用户中途取消
+        let projectUpdateCheckPromise = null;
         let updateSource = localStorage.getItem('studio_update_source') || 'github';
         let projectUpdateNotes = null;
 
@@ -3372,7 +3373,7 @@
         function refreshUpdateButtonText() {
             const btn = document.getElementById('update-now-btn');
             const text = document.getElementById('update-now-text');
-            if(!btn || !text || !btn.classList.contains('show')) return;
+            if(!btn || !text) return;
             const remoteVersion = btn.dataset.remoteVersion || '';
             const isEn = window.StudioI18n?.lang?.() === 'en';
             text.removeAttribute('data-i18n');
@@ -3391,8 +3392,9 @@
                 text.append(prefixSpan, compactSpan, fullSpan);
                 btn.setAttribute('aria-label', `${prefix} ${versionLabel(remoteVersion)}`);
             } else {
-                text.textContent = isEn ? 'Update' : '一键更新';
+                text.textContent = isEn ? 'Check for updates' : '检查更新';
                 btn.setAttribute('aria-label', text.textContent);
+                btn.title = isEn ? 'Check for updates' : '检查更新';
             }
         }
 
@@ -3696,7 +3698,27 @@
         });
 
         async function runProjectUpdate() {
-            // 先检查版本；已经是最新版时保持安静，不打开更新窗口。
+            if(projectUpdateRunning || projectUpdateCheckPromise) return;
+            if(window.electronAPI?.checkForUpdates) {
+                projectUpdateRunning = true;
+                const btn = document.getElementById('update-now-btn');
+                const text = document.getElementById('update-now-text');
+                const oldText = text?.textContent || '';
+                if(btn) btn.disabled = true;
+                if(text) text.textContent = window.StudioI18n?.lang?.() === 'en' ? 'Checking...' : '检查中...';
+                try {
+                    const result = await window.electronAPI.checkForUpdates({manual: true});
+                    if(result?.status === 'available' && result.version) showUpdateNotice(result.current || appInfo.version, result.version);
+                } catch(e) {
+                    alert(window.StudioI18n?.lang?.() === 'en' ? 'Update check failed.' : '检测更新失败。');
+                } finally {
+                    projectUpdateRunning = false;
+                    if(btn) btn.disabled = false;
+                    if(text) text.textContent = oldText || (window.StudioI18n?.lang?.() === 'en' ? 'Check for updates' : '检查更新');
+                    refreshUpdateButtonText();
+                }
+                return;
+            }
             await checkForUpdates(true);
         }
 
@@ -3875,8 +3897,8 @@
                             : `已更新 ${data.count || 0} 个文件。请重启后端，然后刷新页面。`)) + fallbackNote
                 );
                 const updateBtn = document.getElementById('update-now-btn');
-                updateBtn?.classList.remove('update-available');
-                btn?.classList.remove('show');
+                updateBtn?.classList.remove('update-available', 'show');
+                if(updateBtn) { delete updateBtn.dataset.remoteVersion; delete updateBtn.dataset.localVersion; }
                 setProjectVersionBadge(data.version || updateBtn?.dataset.remoteVersion || appInfo.version);
                 if(restarting) waitForBackendAndReload();
             } catch(e) {
@@ -3886,6 +3908,7 @@
                 setUpdateSummary('fail', isEn ? 'Update failed' : '更新失败', msg);
             } finally {
                 clearTimeout(killer);
+                projectUpdateAbort = null;
                 projectUpdateRunning = false;
                 if(btn) btn.disabled = false;
                 if(confirmBtn) confirmBtn.disabled = false;
@@ -3943,7 +3966,10 @@
         window.rollbackProjectUpdate = rollbackProjectUpdate;
 
         async function checkForUpdates(manual = false) {
+            if(window.electronAPI?.checkForUpdates) return null;
+            if(projectUpdateCheckPromise) return projectUpdateCheckPromise;
             const isEn = window.StudioI18n?.lang?.() === 'en';
+            projectUpdateCheckPromise = (async () => {
             const badge = document.getElementById('project-version-badge');
             if(manual && badge) badge.classList.add('checking');
             try {
@@ -4002,9 +4028,11 @@
             } finally {
                 if(badge) badge.classList.remove('checking');
             }
+            })();
+            try { return await projectUpdateCheckPromise; } finally { projectUpdateCheckPromise = null; }
         }
-        // 恢复侧栏版本入口后，启动时只静默检查一次；点击入口仍可手动检查。
-        window.setTimeout(() => checkForUpdates(false), 900);
+        // 安装版由 Electron 更新器统一检查并提示；浏览器/开发模式保留源码检查。
+        window.setTimeout(() => { if(!window.electronAPI?.checkForUpdates) checkForUpdates(false); }, 900);
     </script>
     <link rel="stylesheet" href="/static/css/mcp-settings.css?v=2026.10.01.1789283121">
     <script src="/static/js/mcp-settings.js?v=2026.10.01.1789283281"></script>

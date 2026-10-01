@@ -1847,7 +1847,8 @@ async function checkDesktopUpdate({ manual = false } = {}) {
     }
     return desktopUpdatePromptPromise;
   }
-  if (manual) await showDesktopUpdateResult(result);
+  // 手动检查在“已是最新版”时保持安静；只有失败或发现新版本才打扰用户。
+  if (manual && result.status !== 'current') await showDesktopUpdateResult(result);
   return result;
 }
 
