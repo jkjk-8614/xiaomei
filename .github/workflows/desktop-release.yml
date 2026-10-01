@@ -43,7 +43,9 @@ jobs:
       - name: Rename Windows package for users
         shell: pwsh
         run: |
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $package = Get-Content package.json -Raw | ConvertFrom-Json
+          $version = $package.displayVersion
+          if (-not $version) { $version = $package.version }
           $installer = Get-ChildItem dist-package -Filter '*-Setup-x64.exe' | Select-Object -First 1
           if (-not $installer) { throw 'Windows installer not found' }
           Rename-Item -LiteralPath $installer.FullName -NewName "小美画布-v$version-Windows-x64.exe"
@@ -77,7 +79,7 @@ jobs:
         run: npx electron-builder --mac zip --x64 --arm64 --publish never
       - name: Rename macOS packages for users
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          VERSION=$(node -p "const pkg=require('./package.json'); pkg.displayVersion || pkg.version")
           mv dist-package/*-macOS-x64.zip "dist-package/小美画布-v${VERSION}-macOS-x64.zip"
           mv dist-package/*-macOS-arm64.zip "dist-package/小美画布-v${VERSION}-macOS-arm64.zip"
       - uses: actions/upload-artifact@v4
@@ -100,6 +102,7 @@ jobs:
           path: release-assets
           merge-multiple: true
       - name: Prepare release manifest
+        id: manifest
         shell: bash
         env:
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -107,6 +110,8 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           VERSION="${RELEASE_VERSION#v}"
+          DISPLAY_VERSION=$(node -p "const pkg=require('./package.json'); pkg.displayVersion || pkg.version")
+          echo "display_version=$DISPLAY_VERSION" >> "$GITHUB_OUTPUT"
           node scripts/create-release-manifest.mjs \
             --directory release-assets \
             --output release-assets/update.json \
@@ -117,16 +122,16 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          name: 小美画布v1.0
+          name: 小美画布v${{ steps.manifest.outputs.display_version }}
           body: |
             小美画布正式版。
 
             下载对应平台的安装包：Windows 或 macOS（Intel / Apple 芯片）。
           generate_release_notes: false
           files: |
-            release-assets/小美画布-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}-Windows-x64.exe
-            release-assets/小美画布-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}-macOS-x64.zip
-            release-assets/小美画布-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}-macOS-arm64.zip
+            release-assets/小美画布-v${{ steps.manifest.outputs.display_version }}-Windows-x64.exe
+            release-assets/小美画布-v${{ steps.manifest.outputs.display_version }}-macOS-x64.zip
+            release-assets/小美画布-v${{ steps.manifest.outputs.display_version }}-macOS-arm64.zip
             release-assets/update.json
       - name: Remove old test releases and tags
         shell: bash
