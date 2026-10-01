@@ -1,7 +1,0 @@
-interface:
-  display_name: "淘宝详情页诊断"
-  short_description: "拆解淘宝/天猫竞品Top页打法并迁移到自家详情页"
-  default_prompt: "Use $ec-detail-analysis to analyze a Taobao/Tmall competitor or owned detail page and extract reusable page strategy for our own product detail page."
-
-policy:
-  allow_implicit_invocation: true

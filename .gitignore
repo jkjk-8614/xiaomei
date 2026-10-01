@@ -9,8 +9,7 @@ API/.env.*
 # User data, history, generated media and caches
 user_data/
 data/*
-!data/agent_skills/
-!data/agent_skills/**
+data/agent_skills/
 assets/图片空间/
 assets/input/
 assets/uploads/
