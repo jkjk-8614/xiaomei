@@ -2787,21 +2787,29 @@ function safeAgentAction(raw) {
 
 function choosePython() {
   const bundled = path.join(PROJECT_ROOT, 'python', 'python.exe');
+  const bundledWinRuntime = path.join(PROJECT_ROOT, 'bundled', 'win-api', 'xiaomei-api.exe');
   const bundledWin = path.join(PROJECT_ROOT, 'build', 'win-api', 'xiaomei-api.exe');
+  const bundledMacRuntime = path.join(PROJECT_ROOT, 'bundled', 'mac-api', 'xiaomei-api');
   const bundledMac = path.join(PROJECT_ROOT, 'build', 'mac-api', 'xiaomei-api');
-  return process.platform === 'win32' && fs.existsSync(bundledWin)
-    ? bundledWin
+  return process.platform === 'win32' && fs.existsSync(bundledWinRuntime)
+    ? bundledWinRuntime
+    : process.platform === 'win32' && fs.existsSync(bundledWin)
+      ? bundledWin
     : process.platform === 'win32' && fs.existsSync(bundled)
       ? bundled
+    : process.platform === 'darwin' && fs.existsSync(bundledMacRuntime)
+      ? bundledMacRuntime
     : process.platform === 'darwin' && fs.existsSync(bundledMac)
       ? bundledMac
       : (process.platform === 'win32' ? 'python' : 'python3');
 }
 
 function chooseApiArguments(command) {
+  const bundledWinRuntime = path.join(PROJECT_ROOT, 'bundled', 'win-api', 'xiaomei-api.exe');
   const bundledWin = path.join(PROJECT_ROOT, 'build', 'win-api', 'xiaomei-api.exe');
+  const bundledMacRuntime = path.join(PROJECT_ROOT, 'bundled', 'mac-api', 'xiaomei-api');
   const bundledMac = path.join(PROJECT_ROOT, 'build', 'mac-api', 'xiaomei-api');
-  return command === bundledWin || command === bundledMac
+  return [bundledWinRuntime, bundledWin, bundledMacRuntime, bundledMac].includes(command)
     ? []
     : ['main.py'];
 }

@@ -20,8 +20,8 @@ files:
   - tools/**
   - workflows/**
   - packages/**
-  - build/win-api/**
-  - build/mac-api/**
+  - bundled/win-api/**
+  - bundled/mac-api/**
   - python/**
   - "!**/data/agent_skills{,/**}"
   - API/.env.example

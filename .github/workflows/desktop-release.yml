@@ -35,13 +35,19 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install --no-cache-dir -r requirements.txt pyinstaller
-          pyinstaller --onefile --name xiaomei-api main.py --distpath build/win-api --workpath build/win-api-work --specpath build/win-api-spec
+          pyinstaller --onefile --name xiaomei-api main.py --distpath bundled/win-api --workpath build/win-api-work --specpath build/win-api-spec
       - name: Install desktop build tools
         shell: pwsh
         run: npm install --no-audit --no-fund --ignore-scripts
       - name: Build Windows installer
         shell: pwsh
         run: npx electron-builder --win nsis --x64 --publish never
+      - name: Verify packaged Windows backend
+        shell: pwsh
+        run: |
+          $backend = 'dist-package/win-unpacked/resources/app/bundled/win-api/xiaomei-api.exe'
+          if (-not (Test-Path -LiteralPath $backend -PathType Leaf)) { throw 'Packaged Windows backend is missing' }
+          if ((Get-Item -LiteralPath $backend).Length -lt 1) { throw 'Packaged Windows backend is empty' }
       - name: Rename Windows package for users
         shell: pwsh
         run: |
@@ -76,11 +82,22 @@ jobs:
           python -m pip install --upgrade pip
           grep -v '^onnxruntime-gpu' requirements.txt > /tmp/requirements-macos.txt
           python -m pip install --no-cache-dir -r /tmp/requirements-macos.txt onnxruntime pyinstaller
-          pyinstaller --onefile --name xiaomei-api main.py --distpath build/mac-api --workpath build/mac-api-work --specpath build/mac-api-spec
+          pyinstaller --onefile --name xiaomei-api main.py --distpath bundled/mac-api --workpath build/mac-api-work --specpath build/mac-api-spec
       - name: Install desktop build tools
         run: npm install --no-audit --no-fund --ignore-scripts
       - name: Build macOS packages
         run: npx electron-builder --mac zip --x64 --arm64 --publish never
+      - name: Verify packaged macOS backend
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          for package in Path('dist-package').glob('*-macOS-*.zip'):
+              with ZipFile(package) as archive:
+                  matches = [info for info in archive.infolist() if info.filename.endswith('/Contents/Resources/app/bundled/mac-api/xiaomei-api') and info.file_size > 0]
+                  if not matches:
+                      raise RuntimeError(f'Packaged macOS backend is missing: {package.name}')
+          PY
       - name: Rename macOS packages for users
         run: |
           VERSION=$(node -p "const pkg=require('./package.json'); pkg.displayVersion || pkg.version")

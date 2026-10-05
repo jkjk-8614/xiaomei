@@ -49,6 +49,7 @@ build/win-api-spec/
 build/mac-api/
 build/mac-api-work/
 build/mac-api-spec/
+bundled/
 __pycache__/
 **/__pycache__/
 *.pyc
