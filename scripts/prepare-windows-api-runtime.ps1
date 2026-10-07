@@ -8,9 +8,16 @@ $ErrorActionPreference = 'Stop'
 # Keep the version and digest together so a release cannot silently switch to
 # an unreviewed runtime.
 $pythonVersion = '3.13.16'
+$buildVersion = & $BuildPython -c "import sys; print('.'.join(map(str, sys.version_info[:3])))"
+if ($LASTEXITCODE -ne 0 -or $buildVersion.Trim() -ne $pythonVersion) {
+  throw "Windows dependency build requires Python $pythonVersion, got $buildVersion"
+}
 $pythonUrl = "https://www.python.org/ftp/python/$pythonVersion/python-$pythonVersion-embed-amd64.zip"
 $pythonSha256 = '97DAE5274CC54867065E8D5A3226E48C35017ED332A0FDB0E27D5B5821961297'
 $runtimeRoot = Join-Path (Get-Location) 'bundled/win-api'
+if (Test-Path -LiteralPath $runtimeRoot) {
+  throw "Build runtime directory already exists; use a clean release checkout: $runtimeRoot"
+}
 $downloadPath = Join-Path $env:RUNNER_TEMP "python-$pythonVersion-embed-amd64.zip"
 
 New-Item -ItemType Directory -Force -Path $runtimeRoot | Out-Null
@@ -26,7 +33,6 @@ if ($actual -ne $pythonSha256) {
   throw "Python embedded runtime hash mismatch: expected $pythonSha256, got $actual"
 }
 
-Get-ChildItem -LiteralPath $runtimeRoot -Force | Remove-Item -Recurse -Force
 Expand-Archive -LiteralPath $downloadPath -DestinationPath $runtimeRoot -Force
 
 $signature = Get-AuthenticodeSignature -LiteralPath (Join-Path $runtimeRoot 'python.exe')

@@ -24,7 +24,7 @@ jobs:
           node-version: 20
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.13.16'
       - name: Verify release inputs
         shell: pwsh
         run: node scripts/verify-release-inputs.mjs
