@@ -1107,6 +1107,9 @@
         }
         .project-version-badge.checking { animation: update-badge-pulse 1s ease-in-out infinite; }
         .project-version-full { display:none; }
+        .update-version-full { display:none; }
+        .sidebar:hover .update-version-compact { display:none; }
+        .sidebar:hover .update-version-full { display:inline; }
         @keyframes update-badge-pulse { 50% { opacity:.45; } }
         /* 折叠态去除 gap，避免图标被推偏 */
         .side-pill { gap:0; }

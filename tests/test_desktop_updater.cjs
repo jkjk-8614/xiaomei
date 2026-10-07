@@ -38,6 +38,21 @@ test('normalizes only semver versions', () => {
   assert.equal(normalizeVersion('latest'), '');
 });
 
+test('keeps a network failure actionable instead of exposing raw fetch errors', async (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'xiaomei-updater-network-'));
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }));
+  const configPath = path.join(temporaryRoot, 'update-config.json');
+  fs.writeFileSync(configPath, JSON.stringify({ provider: 'manifest', manifestUrl: 'https://127.0.0.1:1/update.json' }), 'utf8');
+  const updater = new DesktopUpdater({
+    app: { isPackaged: true, getVersion: () => '1.0.0' },
+    configPath,
+  });
+  const result = await updater.check();
+  assert.equal(result.status, 'unavailable');
+  assert.equal(result.code, 'network_unavailable');
+  assert.match(result.message, /GitHub 更新服务器|检查网络/);
+});
+
 test('accepts a complete HTTPS NSIS manifest', () => {
   const result = normalizeManifest(VALID_MANIFEST);
   assert.equal(result.ok, true);

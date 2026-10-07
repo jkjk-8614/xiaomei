@@ -11,6 +11,7 @@ const MAX_UPDATE_BYTES = 8 * 1024 * 1024 * 1024;
 const DEFAULT_GITHUB_OWNER = 'jkjk-8614';
 const DEFAULT_GITHUB_REPO = 'xiaomei';
 const UPDATE_REQUEST_TIMEOUT_MS = 30000;
+const UPDATE_FETCH_ATTEMPTS = 3;
 
 function normalizeVersion(value) {
   const text = String(value || '').trim().replace(/^v/i, '');
@@ -176,47 +177,61 @@ async function fetchText(url, { timeoutMs = UPDATE_REQUEST_TIMEOUT_MS, maxBytes 
     error.code = 'invalid_update_url';
     throw error;
   }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), Math.max(1000, Number(timeoutMs) || UPDATE_REQUEST_TIMEOUT_MS));
-  try {
-    const response = await fetch(withCacheBust(url), {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: { accept: 'application/json, text/plain;q=0.9, */*;q=0.1', 'user-agent': 'XiaomeiCanvas-Updater' },
-    });
-    if (!response.ok) {
-      const error = new Error(`更新服务器返回 HTTP ${response.status}`);
-      error.code = 'http_error';
-      throw error;
+  const attempts = Math.max(1, Number(UPDATE_FETCH_ATTEMPTS) || 1);
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Math.max(1000, Number(timeoutMs) || UPDATE_REQUEST_TIMEOUT_MS));
+    try {
+      const response = await fetch(withCacheBust(url), {
+        signal: controller.signal,
+        redirect: 'follow',
+        headers: { accept: 'application/json, text/plain;q=0.9, */*;q=0.1', 'user-agent': 'XiaomeiCanvas-Updater' },
+      });
+      if (!response.ok) {
+        const error = new Error(`更新服务器返回 HTTP ${response.status}`);
+        error.code = 'http_error';
+        throw error;
+      }
+      if (response.url && !isAllowedUpdateUrl(response.url, { allowInsecure })) {
+        const error = new Error('更新服务器重定向到了不安全地址');
+        error.code = 'unsafe_redirect';
+        throw error;
+      }
+      const contentLength = Number(response.headers.get('content-length') || 0);
+      if (contentLength > maxBytes) {
+        const error = new Error('更新清单超过允许大小');
+        error.code = 'manifest_too_large';
+        throw error;
+      }
+      const text = await response.text();
+      if (Buffer.byteLength(text, 'utf8') > maxBytes) {
+        const error = new Error('更新清单超过允许大小');
+        error.code = 'manifest_too_large';
+        throw error;
+      }
+      return text.replace(/^\uFEFF/, '');
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        const timeoutError = new Error('连接更新服务器超时');
+        timeoutError.code = 'timeout';
+        lastError = timeoutError;
+      } else {
+        lastError = error;
+      }
+      const retryable = !lastError?.code
+        || lastError.code === 'timeout'
+        || (lastError.code === 'http_error' && /HTTP (408|429|5\d\d)/.test(String(lastError.message || '')));
+      if (!retryable || attempt >= attempts) break;
+      await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+    } finally {
+      clearTimeout(timer);
     }
-    if (response.url && !isAllowedUpdateUrl(response.url, { allowInsecure })) {
-      const error = new Error('更新服务器重定向到了不安全地址');
-      error.code = 'unsafe_redirect';
-      throw error;
-    }
-    const contentLength = Number(response.headers.get('content-length') || 0);
-    if (contentLength > maxBytes) {
-      const error = new Error('更新清单超过允许大小');
-      error.code = 'manifest_too_large';
-      throw error;
-    }
-    const text = await response.text();
-    if (Buffer.byteLength(text, 'utf8') > maxBytes) {
-      const error = new Error('更新清单超过允许大小');
-      error.code = 'manifest_too_large';
-      throw error;
-    }
-    return text.replace(/^\uFEFF/, '');
-  } catch (error) {
-    if (error?.name === 'AbortError') {
-      const timeoutError = new Error('连接更新服务器超时');
-      timeoutError.code = 'timeout';
-      throw timeoutError;
-    }
-    throw error;
-  } finally {
-    clearTimeout(timer);
   }
+  if (lastError?.name === 'TypeError' && /fetch failed/i.test(String(lastError.message || ''))) {
+    lastError = updateError('无法连接 GitHub 更新服务器，请检查网络后重试', 'network_unavailable');
+  }
+  throw lastError || updateError('无法连接更新服务器', 'network_unavailable');
 }
 
 async function sha256File(filePath) {
@@ -338,7 +353,7 @@ class DesktopUpdater {
           : JSON.parse(await fetchText(config.manifestUrl, { allowInsecure: this.allowInsecure }));
       }
     } catch (error) {
-      return { status: 'unavailable', version: current, message: error?.message || '无法连接更新服务器' };
+      return { status: 'unavailable', version: current, code: error?.code || 'network_unavailable', message: error?.message || '无法连接更新服务器，请检查网络后重试' };
     }
     const manifest = normalizeManifest(payload, {
       platform: process.platform,

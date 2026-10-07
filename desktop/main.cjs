@@ -1765,7 +1765,7 @@ function desktopUpdatePromptOptions(result) {
   return {
     type: 'info',
     title: `${APP_NAME} · 发现新版本`,
-    message: `发现新版本 v${APP_DISPLAY_VERSION}`,
+    message: `发现新版本 v${result.version || APP_DISPLAY_VERSION}`,
     detail: `当前版本：v${APP_DISPLAY_VERSION}\n${process.platform === 'darwin' ? '更新会在后台下载 macOS ZIP，完成后打开文件位置供你替换应用。个人数据不会被删除。' : '更新会在后台下载新的安装程序，完成后自动重启。个人数据不会被删除。'}${notes}`,
     buttons: result.mandatory ? ['立即更新'] : ['立即更新', '稍后提醒'],
     defaultId: 0,
