@@ -33,9 +33,7 @@ jobs:
       - name: Build bundled Windows API runtime
         shell: pwsh
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir -r requirements.txt pyinstaller
-          pyinstaller --onefile --name xiaomei-api main.py --distpath bundled/win-api --workpath build/win-api-work --specpath build/win-api-spec
+          ./scripts/prepare-windows-api-runtime.ps1 -BuildPython python
       - name: Install desktop build tools
         shell: pwsh
         run: npm install --no-audit --no-fund --ignore-scripts
@@ -45,9 +43,47 @@ jobs:
       - name: Verify packaged Windows backend
         shell: pwsh
         run: |
-          $backend = 'dist-package/win-unpacked/resources/app/bundled/win-api/xiaomei-api.exe'
-          if (-not (Test-Path -LiteralPath $backend -PathType Leaf)) { throw 'Packaged Windows backend is missing' }
-          if ((Get-Item -LiteralPath $backend).Length -lt 1) { throw 'Packaged Windows backend is empty' }
+          $appRoot = (Resolve-Path 'dist-package/win-unpacked/resources/app').Path
+          $runtime = Join-Path $appRoot 'bundled/win-api/python.exe'
+          $entry = Join-Path $appRoot 'windows_api_entry.py'
+          $oldBackend = Join-Path $appRoot 'bundled/win-api/xiaomei-api.exe'
+          if (-not (Test-Path -LiteralPath $runtime -PathType Leaf)) { throw 'Packaged Windows Python runtime is missing' }
+          if (-not (Test-Path -LiteralPath $entry -PathType Leaf)) { throw 'Packaged Windows API entry point is missing' }
+          if (Test-Path -LiteralPath $oldBackend) { throw 'The packaged app still contains the old custom API loader' }
+          if (-not (Test-Path -LiteralPath (Join-Path $appRoot 'bundled/win-api/python313.zip') -PathType Leaf)) { throw 'Packaged Python standard library is missing' }
+          $signature = Get-AuthenticodeSignature -LiteralPath $runtime
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Python Software Foundation') { throw 'Packaged Python signature is invalid' }
+
+          $dataRoot = Join-Path $env:RUNNER_TEMP "xiaomei-api-smoke-$env:GITHUB_RUN_ID"
+          New-Item -ItemType Directory -Force -Path $dataRoot | Out-Null
+          $previous = @{}
+          foreach ($name in 'XIAOMEI_CANVAS_PROJECT_ROOT','XIAOMEI_CANVAS_DATA_ROOT','XIAOMEI_CANVAS_SESSION_ID','XIAOMEI_CANVAS_PORT','TEMP','TMP') {
+            $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+          }
+          $session = [guid]::NewGuid().ToString()
+          [Environment]::SetEnvironmentVariable('XIAOMEI_CANVAS_PROJECT_ROOT', $appRoot, 'Process')
+          [Environment]::SetEnvironmentVariable('XIAOMEI_CANVAS_DATA_ROOT', $dataRoot, 'Process')
+          [Environment]::SetEnvironmentVariable('XIAOMEI_CANVAS_SESSION_ID', $session, 'Process')
+          [Environment]::SetEnvironmentVariable('XIAOMEI_CANVAS_PORT', '39417', 'Process')
+          [Environment]::SetEnvironmentVariable('TEMP', $dataRoot, 'Process')
+          [Environment]::SetEnvironmentVariable('TMP', $dataRoot, 'Process')
+          $process = Start-Process -FilePath $runtime -ArgumentList @($entry) -WorkingDirectory $appRoot -WindowStyle Hidden -PassThru
+          try {
+            $ready = $false
+            for ($attempt = 0; $attempt -lt 120; $attempt++) {
+              Start-Sleep -Milliseconds 500
+              try {
+                $response = Invoke-RestMethod -Uri 'http://127.0.0.1:39417/api/app-info' -TimeoutSec 2
+                if ([string]$response.desktop_session_id -eq $session) { $ready = $true; break }
+              } catch {}
+              if ($process.HasExited) { throw "Windows API exited before readiness (code $($process.ExitCode))" }
+            }
+            if (-not $ready) { throw 'Packaged Windows API did not answer its health endpoint within 60 seconds' }
+          } finally {
+            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+            foreach ($name in $previous.Keys) { [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process') }
+            Remove-Item -LiteralPath $dataRoot -Recurse -Force -ErrorAction SilentlyContinue
+          }
       - name: Rename Windows package for users
         shell: pwsh
         run: |
