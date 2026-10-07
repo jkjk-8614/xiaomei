@@ -34,6 +34,9 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/prepare-windows-api-runtime.ps1 -BuildPython python
+          $runtime = (Resolve-Path 'bundled/win-api/python.exe').Path
+          & $runtime -c "from PIL import Image; import fastapi, httpx, onnxruntime; print('Windows API dependencies import successfully')"
+          if ($LASTEXITCODE -ne 0) { throw 'Windows API dependencies cannot be imported before packaging' }
       - name: Install desktop build tools
         shell: pwsh
         run: npm install --no-audit --no-fund --ignore-scripts
