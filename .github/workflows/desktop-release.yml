@@ -67,7 +67,9 @@ jobs:
           [Environment]::SetEnvironmentVariable('XIAOMEI_CANVAS_PORT', '39417', 'Process')
           [Environment]::SetEnvironmentVariable('TEMP', $dataRoot, 'Process')
           [Environment]::SetEnvironmentVariable('TMP', $dataRoot, 'Process')
-          $process = Start-Process -FilePath $runtime -ArgumentList @($entry) -WorkingDirectory $appRoot -WindowStyle Hidden -PassThru
+          $stdout = Join-Path $dataRoot 'api-smoke.stdout.log'
+          $stderr = Join-Path $dataRoot 'api-smoke.stderr.log'
+          $process = Start-Process -FilePath $runtime -ArgumentList @($entry) -WorkingDirectory $appRoot -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
           try {
             $ready = $false
             for ($attempt = 0; $attempt -lt 120; $attempt++) {
@@ -76,7 +78,10 @@ jobs:
                 $response = Invoke-RestMethod -Uri 'http://127.0.0.1:39417/api/app-info' -TimeoutSec 2
                 if ([string]$response.desktop_session_id -eq $session) { $ready = $true; break }
               } catch {}
-              if ($process.HasExited) { throw "Windows API exited before readiness (code $($process.ExitCode))" }
+              if ($process.HasExited) {
+                $details = if (Test-Path -LiteralPath $stderr) { Get-Content -LiteralPath $stderr -Raw } else { '(no stderr)' }
+                throw "Windows API exited before readiness (code $($process.ExitCode)): $details"
+              }
             }
             if (-not $ready) { throw 'Packaged Windows API did not answer its health endpoint within 60 seconds' }
           } finally {
