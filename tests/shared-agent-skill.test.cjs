@@ -39,8 +39,8 @@ function setup(initial = null, failWrite = false) {
     return { api: window.StudioSharedSkill, values, window, context, requests };
 }
 
-test('restores and persists the renamed browser selection', () => {
-    const { api, values } = setup('dabi-browser');
+test('restores and persists the browser selection', () => {
+    const { api, values } = setup('browser-agent');
     assert.equal(api.getSelected(), 'browser-agent');
     assert.equal(values.get(key), 'browser-agent');
     assert.equal(api.getSelected(), 'browser-agent');
@@ -48,17 +48,17 @@ test('restores and persists the renamed browser selection', () => {
 
 test('cleared shared selection wins over older panel settings', () => {
     const { api, values } = setup('');
-    assert.equal(api.getSelected('dabi-browser'), '');
+    assert.equal(api.getSelected('browser-agent'), '');
     assert.equal(values.get(key), '');
 });
 
 test('missing shared selection can restore older panel settings', () => {
     const { api } = setup();
-    assert.equal(api.getSelected('dabi-browser'), 'browser-agent');
+    assert.equal(api.getSelected('browser-agent'), 'browser-agent');
 });
 
 test('quota failure does not discard a readable selection', () => {
-    const { api } = setup('dabi-browser', true);
+    const { api } = setup('browser-agent', true);
     assert.equal(api.getSelected(), 'browser-agent');
 });
 
@@ -69,24 +69,24 @@ test('unrelated Skill IDs remain strings and unchanged', () => {
     }
 });
 
-test('each cross-page subscriber receives one canonical event and can unsubscribe', () => {
+test('each cross-page subscriber receives one shared event and can unsubscribe', () => {
     const { api, window, values } = setup();
     const first = [], second = [];
     const unsubscribe = api.subscribe(id => first.push(id));
     api.subscribe(id => second.push(id));
-    window.dispatchEvent({ type: 'storage', key, newValue: 'dabi-browser' });
+    window.dispatchEvent({ type: 'storage', key, newValue: 'browser-agent' });
     assert.deepEqual(first, ['browser-agent']);
     assert.deepEqual(second, ['browser-agent']);
-    assert.equal(values.get(key), 'browser-agent');
+    assert.equal(values.get(key), undefined);
     unsubscribe();
     api.setSelected('');
     assert.deepEqual(first, ['browser-agent']);
     assert.deepEqual(second, ['browser-agent', '']);
 });
 
-test('instruction requests for historical IDs use the current package', async () => {
+test('instruction requests use the current browser package', async () => {
     const { api, requests } = setup();
-    assert.equal(await api.instructions('dabi-browser'), 'Current browser instructions');
+    assert.equal(await api.instructions('browser-agent'), 'Current browser instructions');
     assert.deepEqual(requests, ['/api/agent-skills/browser-agent']);
 });
 
@@ -94,7 +94,7 @@ test('canvas restores its older per-panel choice when no shared preference exist
     const { api, context } = setup();
     Object.assign(context, {
         sharedSkillApi: api, skillSelectionKey: key,
-        skillEl: { value: '' }, preferences: () => ({ skill: 'dabi-browser' }),
+        skillEl: { value: '' }, preferences: () => ({ skill: 'browser-agent' }),
     });
     const canvas = readFileSync(path.join(root, 'static/js/canvas-agent.js'), 'utf8');
     vm.runInContext(canvas.slice(canvas.indexOf('    function canonicalSkillId('), canvas.indexOf('    function savePreferences(')), context);
@@ -108,7 +108,7 @@ test('GPT startup respects cleared shared state and restores missing state', () 
     const init = html.slice(html.indexOf('        const savedSkillId='), html.indexOf('        let skills = []'));
     for (const [initial, expected] of [[null, 'browser-agent'], ['', ''], ['buyer-show-generation', 'buyer-show-generation']]) {
         const { context, api } = setup(initial);
-        Object.assign(context, { savedChatSettings: { skillId: 'dabi-browser' }, SKILL_SELECTION_KEY: key, canonicalSharedSkillId: api.canonicalId });
+        Object.assign(context, { savedChatSettings: { skillId: 'browser-agent' }, SKILL_SELECTION_KEY: key, canonicalSharedSkillId: api.canonicalId });
         assert.equal(vm.runInContext(init + '\nactiveSkillId;', context), expected);
     }
 });

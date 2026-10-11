@@ -1,5 +1,7 @@
 import unittest
 
+import httpx
+
 import main
 
 
@@ -44,6 +46,31 @@ class GptImage25ParameterTests(unittest.TestCase):
         self.assertEqual(main.normalize_gpt_image_2_size("2448x3264"), "2448x3264")
         for requested in ("1000x1000", "10000x1000", "512x1024"):
             self.assert_supported_size(self, main.normalize_gpt_image_2_size(requested))
+
+    def test_auto_size_keeps_explicit_portrait_ratio(self):
+        self.assertEqual(main.gpt_image_2_auto_size_for_ratio("9:16"), "2160x3840")
+        self.assertEqual(main.gpt_image_2_auto_size_for_ratio("9：16"), "2160x3840")
+        self.assertEqual(main.gpt_image_2_auto_size_for_ratio("16:9"), "3840x2160")
+        self.assertEqual(main.gpt_image_2_auto_size_for_ratio("source"), "")
+
+    def test_bad_response_status_has_actionable_reason(self):
+        reason = main.image_task_fail_reason({
+            "error": {"message": "openai_error", "code": "bad_response_status_code"}
+        })
+        self.assertIn("未返回有效图片结果", reason)
+        self.assertIn("bad_response_status_code", reason)
+
+    def test_bad_response_status_is_retryable_but_validation_is_not(self):
+        transient = httpx.Response(
+            502,
+            json={"error": {"message": "openai_error", "code": "bad_response_status_code"}},
+        )
+        invalid = httpx.Response(
+            422,
+            json={"error": {"message": "invalid size", "code": "invalid_value"}},
+        )
+        self.assertTrue(main.gpt_image_2_edit_retryable_response(transient, allow_idempotency=True))
+        self.assertFalse(main.gpt_image_2_edit_retryable_response(invalid, allow_idempotency=True))
 
     def test_dynamic_schema_exposes_25_only_fields(self):
         current = main.build_image_param_fields("api", {}, "gpt-image-2.5-flare")

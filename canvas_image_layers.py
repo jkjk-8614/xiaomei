@@ -608,7 +608,6 @@ class LayerService:
                     layer["alignment_issue"] = ""
                 except (KeyError, TypeError, ValueError, IndexError):
                     layer["alignment_issue"] = "定位锚点不可靠，保留生成位置，请对照原图复核"
-            layer["transform"] = transform
             # Manual editor transform.  Values are stored in output-pixel space so
             # an edited layer remains stable across refreshes and PSD exports.
             edit = layer.get("edit") if isinstance(layer.get("edit"), dict) else {}
@@ -632,14 +631,25 @@ class LayerService:
                         anchor_y = (bbox[1] + bbox[3]) / 2 + delta_y
                         frame = Image.new("RGBA", size)
                         frame.alpha_composite(crop, (round(anchor_x - crop.width / 2), round(anchor_y - crop.height / 2)))
+                        # ``transform`` is the placement of the *native* layer image
+                        # (its four corners on the canvas) and is embedded as the PSD
+                        # smart-object transform.  Move those corners exactly like the
+                        # pixels above: scale and rotate (PIL rotates counter-clockwise)
+                        # about the content centre, then translate it to the anchor.
+                        center_x = (bbox[0] + bbox[2]) / 2
+                        center_y = (bbox[1] + bbox[3]) / 2
+                        cos_a, sin_a = math.cos(math.radians(angle)), math.sin(math.radians(angle))
+                        moved = []
+                        for corner_x, corner_y in zip(transform[0::2], transform[1::2]):
+                            dx, dy = (corner_x - center_x) * scale, (corner_y - center_y) * scale
+                            moved += [anchor_x + dx * cos_a + dy * sin_a, anchor_y - dx * sin_a + dy * cos_a]
+                        transform = moved
                 except (TypeError, ValueError, OverflowError):
                     layer["edit_error"] = "图层调整参数无效，已保留原始位置"
-            edited_bounds = frame.getchannel("A").getbbox()
-            if edited_bounds:
-                layer["transform"] = [
-                    edited_bounds[0], edited_bounds[1], edited_bounds[2], edited_bounds[1],
-                    edited_bounds[2], edited_bounds[3], edited_bounds[0], edited_bounds[3],
-                ]
+            # Keep the native-image placement.  Replacing it with the opaque
+            # content bounds squeezed the whole native image (including its
+            # transparent margin) into that box in exported PSD smart objects.
+            layer["transform"] = transform
             filename = layer["id"] + "-" + revision + ".png"
             frame.save(directory / filename)
             layer["aligned_url"] = f"/output/image-layers/{job['id']}/{filename}?v={revision}"

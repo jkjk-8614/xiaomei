@@ -7,6 +7,7 @@
   const NodeBuffer = require("buffer").Buffer;
   const bridgeId = "cep-direct-" + Math.random().toString(36).slice(2, 9);
   let busy = false;
+  let sendBusy = false;
   let pollTimer = null;
   let heartbeatTimer = null;
 
@@ -52,6 +53,98 @@
     return JSON.stringify(String(value == null ? "" : value));
   }
 
+  function setCanvasMessage(message, isError) {
+    const el = $("canvasSub");
+    if (!el) return;
+    el.textContent = message;
+    el.style.color = isError ? "#ff8787" : "#aeb4bd";
+  }
+
+  function canvasLabel(item) {
+    const kind = item.kind === "smart" ? "智能画布" : "普通画布";
+    return `${item.title || "未命名画布"}（${kind}）`;
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, (char) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[char]));
+  }
+
+  async function loadCanvases() {
+    const select = $("canvasSelect");
+    if (!select) return;
+    try {
+      const data = await api("/api/canvases");
+      const canvases = Array.isArray(data.canvases) ? data.canvases : [];
+      const saved = localStorage.getItem("xiaomeiCepTargetCanvas") || "";
+      select.innerHTML = canvases.length
+        ? canvases.map((item) => `<option value="${escapeHtml(item.id || "")}">${escapeHtml(canvasLabel(item))}</option>`).join("")
+        : '<option value="">没有可用画布</option>';
+      if (saved && canvases.some((item) => item.id === saved)) select.value = saved;
+      setCanvasMessage(canvases.length ? `已加载 ${canvases.length} 个画布。` : "请先在小美画布创建一个画布。");
+    } catch (error) {
+      select.innerHTML = '<option value="">画布列表加载失败</option>';
+      setCanvasMessage(`无法读取画布列表：${error.message}`, true);
+    }
+  }
+
+  async function canvasCenter(canvasId) {
+    if (!canvasId) return null;
+    try {
+      const data = await api(`/api/canvases/${encodeURIComponent(canvasId)}`);
+      const viewport = (data.canvas || data).viewport || {};
+      const scale = Math.max(0.01, Number(viewport.scale || 1));
+      const width = Number(viewport.viewWidth || viewport.width || 1280);
+      const height = Number(viewport.viewHeight || viewport.height || 720);
+      return { x: (width / 2 - Number(viewport.x || 0)) / scale, y: (height / 2 - Number(viewport.y || 0)) / scale };
+    } catch (_) { return null; }
+  }
+
+  async function sendActiveLayer() {
+    if (sendBusy || busy) {
+      setCanvasMessage("Photoshop 正在处理另一项桥接任务，请稍后再试。", true);
+      return;
+    }
+    const canvasSelect = $("canvasSelect");
+    const canvasId = String(canvasSelect ? canvasSelect.value : "");
+    if (!canvasId) { setCanvasMessage("请先选择目标画布。", true); return; }
+    sendBusy = true;
+    $("sendLayer").disabled = true;
+    let tempPath = "";
+    try {
+      setCanvasMessage("正在导出当前图层…");
+      tempPath = path.join(os.tmpdir(), `xiaomei_canvas_layer_${Date.now()}.png`);
+      const result = await evalScript(`exportActiveLayerToPng(${scriptString(tempPath)})`);
+      if (!result || result.indexOf("OK|") !== 0) throw new Error(result || "图层导出失败");
+      const parts = result.split("|");
+      const layerName = parts[1] || "Photoshop 图层";
+      const documentName = parts.slice(2).join("|") || "Photoshop 文档";
+      const imageB64 = fs.readFileSync(tempPath).toString("base64");
+      setCanvasMessage("正在发送到小美画布…");
+      const point = await canvasCenter(canvasId);
+      await api("/api/photoshop-bridge/canvas-send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: /\.png$/i.test(layerName) ? layerName : `${layerName}.png`, image_b64: imageB64, mime_type: "image/png",
+          document_name: documentName, layer_name: layerName,
+          target_canvas_id: canvasId, canvas_point: point || {}
+        })
+      });
+      localStorage.setItem("xiaomeiCepTargetCanvas", canvasId);
+      setCanvasMessage("已发送，打开目标画布后会自动出现图层节点。");
+      log(`已发送图层到画布：${layerName}`);
+    } catch (error) {
+      setCanvasMessage(`发送失败：${error.message}`, true);
+      log(`发送图层失败：${error.message}`);
+    } finally {
+      if (tempPath) { try { fs.unlinkSync(tempPath); } catch (_) {} }
+      sendBusy = false;
+      $("sendLayer").disabled = false;
+    }
+  }
+
   async function heartbeat() {
     try {
       await api("/api/photoshop-bridge/heartbeat", {
@@ -61,10 +154,10 @@
           bridge_id: bridgeId,
           bridge_name: "小美画布 PS 直连",
           name: "小美画布 PS 直连",
-          version: "1.0.0-cep",
+          version: "1.1.0-cep",
           status: busy ? "importing" : "online",
           auto_import: true,
-          capabilities: ["open-layered-psd"]
+          capabilities: ["open-layered-psd", "send-layer-to-canvas"]
         })
       });
       setConnection(true, "已连接，自动导入已开启");
@@ -103,7 +196,7 @@
   }
 
   async function importLatest() {
-    if (busy) return;
+    if (busy || sendBusy) return;
     busy = true;
     $("pull").disabled = true;
     let job = null;
@@ -154,14 +247,19 @@
   function start() {
     $("pull").addEventListener("click", importLatest);
     $("refresh").addEventListener("click", refresh);
+    $("sendLayer").addEventListener("click", sendActiveLayer);
+    $("refreshCanvases").addEventListener("click", loadCanvases);
+    $("canvasSelect").addEventListener("change", () => localStorage.setItem("xiaomeiCepTargetCanvas", $("canvasSelect").value || ""));
     $("server").addEventListener("change", () => {
       heartbeat();
       refresh();
+      loadCanvases();
     });
     heartbeatTimer = setInterval(heartbeat, 5000);
     pollTimer = setInterval(importLatest, 1000);
     heartbeat();
     refresh();
+    loadCanvases();
     importLatest();
   }
 

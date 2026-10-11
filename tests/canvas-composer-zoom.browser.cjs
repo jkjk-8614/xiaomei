@@ -104,13 +104,23 @@ test('selected node composer keeps its screen size and position while the canvas
     });
     await page.locator('#mentionPicker.open').waitFor({ state: 'visible' });
     const mention = await page.evaluate(() => {
-        const range = window.getSelection().getRangeAt(0);
-        const caret = range.getClientRects()[0] || range.getBoundingClientRect();
+        const range = document.createRange();
+        range.selectNodeContents(promptInput.firstChild);
+        const text = range.getBoundingClientRect();
         const picker = mentionPicker.getBoundingClientRect();
         const row = promptInput.closest('.prompt-row').getBoundingClientRect();
-        return { caretBottom: caret.bottom, pickerTop: picker.top, pickerLeft: picker.left, pickerRight: picker.right, rowLeft: row.left, rowRight: row.right };
+        return { caretBottom: text.bottom, pickerTop: picker.top, pickerLeft: picker.left, pickerRight: picker.right, rowLeft: row.left, rowRight: row.right };
     });
     assert.ok(Math.abs(mention.pickerTop - mention.caretBottom - 2) < 7, `@ picker drifted from the caret: ${JSON.stringify(mention)}`);
     assert.ok(mention.pickerLeft >= mention.rowLeft - 2 && mention.pickerRight <= mention.rowRight + 2, `@ picker escaped the prompt row: ${JSON.stringify(mention)}`);
+
+    await page.evaluate(() => {
+        const node = world.querySelector(`.image-node[data-id="${CSS.escape(window.testPaintNode.id)}"]`);
+        viewport.y += 850 - node.getBoundingClientRect().bottom;
+        applyViewport();
+        updateComposer();
+    });
+    const nearBottom = await snapshot();
+    aligned(nearBottom, 'near viewport bottom');
     assert.deepEqual(errors, []);
 });

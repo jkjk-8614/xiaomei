@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ExtensionManifest Version="7.0"
     ExtensionBundleId="com.infinite.canvas.photoshop.bridge.cep"
-    ExtensionBundleVersion="1.0.0"
+    ExtensionBundleVersion="1.1.0"
     ExtensionBundleName="小美画布 PS 直连桥接">
   <ExtensionList>
-    <Extension Id="com.infinite.canvas.photoshop.bridge.cep.panel" Version="1.0.0" />
+    <Extension Id="com.infinite.canvas.photoshop.bridge.cep.panel" Version="1.1.0" />
   </ExtensionList>
   <ExecutionEnvironment>
     <HostList>
@@ -37,7 +37,7 @@
           <Menu>小美画布 PS 直连桥接</Menu>
           <Geometry>
             <Size>
-              <Height>430</Height>
+                <Height>620</Height>
               <Width>340</Width>
             </Size>
             <MinSize>

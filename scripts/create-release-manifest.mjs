@@ -15,6 +15,7 @@ for (let index = 2; index < process.argv.length; index += 1) {
 const directory = path.resolve(String(args.get('directory') || 'dist-package'));
 const output = path.resolve(String(args.get('output') || path.join(directory, 'update.json')));
 const version = String(args.get('version') || '').trim().replace(/^v/i, '');
+const displayVersion = String(args.get('display-version') || version).trim();
 const buildRevision = Number(args.get('build-revision') || 0);
 const tag = String(args.get('tag') || `v${version}`).trim();
 const repository = String(args.get('repository') || process.env.GITHUB_REPOSITORY || 'jkjk-8614/xiaomei').trim();
@@ -67,6 +68,7 @@ if (!entries.some((item) => item.platform === 'darwin')) throw new Error('没有
 const manifest = {
   schemaVersion: 2,
   version,
+  displayVersion,
   buildRevision,
   channel: 'stable',
   publishedAt: new Date().toISOString(),

@@ -123,7 +123,7 @@ const VIP_GPT_REGISTER_URL = 'https://www.vip-gpt.net/vip-gpt/register?aff=YGMS7
 const EXAMPLE_BASE_URL = 'https://api.example.com/v1';
 let comfyuiInstances = [];
 let comfyuiWorkflowCatalog = [];
-const JIMENG_DEFAULT_IMAGE_MODELS = ['5.0', '4.6', '4.5', '4.1', '4.0', '3.1', '3.0'];
+const JIMENG_DEFAULT_IMAGE_MODELS = ['5.0', '4.7', '4.6', '4.5', '4.1', '4.0', '3.1', '3.0'];
 const JIMENG_DEFAULT_VIDEO_MODELS = ['seedance2.0fast_vip', 'seedance2.0_vip'];
 const JIMENG_LEGACY_IMAGE_MODELS = new Set(['jimeng-image-2k', 'jimeng-image-4k']);
 const JIMENG_LEGACY_VIDEO_MODELS = new Set(['jimeng-video-720p', 'jimeng-video-1080p']);
@@ -2810,13 +2810,7 @@ function renderCliProviderRow(item, active, stateClass, protocolLabel, kind){
     `;
 }
 function renderProviderList(){
-    const items = sortedProviders();
-    if(!items.length){
-        providerList.innerHTML = `<div class="provider-empty"><i data-lucide="mouse-pointer-click" class="w-4 h-4"></i><span>还没有添加 API 平台，请点击“新增平台”或从“推荐API”中选择。</span></div>`;
-        refreshIcons();
-        return;
-    }
-    providerList.innerHTML = items.map(item => {
+    providerList.innerHTML = sortedProviders().map(item => {
         const active = item.id === selectedId ? 'active' : '';
         const itemProtocol = String(item.protocol || 'openai').toLowerCase();
         const stateClass = item.id === 'comfyui'
@@ -3114,22 +3108,55 @@ function prettyJson(value){
     try { return JSON.stringify(value, null, 2); } catch(_) { return String(value || ''); }
 }
 function jimengCreditText(raw){
-    if(!raw) return '';
+    if(raw === null || raw === undefined || raw === '') return '';
     const parts = [];
     const seen = new Set();
+    const labels = {
+        total_credit: '当前积分', totalcredit: '当前积分',
+        credit: '积分', credits: '积分',
+        balance: '余额', quota: '额度',
+        gift_credit: '赠送积分', giftcredit: '赠送积分',
+        purchase_credit: '购买积分', purchasecredit: '购买积分',
+        vip_credit: '会员积分', vipcredit: '会员积分',
+        point: '积分', points: '积分', coin: '积分', coins: '积分',
+        user_id: '即梦账号', userid: '即梦账号',
+    };
+    let zeroTotalCredit = false;
+    let accountId = '';
+    const add = (key, item) => {
+        if(item === null || item === undefined || typeof item === 'object') return;
+        const normalized = String(key || '').toLowerCase().replace(/[\s-]/g, '_');
+        if(normalized === 'user_id' || normalized === 'userid') accountId = String(item);
+        if(normalized === 'total_credit' || normalized === 'totalcredit') zeroTotalCredit = Number(item) === 0;
+        if(!/credit|balance|quota|point|coin|积分|余额/.test(normalized) && normalized !== 'user_id' && normalized !== 'userid') return;
+        const label = labels[normalized] || String(key);
+        const text = `${label}：${item}`;
+        if(!seen.has(text)){ seen.add(text); parts.push(text); }
+    };
     const visit = value => {
-        if(!value || typeof value !== 'object') return;
+        if(value === null || value === undefined) return;
+        if(typeof value === 'string'){
+            try {
+                const parsed = JSON.parse(value);
+                if(parsed && typeof parsed === 'object') visit(parsed);
+            } catch(_) {}
+            return;
+        }
+        if(typeof value !== 'object') return;
         Object.entries(value).forEach(([key, item]) => {
-            const low = key.toLowerCase();
-            if(/credit|balance|quota|point|coin|积分|余额/.test(low) && item !== null && typeof item !== 'object'){
-                const label = `${key}: ${item}`;
-                if(!seen.has(label)){ seen.add(label); parts.push(label); }
-            }
-            if(item && typeof item === 'object') visit(item);
+            add(key, item);
+            visit(item);
         });
     };
     visit(raw);
-    return parts.join(' · ') || prettyJson(raw);
+    if(parts.length){
+        if(zeroTotalCredit && accountId) parts.push('如网页积分不同，请退出 CLI 后用同一即梦账号重新扫码登录');
+        return parts.join(' · ');
+    }
+    if(raw && typeof raw === 'object' && (raw._stdout || raw.text)){
+        return '即梦已返回账户信息，但未识别到积分字段，请查看 CLI 原始输出。';
+    }
+    return prettyJson(raw);
 }
 function setJimengStatus(text, ok=null){
     if(!jimengCliStatus) return;
@@ -3150,6 +3177,12 @@ const cliStatusActionViews = {
 function cliErrorMessage(error, scope='local'){
     const raw = String(error?.message || error || '').trim();
     const lower = raw.toLowerCase();
+    if(/dreamina_cli.*使用权限|使用权限.*dreamina_cli|仅限.*会员|会员等级/.test(lower)){
+        return '当前账号有网页积分，但暂未开通即梦 CLI 权限。是否需要额外充值要看官方账号资格；积分和 CLI 权限是两回事，请在即梦官网查看会员权益或 CLI 资格。';
+    }
+    if(/未检测到有效登录态|登录态无效|未登录|login required|not logged in|unauthorized|authentication required|dreamina login/.test(lower)){
+        return '即梦 CLI 当前没有登录成功。请点击“扫码登录”，用与网页端相同的即梦账号完成授权，再点击“查询积分”。';
+    }
     if(/failed to fetch|fetch failed|networkerror|network error|econnrefused|connection refused|socket hang up|httpsconnectionpool|connectionerror|proxyerror|newconnectionerror|name or service not known|remote end closed|dns/.test(lower)){
         return scope === 'version'
             ? '无法连接官方版本源，请检查网络后重试。'
@@ -3491,7 +3524,21 @@ function jimengLoginQrDataUrl(payload){
 }
 function jimengLoginLinkMarkup(url){
     if(!url) return '';
-    return `<a class="jimeng-login-link" href="${escapeAttr(url)}" target="_blank" rel="noreferrer">打开即梦登录页面</a>`;
+    return `<a class="jimeng-login-link" href="${escapeAttr(url)}" target="_blank" rel="noreferrer" onclick="openExternalWebPage(event, this.href)">在浏览器打开即梦登录页面</a>`;
+}
+function openJimengLoginInBrowser(data){
+    const url = jimengLoginPayload(data);
+    if(!url) return;
+    const api = externalBrowserApi();
+    if(api?.openExternal){
+        Promise.resolve(api.openExternal(url)).then(result => {
+            if(result?.ok === false) setStatus(result.message || '无法打开即梦登录页面，请点击二维码下方的浏览器链接。');
+            else setStatus('已在浏览器打开即梦登录页面，请完成登录；二维码仍可作为备用。');
+        }).catch(() => setStatus('无法打开即梦登录页面，请点击二维码下方的浏览器链接。'));
+        return;
+    }
+    const popup = window.open(url, '_blank', 'noopener,noreferrer');
+    setStatus(popup ? '已打开即梦登录页面，请完成登录；二维码仍可作为备用。' : '请点击二维码下方的浏览器链接打开即梦登录页面。');
 }
 function jimengLoginQrMarkup(data){
     const directImageUrl = jimengLoginImageUrl(data?.qr_url);
@@ -3512,8 +3559,11 @@ function renderJimengLoginBox(data){
     if(!jimengLoginBox) return;
     const text = data?.text || '';
     const qrHtml = jimengLoginQrMarkup(data);
+    const permissionHint = /dreamina_cli.*使用权限|使用权限.*dreamina_cli|仅限.*会员/i.test(text)
+        ? '<div class="jimeng-cli-hint" style="grid-column:1/-1;padding:8px 10px;border:1px solid #fcd34d;border-radius:8px;background:#fffbeb;color:#92400e;font-size:12px;font-weight:700;line-height:1.5">说明：账号登录成功，但当前账号暂未开通 CLI 资格；不一定需要额外充值，网页积分和 CLI 权限是两回事。</div>'
+        : '';
     jimengLoginBox.hidden = false;
-    jimengLoginBox.innerHTML = `${qrHtml}<pre>${escapeHtml(text || '等待 CLI 输出登录二维码...')}</pre>`;
+    jimengLoginBox.innerHTML = `${qrHtml}${permissionHint}<pre>${escapeHtml(text || '等待 CLI 输出登录二维码...')}</pre>`;
 }
 let jimengLoginTimer = null;
 async function copyJimengInstallCommand(){
@@ -3555,7 +3605,7 @@ async function refreshJimengStatus(showCredit=true, checkInstall=true){
         } else if(jimengCredit){
             jimengCredit.textContent = !data.installed
                 ? '未找到即梦 CLI，请按上方“安装 / 更新方法”完成安装，再重启小美画布。'
-                : (data.message || (data.logged_in ? '已连接即梦账户，可点击“查询积分”查看余额。' : '请点击“扫码登录”连接即梦账户。'));
+                : (data.message ? cliErrorMessage(data.message, 'local') : (data.logged_in ? '已连接即梦账户，可点击“查询积分”查看余额。' : '请点击“扫码登录”连接即梦账户。'));
         }
     } catch(e){
         setJimengStatus('检测失败', false);
@@ -3575,6 +3625,7 @@ async function startJimengLogin(){
             return json;
         });
         renderJimengLoginBox(data);
+        openJimengLoginInBrowser(data);
         clearInterval(jimengLoginTimer);
         jimengLoginTimer = setInterval(pollJimengLogin, 2500);
         refreshIcons();

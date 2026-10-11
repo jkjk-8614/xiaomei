@@ -1971,7 +1971,7 @@ async function createSmartCanvas(){
 }
 function openSmartCanvasPage(id){
     if(!id) return;
-window.location.href = `/static/smart-canvas.html?id=${encodeURIComponent(id)}&v=2026.09.21.comfy-independent1`;
+window.location.href = `/static/smart-canvas.html?id=${encodeURIComponent(id)}&v=2026.10.11.local-assets-default.1`;
 }
 function toggleEmojiPicker(id, event){
     event?.preventDefault();
@@ -4733,7 +4733,8 @@ function brushColor(){
     return document.getElementById('paintBrushColor')?.value || '#ff2d55';
 }
 const MASK_BRUSH_ALPHA = 115;
-const MASK_BRUSH_COLOR = `rgba(255,255,255,${MASK_BRUSH_ALPHA / 255})`;
+const MASK_BRUSH_RGB = [80, 80, 80];
+const MASK_BRUSH_COLOR = `rgba(${MASK_BRUSH_RGB.join(',')},${MASK_BRUSH_ALPHA / 255})`;
 function setupDrawStyle(ctx){
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -4750,9 +4751,9 @@ function normalizeMaskPreviewCanvas(canvasEl=editDrawCanvas()){
     let changed = false;
     for(let i = 0; i < data.length; i += 4){
         if(data[i + 3] <= 0) continue;
-        data[i] = 255;
-        data[i + 1] = 255;
-        data[i + 2] = 255;
+        data[i] = MASK_BRUSH_RGB[0];
+        data[i + 1] = MASK_BRUSH_RGB[1];
+        data[i + 2] = MASK_BRUSH_RGB[2];
         if(data[i + 3] > MASK_BRUSH_ALPHA) data[i + 3] = MASK_BRUSH_ALPHA;
         changed = true;
     }
@@ -13801,6 +13802,25 @@ async function exportSelectedWorkflowToLibrary(){
         setStatus('未选择节点，请先框选要导出的组件');
         return;
     }
+    const target = defaultWorkflowAssetTarget();
+    if(!target.libraryId){ setStatus('暂无可用的收藏库'); return; }
+    const workflowResourceCount = window.XiaomeiWorkflowPreview?.resourceCount?.(payload) || 0;
+    let choice;
+    try {
+        choice = await window.XiaomeiWorkflowSaveDialog?.open?.({
+            name:workflowFilename('zip').replace(/\.zip$/i, ''),
+            libraryId:target.libraryId,
+            categoryId:target.categoryId,
+            workflow:payload,
+            nodeCount:payload.nodes.length,
+            connectionCount:payload.connections.length,
+            resourceCount:workflowResourceCount,
+            includeResources:true
+        });
+    } catch(err) {
+        if(String(err?.message || '') !== '已取消收藏') showErrorModal(err.message || '无法打开收藏设置', '收藏工作流');
+        return;
+    }
     try {
         setWorkflowLibraryExportState('busy', '导出中...');
         if(workflowExportMeta){
@@ -13811,17 +13831,16 @@ async function exportSelectedWorkflowToLibrary(){
         if(workflowTransferSub) workflowTransferSub.textContent = '正在保存工作流到资产库';
         setStatus('正在导出工作流到资产库...');
         if(!canvasAssetLibrary?.libraries?.length) await loadCanvasAssetLibrary({renderPanel:false});
-        const filename = workflowFilename('zip');
-        const target = defaultWorkflowAssetTarget();
+        const filename = `${String(choice.name || '工作流').replace(/[\\/:*?"<>|]+/g, '_').trim().slice(0, 80) || 'canvas-workflow'}.zip`;
         const res = await fetch('/api/canvas-workflows/export-to-library', {
             method:'POST',
             headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({...payload, include_resources:true, filename, name:filename.replace(/\.zip$/i, ''), library_id:target.libraryId, category_id:target.categoryId})
+            body:JSON.stringify({...payload, include_resources:choice.includeResources, filename, name:choice.name, description:choice.description || '', library_id:choice.libraryId, category_id:choice.categoryId})
         });
         if(!res.ok) throw new Error(await responseErrorMessage(res, '导出到资产库失败'));
         const data = await res.json();
         canvasAssetLibrary = data.library || canvasAssetLibrary;
-        activeCanvasAssetLibraryId = target.libraryId || canvasAssetLibrary.active_library_id || activeCanvasAssetLibraryId;
+        activeCanvasAssetLibraryId = choice.libraryId || canvasAssetLibrary.active_library_id || activeCanvasAssetLibraryId;
         activeCanvasAssetCategoryId = data.item ? findCanvasAssetCategoryForItem(data.item.id)?.id || activeCanvasAssetCategoryId : activeCanvasAssetCategoryId;
         renderCanvasAssetLibrary();
         if(assetManagerModal?.classList.contains('open')) renderAssetManager();

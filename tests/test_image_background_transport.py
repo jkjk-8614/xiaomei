@@ -1,5 +1,6 @@
 import base64
 import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -45,6 +46,154 @@ class ImageBackgroundTransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(b'name="background"\r\n\r\ntransparent', requests[1].content)
         self.assertIn(b'name="output_format"\r\n\r\npng', requests[1].content)
         self.assertIn(b'name="image[]"', requests[1].content)
+
+    async def test_edit_does_not_retry_transport_disconnect_without_platform_idempotency(self):
+        image = io.BytesIO()
+        Image.new('RGB', (32, 32), (200, 100, 50)).save(image, format='PNG')
+        encoded = base64.b64encode(image.getvalue()).decode()
+        provider = {'id':'retry-fixture', 'name':'Fixture', 'base_url':'https://images.test',
+                    'protocol':'openai', 'image_request_mode':'openai', 'image_models':['gpt-image-2']}
+        requests = []
+
+        async def respond(request):
+            requests.append(request)
+            if len(requests) == 1:
+                raise httpx.RemoteProtocolError(
+                    'Server disconnected without sending a response.', request=request
+                )
+            return httpx.Response(200, json={'data':[{'b64_json': encoded}]})
+
+        client_type = httpx.AsyncClient
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / '参考图.png'
+            source.write_bytes(image.getvalue())
+            with patch.object(main, 'get_api_provider', return_value=provider), \
+                 patch.object(main, 'api_headers', return_value={}), \
+                 patch.object(main, 'output_file_from_url', return_value=str(source)), \
+                 patch.object(main, 'save_ai_image_to_output', new=AsyncMock(return_value='/output/fixture.png')), \
+                 patch.object(main, 'image_output_meta', return_value={'url':'/output/fixture.png'}), \
+                 patch.object(main, 'save_to_history'), \
+                 patch.object(main, 'GLOBAL_LOOP', None), \
+                 patch.object(main.httpx, 'AsyncClient', side_effect=lambda **kw: client_type(transport=httpx.MockTransport(respond), **kw)):
+                payload = main.OnlineImageRequest(
+                    prompt='编辑参考图', model='gpt-image-2', provider_id=provider['id'],
+                    size='768x1024', reference_images=[main.AIReference(url='/output/参考图.png')]
+                )
+                with self.assertRaises(main.HTTPException):
+                    await main.build_online_image_result(payload)
+
+        self.assertEqual(len(requests), 1)
+        self.assertNotIn('Idempotency-Key', requests[0].headers)
+
+    async def test_edit_does_not_retry_transient_bad_response_status(self):
+        image = io.BytesIO()
+        Image.new('RGB', (32, 32), (200, 100, 50)).save(image, format='PNG')
+        encoded = base64.b64encode(image.getvalue()).decode()
+        provider = {'id':'gateway-fixture', 'name':'Fixture', 'base_url':'https://images.test',
+                    'protocol':'openai', 'image_request_mode':'openai', 'image_models':['gpt-image-2']}
+        requests = []
+
+        async def respond(request):
+            requests.append(request)
+            if len(requests) == 1:
+                return httpx.Response(
+                    502,
+                    json={'error': {'message': 'openai_error', 'code': 'bad_response_status_code'}},
+                    request=request,
+                )
+            return httpx.Response(200, json={'data':[{'b64_json': encoded}]}, request=request)
+
+        client_type = httpx.AsyncClient
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / '参考图.png'
+            source.write_bytes(image.getvalue())
+            with patch.object(main, 'get_api_provider', return_value=provider), \
+                 patch.object(main, 'api_headers', return_value={}), \
+                 patch.object(main, 'output_file_from_url', return_value=str(source)), \
+                 patch.object(main, 'save_ai_image_to_output', new=AsyncMock(return_value='/output/fixture.png')), \
+                 patch.object(main, 'image_output_meta', return_value={'url':'/output/fixture.png'}), \
+                 patch.object(main, 'save_to_history'), \
+                 patch.object(main, 'GLOBAL_LOOP', None), \
+                 patch.object(main, 'GPT_IMAGE2_EDIT_RETRY_DELAY', 0.2), \
+                 patch.object(main.httpx, 'AsyncClient', side_effect=lambda **kw: client_type(transport=httpx.MockTransport(respond), **kw)):
+                payload = main.OnlineImageRequest(
+                    prompt='编辑参考图', model='gpt-image-2', provider_id=provider['id'],
+                    size='768x1024', reference_images=[main.AIReference(url='/output/参考图.png')]
+                )
+                with self.assertRaises(main.HTTPException):
+                    await main.build_online_image_result(payload)
+
+        self.assertEqual(len(requests), 1)
+        self.assertNotIn('Idempotency-Key', requests[0].headers)
+
+    async def test_edit_does_not_retry_embedded_bad_response_status(self):
+        image = io.BytesIO()
+        Image.new('RGB', (32, 32), (200, 100, 50)).save(image, format='PNG')
+        encoded = base64.b64encode(image.getvalue()).decode()
+        provider = {'id':'embedded-gateway-fixture', 'name':'Fixture', 'base_url':'https://images.test',
+                    'protocol':'openai', 'image_request_mode':'openai', 'image_models':['gpt-image-2']}
+        requests = []
+
+        async def respond(request):
+            requests.append(request)
+            if len(requests) == 1:
+                return httpx.Response(
+                    200,
+                    json={'error': {'message': 'openai_error', 'code': 'bad_response_status_code'}},
+                    request=request,
+                )
+            return httpx.Response(200, json={'data':[{'b64_json': encoded}]}, request=request)
+
+        client_type = httpx.AsyncClient
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / '参考图.png'
+            source.write_bytes(image.getvalue())
+            with patch.object(main, 'get_api_provider', return_value=provider), \
+                 patch.object(main, 'api_headers', return_value={}), \
+                 patch.object(main, 'output_file_from_url', return_value=str(source)), \
+                 patch.object(main, 'save_ai_image_to_output', new=AsyncMock(return_value='/output/fixture.png')), \
+                 patch.object(main, 'image_output_meta', return_value={'url':'/output/fixture.png'}), \
+                 patch.object(main, 'save_to_history'), \
+                 patch.object(main, 'GLOBAL_LOOP', None), \
+                 patch.object(main, 'GPT_IMAGE2_EDIT_RETRY_DELAY', 0.2), \
+                 patch.object(main.httpx, 'AsyncClient', side_effect=lambda **kw: client_type(transport=httpx.MockTransport(respond), **kw)):
+                payload = main.OnlineImageRequest(
+                    prompt='编辑参考图', model='gpt-image-2', provider_id=provider['id'],
+                    size='768x1024', reference_images=[main.AIReference(url='/output/参考图.png')]
+                )
+                with self.assertRaises(main.HTTPException):
+                    await main.build_online_image_result(payload)
+
+        self.assertEqual(len(requests), 1)
+
+    async def test_auto_size_request_uses_explicit_portrait_pixels(self):
+        image = io.BytesIO()
+        Image.new('RGB', (32, 32), (200, 100, 50)).save(image, format='PNG')
+        encoded = base64.b64encode(image.getvalue()).decode()
+        provider = {'id':'ratio-fixture', 'name':'Fixture', 'base_url':'https://images.test',
+                    'protocol':'openai', 'image_request_mode':'openai', 'image_models':['gpt-image-2']}
+        requests = []
+
+        async def respond(request):
+            requests.append(request)
+            return httpx.Response(200, json={'data':[{'b64_json': encoded}]})
+
+        client_type = httpx.AsyncClient
+        with patch.object(main, 'get_api_provider', return_value=provider), \
+             patch.object(main, 'api_headers', return_value={}), \
+             patch.object(main, 'save_ai_image_to_output', new=AsyncMock(return_value='/output/fixture.png')), \
+             patch.object(main, 'image_output_meta', return_value={'url':'/output/fixture.png'}), \
+             patch.object(main, 'save_to_history'), \
+             patch.object(main, 'GLOBAL_LOOP', None), \
+             patch.object(main.httpx, 'AsyncClient', side_effect=lambda **kw: client_type(transport=httpx.MockTransport(respond), **kw)):
+            payload = main.OnlineImageRequest(
+                prompt='竖屏构图', model='gpt-image-2', provider_id=provider['id'],
+                size='auto', aspect_ratio='9:16'
+            )
+            await main.build_online_image_result(payload)
+
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(json.loads(requests[0].content)['size'], '2160x3840')
 
 
 if __name__ == '__main__':

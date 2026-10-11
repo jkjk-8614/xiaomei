@@ -20,7 +20,7 @@ app.whenReady().then(async () => {
     throw new Error(`Timeout: ${code}`);
   };
   await win.loadURL('http://127.0.0.1:3017/static/asset-manager.html');
-  await waitFor("document.querySelector('[data-tab=canvas-assets]') && localAssetsLoaded");
+  await waitFor("document.querySelector('[data-tab=generated]') && localAssetsLoaded");
   await run(`
     canvasAssetsData = {
       projects:[
@@ -39,9 +39,10 @@ app.whenReady().then(async () => {
         {id:'c1',name:'旧图.png',url:'/fixtures/相框02.png',kind:'image',canvas_id:'c',canvas_title:'旧画布',canvas_kind:'classic',project:'wedding'}
       ]
     };
-    document.querySelector('[data-tab=canvas-assets]').click();
+    document.querySelector('[data-tab=generated]').click();
   `);
   await waitFor("document.querySelectorAll('[data-canvas-asset-project]').length === 3");
+  await run("document.querySelector('[data-canvas-asset-project=default]').click()");
   assert.deepEqual(await run("[...document.querySelectorAll('[data-canvas-asset-project] .tree-row-name')].map(el => el.textContent)"),
     ['水晶相框', '婚纱相框', '空项目']);
   assert.deepEqual(await run("currentCanvasAssetItems().map(item => item.id)"), ['a1']);

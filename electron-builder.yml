@@ -20,6 +20,7 @@ files:
   - tools/**
   - workflows/**
   - packages/**
+  - vendor/deepseek-harness/**
   - bundled/win-api/**
   - bundled/mac-api/**
   - python/**
@@ -47,6 +48,9 @@ files:
   - "!**/data/commerce_analysis_browser_profile{,/**}"
   - "!**/data/media_previews{,/**}"
   - "!**/data/models{,/**}"
+  - "!vendor/**/node_modules{,/**}"
+  - "!vendor/**/.git{,/**}"
+  - "!vendor/**/.env{,.*}"
   - "!**/assets/图片空间{,/**}"
   - "!**/assets/input{,/**}"
   - "!**/assets/uploads{,/**}"

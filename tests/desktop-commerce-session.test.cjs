@@ -22,7 +22,8 @@ const detail = 'https://detail.1688.com/offer/123456789.html';
 function setup() {
   const sessions = new Map();
   const context = vm.createContext({
-    URL, URLSearchParams, String, Map, setTimeout,
+    URL, URLSearchParams, String, Map, setTimeout, path,
+    __dirname: path.join(__dirname, '../desktop'),
     TAOBAO_SESSION_PARTITION: taobao,
     SESSION_1688_PARTITION: wholesale,
     SELLER_SESSION_PARTITION: 'persist:xiaomei-qianniu',

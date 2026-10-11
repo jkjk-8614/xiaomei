@@ -56,6 +56,17 @@ test('Agent image model picker follows the canvas platform and model choices', {
         return [saved.auto, saved.imageProvider, saved.imageModel];
     }), [false, 'relay', 'nano-banana-2']);
 
+    // A canvas settings refresh must not replace a manually selected Agent ratio.
+    await page.evaluate(() => {
+        const key = 'xiaomei_canvas_agent_generation_v1';
+        const saved = JSON.parse(localStorage.getItem(key));
+        localStorage.setItem(key, JSON.stringify({ ...saved, auto: false, ratio: 'story' }));
+    });
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('smart-canvas-generation-settings-change', {
+        detail: { settings: { apiKind: 'image', ratio: 'square', resolution: '4k' } }
+    })));
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('xiaomei_canvas_agent_generation_v1')).ratio), 'story');
+
     await page.evaluate(() => {
         apiProviders = apiProviders.filter(provider => provider.id !== 'relay');
         window.dispatchEvent(new CustomEvent('smart-canvas-config-ready'));

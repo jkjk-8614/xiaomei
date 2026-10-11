@@ -150,6 +150,7 @@ function normalizeManifest(payload, { platform = process.platform, arch = proces
   return {
     ok: true,
     version,
+    displayVersion: String(source.displayVersion || payload.displayVersion || version).trim().slice(0, 40),
     buildRevision,
     platform,
     arch,

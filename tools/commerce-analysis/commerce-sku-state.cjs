@@ -24,6 +24,21 @@ function collectCommerceSkuState() {
       return text ? new URL(text.replace(/^\/\//, 'https://'), location.href).href : '';
     } catch { return ''; }
   };
+  // 淘宝会把同一张规格图以不同缩略图参数挂在规格值上。计数时只需要
+  // 稳定的资源身份，实际保存的 URL 仍保留原始签名，供下载使用。
+  const imageKey = (value) => {
+    const url = absolute(value);
+    if (!url) return '';
+    try {
+      const parsed = new URL(url);
+      parsed.search = '';
+      parsed.hash = '';
+      return parsed.href
+        .replace(/(?:_[0-9]+x[0-9]+(?:q[0-9]+)?|_q[0-9]+)(?=\.(?:jpe?g|png|webp)(?:$|_))/i, '')
+        .replace(/\.jpg_\.webp$/i, '.jpg')
+        .replace(/\.png_\.webp$/i, '.png');
+    } catch { return url; }
+  };
   const generatedStatePath = (value) => /^(?:\.[A-Za-z0-9_$-]+)+\.?$/.test(tidy(value, 600));
   const scalar = (value) => object(value) ? tidy(first(value, ['name', 'value', 'valueName', 'title', 'label', 'text', 'displayName', 'desc']), 180) : tidy(value, 180);
   const number = (value) => { const match = String(value ?? '').replace(/,/g, '').match(/-?\d+(?:\.\d+)?/); return match ? Number(match[0]) : null; };
@@ -291,12 +306,18 @@ function collectCommerceSkuState() {
       if (match) value.image = nodeImage(match);
     }
   }
+  // 可见 DOM 经常同时命中“选项按钮”和包含整组文字的父节点，后者会产生
+  // 没有 valueId 的拼接项（例如“ A4 A3 ”、“A套组配件 万人加购 B套组配件”）。
+  // 只要同一规格组已经拿到至少两个带 ID 的真实选项，就丢弃这些无 ID 噪声。
+  for (const group of specs) {
+    const identified = (group.values || []).filter((value) => String(value?.id || '').trim());
+    if (identified.length >= 2) group.values = identified;
+  }
   for (const group of specs) delete group.__key;
   const totalCount = Math.max(items.length, ...declaredCounts, 0);
-  const specImageCount = new Set([
-    ...items.map((item) => item.image || '').filter(Boolean),
-    ...specs.flatMap((group) => (group.values || []).map((value) => value.image || '').filter(Boolean)),
-  ]).size;
+  const itemImageKeys = new Set(items.map((item) => imageKey(item.image)).filter(Boolean));
+  const specImageKeys = new Set(specs.flatMap((group) => (group.values || []).map((value) => imageKey(value.image)).filter(Boolean)));
+  const specImageCount = (itemImageKeys.size ? itemImageKeys : specImageKeys).size;
   const text = specs.map((group) => `${group.name}: ${(group.values || []).map((value) => value.value || value.name).join('、')}`).join('；');
   return { available: Boolean(items.length || specs.length), specs, items, itemCount: items.length, totalCount, matrixComplete: Boolean(items.length && items.length >= totalCount), specImageCount, text, source: 'commerce-product-state', diagnostics: { stateRootCount: roots.length, itemCount: items.length, groupCount: specs.length, stateContainerCount: stateContainers.length } };
 }

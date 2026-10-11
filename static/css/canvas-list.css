@@ -18,31 +18,31 @@
     --faint:#98a2b3;
     --shadow:rgba(15,23,42,.08);
     --shadow-strong:rgba(15,23,42,.14);
-    --strong:#171c26;
-    --strong-text:#fff;
-    --accent:#2563eb;
-    --accent-soft:#eff6ff;
-    --accent-line:#bfdbfe;
+    --strong:#2e2e33;
+    --strong-text:#f0f0f2;
+    --accent:#0e7490;
+    --accent-soft:#e0f5fb;
+    --accent-line:#a8dbe8;
     --success:#059669;
     --danger:#dc2626;
     --danger-soft:#fff1f2;
 }
 .theme-dark {
-    --page:#10141d;
-    --grid:rgba(148,163,184,.16);
-    --panel:rgba(18,23,33,.9);
-    --panel-solid:#141a24;
-    --card:rgba(21,27,38,.98);
-    --card-solid:#151b26;
-    --soft:#1d2533;
-    --soft-2:#263143;
-    --line:#2d394c;
-    --line-2:#4b5c75;
-    --text:#f4f7fb;
-    --muted:#c4cedb;
-    --faint:#8c98aa;
-    --shadow:rgba(0,0,0,.24);
-    --shadow-strong:rgba(0,0,0,.36);
+    --page:#0c0c0d;
+    --grid:rgba(160,160,168,.16);
+    --panel:rgba(26,26,29,.9);
+    --panel-solid:#131316;
+    --card:rgba(26,26,29,.98);
+    --card-solid:#1a1a1d;
+    --soft:#141416;
+    --soft-2:#232327;
+    --line:#2a2a2e;
+    --line-2:#3a3a3f;
+    --text:#f0f0f2;
+    --muted:#a3a3ab;
+    --faint:#86868e;
+    --shadow:rgba(0,0,0,.3);
+    --shadow-strong:rgba(0,0,0,.42);
     --strong:#e8edf5;
     --strong-text:#111827;
     --accent:#60a5fa;
@@ -99,6 +99,8 @@ html[data-studio-scale="off"].studio-scale-managed .workspace {
 .ws-project-name-input { flex:1; min-width:0; font-size:13px; font-weight:700; color:var(--text); background:var(--card-solid); border:1px solid var(--line-2); border-radius:7px; padding:3px 6px; outline:none; }
 .ws-project-count { flex:0 0 auto; min-width:20px; height:20px; padding:0 6px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; background:var(--soft-2); color:var(--muted); font-size:10px; font-weight:800; }
 .ws-project-row.active .ws-project-count { background:rgba(255,255,255,.16); color:var(--strong-text); }
+.ws-project-default-badge { flex:0 0 auto; padding:3px 7px; border-radius:999px; font-size:10px; font-weight:700; line-height:1; color:var(--muted); background:var(--soft-2); border:1px solid var(--line); }
+.ws-project-row.active .ws-project-default-badge { background:rgba(255,255,255,.16); color:var(--strong-text); border-color:transparent; }
 .ws-project-actions { display:none; align-items:center; gap:2px; flex:0 0 auto; }
 .ws-project-row:hover .ws-project-actions { display:flex; }
 .ws-project-row:hover .ws-project-count { display:none; }
@@ -109,6 +111,8 @@ html[data-studio-scale="off"].studio-scale-managed .workspace {
 .ws-proj-act.del:hover { color:#dc2626; background:#fee2e2; }
 .theme-dark .ws-proj-act.del:hover { color:#fca5a5; background:rgba(220,38,38,.22); }
 .ws-project-row.active .ws-proj-act.del:hover { color:#fecaca; background:rgba(248,113,113,.22); }
+.ws-project-row .ws-proj-act:disabled { cursor:not-allowed; color:var(--faint); opacity:.42; background:transparent; }
+.ws-project-row .ws-proj-act.del:disabled:hover { color:var(--faint); background:transparent; }
 
 /* delete-confirm inline */
 .ws-project-confirm { display:flex; flex-direction:column; gap:7px; padding:10px; margin:2px 0; border-radius:8px; background:var(--strong); box-shadow:0 10px 24px var(--shadow); }
@@ -141,12 +145,12 @@ html[data-studio-scale="off"].studio-scale-managed .workspace {
 .ws-primary-btn { height:36px; padding:0 14px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; gap:7px; background:var(--strong); color:var(--strong-text); border:none; cursor:pointer; font-size:12px; font-weight:850; box-shadow:0 8px 18px var(--shadow); }
 .ws-primary-btn:hover { transform:translateY(-1px); box-shadow:0 12px 24px var(--shadow-strong); }
 /* 粘贴到此项目：剪切后才出现的强调按钮，固定高对比色避免主题变量冲淡文字。 */
-.ws-paste-btn { height:36px; padding:0 13px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; gap:7px; background:#1d4ed8; color:#fff; border:1px solid rgba(255,255,255,.18); cursor:pointer; font-size:12px; font-weight:850; box-shadow:0 8px 18px rgba(37,99,235,.28); }
-.ws-paste-btn:hover { background:#1e40af; box-shadow:0 10px 22px rgba(37,99,235,.34); }
+.ws-paste-btn { height:36px; padding:0 13px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; gap:7px; background:#0e7490; color:#fff; border:1px solid rgba(255,255,255,.18); cursor:pointer; font-size:12px; font-weight:850; box-shadow:0 8px 18px rgba(14,116,144,.26); }
+.ws-paste-btn:hover { background:#0c637b; box-shadow:0 10px 22px rgba(14,116,144,.32); }
 .ws-paste-btn span { color:inherit; }
 .ws-paste-btn i,.ws-paste-btn svg { width:16px; height:16px; color:inherit; stroke:currentColor; }
-.theme-dark .ws-paste-btn { background:#2563eb; color:#fff; border-color:rgba(147,197,253,.28); box-shadow:0 10px 24px rgba(37,99,235,.34); }
-.theme-dark .ws-paste-btn:hover { background:#1d4ed8; }
+.theme-dark .ws-paste-btn { background:#0891b2; color:#fff; border-color:rgba(165,222,239,.28); box-shadow:0 10px 24px rgba(8,145,178,.32); }
+.theme-dark .ws-paste-btn:hover { background:#0a7ea3; }
 .ws-join-btn { height:36px; padding:0 12px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; gap:7px; background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent-line); cursor:pointer; font-size:12px; font-weight:850; transition:all .15s var(--ease); }
 .ws-join-btn:hover { border-color:var(--accent); background:var(--accent-soft); box-shadow:0 6px 14px var(--shadow); transform:translateY(-1px); }
 .ws-join-btn i,.ws-join-btn svg { width:16px; height:16px; color:inherit; stroke:currentColor; }
@@ -251,7 +255,7 @@ html[data-studio-scale="off"].studio-scale-managed .workspace {
 .ws-share-field-grid select { height:34px; padding:0 9px; border:1px solid var(--line); border-radius:9px; background:var(--soft); color:var(--text); font-size:12px; font-weight:700; outline:none; }
 .ws-share-field-grid select:focus { border-color:var(--line-2); }
 .ws-share-assets { display:grid; grid-template-columns:auto 1fr; gap:2px 8px; align-items:center; margin-top:12px; color:var(--text); font-size:11px; font-weight:800; }
-.ws-share-assets input { width:15px; height:15px; margin:0; accent-color:var(--accent, #2563eb); }
+.ws-share-assets input { width:15px; height:15px; margin:0; accent-color:var(--accent, #0e7490); }
 .ws-share-assets small { grid-column:2; color:var(--muted); font-size:10px; line-height:1.45; font-weight:650; }
 .ws-share-hint { margin:12px 0 0; color:var(--faint); font-size:10.5px; line-height:1.5; font-weight:650; }
 .ws-share-status { min-height:18px; margin-top:10px; color:var(--muted); font-size:11px; line-height:1.5; font-weight:750; }
@@ -355,11 +359,14 @@ html[data-studio-scale="off"].studio-scale-managed .workspace {
 .theme-dark .ws-project-row.active .ws-proj-act { color:#1f2937; background:rgba(15,23,42,.08); }
 .theme-dark .ws-project-row.active .ws-proj-act:hover { color:#0f172a; background:rgba(15,23,42,.16); }
 .theme-dark .ws-project-row.active .ws-proj-act.del:hover { color:#991b1b; background:rgba(220,38,38,.14); }
+.theme-dark .ws-project-row.active .ws-project-default-badge { background:rgba(15,23,42,.12); color:#0f172a; }
+.theme-dark .ws-project-row .ws-proj-act:disabled { color:var(--faint); background:transparent; }
+.theme-dark .ws-project-row .ws-proj-act.del:disabled:hover { color:var(--faint); background:transparent; }
 .theme-dark .ws-mini-btn.primary { background:#d8dee9; color:#0f172a; border-color:#d8dee9; }
-.theme-dark .ws-card-kind.smart { background:rgba(139,92,246,.18); color:#c4b5fd; border-color:rgba(139,92,246,.3); }
-.theme-dark .ws-card-kind.project { background:rgba(194,65,12,.18); color:#fdba74; border-color:rgba(253,186,116,.3); }
-.theme-dark .ws-create-confirm { background:#d8dee9; color:#0f172a; }
-.theme-dark .ws-create-toggle-btn.active { background:#d8dee9; color:#0f172a; }
+.theme-dark .ws-card-kind.smart { background:#26233a; color:#cdc3f7; border-color:rgba(167,139,250,.42); }
+.theme-dark .ws-card-kind.project { background:#3a2c20; color:#fdba74; border-color:rgba(253,186,116,.42); }
+.theme-dark .ws-create-confirm { background:#2e2e33; color:#f0f0f2; }
+.theme-dark .ws-create-toggle-btn.active { background:#2e2e33; color:#f0f0f2; }
 .theme-dark .ws-trash-act.restore:hover { color:#6ee7b7; background:rgba(5,150,105,.15); border-color:rgba(110,231,183,.35); }
 .theme-dark .ws-trash-act.purge:hover { color:#fecaca; background:rgba(220,38,38,.18); border-color:rgba(248,113,113,.35); }
 .theme-dark .ws-pop-item.danger:hover { background:rgba(220,38,38,.18); }

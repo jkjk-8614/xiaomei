@@ -2,7 +2,10 @@ import json
 import tempfile
 import unittest
 from fastapi.testclient import TestClient
-from image_space_support import build_app
+try:
+    from tests.image_space_support import build_app
+except ImportError:
+    from image_space_support import build_app
 from image_space import replace_ai
 
 

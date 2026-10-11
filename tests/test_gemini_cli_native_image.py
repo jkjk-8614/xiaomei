@@ -66,9 +66,9 @@ class GeminiCliNativeImageTests(unittest.TestCase):
             self.assertEqual(output_path, result_path)
             self.assertEqual(metadata["status"], "succeeded")
             self.assertEqual(metadata["engine"], "SeedVR2")
-            self.assertEqual(request.workflow_json, "upscale.json")
-            self.assertEqual(request.params["15"]["image"], "uploaded.png")
-            self.assertEqual(request.params["172"]["resolution"], 3840)
+            self.assertEqual(request.workflow_json, "seedvr2-official-upscale.json")
+            self.assertEqual(request.params["1"]["image"], "uploaded.png")
+            self.assertEqual(request.params["5"], {"width": 2256, "height": 3840})
             self.assertFalse(request.record_history)
             self.assertEqual(request.timeout_seconds, 300)
 
@@ -147,6 +147,16 @@ class GeminiCliNativeImageTests(unittest.TestCase):
         self.assertIn("图片配额", detail)
         self.assertNotIn("6789", detail)
         self.assertNotIn("API Key", detail)
+
+    def test_antigravity_location_failure_explains_tun_and_supported_region(self):
+        detail = main.gemini_cli_failure_detail(
+            "error: FAILED_PRECONDITION (code 400): User location is not supported for the API use.",
+            "C:\\Users\\test\\agy.exe",
+        )
+        self.assertIn("TUN 或全局代理", detail)
+        self.assertIn("受支持的地区节点", detail)
+        self.assertIn("不是参考图、提示词或画布连线问题", detail)
+        self.assertIn("User location is not supported", detail)
 
     def test_non_antigravity_cli_is_rejected_before_image_generation(self):
         cli_call = AsyncMock()

@@ -2,12 +2,13 @@ const { app, BrowserWindow, WebContentsView, ipcMain, session, shell, dialog, No
 // 让内嵌跨境平台优先按简体中文协商页面语言；页面是否真的切换成功，
 // 由加载后的本地检查决定，未生效时再进入本机翻译兜底。
 app.commandLine.appendSwitch('lang', 'zh-CN');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const net = require('node:net');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { DesktopUpdater } = require('./updater.cjs');
+const { DeepSeekHarnessUpdater } = require('./deepseek-updater.cjs');
 const { installWindowLifecycle } = require('./window-lifecycle.cjs');
 const {
   MODULE_TARGETS: COMMERCE_MODULE_TARGETS,
@@ -32,9 +33,11 @@ try {
   APP_DISPLAY_VERSION = String(packageInfo.displayVersion || packageInfo.version || APP_DISPLAY_VERSION).trim() || APP_DISPLAY_VERSION;
   if (Number.isSafeInteger(packageInfo.buildRevision) && packageInfo.buildRevision >= 0) APP_BUILD_REVISION = packageInfo.buildRevision;
 } catch {}
-const TEST_API_PORT = 3300;
+const requestedApiPort = Number(process.env.XIAOMEI_CANVAS_PORT || 3000);
+const CONFIGURED_API_PORT = Number.isInteger(requestedApiPort) && requestedApiPort >= 1 && requestedApiPort <= 65535
+  ? requestedApiPort : 3000;
 const TEST_BROWSER_PORT = 9327;
-// A running process on port 3300 may belong to an older install (and may have
+// A running process on the configured port may belong to an older install (and may have
 // that install's API settings).  Only reuse a server started for this desktop
 // session; otherwise start the bundled backend on a free port.
 const API_SESSION_ID = crypto.randomUUID();
@@ -53,7 +56,7 @@ try {
     fs.mkdirSync(directory, { recursive: true });
   });
   process.env.XIAOMEI_CANVAS_DATA_ROOT = TEST_RUNTIME_DATA_ROOT;
-  process.env.XIAOMEI_CANVAS_PORT = String(TEST_API_PORT);
+  process.env.XIAOMEI_CANVAS_PORT = String(CONFIGURED_API_PORT);
   process.env.COMMERCE_ANALYSIS_BROWSER_PORT = String(TEST_BROWSER_PORT);
   process.env.TEMP = TEST_TEMP_ROOT;
   process.env.TMP = TEST_TEMP_ROOT;
@@ -65,18 +68,63 @@ try {
 } catch {}
 
 const APP_ICON_PATH = path.join(PROJECT_ROOT, 'static', 'images', 'app-icon.ico');
-const CONFIGURED_API_PORT = TEST_API_PORT;
 let API_PORT = CONFIGURED_API_PORT;
 let LOCAL_ORIGIN = `http://127.0.0.1:${API_PORT}`;
+const DEEPSEEK_HARNESS_ROOT = path.join(PROJECT_ROOT, 'vendor', 'deepseek-harness');
+const deepSeekHarnessUpdater = new DeepSeekHarnessUpdater({
+  root: DEEPSEEK_HARNESS_ROOT,
+  dataRoot: path.join(TEST_RUNTIME_DATA_ROOT, '.xiaomei-data'),
+});
+const DEEPSEEK_HARNESS_PORT_BASE = 19387;
+// Harness 启动会加载多个插件，首次启动可能超过几十秒。超时过短时，
+// Electron 会误报失败并留下仍在占用端口的 Host 子进程。
+const DEEPSEEK_HARNESS_START_TIMEOUT_MS = 120000;
+let deepSeekHarnessProcess = null;
+let deepSeekHarnessView = null;
+let deepSeekHarnessReady = null;
+let deepSeekHarnessUrl = '';
+let deepSeekHarnessBounds = null;
+let deepSeekHarnessVisible = false;
+let deepSeekHarnessGeneration = 0;
+let deepSeekHarnessLastError = '';
+let deepSeekHarnessProfileFingerprint = '';
+let deepSeekHarnessPort = DEEPSEEK_HARNESS_PORT_BASE;
+
+function appendDeepSeekHarnessLog(stream, chunk) {
+  try {
+    const logDir = path.join(TEST_RUNTIME_DATA_ROOT, 'logs');
+    fs.mkdirSync(logDir, { recursive: true });
+    const safeChunk = String(chunk)
+      .replace(/([?&](?:token|api[_-]?key)=)[^&\s]+/gi, '$1<redacted>')
+      .replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1<redacted>');
+    fs.appendFileSync(
+      path.join(logDir, `harness-desktop-${stream}.log`),
+      `[${new Date().toISOString()}] ${safeChunk}`,
+      'utf8',
+    );
+  } catch {}
+}
+
+function terminateDeepSeekHarnessProcess(child) {
+  if (!child) return;
+  try { child.send?.({ type: 'shutdown' }); } catch {}
+  try { child.kill(); } catch {}
+  // On Windows child.kill() can leave a package-manager descendant alive. Kill
+  // the process tree after asking the Host to shut down cleanly.
+  if (process.platform === 'win32' && child.pid) {
+    try { spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore' }); } catch {}
+  }
+}
+
 
 function setApiEndpoint(port) {
   const value = Math.max(1, Math.min(65535, Number(port) || CONFIGURED_API_PORT));
   API_PORT = value;
   LOCAL_ORIGIN = `http://127.0.0.1:${value}`;
 }
-function readApiEnvValue(name) {
+function readApiEnvValue(name, configRoot = TEST_RUNTIME_DATA_ROOT) {
   try {
-    const envPath = path.join(TEST_RUNTIME_DATA_ROOT, 'API', '.env');
+    const envPath = path.join(configRoot, 'API', '.env');
     const key = String(name || '').trim();
     if (!key || !fs.existsSync(envPath)) return '';
     for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
@@ -234,6 +282,9 @@ let desktopUpdateWindowState = null;
 let desktopUpdateWindowProgress = null;
 let desktopUpdateStartupTimer = null;
 let desktopUpdateLastResult = null;
+let deepSeekHarnessUpdateCheckPromise = null;
+let deepSeekHarnessUpdateOperationPromise = null;
+let deepSeekHarnessUpdateLastResult = null;
 
 let productUrl = '';
 let lastSurfaceBounds = null;
@@ -309,6 +360,128 @@ function setCommerceAgentOverlay(entry, visible, message = '') {
   const task = () => webContents.executeJavaScript(`(${ELECTRON_COMMERCE_OPERATION_OVERLAY_SCRIPT})(${JSON.stringify({ visible: Boolean(visible), message: String(message || '') })})`, true).catch(() => null);
   entry.agentOverlayPromise = (entry.agentOverlayPromise || Promise.resolve()).then(task).catch(() => null);
   return entry.agentOverlayPromise;
+}
+
+// 注入到商品 WebContentsView 的右下角小美入口球。商品页是原生顶层视图，
+// 面板收起时会盖住分析台 DOM 里的入口，因此把同一颗“液态 Agent 球”注入到
+// 商品页内显示；点击通过 console 信号回传主进程，再转发给商品分析台开面板。
+// 商品页属于外部站点，配色固定用 minimal 皮肤的亮色默认值，不跟随应用换肤。
+const ELECTRON_COMMERCE_AGENT_ORB_SCRIPT = String.raw`(({ visible }) => {
+  const rootId = '__xiaomei_commerce_agent_orb__';
+  const styleId = '__xiaomei_commerce_agent_orb_style__';
+  const clickSignal = '__XIAOMEI_COMMERCE_ORB_CLICK__';
+  const existing = document.getElementById(rootId);
+  if (!visible) {
+    existing?.remove();
+    document.getElementById(styleId)?.remove();
+    return { ok: true, visible: false };
+  }
+  if (!document.body) return { ok: false, reason: 'body_not_ready' };
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = '#__xiaomei_commerce_agent_orb__{position:fixed;right:26px;bottom:26px;z-index:2147483647;width:84px;height:84px;min-width:84px;min-height:84px;padding:0;border:0;border-radius:50%;background:transparent;box-shadow:none;cursor:pointer;-webkit-tap-highlight-color:transparent}#__xiaomei_commerce_agent_orb__:focus-visible{outline:0;box-shadow:0 0 0 3px rgba(15,108,203,.38)}#__xiaomei_commerce_agent_orb__ .x-orb-glow{position:absolute;inset:1px;border-radius:50%;background:radial-gradient(circle,#5ceebc 0%,rgba(56,224,168,.4) 46%,transparent 70%);filter:blur(10px);opacity:.55;transform:scale(1.1);animation:__xiaomei_orb_glow 6s ease-in-out infinite;pointer-events:none}#__xiaomei_commerce_agent_orb__ .x-orb-body{position:absolute;inset:6px;border-radius:50%;overflow:hidden;background:radial-gradient(120% 120% at 64% 38%,rgba(173,246,105,.5) 0%,transparent 58%),radial-gradient(130% 130% at 34% 64%,rgba(47,232,176,.55) 0%,transparent 62%),radial-gradient(circle at 50% 46%,#a9f8de 0%,#4ce3b4 52%,#1db894 100%);pointer-events:none}#__xiaomei_commerce_agent_orb__ .x-orb-flow{position:absolute;inset:-20%;background:radial-gradient(circle at 50% 50%,rgba(173,246,105,.5) 0%,transparent 56%);opacity:.38;filter:blur(8px);animation:__xiaomei_orb_flow 18s ease-in-out infinite alternate;pointer-events:none}#__xiaomei_commerce_agent_orb__ .x-orb-eyes{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;will-change:transform}#__xiaomei_commerce_agent_orb__ .x-orb-blink{display:flex;gap:11px;transform-origin:center}#__xiaomei_commerce_agent_orb__ .x-orb-eye{display:block;width:6px;height:10px;border-radius:50%;background:#0d1a15}@keyframes __xiaomei_orb_glow{0%,100%{opacity:.5;transform:scale(1.08)}50%{opacity:.64;transform:scale(1.14)}}@keyframes __xiaomei_orb_flow{0%{transform:translate(-7%,5%) scale(1)}50%{transform:translate(6%,-5%) scale(1.06)}100%{transform:translate(-3%,6%) scale(.97)}}@media (prefers-reduced-motion:reduce){#__xiaomei_commerce_agent_orb__ .x-orb-glow,#__xiaomei_commerce_agent_orb__ .x-orb-flow{animation:none!important}}';
+    document.documentElement.appendChild(style);
+  }
+  let root = document.getElementById(rootId);
+  if (!root) {
+    root = document.createElement('button');
+    root.id = rootId;
+    root.type = 'button';
+    root.setAttribute('aria-label', '打开小美商品研究助手');
+    root.title = '打开小美商品研究助手';
+    root.innerHTML = '<span class="x-orb-glow"></span><span class="x-orb-body"><span class="x-orb-flow"></span><span class="x-orb-eyes"><span class="x-orb-blink"><span class="x-orb-eye"></span><span class="x-orb-eye"></span></span></span></span>';
+    root.addEventListener('click', () => {
+      // 优先走 preload 桥（淘宝等站点会改写 console，信号会丢），console 仅兜底
+      try {
+        if (window.xiaomeiProductBridge?.notifyAgentOrbClick) { window.xiaomeiProductBridge.notifyAgentOrbClick(); return; }
+      } catch {}
+      try { console.log(clickSignal); } catch {}
+    });
+    document.body.appendChild(root);
+    startOrbLoop(root);
+  }
+  return { ok: true, visible: true };
+
+  // 与小美画布 js/canvas-agent-orb.js 同一套眼睛逻辑：只动眼睛层，身体不形变
+  function startOrbLoop(orb) {
+    if (orb.dataset.orbLoop === '1') return;
+    orb.dataset.orbLoop = '1';
+    const eyes = orb.querySelector('.x-orb-eyes');
+    const blinkLayer = orb.querySelector('.x-orb-blink');
+    const state = { x: 0, y: 0, next: performance.now() + 1400, start: 0, second: false };
+    const mouse = { x: -9999, y: -9999 };
+    const EYE = { maxX: 6, maxY: 5, nearRange: 180, lerp: .2 };
+    const BLINK = { min: 2500, max: 5000, duration: 150, doubleChance: .18 };
+    window.addEventListener('pointermove', (event) => { mouse.x = event.clientX; mouse.y = event.clientY; }, { passive: true });
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    requestAnimationFrame(function loop(now) {
+      if (!orb.isConnected) return;
+      let tx = 0, ty = 0;
+      const rect = orb.getBoundingClientRect();
+      if (rect.width > 0) {
+        const dx = mouse.x - (rect.left + rect.width / 2);
+        const dy = mouse.y - (rect.top + rect.height / 2);
+        const distance = Math.hypot(dx, dy);
+        if (distance > .5 && distance < 800) {
+          const strength = Math.min(distance / EYE.nearRange, 1);
+          tx = dx / distance * EYE.maxX * strength;
+          ty = dy / distance * EYE.maxY * strength;
+        }
+      }
+      state.x += (tx - state.x) * EYE.lerp;
+      state.y += (ty - state.y) * EYE.lerp;
+      eyes.style.transform = 'translate3d(' + state.x.toFixed(2) + 'px,' + state.y.toFixed(2) + 'px,0)';
+      let scaleY = 1;
+      if (state.start) {
+        const p = (now - state.start) / BLINK.duration;
+        if (p >= 1) { if (state.second) { state.second = false; state.start = now + 90; } else state.start = 0; }
+        else scaleY = 1 - .9 * Math.sin(Math.PI * p);
+      } else if (now >= state.next) {
+        state.start = now;
+        state.second = Math.random() < BLINK.doubleChance;
+        state.next = now + BLINK.min + Math.random() * (BLINK.max - BLINK.min);
+      }
+      blinkLayer.style.transform = 'scaleY(' + scaleY.toFixed(3) + ')';
+      requestAnimationFrame(loop);
+    });
+  }
+})`;
+
+function setCommerceAgentOrb(entry, visible) {
+  const webContents = entry?.view?.webContents;
+  if (!webContents || webContents.isDestroyed()) return Promise.resolve();
+  const task = () => webContents.executeJavaScript(`(${ELECTRON_COMMERCE_AGENT_ORB_SCRIPT})(${JSON.stringify({ visible: Boolean(visible) })})`, true).catch(() => null);
+  entry.agentOrbPromise = (entry.agentOrbPromise || Promise.resolve()).then(task).catch(() => null);
+  return entry.agentOrbPromise;
+}
+
+// 面板收起且商品页可见时，右下角入口球由商品页内注入的实例承担；
+// 面板打开、切走工作区、弹层遮挡或商品页隐藏时撤下。所有状态变化都收敛到这里。
+let commerceAgentOrbDesired = false;
+let commerceAgentOrbTabId = '';
+function syncCommerceAgentOrb() {
+  const desired = Boolean(commerceAgentOrbDesired && commercePageActive && !commerceSurfaceBlocked);
+  const entry = desired && activeProductTabId ? productViews.get(activeProductTabId) : null;
+  const targetId = entry && isProductViewVisible(entry) ? entry.id : '';
+  if (targetId !== commerceAgentOrbTabId) {
+    if (commerceAgentOrbTabId) {
+      const previous = productViews.get(commerceAgentOrbTabId);
+      if (previous) void setCommerceAgentOrb(previous, false);
+    }
+    commerceAgentOrbTabId = targetId;
+  }
+  if (targetId && entry) void setCommerceAgentOrb(entry, true);
+}
+
+async function openCommerceAssistantFromOrb() {
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.webContents || mainWindow.webContents.isDestroyed()) return;
+  try {
+    await mainWindow.webContents.executeJavaScript(
+      "document.getElementById('frame-commerce-analysis')?.contentWindow?.__xiaomeiCommerceOpenAssistant?.() ?? null",
+      true,
+    );
+  } catch {}
 }
 
 // 淘宝新版页面不会把 SKU 作为普通商品字段返回，规格选项通常只存在于
@@ -1765,7 +1938,7 @@ function desktopUpdatePromptOptions(result) {
   return {
     type: 'info',
     title: `${APP_NAME} · 发现新版本`,
-    message: `发现新版本 v${result.version || APP_DISPLAY_VERSION}`,
+    message: `发现新版本 v${result?.displayVersion || result?.version || APP_DISPLAY_VERSION}`,
     detail: `当前版本：v${APP_DISPLAY_VERSION}\n${process.platform === 'darwin' ? '更新会在后台下载 macOS ZIP，完成后打开文件位置供你替换应用。个人数据不会被删除。' : '更新会在后台下载新的安装程序，完成后自动重启。个人数据不会被删除。'}${notes}`,
     buttons: result.mandatory ? ['立即更新'] : ['立即更新', '稍后提醒'],
     defaultId: 0,
@@ -1864,6 +2037,110 @@ async function checkDesktopUpdate({ manual = false } = {}) {
   return result;
 }
 
+function readDeepSeekHarnessUpdateState() {
+  try {
+    const file = path.join(TEST_RUNTIME_DATA_ROOT, '.xiaomei-data', 'deepseek-harness-update.json');
+    const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeDeepSeekHarnessUpdateState(patch) {
+  try {
+    const file = path.join(TEST_RUNTIME_DATA_ROOT, '.xiaomei-data', 'deepseek-harness-update.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const current = readDeepSeekHarnessUpdateState();
+    const temporary = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(temporary, `${JSON.stringify({ ...current, ...patch }, null, 2)}\n`, 'utf8');
+    fs.renameSync(temporary, file);
+  } catch {}
+}
+
+async function updateDeepSeekHarness(result) {
+  if (deepSeekHarnessUpdateOperationPromise) return deepSeekHarnessUpdateOperationPromise;
+  deepSeekHarnessUpdateOperationPromise = (async () => {
+    try {
+      // The Host loads generated modules directly from vendor/deepseek-harness.
+      // Stop it before replacing source or build output, then restore the view
+      // after a successful build.
+      terminateDeepSeekHarnessProcess(deepSeekHarnessProcess);
+      deepSeekHarnessProcess = null;
+      deepSeekHarnessReady = null;
+      deepSeekHarnessUrl = '';
+      const updated = await deepSeekHarnessUpdater.update({
+        onProgress: (progress) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('deepseek-harness:update-progress', progress);
+          }
+        },
+      });
+      deepSeekHarnessUpdateLastResult = updated;
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('deepseek-harness:update-status', updated);
+      writeDeepSeekHarnessUpdateState({ dismissedCommit: '', updatedCommit: updated.commit || '', updatedAt: Date.now() });
+      if (deepSeekHarnessVisible) await refreshDeepSeekHarness();
+      return updated;
+    } catch (error) {
+      if (deepSeekHarnessVisible) {
+        try { await refreshDeepSeekHarness(); } catch {}
+      }
+      const failed = { status: 'error', update_available: true, message: String(error?.message || error).slice(0, 400) };
+      deepSeekHarnessUpdateLastResult = failed;
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('deepseek-harness:update-status', failed);
+      return failed;
+    } finally {
+      deepSeekHarnessUpdateOperationPromise = null;
+    }
+  })();
+  return deepSeekHarnessUpdateOperationPromise;
+}
+
+async function checkDeepSeekHarnessUpdate({ manual = false } = {}) {
+  if (deepSeekHarnessUpdateOperationPromise) return { status: 'updating', message: 'DeepSeek Harness 更新正在进行中' };
+  const check = deepSeekHarnessUpdateCheckPromise || (deepSeekHarnessUpdateCheckPromise = deepSeekHarnessUpdater.check().finally(() => {
+    deepSeekHarnessUpdateCheckPromise = null;
+  }));
+  const result = await check;
+  deepSeekHarnessUpdateLastResult = result;
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('deepseek-harness:update-status', result);
+  if (result.status === 'available') {
+    const state = readDeepSeekHarnessUpdateState();
+    const dismissedRecently = state.dismissedCommit === result.remote_commit
+      && Number(state.dismissedAt || 0) > Date.now() - 24 * 60 * 60 * 1000;
+    if (!manual && dismissedRecently) return result;
+    const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+    const options = {
+      type: 'info',
+      title: 'DeepSeek Harness · 发现更新',
+      message: '发现 DeepSeek Harness 新版本',
+      detail: `当前提交：${String(result.commit || '').slice(0, 12)}\n上游提交：${String(result.remote_commit || '').slice(0, 12)}\n将保留小美画布适配补丁并重新构建，API 密钥、历史记录和素材不会被修改。`,
+      buttons: ['立即更新', '稍后提醒'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    };
+    const answer = owner ? await dialog.showMessageBox(owner, options) : await dialog.showMessageBox(options);
+    if (answer.response !== 0) {
+      writeDeepSeekHarnessUpdateState({ dismissedCommit: result.remote_commit, dismissedAt: Date.now() });
+      return { ...result, dismissed: true, message: '用户选择稍后更新' };
+    }
+    return updateDeepSeekHarness(result);
+  }
+  if (manual && result.status !== 'current') {
+    const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+    const options = {
+      type: result.status === 'unavailable' ? 'warning' : 'info',
+      title: 'DeepSeek Harness · 检查更新',
+      message: result.message || '暂时无法检查 DeepSeek Harness 更新',
+      buttons: ['知道了'],
+      noLink: true,
+    };
+    if (owner) await dialog.showMessageBox(owner, options); else await dialog.showMessageBox(options);
+  }
+  return result;
+}
+
 function scheduleDesktopUpdateCheck() {
   if (!app.isPackaged || desktopUpdateStartupTimer) return;
   if (!desktopUpdater.readConfig().checkOnStartup) return;
@@ -1873,6 +2150,16 @@ function scheduleDesktopUpdateCheck() {
       console.warn(`[desktop-updater] 启动检查失败：${String(error?.message || error).slice(0, 180)}`);
     });
   }, 7000);
+}
+
+function scheduleDeepSeekHarnessUpdateCheck() {
+  // Source installs use the nested git checkout directly; packaged builds that
+  // do not ship it return a quiet "missing" result from the updater.
+  setTimeout(() => {
+    void checkDeepSeekHarnessUpdate({ manual: false }).catch((error) => {
+      console.warn(`[deepseek-updater] 启动检查失败：${String(error?.message || error).slice(0, 180)}`);
+    });
+  }, 9000);
 }
 
 function hostAllowed(value, sellerOnly = false) {
@@ -2786,30 +3073,29 @@ function safeAgentAction(raw) {
 }
 
 function choosePython() {
-  const bundled = path.join(PROJECT_ROOT, 'python', 'python.exe');
-  const bundledWinRuntime = path.join(PROJECT_ROOT, 'bundled', 'win-api', 'python.exe');
-  const bundledMacRuntime = path.join(PROJECT_ROOT, 'bundled', 'mac-api', 'xiaomei-api');
-  const bundledMac = path.join(PROJECT_ROOT, 'build', 'mac-api', 'xiaomei-api');
-  return process.platform === 'win32' && fs.existsSync(bundledWinRuntime)
-    ? bundledWinRuntime
+  const bundled = path.join(PROJECT_ROOT, 'bundled', 'win-api', 'python.exe');
+  const bundledWin = path.join(PROJECT_ROOT, 'bundled', 'win-api', 'python.exe');
+  const bundledMac = path.join(PROJECT_ROOT, 'bundled', 'mac-api', 'xiaomei-api');
+  return process.platform === 'win32' && fs.existsSync(bundledWin)
+    ? bundledWin
     : process.platform === 'win32' && fs.existsSync(bundled)
       ? bundled
-    : process.platform === 'darwin' && fs.existsSync(bundledMacRuntime)
-      ? bundledMacRuntime
     : process.platform === 'darwin' && fs.existsSync(bundledMac)
       ? bundledMac
       : (process.platform === 'win32' ? 'python' : 'python3');
 }
 
 function chooseApiArguments(command) {
-  const bundledWinRuntime = path.join(PROJECT_ROOT, 'bundled', 'win-api', 'python.exe');
-  const bundledWinEntry = path.join(PROJECT_ROOT, 'windows_api_entry.py');
-  const bundledMacRuntime = path.join(PROJECT_ROOT, 'bundled', 'mac-api', 'xiaomei-api');
+  const bundledWin = path.join(PROJECT_ROOT, 'bundled', 'win-api', 'python.exe');
   const bundledMac = path.join(PROJECT_ROOT, 'build', 'mac-api', 'xiaomei-api');
-  if (command === bundledWinRuntime) return [bundledWinEntry];
-  return [bundledMacRuntime, bundledMac].includes(command)
-    ? []
-    : ['main.py'];
+  return command === bundledMac ? [] : command === bundledWin ? [path.join(PROJECT_ROOT, 'windows_api_entry.py')] : ['main.py'];
+}
+
+function xiaomeiApiConfigRoot() {
+  const command = choosePython();
+  // 与 main.py 的 _runtime_root / BASE_DIR 一致：源码运行取项目目录，
+  // frozen 后端取可执行文件目录。Electron 的用户数据目录另有用途。
+  return TEST_RUNTIME_DATA_ROOT;
 }
 
 async function probeApiAt(port, timeout = 900) {
@@ -2834,9 +3120,9 @@ function portIsAvailable(port) {
       try { server.close(() => resolve(available)); } catch { resolve(available); }
     };
     server.once('error', () => resolve(false));
-    // main.py binds 0.0.0.0, so probe the same address family/scope to avoid
+    // main.py binds 127.0.0.1, so probe the same address family/scope to avoid
     // selecting a port that Python will immediately reject as occupied.
-    server.listen({ host: '0.0.0.0', port }, () => finish(true));
+    server.listen({ host: '127.0.0.1', port }, () => finish(true));
   });
 }
 
@@ -2847,6 +3133,605 @@ async function findFreeApiPort(start = CONFIGURED_API_PORT) {
     if (await portIsAvailable(port)) return port;
   }
   throw new Error(`本地端口 ${first}-${last} 均不可用`);
+}
+
+function collectDeepSeekSkillRoots() {
+  const candidates = [
+    path.join(PROJECT_ROOT, 'data', 'agent_skills'),
+    path.join(TEST_RUNTIME_DATA_ROOT, 'data', 'agent_skills'),
+  ];
+  const roots = [];
+  for (const candidate of candidates) {
+    if (!fs.existsSync(candidate)) continue;
+    roots.push(candidate);
+    // 资产管理导入的 Skill 包保存在这个二级目录；skill-filesystem
+    // 只扫描传入根目录的直接子项，因此必须把它作为独立根目录传入。
+    const packages = path.join(candidate, 'packages');
+    if (fs.existsSync(packages)) roots.push(packages);
+  }
+  return [...new Set(roots)].map((root) => root.replace(/\\/g, '/'));
+}
+
+function fingerprintDeepSeekSkills(skillRoots) {
+  const entries = [];
+  const visit = (root, current) => {
+    let children;
+    try { children = fs.readdirSync(current, { withFileTypes: true }); } catch { return; }
+    for (const child of children) {
+      const fullPath = path.join(current, child.name);
+      if (child.isDirectory()) {
+        // Only descend through the package boundary. This keeps profile checks
+        // cheap while covering both root-level Skills and imported packages.
+        if (current === root) visit(root, fullPath);
+        continue;
+      }
+      if (!child.isFile()) continue;
+      const isRootMarkdown = current === root && child.name.endsWith('.md');
+      const isPackageSkill = child.name === 'SKILL.md';
+      if (!isRootMarkdown && !isPackageSkill) continue;
+      try {
+        const stat = fs.statSync(fullPath);
+        entries.push(`${fullPath.replace(/\\/g, '/')}|${stat.size}|${stat.mtimeMs}`);
+      } catch {}
+    }
+  };
+  for (const root of skillRoots) visit(root, root);
+  return entries.sort().join('\n');
+}
+
+function ensureDeepSeekHarnessProfile() {
+  const home = path.join(TEST_RUNTIME_DATA_ROOT, '.xiaomei-data', 'deepseek-harness');
+  const profile = path.join(home, 'profiles', 'desktop');
+  fs.mkdirSync(profile, { recursive: true });
+  const manifestPath = path.join(profile, 'package.json');
+  if (!fs.existsSync(manifestPath)) {
+    fs.writeFileSync(manifestPath, JSON.stringify({ name: 'xiaomei-dsh-desktop-profile', private: true, dependencies: {}, dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'] } } }, null, 2) + '\n', 'utf8');
+  }
+  const dshAnchor = path.join(DEEPSEEK_HARNESS_ROOT, 'apps', 'cli', 'node_modules', '@deepseek-ai', 'dsh');
+  if (!fs.existsSync(dshAnchor)) { try { fs.symlinkSync(path.join(DEEPSEEK_HARNESS_ROOT, 'apps', 'cli'), dshAnchor, 'junction'); } catch {} }
+  const profileModules = path.join(profile, 'node_modules', '@deepseek-ai');
+  fs.mkdirSync(profileModules, { recursive: true });
+  for (const name of ['dsh-base', 'dsh-web-app', 'dsh-skill-filesystem', 'dsh-session-persistence-jsonl']) {
+    const target = path.join(profileModules, name);
+    if (!fs.existsSync(target)) {
+      const source = path.join(DEEPSEEK_HARNESS_ROOT, 'apps', 'cli', 'node_modules', '@deepseek-ai', name);
+      if (fs.existsSync(source)) { try { fs.symlinkSync(source, target, 'junction'); } catch {} }
+    }
+  }
+  const cordis = path.join(profile, 'cordis.patch.yml');
+  const xiaomeiModelConfig = readXiaomeiHarnessModelConfig();
+  const skillRoots = collectDeepSeekSkillRoots();
+  if (!skillRoots.length) skillRoots.push(path.join(PROJECT_ROOT, 'data', 'agent_skills').replace(/\\/g, '/'));
+  const skillFingerprint = fingerprintDeepSeekSkills(skillRoots);
+  const sessionRoot = path.join(home, 'sessions').replace(/\\/g, '/');
+  const profilePatch = [
+      // 可用模型全部来自小美画布；空配置也不能回退到官方独立凭证。
+        "- id: llm-deepseek",
+        "  disabled: true",
+        "- id: llm-deepseek-account",
+        "  disabled: true",
+        "- id: web-search-deepseek",
+        "  disabled: true",
+      // API 平台、密钥和模型只由小美画布 API 设置维护。保留官方设置容器
+      // 会让用户误以为还需要在 DeepSeek 页面重新录入一套凭证，因此无论
+      // 当前是否已有同步路由，都隐藏这两个可写设置模块。
+      "- id: ui-settings-models",
+      "  disabled: true",
+      "- id: ui-settings-account",
+      "  disabled: true",
+      "- id: skill-filesystem",
+      "  name: '@deepseek-ai/dsh-skill-filesystem'",
+      // Web 预设默认禁用宿主扫描器；启用后资产管理 Skill 注册到共享层，
+      // 会话目录会合并该层与各预设自己的 Skill（包括 Office Skill）。
+      "  disabled: false",
+      "  config:",
+      "    includeDefaultRoots: false",
+      `    customSkillDirs: [${skillRoots.map((root) => `'${root}'`).join(', ')}]`,
+      "- id: session-persistence-jsonl",
+      "  name: '@deepseek-ai/dsh-session-persistence-jsonl'",
+      "  config:",
+      `    root: '${sessionRoot}'`,
+      "- id: fs-sandbox",
+      "  name: '@deepseek-ai/dsh-fs-sandbox'",
+      "  config:",
+      `    cwd: ${yamlScalar(PROJECT_ROOT)}`,
+      "- id: llm-pi-ai",
+      "  name: '@deepseek-ai/dsh-llm-pi-ai'",
+      "  config:",
+      "    providers:",
+      ...(xiaomeiModelConfig.routes.length ? xiaomeiModelConfig.routes.flatMap((route) => [
+        `      ${yamlKey(route.id)}:`,
+        `        displayName: ${yamlScalar(route.displayName)}`,
+        `        api: ${yamlScalar(route.api)}`,
+        `        baseURL: ${yamlScalar(route.baseURL)}`,
+        `        apiKeyEnv: ${yamlScalar(route.apiKeyEnv)}`,
+        ...(route.nonStreamingModels?.length ? [`        nonStreamingModels: ${JSON.stringify(route.nonStreamingModels)}`] : []),
+        // 兼容网关经常在 SSE 结束时省略 finish_reason；让 pi-ai 根据
+        // 已收到的内容推断正常结束，避免把完整回复误报为传输失败。
+        ...(route.omitsFinishReason ? [
+          "        compat:",
+          "          supportsFinishReason: false",
+        ] : []),
+        "        models:",
+        ...route.models.flatMap((model) => [
+          `          - id: ${yamlScalar(model.id)}`,
+          `            name: ${yamlScalar(model.name)}`,
+          "            contextWindow: 262144",
+          "            maxTokens: 32768",
+          ...(model.input?.length ? [`            input: [${model.input.join(', ')}]`] : []),
+        ]),
+      ]) : ["      {}"]),
+      "- id: agent-default-model",
+      "  name: '@deepseek-ai/dsh-agent-default-model'",
+      "  config:",
+      `    provider: ${yamlScalar(xiaomeiModelConfig.defaultRoute || 'xiaomei-unconfigured')}`,
+      `    model: ${yamlScalar(xiaomeiModelConfig.defaultModel || 'unconfigured')}`,
+      "- id: ui-settings-general",
+      "  name: '@deepseek-ai/dsh-client-ui-settings-general'",
+      "  config:",
+      "    welcomeNoticeVersion: 'xiaomei-canvas-bridge-1'",
+  ].join('\n') + '\n';
+  try {
+    const current = fs.existsSync(cordis) ? fs.readFileSync(cordis, 'utf8') : '';
+    // Older builds accidentally wrote the patch as one literal "\\n" line;
+    // repair that generated file so the official profile loader can parse it.
+    const repaired = current.replaceAll('\\n', '\n');
+    // A packaged run and a source run have different data roots. Keep the
+    // generated profile pointed at the active runtime so Skills are visible
+    // after switching between either launch mode.
+    if (!current || repaired !== profilePatch) {
+      fs.writeFileSync(cordis, profilePatch, 'utf8');
+    }
+  } catch {}
+  try {
+    const migration = path.join(PROJECT_ROOT, 'tools', 'migrate_harness_conversations.py');
+    if (fs.existsSync(migration)) spawnSync(choosePython(), [migration], { cwd: PROJECT_ROOT, windowsHide: true, stdio: 'ignore', env: { ...process.env, XIAOMEI_CANVAS_DATA_ROOT: TEST_RUNTIME_DATA_ROOT } });
+  } catch {}
+  const primaryRuntime = path.join(home, 'primary-runtime');
+  syncXiaomeiHarnessWorkspace(home);
+  const officeSkills = path.join(home, 'office-skills');
+  fs.mkdirSync(path.join(primaryRuntime, 'dependencies', 'node', 'bin'), { recursive: true });
+  fs.mkdirSync(path.join(officeSkills, 'scripts'), { recursive: true });
+  const packagedOfficeAssets = path.join(DEEPSEEK_HARNESS_ROOT, 'packages', 'skill', 'skill-office', 'assets');
+  if (fs.existsSync(packagedOfficeAssets)) {
+    try { fs.cpSync(packagedOfficeAssets, officeSkills, { recursive: true, force: false, errorOnExist: false }); } catch {}
+  }
+  const nodeStub = path.join(primaryRuntime, 'dependencies', 'node', 'bin', process.platform === 'win32' ? 'node.exe' : 'node');
+  const officeCheck = path.join(officeSkills, 'scripts', 'check_office.py');
+  if (!fs.existsSync(nodeStub)) { try { fs.writeFileSync(nodeStub, ''); } catch {} }
+  if (!fs.existsSync(officeCheck)) { try { fs.writeFileSync(officeCheck, '# optional office checker for the local Harness runtime\\n', 'utf8'); } catch {} }
+  const profileText = fs.existsSync(cordis) ? fs.readFileSync(cordis, 'utf8') : profilePatch;
+  const fingerprint = crypto.createHash('sha256')
+    .update(profileText)
+    .update(JSON.stringify(xiaomeiModelConfig.env))
+    .update(skillFingerprint)
+    .digest('hex');
+  return { home, profile, primaryRuntime, providerEnv: xiaomeiModelConfig.env, fingerprint };
+}
+
+function yamlScalar(value) {
+  return JSON.stringify(String(value ?? ''));
+}
+
+function yamlKey(value) {
+  const text = String(value || '').trim();
+  return /^[A-Za-z0-9_-]+$/.test(text) ? text : JSON.stringify(text);
+}
+
+/**
+ * Return whether a chat model is commonly documented as accepting image
+ * input. The provider model list only contains ids, so the Harness cannot
+ * otherwise distinguish a vision chat model from a text-only model. A
+ * provider may also supply an explicit `vision_models` list or a per-model
+ * `model_input_modalities` map; those are checked before this conservative
+ * family list.
+ */
+function harnessModelInputModalities(provider, modelId) {
+  const id = String(modelId || '').trim();
+  const configured = provider?.model_input_modalities?.[id];
+  if (Array.isArray(configured) && configured.length) return configured.map((value) => String(value).trim()).filter(Boolean);
+  if (Array.isArray(provider?.vision_models) && provider.vision_models.some((value) => String(value).trim() === id)) return ['text', 'image'];
+  const lc = id.toLowerCase();
+  const visionFamilies = [
+    'claude', 'gemini', 'gpt-4o', 'gpt-4.1', 'gpt-5', 'grok', 'qwen-vl',
+    'qwen3-vl', 'internvl', 'qvq', 'glm-4v', 'minicpm-v', 'pixtral',
+    'mistral-small-3.1', 'llama-4', 'doubao-vision',
+  ];
+  return visionFamilies.some((family) => lc.includes(family)) ? ['text', 'image'] : undefined;
+}
+
+function harnessOpenAiBaseURL(value) {
+  let base = String(value || '').trim().replace(/\/$/, '');
+  if (!base) return '';
+  // 小美画布的 OpenAI 兼容适配器会把未带版本段的站点规范化到 /v1；
+  // Harness 也必须使用同一入口，否则 6789/comfly 会请求到站点首页。
+  if (!/\/v1$/i.test(base) && !/\/api\/v3$/i.test(base)) base += '/v1';
+  return base;
+}
+
+function syncXiaomeiHarnessWorkspace(home) {
+  const storagePath = path.join(home, 'storages', 'workspace.json');
+  try {
+    let state = {};
+    if (fs.existsSync(storagePath)) state = JSON.parse(fs.readFileSync(storagePath, 'utf8')) || {};
+    const tables = state.tables && typeof state.tables === 'object' ? state.tables : {};
+    const workspaces = tables.workspaces && typeof tables.workspaces === 'object' ? tables.workspaces : {};
+    const ids = Array.isArray(state.global?.workspaceIds) ? state.global.workspaceIds : Object.keys(workspaces);
+    const primaryId = state.global?.defaultWorkspaceId || ids[0] || crypto.randomUUID();
+    if (!workspaces[primaryId]) {
+      workspaces[primaryId] = { path: PROJECT_ROOT, title: '小美画布工作区', sessionIds: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    } else {
+      workspaces[primaryId].path = PROJECT_ROOT;
+      workspaces[primaryId].title = '小美画布工作区';
+      workspaces[primaryId].updatedAt = new Date().toISOString();
+    }
+    state.unit = { name: 'workspace', version: 2 };
+    state.global = { ...(state.global || {}), initialized: true, workspaceIds: [primaryId, ...ids.filter((id) => id !== primaryId)], defaultWorkspaceId: primaryId, archivedSessionIds: state.global?.archivedSessionIds || [], pinnedSessionIds: state.global?.pinnedSessionIds || [] };
+    state.tables = { ...tables, workspaces };
+    fs.mkdirSync(path.dirname(storagePath), { recursive: true });
+    fs.writeFileSync(storagePath, JSON.stringify(state, null, 2) + '\n', 'utf8');
+  } catch {}
+}
+
+/** Read the same provider/model registry used by 小美画布 API 设置. */
+function readXiaomeiHarnessModelConfig() {
+  const env = {};
+  const routes = [];
+  const configRoot = xiaomeiApiConfigRoot();
+  let providers = [];
+  try {
+    const file = path.join(configRoot, 'data', 'api_providers.json');
+    if (fs.existsSync(file)) providers = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
+  } catch {
+    throw new Error('无法读取小美画布 API 平台配置，请检查 API 设置中的平台列表');
+  }
+  if (!Array.isArray(providers)) providers = [];
+  for (const provider of providers) {
+    if (!provider || provider.enabled === false) continue;
+    const models = Array.isArray(provider.chat_models) ? provider.chat_models : [];
+    const providerId = String(provider.id || '').trim().toLowerCase();
+    const baseURL = harnessOpenAiBaseURL(provider.base_url);
+    const protocol = String(provider.protocol || 'openai').trim().toLowerCase();
+    // Harness 的 pi-ai 适配器只接收 HTTP OpenAI 兼容聊天平台。
+    // CLI、RunningHub、火山引擎等仍由小美画布原有入口处理，不能伪装成普通聊天路由。
+    if (!providerId || !models.length || !/^https?:\/\//i.test(baseURL) || !['openai', 'openai-compatible'].includes(protocol)) continue;
+    const routeId = `xiaomei-${providerId}`.replace(/[^a-z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    if (!routeId) continue;
+    const apiKeyEnv = providerId === 'comfly' ? 'COMFLY_API_KEY'
+      : providerId === 'modelscope' ? 'MODELSCOPE_API_KEY'
+        : `API_PROVIDER_${providerId.replace(/[^A-Za-z0-9]/g, '_').toUpperCase()}_KEY`;
+    const apiKey = readApiEnvValue(apiKeyEnv, configRoot) || process.env[apiKeyEnv] || '';
+    // 没有 Key 的平台不应进入 Harness 模型下拉框，否则用户选中后才会
+    // 收到“缺少凭证”，看起来像又需要重新部署。小美画布 API 设置写入
+    // API/.env 后，下一次打开 AI 对话页面即可自动出现。
+    if (!apiKey) continue;
+    env[apiKeyEnv] = apiKey;
+    routes.push({
+      id: routeId,
+      displayName: `小美画布 · ${String(provider.name || providerId).trim()}`,
+      api: 'openai-completions',
+      baseURL,
+      apiKeyEnv,
+      // 6789/comfly 的兼容层会在正常 SSE 结束时省略 finish_reason；
+      // 其他平台保留默认的严格终止事件检查，避免把中途断流误判为成功。
+      omitsFinishReason: providerId === 'api-6789' || /6789|comfly/i.test(baseURL),
+      // 此网关的 Gemini 流会把函数名和参数拆成不同调用；完整响应保留关联。
+      nonStreamingModels: (providerId === 'api-6789' || /6789|comfly/i.test(baseURL))
+        ? models.filter(id => /gemini/i.test(String(id))) : [],
+      models: models.map((id) => {
+        const modelId = String(id);
+        return {
+          id: modelId,
+          name: String((provider.model_names || {})[id] || id),
+          input: harnessModelInputModalities(provider, modelId),
+        };
+      }).filter((model) => model.id),
+    });
+  }
+  const primaryIds = providers.filter((provider) => provider && provider.primary).map((provider) => `xiaomei-${String(provider.id || '').trim().toLowerCase()}`);
+  const preferred = primaryIds.map((id) => routes.find((route) => route.id === id)).find(Boolean)
+    || routes.find((route) => route.id === 'xiaomei-comfly')
+    || routes.find((route) => route.id === 'xiaomei-modelscope')
+    || routes[0];
+  return { routes, defaultRoute: preferred?.id || '', defaultModel: preferred?.models?.[0]?.id || '', env };
+}
+
+function chooseHarnessNode() {
+  const bundled = process.platform === 'win32'
+    ? path.join(PROJECT_ROOT, 'bundled', 'node', 'node.exe')
+    : path.join(PROJECT_ROOT, 'bundled', 'node', 'bin', 'node');
+  return process.env.XIAOMEI_HARNESS_NODE || process.env.XIAOMEI_NODE_BINARY || (fs.existsSync(bundled) ? bundled : 'node');
+}
+
+async function startDeepSeekHarness() {
+  const profileState = ensureDeepSeekHarnessProfile();
+  if (deepSeekHarnessReady && deepSeekHarnessProfileFingerprint === profileState.fingerprint) return deepSeekHarnessReady;
+  if (deepSeekHarnessReady && deepSeekHarnessProfileFingerprint !== profileState.fingerprint) {
+    terminateDeepSeekHarnessProcess(deepSeekHarnessProcess);
+    deepSeekHarnessProcess = null;
+    deepSeekHarnessReady = null;
+    deepSeekHarnessUrl = '';
+  }
+  // 旧版 Host 固定使用 19387；动态选择端口可以绕开上次超时留下的孤儿
+  // 进程，也避免多个小美画布实例互相阻塞。
+  deepSeekHarnessPort = await findFreeApiPort(DEEPSEEK_HARNESS_PORT_BASE);
+  deepSeekHarnessReady = new Promise((resolve, reject) => {
+    const entry = path.join(DEEPSEEK_HARNESS_ROOT, 'apps', 'desktop-host', 'lib', 'index.js');
+    // The CLI workspace contains the complete runtime closure (base/web/skill/session
+    // bundles). The Host entry itself remains the official desktop-host build.
+    const runtimeDir = path.join(DEEPSEEK_HARNESS_ROOT, 'apps', 'cli');
+    if (!fs.existsSync(entry)) { reject(new Error('DeepSeek Harness Desktop Host 构建产物不存在')); return; }
+    const { home, profile, primaryRuntime, providerEnv, fingerprint } = profileState;
+    // API 设置可以在小美画布运行期间更新。Harness 的环境变量在进程启动时
+    // 固定，因此发现 profile 或 Key 变更时先重启官方 Host，重新读取同一套配置。
+    if (deepSeekHarnessProcess && deepSeekHarnessProfileFingerprint && deepSeekHarnessProfileFingerprint !== fingerprint) {
+      terminateDeepSeekHarnessProcess(deepSeekHarnessProcess);
+      deepSeekHarnessProcess = null;
+      deepSeekHarnessUrl = '';
+    }
+    deepSeekHarnessProfileFingerprint = fingerprint;
+    const projectDir = profile;
+    const child = spawn(chooseHarnessNode(), [entry, runtimeDir, projectDir, primaryRuntime], {
+      cwd: DEEPSEEK_HARNESS_ROOT,
+      env: {
+        ...process.env,
+        ...providerEnv,
+        DSH_HOME: home,
+        DSH_DESKTOP_NODE_EXECUTABLE: chooseHarnessNode(),
+        DSH_WEB_PORT: String(deepSeekHarnessPort),
+        XIAOMEI_CANVAS_ORIGIN: LOCAL_ORIGIN,
+      },
+      windowsHide: true, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    });
+    deepSeekHarnessProcess = child;
+    let settled = false;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      deepSeekHarnessReady = null;
+      deepSeekHarnessLastError = error?.message || String(error);
+      if (deepSeekHarnessProcess === child) {
+        deepSeekHarnessProcess = null;
+        terminateDeepSeekHarnessProcess(child);
+      }
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+    const timer = setTimeout(() => {
+      const detail = String(deepSeekHarnessLastError || '').trim().replace(/\s+/g, ' ').slice(-1200);
+      if (deepSeekHarnessProcess === child) deepSeekHarnessProcess = null;
+      terminateDeepSeekHarnessProcess(child);
+      fail(new Error(`DeepSeek Harness Desktop Host 启动超时（${Math.round(DEEPSEEK_HARNESS_START_TIMEOUT_MS / 1000)} 秒）${detail ? `：${detail}` : ''}`));
+    }, DEEPSEEK_HARNESS_START_TIMEOUT_MS);
+    child.on('message', (message) => {
+      if (!message || typeof message !== 'object') return;
+      if (message.type === 'ready' && typeof message.url === 'string') {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        deepSeekHarnessUrl = message.url;
+        deepSeekHarnessLastError = '';
+        resolve(message.url);
+      } else if (message.type === 'fatal') {
+        const diagnostic = String(message.diagnostic || '').trim().slice(0, 3000);
+        fail(new Error([message.message || 'DeepSeek Harness Host 启动失败', diagnostic].filter(Boolean).join('：')));
+      }
+    });
+    child.stdout?.on('data', chunk => appendDeepSeekHarnessLog('stdout', chunk));
+    child.stderr?.on('data', chunk => {
+      deepSeekHarnessLastError = String(chunk).slice(-4000);
+      appendDeepSeekHarnessLog('stderr', chunk);
+    });
+    child.once('error', fail);
+    child.once('exit', (code) => {
+      clearTimeout(timer);
+      if (deepSeekHarnessProcess !== child) return;
+      deepSeekHarnessProcess = null;
+      if (!deepSeekHarnessUrl) fail(new Error(`DeepSeek Harness Desktop Host 退出（${String(code)}）`));
+      else { deepSeekHarnessReady = null; deepSeekHarnessUrl = ''; }
+    });
+  });
+  return deepSeekHarnessReady;
+}
+
+async function setDeepSeekHarnessVisible(visible, bounds) {
+  if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, message: '主窗口不可用' };
+  deepSeekHarnessVisible = Boolean(visible);
+  const generation = ++deepSeekHarnessGeneration;
+  if (bounds) setDeepSeekHarnessBounds(bounds);
+  if (!visible) {
+    if (deepSeekHarnessView) { try { mainWindow.contentView.removeChildView(deepSeekHarnessView); } catch {} }
+    return { ok: true, visible: false };
+  }
+  try {
+    const url = await startDeepSeekHarness();
+    if (!deepSeekHarnessVisible || generation !== deepSeekHarnessGeneration) return { ok: true, visible: false, stale: true };
+    if (!deepSeekHarnessView) {
+      deepSeekHarnessView = new WebContentsView({ webPreferences: { preload: path.join(__dirname, 'harness-preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false } });
+      deepSeekHarnessView.webContents.on('context-menu', (_event, params) => {
+        if (params.mediaType !== 'image' || !params.hasImageContents) return;
+        const contents = deepSeekHarnessView.webContents;
+        Menu.buildFromTemplate([
+          { label: '复制图片', click: () => { if (!contents.isDestroyed()) contents.copyImageAt(params.x, params.y); } },
+        ]).popup({ window: mainWindow });
+      });
+      deepSeekHarnessView.webContents.setWindowOpenHandler(({ url }) => {
+        // Harness 内的“小美画布”入口通过主窗口消息切页；其他新窗口统一拦截，
+        // 防止官方页面或模型返回内容脱离受控桌面壳。
+        navigateFromDeepSeekHarness(url);
+        return { action: 'deny' };
+      });
+      deepSeekHarnessView.webContents.on('will-navigate', (event, nextUrl) => {
+        if (navigateFromDeepSeekHarness(nextUrl)) event.preventDefault();
+        else if (deepSeekHarnessUrl && String(nextUrl || '').split('#')[0] !== String(deepSeekHarnessUrl).split('#')[0]) event.preventDefault();
+      });
+      deepSeekHarnessView.webContents.on('did-finish-load', () => {
+        if (deepSeekHarnessBounds) deepSeekHarnessView.setBounds(deepSeekHarnessBounds);
+        void injectXiaomeiHarnessUi();
+      });
+      deepSeekHarnessView.webContents.on('did-fail-load', (_event, code, description) => { deepSeekHarnessLastError = `${code}: ${description}`; });
+    }
+    try { mainWindow.contentView.removeChildView(deepSeekHarnessView); } catch {}
+    mainWindow.contentView.addChildView(deepSeekHarnessView);
+    if (deepSeekHarnessBounds) deepSeekHarnessView.setBounds(deepSeekHarnessBounds);
+    // A newly created WebContentsView reports `about:blank` from getURL().
+    // Treat that as not loaded; otherwise the view is mounted while remaining
+    // blank forever because the old guard considers about:blank truthy.
+    const currentUrl = deepSeekHarnessView.webContents.getURL();
+    if (!currentUrl || currentUrl === 'about:blank' || currentUrl !== url) {
+      await deepSeekHarnessView.webContents.loadURL(url);
+    }
+    return { ok: true, visible: true };
+  } catch (error) {
+    deepSeekHarnessLastError = error?.message || String(error);
+    return { ok: false, message: deepSeekHarnessLastError };
+  }
+}
+function setDeepSeekHarnessBounds(bounds) {
+  if (!bounds) return;
+  const n = { x: Math.max(0, Number(bounds.x) || 0), y: Math.max(0, Number(bounds.y) || 0), width: Math.max(1, Number(bounds.width) || 1), height: Math.max(1, Number(bounds.height) || 1) };
+  deepSeekHarnessBounds = n;
+  if (!deepSeekHarnessView || !mainWindow || mainWindow.isDestroyed()) return;
+  try { deepSeekHarnessView.setBounds(n); } catch {}
+}
+
+function isHarnessClipboardSender(event) {
+  if (!deepSeekHarnessView || event.sender !== deepSeekHarnessView.webContents
+    || event.sender.isDestroyed() || event.senderFrame !== event.sender.mainFrame || !deepSeekHarnessUrl) return false;
+  try {
+    const expected = new URL(deepSeekHarnessUrl);
+    const actual = new URL(event.senderFrame.url);
+    return expected.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(expected.hostname)
+      && actual.origin === expected.origin;
+  } catch { return false; }
+}
+
+async function injectXiaomeiHarnessUi() {
+  if (!deepSeekHarnessView || deepSeekHarnessView.webContents.isDestroyed()) return;
+  try {
+    const imageCopyScript = fs.readFileSync(path.join(__dirname, 'harness-image-copy.js'), 'utf8');
+    await deepSeekHarnessView.webContents.executeJavaScript(imageCopyScript);
+  } catch (error) {
+    appendDeepSeekHarnessLog('stderr', `图片复制入口加载失败：${error.message}\n`);
+  }
+  const origin = LOCAL_ORIGIN;
+  const modelConfig = readXiaomeiHarnessModelConfig();
+  const modelSummary = {
+    providerCount: modelConfig.routes.length,
+    modelCount: modelConfig.routes.reduce((total, route) => total + route.models.length, 0),
+    defaultRoute: modelConfig.defaultRoute,
+    defaultModel: modelConfig.defaultModel,
+    defaultProviderName: modelConfig.routes.find((route) => route.id === modelConfig.defaultRoute)?.displayName || '',
+  };
+  const bridgeState = JSON.stringify(modelSummary).replace(/<\//g, '<\\/');
+  const css = `
+    :root { --dsh-xiaomei-accent: #7c5cff; --dsh-xiaomei-soft: rgba(124,92,255,.10); }
+    /* 让官方页面沿用小美画布的品牌色和中文界面密度。 */
+    body { --dsh-xiaomei-accent: #7c5cff; }
+    [data-xiaomei-brand] { letter-spacing: .01em; }
+    [data-xiaomei-bridge] { position: fixed; top: 12px; right: 18px; z-index: 2147483000; display:flex; align-items:center; gap:8px; padding:6px 9px; border:1px solid rgba(124,92,255,.24); border-radius:999px; background: color-mix(in srgb, var(--dsw-alias-bg-primary, #fff) 92%, var(--dsh-xiaomei-accent)); box-shadow:0 8px 24px rgba(15,23,42,.10); color:var(--dsw-alias-fg-primary,#1f2937); font:600 11px/1.2 system-ui,"Microsoft YaHei",sans-serif; }
+    [data-xiaomei-bridge] b { color:var(--dsh-xiaomei-accent); font-weight:800; }
+    [data-xiaomei-bridge] a { color:inherit; text-decoration:none; padding:4px 6px; border-radius:6px; }
+    [data-xiaomei-bridge] a:hover { background:var(--dsh-xiaomei-soft); color:var(--dsh-xiaomei-accent); }
+    [data-xiaomei-bridge] .state { display:inline-flex; align-items:center; gap:5px; color:#059669; }
+    [data-xiaomei-bridge] .state.pending { color:#b45309; }
+    [data-xiaomei-bridge] .state i { width:6px; height:6px; border-radius:50%; background:#10b981; }
+    [data-xiaomei-bridge] .state.pending i { background:#f59e0b; }
+    [data-xiaomei-bridge] .model { max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; opacity:.82; }
+  `;
+  try { await deepSeekHarnessView.webContents.insertCSS(css); } catch {}
+  try {
+    await deepSeekHarnessView.webContents.executeJavaScript(`(() => {
+      const state = ${bridgeState};
+      let bar = document.querySelector('[data-xiaomei-bridge]');
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.dataset.xiaomeiBridge = '1';
+        document.body.appendChild(bar);
+      }
+      const configured = state.providerCount > 0 && state.modelCount > 0;
+      const providerText = configured
+        ? (state.defaultProviderName ? state.defaultProviderName.replace(/^小美画布 · /, '') : '已同步平台')
+        : '请在 API 设置配置聊天平台';
+      const modelText = configured
+        ? (state.defaultModel ? providerText + ' / ' + state.defaultModel : providerText)
+        : '';
+      bar.innerHTML = '<b>小美画布</b>'
+        + '<span class="state ' + (configured ? '' : 'pending') + '"><i></i>'
+        + (configured ? 'API 统一管理 · 已同步 ' + state.providerCount + ' 个平台 / ' + state.modelCount + ' 个模型' : providerText)
+        + '</span>'
+        + (modelText ? '<span class="model" title="当前默认模型">' + modelText.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) + '</span>' : '')
+        + '<a target="_blank" rel="noreferrer" href="${origin}/static/index.html?page=api-settings" title="在小美画布中管理 API 平台、模型和密钥">API 设置</a>'
+        + '<a target="_blank" rel="noreferrer" href="${origin}/static/history.html" title="打开小美画布历史记录">历史</a>'
+        + '<a target="_blank" rel="noreferrer" href="${origin}/static/asset-manager.html" title="打开小美画布素材库">素材</a>'
+        + '<a target="_blank" rel="noreferrer" href="${origin}/static/skill-market.html" title="打开小美画布技能库">技能</a>';
+      const brand = () => {
+        for (const node of document.querySelectorAll('body *')) {
+          if (node.children.length) continue;
+          const text = String(node.textContent || '').trim();
+          if (text === 'DSH 本地构建' || text === 'DSH 本地构建预览版') {
+            node.textContent = '小美画布 · AI 工作台';
+            node.dataset.xiaomeiBrand = '1';
+          }
+        }
+      };
+      brand();
+      new MutationObserver(brand).observe(document.body, { childList: true, subtree: true });
+      document.title = '小美画布 · DeepSeek 对话';
+    })()`); 
+  } catch {}
+}
+
+function navigateFromDeepSeekHarness(rawUrl) {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  let parsed;
+  try { parsed = new URL(String(rawUrl || '')); } catch { return false; }
+  let local;
+  try { local = new URL(LOCAL_ORIGIN); } catch { return false; }
+  if (parsed.protocol !== local.protocol || parsed.host !== local.host) return false;
+  const pathname = parsed.pathname.replace(/\\/g, '/');
+  let message = null;
+  if (pathname === '/static/index.html') {
+    const page = parsed.searchParams.get('page');
+    if (['api-settings', 'asset-manager', 'gpt-chat'].includes(page)) message = { type: 'studio-switch-ui', page };
+  } else if (pathname === '/static/history.html') {
+    message = { type: 'history-manager-open' };
+  } else if (pathname === '/static/asset-manager.html') {
+    message = { type: 'studio-switch-ui', page: 'asset-manager' };
+  } else if (pathname === '/static/skill-market.html') {
+    message = { type: 'studio-switch-ui', page: 'skill-market' };
+  }
+  if (!message) return false;
+  try {
+    const encoded = JSON.stringify(message);
+    void mainWindow.webContents.executeJavaScript(`window.postMessage(${encoded}, '*')`);
+  } catch {}
+  return true;
+}
+
+async function refreshDeepSeekHarness() {
+  const profileState = ensureDeepSeekHarnessProfile();
+  const changed = deepSeekHarnessProfileFingerprint !== profileState.fingerprint;
+  if (!deepSeekHarnessVisible) return { ok: true, visible: false, changed };
+  // API 设置页可能会同时向多个 iframe 广播同一条消息；配置指纹未变时
+  // 保持当前 WebContentsView 和会话，不因重复通知刷新对话页面。
+  if (!changed && deepSeekHarnessReady && deepSeekHarnessProcess) {
+    void injectXiaomeiHarnessUi();
+    return { ok: true, visible: true, changed: false };
+  }
+  const generation = ++deepSeekHarnessGeneration;
+  try {
+    const url = await startDeepSeekHarness();
+    if (!deepSeekHarnessVisible || generation !== deepSeekHarnessGeneration) return { ok: true, visible: false, stale: true };
+    if (deepSeekHarnessView && !deepSeekHarnessView.webContents.isDestroyed()) {
+      await deepSeekHarnessView.webContents.loadURL(url);
+      if (deepSeekHarnessBounds) deepSeekHarnessView.setBounds(deepSeekHarnessBounds);
+    }
+    return { ok: true, visible: true, changed };
+  } catch (error) {
+    deepSeekHarnessLastError = error?.message || String(error);
+    return { ok: false, message: deepSeekHarnessLastError };
+  }
 }
 
 function startApi(port = API_PORT) {
@@ -2870,9 +3755,8 @@ function startApi(port = API_PORT) {
 }
 
 async function ensureApi() {
-  // Reuse an already-running Xiaomei API instead of spawning a second Python
-  // process. This is important because main.py may otherwise fall back from
-  // 3000 to 3001 while the Electron page continues to use the old origin.
+  // Only reuse this desktop session's backend so another installation's
+  // settings and data cannot be loaded into the current window.
   if (await probeApiAt(CONFIGURED_API_PORT)) {
     setApiEndpoint(CONFIGURED_API_PORT);
     return true;
@@ -3384,6 +4268,7 @@ function hideProductViews() {
     // 组合丢失已有的渲染层，切回商品标签时就会出现中间区域白屏。
     // setVisible(false) 已足够让它不遮挡其它工作区。
   }
+  syncCommerceAgentOrb();
 }
 
 function hasUsableSurfaceBounds(bounds = lastSurfaceBounds) {
@@ -3453,6 +4338,7 @@ function refreshProductViewVisibility() {
     const visible = Boolean(canShow && entry === active && entry.url);
     applyProductViewVisibility(entry, visible);
   }
+  syncCommerceAgentOrb();
 }
 
 // 启动时商品分析 iframe 可能比主页面的首次路由恢复晚完成。若首次
@@ -3872,6 +4758,7 @@ function attachProductView(entry) {
   view.webContents.on('console-message', (_event, _level, message) => {
     const value = String(message || '').trim();
     if (value === '__XIAOMEI_COMMERCE_STOP__') stopActiveCommerceCollection(entry);
+    if (value === '__XIAOMEI_COMMERCE_ORB_CLICK__') void openCommerceAssistantFromOrb();
   });
   view.webContents.setWindowOpenHandler(({ url }) => {
     if (shouldRecover1688LoginLanding(entry, url)) {
@@ -4287,7 +5174,9 @@ function ensureProductView(tabId = 'commerce-default', options = {}) {
     disposeProductView(existing);
     productViews.delete(id);
   }
-  const view = new WebContentsView({ webPreferences: { partition: requestedPartition, contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false } });
+  // preload 只暴露右下角小美入口球的点击通道：商品页会改写 console，
+  // 注入脚本的 console.log 信号在淘宝等站点不可靠（见 product-page-preload.cjs）。
+  const view = new WebContentsView({ webPreferences: { partition: requestedPartition, preload: path.join(__dirname, 'product-page-preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false } });
   try { view.webContents.setBackgroundThrottling(false); } catch {}
   const entry = { id, view, partition: requestedPartition, defaultUserAgent: String(view.webContents.getUserAgent?.() || ''), url: '', requestedUrl: '', stableUrl: '', pendingNavigation: '', navigationTarget: '', navigationSourceUrl: '', navigationRevision: 0, committedNavigationRevision: 0, blockedNavigationRevision: 0, navigationStartedRevision: 0, navigationRetryCount: 0, navigationRetryTimer: null, retryingNavigation: false, restoreUrl: '', restoringNavigation: false, historyTraversal: false, loading: false, loadFailed: false, kind: 'home', loginSite: '', recovering1688Login: false, pageLoaded: false, domReady: false, verification: false, visible: false, lastRequestedKey: '', lastRequestedAt: 0, lastInPageKey: '', lastInPageAt: 0, networkCapture: null, promoting1688Login: false, languageFamily: '', languageTargetUrl: '', languageNavigationRevision: 0, languageInspectionAttempts: 0, languageAutoRunRevision: 0, languageAutoRunning: false, languageCheckTimer: null, languageMode: 'not_applicable', languageMessage: '' };
   productViews.set(id, entry);
@@ -5076,6 +5965,10 @@ async function captureProduct(options = {}) {
         }
       }
     }
+    for (const group of specs) {
+      const identified = group.values.filter((value) => String(value?.id || value?.valueId || value?.vid || '').trim());
+      if (identified.length >= 2) group.values = identified;
+    }
     const items = [];
     const seenItems = new Set();
     const isRealSkuItem = (rawItem) => {
@@ -5107,17 +6000,16 @@ async function captureProduct(options = {}) {
       items.length,
     );
     const explicitTotalCount = Math.max(Number(primary.totalCount || 0), Number(secondary.totalCount || 0));
-    const totalCount = explicitTotalCount || itemCount;
-    const specImageUrls = new Set([
-      ...items.map((item) => item?.image || item?.imageUrl || item?.pic || item?.picUrl || '').filter(Boolean),
-      ...specs.flatMap((group) => group.values.map((value) => value?.image || value?.imageUrl || value?.pic || value?.picUrl || '').filter(Boolean)),
-    ]);
+    const totalCount = itemCount || explicitTotalCount;
+    const itemImageUrls = new Set(items.map((item) => item?.image || item?.imageUrl || item?.pic || item?.picUrl || '').filter(Boolean));
+    const specImageUrls = new Set(specs.flatMap((group) => group.values.map((value) => value?.image || value?.imageUrl || value?.pic || value?.picUrl || '').filter(Boolean)));
     result.specs = specs;
     result.items = items;
+    if (itemCount && explicitTotalCount && explicitTotalCount !== itemCount) result.pageTotalCount = explicitTotalCount;
     result.totalCount = totalCount;
     result.itemCount = itemCount;
     result.matrixComplete = Boolean(itemCount && (!explicitTotalCount || itemCount >= totalCount));
-    result.specImageCount = Math.max(Number(primary.specImageCount || 0), Number(secondary.specImageCount || 0), specImageUrls.size);
+    result.specImageCount = (itemImageUrls.size ? itemImageUrls : specImageUrls).size;
     result.available = Boolean(result.available || specs.length || items.length || totalCount);
     return result;
   };
@@ -5599,7 +6491,7 @@ function createWindow() {
     scheduleCommerceSurfaceResync();
   });
   // Electron 的顶层页面必须是完整的小美画布；商品分析台通过 iframe 作为其中一个工作区加载。
-  mainWindow.loadURL(`${LOCAL_ORIGIN}/static/index.html?page=${encodeURIComponent(START_PAGE)}&v=2026.09.27.image-model-picker3`);
+  mainWindow.loadURL(`${LOCAL_ORIGIN}/static/index.html?page=${encodeURIComponent(START_PAGE)}&v=2026.10.08.skills-remove-old-chat.2`);
 }
 
 app.whenReady().then(async () => {
@@ -5612,6 +6504,7 @@ app.whenReady().then(async () => {
     await configureCommerceSessions();
     createWindow();
     scheduleDesktopUpdateCheck();
+    scheduleDeepSeekHarnessUpdateCheck();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   } catch (error) {
     dialog.showErrorBox(APP_NAME, `桌面端启动失败：${error?.message || error}`);
@@ -5646,9 +6539,38 @@ ipcMain.handle('app:update-cancel', (event) => {
   try { desktopUpdateAbortController?.abort(); } catch {}
   return { ok: true };
 });
+ipcMain.handle('deepseek-harness:visible', (event, visible, bounds) => {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  if (!owner || owner !== mainWindow || event.senderFrame !== event.sender.mainFrame) return { ok: false, message: 'Harness 请求来源无效' };
+  return setDeepSeekHarnessVisible(Boolean(visible), bounds || null);
+});
+ipcMain.handle('deepseek-harness:refresh', (event) => {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  if (!owner || owner !== mainWindow || event.senderFrame !== event.sender.mainFrame) return { ok: false, message: 'Harness 请求来源无效' };
+  return refreshDeepSeekHarness();
+});
+ipcMain.handle('deepseek-harness:check-update', async (event) => {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  if (!owner || owner !== mainWindow) return { status: 'denied', message: '只能从小美画布主窗口检查更新' };
+  return checkDeepSeekHarnessUpdate({ manual: true });
+});
+ipcMain.handle('deepseek-harness:update', async (event) => {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  if (!owner || owner !== mainWindow) return { status: 'denied', message: '只能从小美画布主窗口更新' };
+  const result = await deepSeekHarnessUpdater.check();
+  if (!result.update_available) return result;
+  return updateDeepSeekHarness(result);
+});
+ipcMain.on('deepseek-harness:bounds', (event, bounds) => {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  if (!owner || owner !== mainWindow || event.senderFrame !== event.sender.mainFrame) return;
+  setDeepSeekHarnessBounds(bounds);
+});
 ipcMain.handle('clipboard:write-image', (event, payload) => {
   const owner = BrowserWindow.fromWebContents(event.sender);
-  if (!owner || owner !== mainWindow || mainWindow.isDestroyed()) {
+  const allowedSender = event.sender === deepSeekHarnessView?.webContents
+    ? isHarnessClipboardSender(event) : owner === mainWindow;
+  if (!mainWindow || mainWindow.isDestroyed() || !allowedSender) {
     return { ok: false, message: '当前窗口不可用' };
   }
   let buffer = null;
@@ -5725,6 +6647,14 @@ ipcMain.on('commerce:set-page-active', (_event, active) => {
   }
 });
 ipcMain.on('commerce:set-overlay-active', (_event, active) => setCommerceSurfaceBlocked(active));
+// 商品分析台把“小美面板是否打开”同步给主进程：面板收起且商品页可见时，
+// 由主进程把右下角入口球注入到商品页内显示（DOM 入口会被顶层视图盖住）。
+ipcMain.on('commerce:set-product-agent-orb', (_event, visible) => {
+  commerceAgentOrbDesired = Boolean(visible);
+  syncCommerceAgentOrb();
+});
+// 商品页内入口球的点击（preload 桥直达）
+ipcMain.on('commerce:product-agent-orb-click', () => { void openCommerceAssistantFromOrb(); });
 ipcMain.on('commerce:set-product-bounds', (_event, bounds, tabId) => {
   updateViewBounds(bounds, String(tabId || activeProductTabId));
   scheduleCommerceSurfaceResync();
@@ -5751,6 +6681,7 @@ ipcMain.on('commerce:set-product-visible', (_event, visible, tabId) => {
   applyProductViewVisibility(entry, true);
   void syncProductSurfaceBoundsFromRenderer();
   scheduleCommerceSurfaceResync();
+  syncCommerceAgentOrb();
 });
 ipcMain.handle('commerce:capture-operations', () => captureOperations());
 ipcMain.handle('commerce:capture-merchant-report', (_event, kind) => captureMerchantReport(String(kind || 'operations')));
@@ -5816,4 +6747,8 @@ app.on('before-quit', () => {
     try { if (!window.isDestroyed()) window.destroy(); } catch {}
   }
   if (apiProcess && !apiProcess.killed) apiProcess.kill();
+  if (deepSeekHarnessProcess && !deepSeekHarnessProcess.killed) {
+    terminateDeepSeekHarnessProcess(deepSeekHarnessProcess);
+  }
 });
+

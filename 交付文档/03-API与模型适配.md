@@ -10,6 +10,8 @@
 
 首次部署复制 `API/.env.example` 为 `API/.env`。不要把真实 `.env` 发送给他人。
 
+桌面启动握手使用 `GET /api/app-info` 的 `desktop_session_id` 字段，由后端返回启动环境中的 `XIAOMEI_CANVAS_SESSION_ID`。Electron 只连接当前会话的服务；手动启动后端时该字段默认为空。
+
 设置页中，支持通用 API 协议的平台可以保存多条命名 Key 记录。下拉框切换记录时，后端会把所选 Key 同步为该平台当前运行 Key；删除当前记录后会自动切换到下一条可用记录。旧版本只有一条平台 Key 时，首次读取平台配置会自动登记为“账号 1”，不会要求重新填写。
 
 相关接口为 `GET/POST /api/providers/{provider_id}/key-profiles`、`POST /api/providers/{provider_id}/key-profiles/{profile_id}/activate` 和 `DELETE /api/providers/{provider_id}/key-profiles/{profile_id}`。各 CLI 登录态继续使用原有专用配置，不纳入通用记录；RunningHub 的 Key 仍通过“推荐 API”区域的快捷卡片保存，历史数据由后端兼容读取。
@@ -53,7 +55,7 @@
 
 - 当 API 平台选择 `gpt-image-2.5-flare`、`gpt-image-2.5-sunburst` 或对应网关后缀模型时，在线生图、智能画布和电商工作台会动态显示 `quality=auto/low/medium/high/xhigh/max` 与 `background=opaque/transparent`（默认 `opaque`）；质量选项仍按模型分别处理。AI 分层对 GPT Image 2/2.5 显式指定的背景参数会透传到标准 OpenAI 图片生成、编辑及 Responses 图片工具；未指定背景的 GPT Image 2 请求保持原行为，其他模型不附加该参数。
 - 选择 `background=transparent` 时，后端同时提交 `output_format=png`，不会把透明结果转成 JPEG。
-- `size` 可以使用 `auto` 或自定义像素尺寸；自定义值提交前会统一收敛到边长 16 的倍数、长边不超过 3840、总像素不超过 8,294,400、宽高比不超过 3:1 的范围。画布/在线生图的方形 4K 选项使用 2880×2880，避免提交 3840×3840 超过像素上限；3:4 4K 的 2448×3264 仍然有效。
+- `size` 可以使用 `auto` 或自定义像素尺寸；当 GPT Image 选择了明确画幅（例如 9:16）时，画布会把 `auto` 解析为对应的具体尺寸再提交，避免兼容网关忽略 `aspect_ratio` 后默认生成 1:1。自定义值提交前会统一收敛到边长 16 的倍数、长边不超过 3840、总像素不超过 8,294,400、宽高比不超过 3:1 的范围。画布/在线生图的方形 4K 选项使用 2880×2880，避免提交 3840×3840 超过像素上限；3:4 4K 的 2448×3264 仍然有效。
 - 这些参数会同时写入任务与历史记录，便于复用和排查；模型列表仍以 `/api/providers` 与 `/api/providers/fetch-models` 的动态结果为准。
 
 ### 在线生图页的本地 ComfyUI 模式
@@ -80,9 +82,19 @@
 - `XIAOMEI_LOCAL_UPSCALE_TIMEOUT_SECONDS` 可调整单次本地处理超时，默认 900 秒、范围 60–1800 秒；`XIAOMEI_REALESRGAN_TILE_SIZE` 可调整 Vulkan 分块，默认 256；`XIAOMEI_REALESRGAN_BIN` 可指定自行安装的兼容可执行文件。
 
 通用 New API 网关的视频生成会按平台兼容路径提交并轮询；Base URL 应保留平台给出的 API 根地址。
-6789API 的新版 Seedance 视频协议使用专用路径：`POST /v1/videos` 创建任务，`GET /v1/videos/{taskId}` 按约 5 秒轮询，完成后优先读取返回的 `file`，没有文件地址时通过带 Bearer 鉴权的 `GET /v1/videos/{taskId}/content` 下载 MP4。请求体使用 `model`、`prompt`、`duration`、`ratio` 和固定 `resolution: "720p"`；参考图必须是公网 HTTPS `image_urls`。
+6789API 的新版 Seedance 视频协议使用专用路径：`POST /v1/videos` 创建任务，`GET /v1/videos/{taskId}` 按约 5 秒轮询，完成后优先读取返回的 `file`，没有文件地址时通过带 Bearer 鉴权的 `GET /v1/videos/{taskId}/content` 下载 MP4。请求体使用 `model`、`prompt`、`duration`、`ratio` 和 `resolution`；视频清晰度支持 `480p`、`720p`、`1080p`、`2k`、`4k`，未选择时默认 `720p`。参考图必须是公网 HTTPS `image_urls`。
 
 ## 3. 添加一个 OpenAI 兼容平台
+
+### 3.1 本地 DeepSeek Harness 设计适配
+
+DeepSeek 对话的设计任务通过 `deepseek_harness.py` 接入本地 DeepSeek/Atelier 服务。适配层只接受回环地址，默认读取 `http://127.0.0.1:47328`，并按配置或兼容候选路由发送 `design_plan` 请求；不会读取或保存 Harness 的 API Key，也不会模拟点击外部窗口。
+
+- 状态接口：`GET /api/deepseek-harness/status`。
+- 默认设计路由：`POST /api/design/plan`。
+- 可用环境变量：`XIAOMEI_DEEPSEEK_HARNESS_URL`、`XIAOMEI_DEEPSEEK_HARNESS_ENDPOINT`、`XIAOMEI_DEEPSEEK_HARNESS_TIMEOUT`。
+- 本地服务没有稳定设计路由时，系统会明确降级到当前聊天模型的文字策划，再降级到本地保守方案；不会把降级结果伪装成已调用 DeepSeek Harness。
+- 设计方案只写入当前 DeepSeek 对话。用户确认方案后，才复用现有 `/api/chat/agent` 和图片任务链路生成图片。
 
 在“API 设置”中：
 
@@ -130,7 +142,7 @@ API_PROVIDER_API_6789_KEY=填写自己的Key
 模型拉取后按用途分类：
 
 - 图片模型：进入在线生图、小美画布、电商工作台。
-- 对话模型：进入 GPT 对话、智能分析、分段策划。
+- 对话模型：进入 DeepSeek 对话、智能分析、分段策划。
 - 视频模型：进入视频模式。
 
 名称展示可按 Google/Gemini、OpenAI/GPT 等家族分组，但请求必须使用平台返回的原始模型 ID。
@@ -141,8 +153,10 @@ API_PROVIDER_API_6789_KEY=填写自己的Key
 - 同步：连接保持到平台直接返回结果，平台或代理容易超时。
 - 小美画布图片生成固定使用异步任务提交和轮询；旧画布或浏览器偏好中保存的同步值也会按异步处理。
 - 画布后台生图默认同时执行最多 2 个任务，其余保持 `queued`，避免兼容网关在批量请求时断连；可用 `CANVAS_IMAGE_TASK_CONCURRENCY` 在 1–8 间调整。上游未返回真实百分比时，界面只显示排队/生成状态和耗时，不显示估算百分比。
-- 画布 Agent/策划的聊天请求遇到 502、503、429 或 `Service temporarily unavailable` 时，后端默认在同一模型上有限重试 2 次；生图提交不采用此重试，避免重复扣费。
+- 本地 ComfyUI 画布任务在提交 `/prompt` 后订阅对应后端的 `/ws?clientId=...`，把 `execution_cached`、`executing`、`progress` 和 `progress_state` 转成当前节点、步数和工作流完成度；WebSocket 不可用时保持等待状态，不把耗时换算成百分比。
+- 画布 Agent/策划的聊天请求遇到 502、503、429 或 `Service temporarily unavailable` 时，后端默认在同一模型上有限重试 2 次。GPT Image 2/2.5 编辑是可能计费的 multipart POST；遇到 500、503、远端断连或 `bad_response_status_code` 时默认不自动重提，任务标记为状态未知并保留本地请求编号，避免客户端在无法确认扣费时产生重复请求。只有平台明确确认端到端幂等去重后，才可在 `API/.env` 设置 `GPT_IMAGE2_EDIT_IDEMPOTENCY_SUPPORTED=1` 并按需开启重试。
 - GPT Image 2/2.5 的 `/images/edits` multipart 提交默认按“平台 + 模型”最多 2 路并发，避免 4 张批量图被迫串行等待；可通过 `GPT_IMAGE2_EDIT_CONCURRENCY` 调整（范围 1–8）。如果某个兼容网关返回断连或“系统繁忙”，可在 `API/.env` 中设为 `1`。
+- 编辑连接默认使用 15 秒连接超时、300 秒读取超时和 120 秒上传超时；`GPT_IMAGE2_EDIT_HTTP2=1` 可打开 HTTP/2 对照诊断，默认关闭。诊断日志写入 `logs/gpt-image-edits.jsonl`，只记录域名、路径、模型、尺寸、上传大小、状态和脱敏错误，不记录 Key、提示词或图片内容。编辑传输重试次数和等待间隔可通过 `GPT_IMAGE2_EDIT_TRANSPORT_RETRIES`（默认 0，范围 0–2）与 `GPT_IMAGE2_EDIT_RETRY_DELAY`（默认 1.5 秒）调整；启用重试前需先确认平台账单和幂等能力。
 - 异步失败时必须保留失败卡片、错误消息、模型、耗时和重试入口。
 
 ## 7. 参考图上传

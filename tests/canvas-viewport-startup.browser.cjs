@@ -119,7 +119,7 @@ test('canvas startup and stable wheel zoom', { timeout: 40000 }, async t => {
         const root = document.documentElement;
         const skin = root.getAttribute('data-studio-skin');
         const dark = root.classList.contains('studio-theme-dark');
-        const read = () => [world, element, ...element.querySelectorAll('.smart-node-floating-menu,.node-resize-handle,.mini-x,.image-resolution-badge,.node-port')].map(el => {
+        const read = () => [world, element, ...element.querySelectorAll('img,video,audio,.smart-node-floating-menu,.node-resize-handle,.mini-x,.image-resolution-badge,.node-port')].map(el => {
             const style = getComputedStyle(el);
             return {visibility:style.visibility,shadow:style.boxShadow,filter:style.backdropFilter,pointer:style.pointerEvents};
         });

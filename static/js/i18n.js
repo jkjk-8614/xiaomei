@@ -1,5 +1,5 @@
 (function(){
-  const VERSION = '2026.09.29.loop-menu.1';
+  const VERSION = '2026.10.10.batch-skip-failure.1';
     const scripts = [
         '/static/js/i18n-core.js',
         '/static/js/i18n/common.js',

@@ -38,10 +38,10 @@ test('measured progress, including zero, is still displayed', () => {
         assert.equal(display.source, 'real');
     }
 });
-test('ComfyUI estimates are labelled as estimates even in compact grids', () => {
+test('ComfyUI without an upstream event shows elapsed wait, never an estimate', () => {
     const display = setup().generationTaskDisplay({runSettings:{engine:'comfy'}, runStartedAt:now - 166000}, {status:'running'}, true);
-    assert.equal(display.source, 'estimated');
-    assert.match(display.label, /预计/);
+    assert.equal(display.source, 'indeterminate');
+    assert.match(display.label, /等待本地进度/);
 });
 test('a completed task is receiving results, not still waiting for generation', () => {
     const display = setup().generationTaskDisplay({}, {status:'succeeded'});

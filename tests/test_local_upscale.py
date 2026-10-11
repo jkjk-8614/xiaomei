@@ -104,22 +104,20 @@ class LocalUpscaleTests(unittest.TestCase):
         self.assertEqual(models[1]["backend"], "comfyui")
         self.assertEqual(models[2]["backend"], "comfyui")
 
-    def test_canvas_exposes_local_upscale_controls(self):
+    def test_canvas_uses_current_provider_upscale_controls(self):
         root = os.path.dirname(os.path.dirname(__file__))
         with open(os.path.join(root, "static", "smart-canvas.html"), encoding="utf-8") as handle:
             html = handle.read()
         with open(os.path.join(root, "static", "js", "smart-canvas.js"), encoding="utf-8") as handle:
             script = handle.read()
 
-        self.assertIn('id="smartUpscalePopover"', html)
-        self.assertIn('id="smartUpscaleModelHelpText"', html)
-        self.assertIn('data-smart-upscale-scale="2"', html)
-        self.assertIn('data-smart-upscale-scale="4"', html)
-        self.assertIn("{key:'upscale'", script)
-        self.assertIn("/api/image/local-upscale", script)
-        self.assertIn("SMART_LOCAL_UPSCALE_MODEL_COPY", script)
-        self.assertIn("产品、Logo、文字", script)
-        self.assertIn("addConnection(sourceNode.id, outputNode.id, 'flow')", script)
+        self.assertNotIn('id="smartUpscalePopover"', html)
+        self.assertIn('imageOperation', script)
+        self.assertIn('renderJimengUpscaleResolutionControl', script)
+        self.assertIn('data-smart-param="upscaleResolution"', script)
+        self.assertIn("payload.operation = 'upscale'", script)
+        self.assertIn("payload.resolution_type", script)
+        self.assertIn("JIMENG_UPSCALE_RESOLUTIONS", script)
 
 
 if __name__ == "__main__":

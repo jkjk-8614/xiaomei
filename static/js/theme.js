@@ -4,7 +4,9 @@
     const SCALE_KEY = 'studio_ui_scale_mode';
     const APPEARANCE_KEY = 'studio_appearance';
     const SCALE_OPTIONS = ['auto', '60', '65', '70', '75', '80', '85', '90', '95', '100', '115', '125', '140'];
-    const APPEARANCE_DEFAULTS = { font:'system', fontSize:'normal', accent:'#3b82f6', eyeCare:false, skin:'minimal' };
+    const APPEARANCE_DEFAULTS = { font:'system', fontSize:'normal', accent:'#0e7490', eyeCare:false, skin:'minimal' };
+    // 旧默认蓝（#3b82f6/#2563eb）按用户要求迁到青色系，避免亮色模式下残留刺眼蓝色。
+    const ACCENT_MIGRATIONS = { '#3b82f6':'#0e7490', '#2563eb':'#0e7490' };
     const SKIN_NAMES = new Set(['dark','soft','warm','minimal']);
     const FONT_FAMILIES = {
         system: 'Inter, "Microsoft YaHei", "PingFang SC", system-ui, sans-serif',
@@ -18,6 +20,7 @@
         try {
             const stored = JSON.parse(localStorage.getItem(APPEARANCE_KEY) || '{}') || {};
             if(!SKIN_NAMES.has(stored.skin)) stored.skin = currentTheme() === 'dark' ? 'dark' : (stored.eyeCare ? 'soft' : 'minimal');
+            if(ACCENT_MIGRATIONS[stored.accent]) stored.accent = ACCENT_MIGRATIONS[stored.accent];
             return { ...APPEARANCE_DEFAULTS, ...stored };
         } catch(e) {
             return { ...APPEARANCE_DEFAULTS };
@@ -66,6 +69,18 @@
             document.body.classList.toggle('studio-theme-dark', dark);
             document.body.classList.toggle('theme-dark', dark);
         }
+        // 切换主题的一帧内禁用所有过渡，否则整页颜色/阴影过渡会拖影。
+        let snap = document.getElementById('studio-theme-snap');
+        if(!snap){
+            snap = document.createElement('style');
+            snap.id = 'studio-theme-snap';
+            snap.textContent = '*,*::before,*::after{transition:none !important}';
+            document.head.appendChild(snap);
+        }
+        if(document.body) void document.body.offsetWidth;
+        requestAnimationFrame(function(){
+            requestAnimationFrame(function(){ snap.remove(); });
+        });
         window.dispatchEvent(new CustomEvent('studio-theme-change', { detail: { theme: next } }));
     }
 
@@ -348,6 +363,26 @@
         if(event.key === SCALE_KEY) applyScale(currentScaleMode());
         if(event.key === APPEARANCE_KEY) applyAppearance(currentAppearance());
     });
+    // 兜底同步：独立窗口/跨分区/被 preventDefault 的焦点都会让页面错过换肤广播。
+    // 指针按下（捕获阶段）和短周期状态比对负责自愈：检测到皮肤或主题漂移就重读外观设置。
+    const appearanceState = () => {
+        const appearance = currentAppearance();
+        return appearance.skin + '|' + currentTheme();
+    };
+    let lastAppearanceState = null;
+    const syncIfDrifted = () => {
+        const state = appearanceState();
+        if(state === lastAppearanceState) return;
+        lastAppearanceState = state;
+        applyTheme(currentTheme());
+        applyAppearance(currentAppearance());
+    };
+    document.addEventListener('pointerdown', syncIfDrifted, true);
+    document.addEventListener('visibilitychange', () => {
+        if(!document.hidden) syncIfDrifted();
+    });
+    setInterval(syncIfDrifted, 1500);
+    syncIfDrifted();
     window.addEventListener('resize', scheduleAutoScaleRefresh);
     window.addEventListener('scroll', lockScaledHorizontalScroll, { passive: true });
 })();

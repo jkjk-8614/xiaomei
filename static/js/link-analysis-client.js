@@ -62,7 +62,7 @@
         if (stage === 'public_fetch') return '正在读取商品公开页面';
         if (stage === 'browser_collect') return job?.message || '请在可见 Edge 中扫码/完成页面验证，完成后会自动继续读取';
         if (stage === 'normalize') return '正在整理商品快照、模块状态和证据';
-        if (stage === 'completed') return status === 'partial' ? '商品快照已完成，部分模块未返回' : '商品快照已完成';
+        if (stage === 'completed') return job?.reused ? '已复用内置商品分析快照' : status === 'partial' ? '商品快照已完成，部分模块未返回' : '商品快照已完成';
         return job?.message || '正在读取商品链接';
     }
 
@@ -148,7 +148,7 @@
                     const jobId = String(created?.id || created?.jobId || '').trim();
                     if (!jobId) throw new Error('商品分析任务创建失败：服务端没有返回任务 ID');
                     jobIds.push(jobId);
-                    notify({ job: created, jobId, index, total, label: '任务已创建，等待读取商品页' });
+                    notify({ job: created, jobId, index, total, label: created?.reused ? '已复用内置商品分析任务' : '任务已创建，等待读取商品页' });
                     results.push(await pollJob(jobId, index, total, notify));
                 }
             }

@@ -7,7 +7,7 @@
   <style>
     :root { color-scheme: dark; font-family: "Microsoft YaHei", sans-serif; }
     * { box-sizing: border-box; }
-    body { margin: 0; min-width: 280px; background: #202124; color: #f1f3f4; font-size: 12px; }
+    body { margin: 0; min-width: 280px; background: #202124; color: #f1f3f4; font-size: 12px; overflow: auto; }
     .panel { padding: 14px; }
     h1 { margin: 0 0 4px; font-size: 17px; }
     .sub { color: #aeb4bd; margin-bottom: 14px; }
@@ -26,12 +26,15 @@
     .log { max-height: 120px; overflow: auto; white-space: pre-wrap; color: #c9ced6; font-size: 10px; line-height: 1.45; }
     .actions { display: flex; gap: 8px; margin-top: 12px; }
     .actions button { flex: 1; }
+    .canvas-actions { display: flex; gap: 8px; margin-top: 8px; }
+    .canvas-actions button { flex: 1; }
+    select { width: 100%; height: 30px; padding: 0 7px; border: 1px solid #4a4e55; border-radius: 5px; background: #292c31; color: #f1f3f4; }
   </style>
 </head>
 <body>
   <main class="panel">
     <h1>小美画布 PS 直连</h1>
-    <div class="sub">无需 UXP Developer Tool，自动把队列图片置入当前文档。</div>
+    <div class="sub">无需 UXP Developer Tool，支持画布与 Photoshop 双向传图。</div>
     <div class="row"><span id="dot" class="dot"></span><strong id="status">正在连接本地服务…</strong></div>
     <label for="server">服务地址</label>
     <input id="server" value="http://127.0.0.1:3000">
@@ -43,6 +46,17 @@
       <button id="pull" class="primary">立即导入最新</button>
       <button id="refresh">刷新状态</button>
     </div>
+    <section class="card">
+      <div class="title">PS → 小美画布</div>
+      <div class="muted">先在图层面板选中一个图层，再选择目标画布发送。</div>
+      <label for="canvasSelect">目标画布</label>
+      <select id="canvasSelect"><option value="">正在加载画布…</option></select>
+      <div class="canvas-actions">
+        <button id="sendLayer" class="primary">发送当前图层</button>
+        <button id="refreshCanvases">刷新画布</button>
+      </div>
+      <div id="canvasSub" class="muted">图层会以透明 PNG 节点放到目标画布中心。</div>
+    </section>
     <section class="card">
       <div class="title">运行日志</div>
       <div id="log" class="log"></div>

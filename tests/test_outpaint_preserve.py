@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import tempfile
 import time
+import uuid
 from types import SimpleNamespace
 import unittest
 import httpx
@@ -25,7 +26,7 @@ class OutpaintTests(unittest.TestCase):
         tree = ast.parse(source.read_text(encoding='utf-8'))
         body = [n for n in tree.body if getattr(n, 'name', None) in names]
         self.assertEqual(len(body), len(names))
-        self.ns = dict(globals(), output_file_from_url=lambda url: str(self.root / url.lstrip('/')),
+        self.ns = dict(globals(), uuid=uuid, output_file_from_url=lambda url: str(self.root / url.lstrip('/')),
                        generated_output_filename=lambda *args, **kwargs: 'locked.png',
                        output_path_for=lambda name, kind: str(self.root / name),
                        output_url_for=lambda name, kind: '/' + name,
@@ -96,6 +97,11 @@ class OutpaintTests(unittest.TestCase):
 
         ns = dict(self.ns, httpx=SimpleNamespace(AsyncClient=Client, Timeout=httpx.Timeout, HTTPError=httpx.HTTPError),
                   HTTPException=HTTPException, time=time, AI_REQUEST_TIMEOUT=30, ONLINE_IMAGE_REFERENCE_MAX=10,
+                  GPT_IMAGE2_EDIT_IDEMPOTENCY_SUPPORTED=False,
+                  GPT_IMAGE2_EDIT_HTTP2=False,
+                  image_edit_input_stats=lambda _paths: (0, 0),
+                  upstream_request_id=lambda _response: "",
+                  append_gpt_image_edit_diagnostic=lambda **_kwargs: None,
                   get_api_provider=lambda _: {'id': 'fixture', 'base_url': 'https://fixture.test'},
                   effective_protocol=lambda *args: 'openai', effective_image_request_mode=lambda *args: 'openai',
                   normalize_image_quality=lambda *args: '', gpt_image_background_options=lambda *args: {},

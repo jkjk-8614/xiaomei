@@ -135,7 +135,7 @@
         "online.localTaskQueryFailed": { zh: "查询本地 ComfyUI 任务失败。", en: "Could not query the local ComfyUI task." },
         "online.localTaskTimeout": { zh: "本地 ComfyUI 生成超时。", en: "Local ComfyUI generation timed out." },
         "online.localNoImage": { zh: "本地 ComfyUI 没有返回图片。", en: "Local ComfyUI did not return an image." },
-        "chat.title": { zh: "GPT 对话", en: "GPT Chat" },
+        "chat.title": { zh: "DeepSeek 对话", en: "DeepSeek Chat" },
         "chat.newConversation": { zh: "新对话", en: "New Chat" },
         "chat.new": { zh: "新建", en: "NEW" },
         "chat.history": { zh: "历史", en: "HISTORY" },

@@ -342,10 +342,17 @@
             return `<div class="workflow-nav-group"><div class="workflow-nav-label">${esc(group.label)}</div>${items.map(item=>`<button type="button" class="workflow-tab ${item.id===state.active?'active':''}" data-workflow="${attr(item.id)}" aria-current="${item.id===state.active?'page':'false'}"><i data-lucide="${item.icon}"></i><span>${esc(item.label)}</span></button>`).join('')}</div>`;
         }).join('');
     }
-    function renderForm(){
+    function formScrollElement(){
+        const root=$('workflowForm');
+        return root?.querySelector('.form-shell>.form-stack')||root?.querySelector('.form-stack')||null;
+    }
+    function renderForm(options={}){
+        const preserveScroll=options.preserveScroll===true;
+        const scrollTop=preserveScroll?(formScrollElement()?.scrollTop||0):0;
         const item=workflow(); $('workflowIntro').innerHTML=`<div class="intro-icon"><i data-lucide="${item.icon}"></i></div><div class="intro-copy"><h2>${esc(item.label)}</h2><p>${esc(item.desc)}</p></div>`;
         $('workflowForm').innerHTML=FORM_RENDERERS[state.active]();
         bindForm(); refreshIcons(); renderSharedSkillStatus();
+        if(preserveScroll)requestAnimationFrame(()=>{const next=formScrollElement();if(next)next.scrollTop=scrollTop;});
         if(state.active==='redraw' && state.pools.redraw[0]) requestAnimationFrame(setupPaintCanvas);
     }
     function renderTasks(){
@@ -468,7 +475,7 @@
             const key=input.dataset.value;
             valueState()[key]=key==='count'?Math.max(1,Math.min(99,Math.trunc(Number(input.value)||1))):input.value;
             savePreferences();
-            if(key==='count')renderForm();
+            if(key==='count')renderForm({preserveScroll:true});
         }));
         document.querySelectorAll('[data-mode]').forEach(btn=>btn.addEventListener('click',()=>{valueState().mode=btn.dataset.mode;savePreferences();renderForm();}));
         document.querySelectorAll('[data-crop]').forEach(input=>input.addEventListener('input',()=>{const c=valueState().crop,key=input.dataset.crop;c[key]=Number(input.value);normalizeCrop(c,key);updateCropBox();savePreferences();}));

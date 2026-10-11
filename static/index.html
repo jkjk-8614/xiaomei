@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="/static/images/app-icon.ico?v=2026.10.01" type="image/x-icon">
+    <link rel="icon" href="/static/images/app-icon.ico?v=2026.10.11" type="image/x-icon">
     <title>小美画布</title>
     <style>
         html.studio-route-booting body {
@@ -18,14 +18,14 @@
             } catch(e) {}
         })();
     </script>
-    <script defer src="/static/vendor/js/tailwindcss-cdn.js?v=2026.10.01.1784161005"></script>
-    <script defer src="/static/js/theme.js?v=2026.10.01.1790178169"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.01.1785985827">
-    <script defer src="/static/js/i18n.js?v=2026.10.01.1790690599"></script>
-    <script src="/static/js/legacy-common.js?v=2026.10.01.1786170056"></script>
-<script defer src="/static/js/generation-notifications.js?v=2026.10.01.1787131165"></script>
+    <script defer src="/static/vendor/js/tailwindcss-cdn.js?v=2026.10.11.1784161005"></script>
+    <script defer src="/static/js/theme.js?v=2026.10.11.1791335865"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.11.1791343786">
+    <script defer src="/static/js/i18n.js?v=2026.10.11.1791611714"></script>
+    <script src="/static/js/legacy-common.js?v=2026.10.11.1786170056"></script>
+<script defer src="/static/js/generation-notifications.js?v=2026.10.11.1787131165"></script>
     <style>
-        @import url('/static/vendor/css/fonts.css?v=2026.10.01.1784161005');
+        @import url('/static/vendor/css/fonts.css?v=2026.10.11.1784161005');
 
         /* 本地 Tailwind 工具类兜底：CDN 慢/未就绪时也能立刻给图标尺寸，避免首屏左侧栏空白 */
         .w-1\.5 { width: 0.375rem; }
@@ -64,21 +64,21 @@
 
         html.theme-dark,
         body.theme-dark {
-            --bg: #0f141d;
-            --sidebar-bg: #0f141d;
-            --stage-bg: #111722;
-            --border: #242d3b;
-            --stage-border: #2a3444;
-            --text: #e5e9f0;
-            --muted: #8f9aab;
-            --nav-hover-bg: #171d29;
-            --monitor-bg: rgba(23, 29, 41, 0.82);
+            --bg: #0e0e10;
+            --sidebar-bg: #0e0e10;
+            --stage-bg: #141417;
+            --border: #27272b;
+            --stage-border: #2a2a2e;
+            --text: #f0f0f2;
+            --muted: #a3a3ab;
+            --nav-hover-bg: #1c1c1f;
+            --monitor-bg: rgba(24, 24, 27, 0.82);
             --monitor-border: rgba(255, 255, 255, 0.08);
             --monitor-shadow: rgba(0, 0, 0, 0.3);
             --divider: rgba(255, 255, 255, 0.15);
             --scrollbar: #334155;
             --scrollbar-hover: #475569;
-            --author-name: #e5e9f0;
+            --author-name: #f0f0f2;
             --social-icon: #64748b;
         }
 
@@ -435,6 +435,12 @@
             border-radius: 0;
         }
 
+
+        /* 官方 DeepSeek Harness 由 Electron WebContentsView 覆盖整个工作区。
+         * 不再在它上方叠加自制工具栏，避免遮住官方侧栏、Composer 和右侧面板。 */
+        body.harness-active #frame-gpt-chat { opacity:0; pointer-events:none; }
+        body.harness-active .stage { padding-top:0; }
+
         iframe {
             position: absolute;
             inset: 0;
@@ -455,6 +461,8 @@
             transition: none;
             pointer-events: none;
         }
+        /* 旧 gpt-chat 页面已移除；这个占位节点只用于保留 DeepSeek 路由的稳定 ID。 */
+        .deepseek-route-placeholder { position:absolute; inset:0; display:none; }
 
         iframe.active {
             opacity: 1;
@@ -1063,7 +1071,7 @@
             transition: max-height .28s var(--fluid-ease), opacity .18s ease;
         }
         .settings-fold-group:not(.is-collapsed) {
-            max-height: 132px;
+            max-height: 176px;
             opacity: 1;
             pointer-events: auto;
         }
@@ -1082,35 +1090,6 @@
             max-width:120px;
             transition-delay:.15s;
         }
-        .update-now-btn {
-            border-color: color-mix(in srgb, var(--accent, #3b82f6) 42%, var(--border));
-            color: var(--accent, #2563eb);
-        }
-        .update-now-btn.update-available {
-            background: color-mix(in srgb, var(--accent, #3b82f6) 10%, transparent);
-            border-color: var(--accent, #3b82f6);
-        }
-        .update-now-btn:disabled { opacity:.58; cursor:wait; }
-        .project-version-badge {
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            min-width:30px;
-            max-width:56px;
-            padding:2px 5px;
-            border-radius:999px;
-            background:color-mix(in srgb, currentColor 12%, transparent);
-            font-size:10px;
-            font-weight:800;
-            white-space:nowrap;
-            overflow:hidden;
-        }
-        .project-version-badge.checking { animation: update-badge-pulse 1s ease-in-out infinite; }
-        .project-version-full { display:none; }
-        .update-version-full { display:none; }
-        .sidebar:hover .update-version-compact { display:none; }
-        .sidebar:hover .update-version-full { display:inline; }
-        @keyframes update-badge-pulse { 50% { opacity:.45; } }
         /* 折叠态去除 gap，避免图标被推偏 */
         .side-pill { gap:0; }
         .sidebar:hover .side-pill { gap:8px; }
@@ -1157,7 +1136,7 @@
                 gap: 5px;
             }
             .settings-fold-group:not(.is-collapsed) {
-                max-height: 105px;
+                max-height: 140px;
             }
             .side-pill {
                 height:30px;
@@ -1213,7 +1192,7 @@
                 gap: 4px;
             }
             .settings-fold-group:not(.is-collapsed) {
-                max-height: 102px;
+                max-height: 136px;
             }
             .side-pill {
                 height:30px;
@@ -1542,16 +1521,16 @@
         body.theme-dark .studio-modal-actions,
         html.theme-dark .studio-modal-btn,
         body.theme-dark .studio-modal-btn {
-            background:#111216;
-            border-color:#25262b;
-            color:#e8e8ea;
+            background:#1a1a1d;
+            border-color:#2a2a2e;
+            color:#f0f0f2;
         }
 
         html.theme-dark .update-source-card,
         body.theme-dark .update-source-card {
-            background:#111216;
-            border-color:#25262b;
-            color:#e8e8ea;
+            background:#1a1a1d;
+            border-color:#2a2a2e;
+            color:#f0f0f2;
         }
 
         html.theme-dark .update-source-card.active,
@@ -1565,7 +1544,7 @@
         body.theme-dark .studio-modal-head,
         html.theme-dark .studio-modal-actions,
         body.theme-dark .studio-modal-actions {
-            border-color:#25262b;
+            border-color:#2a2a2e;
         }
 
         html.theme-dark .studio-modal-copy,
@@ -1578,14 +1557,14 @@
         html.theme-dark .update-modal-summary,
         body.theme-dark .update-modal-summary {
             background:#0c0d10;
-            border-color:#25262b;
+            border-color:#2a2a2e;
             color:#9aa6b8;
         }
 
         html.theme-dark .update-notes-box,
         body.theme-dark .update-notes-box {
             background:#0c0d10;
-            border-color:#25262b;
+            border-color:#2a2a2e;
         }
 
         html.theme-dark .update-modal-summary strong,
@@ -1596,7 +1575,7 @@
         body.theme-dark .update-source-title strong,
         html.theme-dark .connectivity-name,
         body.theme-dark .connectivity-name {
-            color:#e8e8ea;
+            color:#f0f0f2;
         }
 
         html.theme-dark .update-notes-list,
@@ -1615,9 +1594,9 @@
 
         html.theme-dark .studio-modal-btn.primary,
         body.theme-dark .studio-modal-btn.primary {
-            background:#d8dee9;
-            border-color:#d8dee9;
-            color:#10141d;
+            background:#2e2e33;
+            border-color:#3a3a3f;
+            color:#f0f0f2;
         }
 
         html.theme-dark #connectivity-test-btn,
@@ -1793,10 +1772,10 @@
             }
         }
     </style>
-    <link rel="stylesheet" href="/static/css/workspace-polish.css?v=2026.10.01.1789456340">
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.01.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.01.1790574407">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.01.1790178173"></script>
+    <link rel="stylesheet" href="/static/css/workspace-polish.css?v=2026.10.11.1789456340">
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.11.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.11.1791346900">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.11.1790178173"></script>
 </head>
 
 <body>
@@ -1819,7 +1798,7 @@
                     <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                     </svg>
-                    <span class="nav-text" data-i18n="nav.gpt">GPT 对话</span>
+                    <span class="nav-text">DeepSeek</span>
                 </div>
                 <div class="nav-item" onclick="switchUI(this, 'canvas')">
                     <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1855,14 +1834,7 @@
                         <path d="M7 12h10"></path>
                         <path d="M7 16h6"></path>
                     </svg>
-                    <span class="nav-text" data-i18n="nav.assetManager">素材库</span>
-                </div>
-                <div class="nav-item" onclick="switchUI(this, 'prompt-library')">
-                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M20.8 8.7c0 5.4-8.8 10.2-8.8 10.2S3.2 14.1 3.2 8.7A4.7 4.7 0 0 1 12 6a4.7 4.7 0 0 1 8.8 2.7Z"></path>
-                        <path d="M12 6v12.9"></path>
-                    </svg>
-                    <span class="nav-text">提示词库</span>
+                    <span class="nav-text" data-i18n="nav.assetManager">资产管理</span>
                 </div>
                 <div class="nav-item history-trigger" onclick="openHistoryDrawer(this)">
                     <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1875,14 +1847,6 @@
             </nav>
 
             <div class="side-actions">
-                <button class="side-pill update-now-btn" id="update-now-btn" onclick="runProjectUpdate()" type="button" title="检查更新" aria-label="检查更新">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M20 11a8.1 8.1 0 0 0-14.9-4L3 10"></path><path d="M3 4v6h6"></path>
-                        <path d="M4 13a8.1 8.1 0 0 0 14.9 4L21 14"></path><path d="M21 20v-6h-6"></path>
-                    </svg>
-                    <span class="side-pill-text" id="update-now-text">检查更新</span>
-                    <span class="project-version-badge" id="project-version-badge">v-</span>
-                </button>
                 <button class="side-pill" onclick="switchUI(this, 'api-settings')" type="button" title="API 设置">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M15 7h3a5 5 0 0 1 0 10h-3"></path>
@@ -1902,6 +1866,12 @@
                     </svg>
                 </button>
                 <div class="settings-fold-group" id="settings-fold-group">
+                    <button class="side-pill" onclick="openAssetManagerSettings(this)" type="button" title="资产管理设置">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2v4"></path><path d="M12 18v4"></path><path d="m4.93 4.93 2.83 2.83"></path><path d="m16.24 16.24 2.83 2.83"></path><path d="M2 12h4"></path><path d="M18 12h4"></path><path d="m4.93 19.07 2.83-2.83"></path><path d="m16.24 7.76 2.83-2.83"></path><circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                        <span class="side-pill-text">资产管理设置</span>
+                    </button>
                     <button class="side-pill" onclick="openComfyUiSettings(this)" type="button" title="ComfyUI 设置">
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M8 8h8M8 12h5M8 16h8"></path>
@@ -1953,15 +1923,15 @@
                     <span id="stage-loading-label">正在加载工作区…</span>
                 </div>
             </div>
-                    <iframe id="frame-online" data-src="/static/comfyui.html?v=2026.10.01" class="active" scrolling="yes"></iframe>
-        <iframe id="frame-gpt-chat" data-src="/static/gpt-chat.html?v=2026.10.01.1790821708" scrolling="yes"></iframe>
-        <iframe id="frame-commerce" data-src="/static/commerce.html?v=2026.10.01.1790821708" scrolling="yes"></iframe>
-                <iframe id="frame-commerce-analysis" data-src="/static/commerce-analysis.html?v=2026.10.01.1790821708" scrolling="yes"></iframe>
-        <iframe id="frame-product-3d" data-src="/static/product-3d.html?v=2026.10.01.1790821708" scrolling="yes"></iframe>
-                <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=2026.10.01.1790821707" scrolling="yes"></iframe>
-             <iframe id="frame-prompt-library" data-src="/static/prompt-library.html?v=2026.10.01.1790821708" scrolling="yes"></iframe>
+
+                    <iframe id="frame-online" data-src="/static/comfyui.html?v=2026.10.11" class="active" scrolling="yes"></iframe>
+        <div id="frame-gpt-chat" class="deepseek-route-placeholder" aria-hidden="true"></div>
+        <iframe id="frame-commerce" data-src="/static/commerce.html?v=2026.10.11.1791678509" scrolling="yes"></iframe>
+                <iframe id="frame-commerce-analysis" data-src="/static/commerce-analysis.html?v=2026.10.11.1791690380" scrolling="yes"></iframe>
+        <iframe id="frame-product-3d" data-src="/static/product-3d.html?v=2026.10.11.1791678509" scrolling="yes"></iframe>
+            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=2026.10.11.1791689740" scrolling="yes"></iframe>
             <div id="historyDrawerScrim" class="history-drawer-scrim" hidden onclick="closeHistoryDrawer()"></div>
-<iframe id="frame-history" class="history-drawer-frame" data-src="/static/history.html?v=2026.10.01.1790821708&drawer=1" scrolling="yes" title="历史记录"></iframe>
+            <iframe id="frame-history" class="history-drawer-frame" data-src="/static/history.html?v=2026.10.11.1791690282&drawer=1" scrolling="yes" title="历史记录"></iframe>
             <button id="historyDrawerClose" class="history-drawer-close" type="button" hidden onclick="closeHistoryDrawer()" aria-label="关闭历史记录">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
             </button>
@@ -1989,14 +1959,14 @@
         <div id="historyPreviewContextMenu" class="history-preview-context-menu" role="menu" aria-label="媒体操作" hidden>
             <button id="historyPreviewContextCopy" type="button" role="menuitem" onclick="copyHistoryPreviewFromContextMenu(event)"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>复制图片</span></button>
         </div>
-                <iframe id="frame-api-settings" data-src="/static/api-settings.html?v=2026.10.01.1790821707" scrolling="yes"></iframe>
-                <iframe id="frame-canvas" data-src="/static/canvas-list.html?v=2026.10.01.1790821707&image-model-picker=2026.09.27.3" scrolling="yes"></iframe>
+                <iframe id="frame-api-settings" data-src="/static/api-settings.html?v=2026.10.11.1791690380" scrolling="yes"></iframe>
+                <iframe id="frame-canvas" data-src="/static/canvas-list.html?v=2026.10.11.1791689740&image-model-picker=2026.09.27.3" scrolling="yes"></iframe>
 
                 <script>
                     /* 尽早启动上次页面，避免主窗口已显示但中央 iframe 仍是空白。 */
                     (function(){
                         try {
-                            var pageIds = ['online','gpt-chat','canvas','commerce','commerce-analysis','product-3d','asset-manager','prompt-library','api-settings'];
+                            var pageIds = ['online','gpt-chat','canvas','commerce','commerce-analysis','product-3d','asset-manager','api-settings'];
                             var savedId = localStorage.getItem('studio_active_page');
                             var launchId = new URLSearchParams(window.location.search).get('page');
                             if(launchId === 'task-manager') launchId = 'commerce-analysis';
@@ -2008,7 +1978,10 @@
                             if(!target) return;
                             document.querySelectorAll('.stage > iframe').forEach(function(frame){ frame.classList.remove('active'); });
                             target.classList.add('active');
-                            if(!target.src) target.src = target.dataset.src;
+                            // Electron 桌面端的对话入口只使用 DeepSeek Harness。
+                            // 不要在启动恢复阶段提前加载已经移除的旧 gpt-chat 页面。
+                            var deepSeekDesktop = typeof window.electronAPI?.setDeepSeekHarnessVisible === 'function';
+                            if(!(id === 'gpt-chat' && deepSeekDesktop) && !target.src) target.src = target.dataset.src;
                         } catch(e) {}
                     })();
                 </script>
@@ -2043,7 +2016,7 @@
                         </button>
                         <button class="appearance-skin" type="button" data-skin="minimal" onclick="setAppearanceSkin('minimal')">
                             <span class="skin-preview skin-preview-minimal"><i></i><b></b><em></em></span>
-                            <span class="skin-name">极简晴空</span><span class="skin-check">✓</span>
+                            <span class="skin-name">亮色背景</span><span class="skin-check">✓</span>
                         </button>
                     </div>
                 </div>
@@ -2069,7 +2042,7 @@
                     <label>界面主色</label>
                     <div class="appearance-colors" id="appearance-colors">
                         <button class="appearance-color" type="button" data-color="#111827" style="background:#111827" onclick="setAppearanceColor('#111827')" title="墨黑"></button>
-                        <button class="appearance-color" type="button" data-color="#2563eb" style="background:#2563eb" onclick="setAppearanceColor('#2563eb')" title="蓝色"></button>
+                        <button class="appearance-color" type="button" data-color="#0e7490" style="background:#0e7490" onclick="setAppearanceColor('#0e7490')" title="青色"></button>
                         <button class="appearance-color" type="button" data-color="#2f7d5c" style="background:#2f7d5c" onclick="setAppearanceColor('#2f7d5c')" title="护眼绿"></button>
                         <button class="appearance-color" type="button" data-color="#7c3aed" style="background:#7c3aed" onclick="setAppearanceColor('#7c3aed')" title="紫色"></button>
                         <button class="appearance-color" type="button" data-color="#ea580c" style="background:#ea580c" onclick="setAppearanceColor('#ea580c')" title="橙色"></button>
@@ -2174,16 +2147,15 @@
         const SIDEBAR_SETTINGS_RESTORE_KEY = 'studio_formal_sidebar_settings_restored_v1';
         const SIDEBAR_PINNED_KEY = 'studio_sidebar_pinned';
         const DEFAULT_PAGE_ID = 'online';
-        const PAGE_IDS = ['online','gpt-chat','canvas','commerce','commerce-analysis','product-3d','asset-manager','prompt-library','api-settings'];
+        const PAGE_IDS = ['online','gpt-chat','canvas','commerce','commerce-analysis','product-3d','asset-manager','api-settings'];
         const LOCAL_PAGE_IDS = [];
         const PROMPT_CASE_PENDING_KEY = 'studio_pending_prompt_case';
         const PROMPT_CASE_PENDING_TTL = 10 * 60 * 1000;
         const PROMPT_CASE_OPEN_PENDING_KEY = 'studio_pending_prompt_case_open';
-        let appInfo = { version:'', displayVersion:'1.0', version_url:'https://raw.githubusercontent.com/jkjk-8614/xiaomei/main/VERSION' };
+        let appInfo = { version:'', version_url:'https://raw.githubusercontent.com/hero8152/Infinite-Canvas/main/VERSION' };
         let updateConnectivityResult = null;
         let projectUpdateRunning = false;
         let projectUpdateAbort = null;  // 当前更新请求的 AbortController，便于用户中途取消
-        let projectUpdateCheckPromise = null;
         let updateSource = localStorage.getItem('studio_update_source') || 'github';
         let projectUpdateNotes = null;
 
@@ -2257,6 +2229,11 @@
         function openComfyUiSettings(button) {
             switchUI(button, 'online');
             postToStudioFrame('online', { type:'open-comfyui-settings' }, 80);
+        }
+
+        function openAssetManagerSettings(button) {
+            switchUI(button, 'asset-manager');
+            postToStudioFrame('asset-manager', { type:'open-storage-settings', tab:'manage' }, 80);
         }
 
         function restoreSidebarSettings(id) {
@@ -2710,13 +2687,12 @@
 
         const STAGE_LOADING_LABELS = {
             online: '正在打开 ComfyUI…',
-            'gpt-chat': '正在打开 GPT 对话…',
+            'gpt-chat': '正在打开 DeepSeek…',
             canvas: '正在打开小美画布…',
             commerce: '正在打开电商工作台…',
             'commerce-analysis': '正在打开商品分析…',
             'product-3d': '正在打开 3D 软装…',
-            'asset-manager': '正在打开图片空间…',
-            'prompt-library': '正在打开提示词库…',
+            'asset-manager': '正在打开资产管理…',
             'api-settings': '正在打开 API 设置…',
         };
 
@@ -2726,6 +2702,17 @@
             if(!loading) return;
             if(label && id) label.textContent = STAGE_LOADING_LABELS[id] || '正在加载工作区…';
             loading.hidden = !visible;
+        }
+
+        function syncDeepSeekHarnessBounds() {
+            const stage = document.querySelector('.stage')?.getBoundingClientRect();
+            if (!stage) return;
+            window.electronAPI?.setDeepSeekHarnessBounds?.({ x: stage.left, y: stage.top, width: Math.max(1, stage.width), height: Math.max(1, stage.height) });
+        }
+        window.addEventListener('resize', syncDeepSeekHarnessBounds);
+        if (window.ResizeObserver) {
+            const stageElement = document.querySelector('.stage');
+            if (stageElement) new ResizeObserver(syncDeepSeekHarnessBounds).observe(stageElement);
         }
 
         function setupStageLoading() {
@@ -2747,14 +2734,61 @@
             if(el) el.classList.add('active');
             document.querySelectorAll('iframe').forEach(f => f.classList.remove('active'));
             const target = document.getElementById('frame-' + id);
+            if(!target) return;
+
+            // 页面恢复和旧版桌面端可能给 iframe 留下了别的页面地址。
+            // 点击导航时必须以当前入口的 data-src 为准，否则左侧已高亮但中央仍会显示旧页面。
+            const deepSeekRoute = id === 'gpt-chat';
+            const harnessAvailable = typeof window.electronAPI?.setDeepSeekHarnessVisible === 'function';
+            // 旧版 gpt-chat 已移除。这个 iframe 只保留为路由占位，桌面端和浏览器端都不再加载它。
+            const expectedSource = deepSeekRoute ? '' : (target.dataset.src || '');
+            if (deepSeekRoute && target.getAttribute('src')) target.removeAttribute('src');
+            let sourceMatches = false;
+            try {
+                const expectedUrl = expectedSource ? new URL(expectedSource, window.location.href) : null;
+                const currentUrl = target.getAttribute('src') ? new URL(target.getAttribute('src'), window.location.href) : null;
+                sourceMatches = Boolean(expectedUrl && currentUrl
+                    && expectedUrl.pathname === currentUrl.pathname
+                    && expectedUrl.search === currentUrl.search);
+            } catch (error) {}
+            let sourceWasReset = false;
+            if(!sourceMatches && expectedSource) {
+                target.dataset.stageLoaded = '0';
+                target.src = expectedSource;
+                sourceWasReset = true;
+            }
             target.classList.add('active');
-            const targetAlreadyLoaded = target.dataset.stageLoaded === '1'
-                || (!!target.src && target.contentDocument?.readyState === 'complete' && target.contentDocument?.body?.childElementCount > 0);
+            const targetAlreadyLoaded = !sourceWasReset && (target.dataset.stageLoaded === '1'
+                || (!!target.src && target.contentDocument?.readyState === 'complete' && target.contentDocument?.body?.childElementCount > 0));
             setStageLoading(!targetAlreadyLoaded, id);
-            if (!target.src) target.src = target.dataset.src;
             // 商品分析台内部还分“工作应用首页”和“商品页标签”。
             // 进入外层 iframe 时不能直接显示顶层 WebContentsView，否则首页会被
             // 一个空白的商品视图盖住；商品分析台会根据自己的当前标签同步可见性。
+            // AI 对话入口只挂载官方 DeepSeek Harness，不再回退到旧 gpt-chat iframe。
+            const harnessActive = deepSeekRoute && harnessAvailable;
+            document.body.classList.toggle('harness-active', harnessActive);
+            syncDeepSeekHarnessBounds();
+            const harnessRequest = window.electronAPI?.setDeepSeekHarnessVisible?.(harnessActive, harnessActive ? (() => {
+                const rect = document.querySelector('.stage')?.getBoundingClientRect();
+                return rect ? { x: rect.left, y: rect.top, width: rect.width, height: rect.height } : null;
+            })() : null);
+            const showDeepSeekError = (message) => {
+                document.body.classList.remove('harness-active');
+                target.style.opacity = '0';
+                target.style.pointerEvents = 'none';
+                setStageLoading(true, 'gpt-chat');
+                const label = document.getElementById('stage-loading-label');
+                if (label) label.textContent = `DeepSeek Harness 加载失败：${message || '请重试'}`;
+            };
+            if (deepSeekRoute && !harnessAvailable) {
+                showDeepSeekError('当前桌面端没有加载 Harness 组件');
+            } else if (harnessRequest?.then) harnessRequest.then((result) => {
+                if (!harnessActive) return;
+                if (result?.ok) { setStageLoading(false); return; }
+                showDeepSeekError(result.message || '请重启桌面端后重试');
+            }).catch((error) => {
+                if (harnessActive) showDeepSeekError(error?.message || '请重启桌面端后重试');
+            });
             const commercePageActive = id === 'commerce-analysis';
             window.electronAPI?.setCommercePageActive?.(commercePageActive);
             if (!commercePageActive) window.electronAPI?.setProductVisible?.(false);
@@ -2816,7 +2850,8 @@
         }
 
         function isPromptLibraryFrame(frame) {
-            try { return /\/prompt-library\.html(?:$|\?)/.test(frame?.contentWindow?.location?.pathname || ''); } catch(e) { return false; }
+            // 提示词模板统一由资产管理（asset-manager.html）提供
+            try { return /\/asset-manager\.html(?:$|\?)/.test(frame?.contentWindow?.location?.pathname || ''); } catch(e) { return false; }
         }
 
         function applyPendingPromptCaseToFrame(frame) {
@@ -2854,18 +2889,30 @@
 
         function sendPromptCaseOpenToLibrary(caseId) {
             if(!caseId) return;
-            const frame = document.getElementById('frame-prompt-library');
+            const frame = document.getElementById('frame-asset-manager');
             if(isPromptLibraryFrame(frame)) {
                 try { frame.contentWindow.postMessage({ type:'prompt-case-open', case_id:caseId }, '*'); return; } catch(e) {}
             }
             try { localStorage.setItem(PROMPT_CASE_OPEN_PENDING_KEY, caseId); } catch(e) {}
-            const libraryTrigger = document.querySelector(`[onclick*="'prompt-library'"],[onclick*='"prompt-library"']`);
-            switchUI(libraryTrigger, 'prompt-library');
+            const libraryTrigger = document.querySelector(`[onclick*="'asset-manager'"],[onclick*='"asset-manager"']`);
+            switchUI(libraryTrigger, 'asset-manager');
             try { applyPendingPromptCaseOpenToFrame(frame); } catch(e) {}
+        }
+
+        let deepSeekHarnessRefreshTimer = null;
+        function requestDeepSeekHarnessRefresh() {
+            if (typeof window.electronAPI?.refreshDeepSeekHarness !== 'function') return;
+            if (!document.body.classList.contains('harness-active')) return;
+            if (deepSeekHarnessRefreshTimer) clearTimeout(deepSeekHarnessRefreshTimer);
+            deepSeekHarnessRefreshTimer = setTimeout(() => {
+                deepSeekHarnessRefreshTimer = null;
+                Promise.resolve(window.electronAPI.refreshDeepSeekHarness()).catch(() => {});
+            }, 250);
         }
 
         function forwardStudioApiChange(data) {
             if(!data || !['providers-changed','workflows-changed','comfy-instances-changed'].includes(data.type)) return;
+            if (data.type === 'providers-changed') requestDeepSeekHarnessRefresh();
             document.querySelectorAll('iframe').forEach(iframe => {
                 try {
                     if (iframe && iframe.contentWindow) iframe.contentWindow.postMessage(data, '*');
@@ -2955,6 +3002,22 @@
                 postToStudioFrame('canvas', { type:'comfy-workflow-inbox' }, 60);
                 return;
             }
+            if(event.data?.type === 'smart-workflow-to-canvas') {
+                const payload = event.data.payload && typeof event.data.payload === 'object' ? event.data.payload : null;
+                const url = String(payload?.url || '').trim();
+                if(!url || !/^\/(?:assets|api\/storage-files)\//.test(url)) return;
+                try {
+                    localStorage.setItem('smart_canvas_workflow_inbox_v1', JSON.stringify({
+                        url,
+                        name:String(payload?.name || '工作流').trim() || '工作流',
+                        ts:Date.now()
+                    }));
+                } catch(e) {}
+                const canvasTrigger = document.querySelector(`[onclick*="'canvas'"],[onclick*='"canvas"']`);
+                switchUI(canvasTrigger, 'canvas');
+                postToStudioFrame('canvas', { type:'smart-workflow-inbox' }, 60);
+                return;
+            }
             if(event.data?.type === 'merchant-change-handoff') {
                 const changeId = String(event.data.change_id || event.data.changeId || '').trim();
                 if(!/^[A-Za-z0-9_-]{8,120}$/.test(changeId)) return;
@@ -3011,12 +3074,20 @@
                 const targetPage = event.data.page === 'skill-market' ? 'gpt-chat' : (requestedPage === 'task-manager' ? 'commerce-analysis' : requestedPage);
                 const trigger = document.querySelector(`[onclick*="'${targetPage}'"],[onclick*='"${targetPage}"']`);
                 switchUI(trigger, targetPage);
-                postToStudioFrame(targetPage, { type:'launcher-focus', focus:event.data.focus || (requestedPage === 'task-manager' ? 'tasks' : '') }, 40);
+                postToStudioFrame(targetPage, {
+                    type:'launcher-focus',
+                    focus:event.data.focus || (requestedPage === 'task-manager' ? 'tasks' : ''),
+                    canvasReferences:Array.isArray(event.data.canvasReferences) ? event.data.canvasReferences : []
+                }, 40);
                 return;
             }
             if(event.data?.type === 'open-canvas') {
                 const canvasTrigger = document.querySelector(`[onclick*="'canvas'"],[onclick*='"canvas"']`);
                 switchUI(canvasTrigger, 'canvas');
+                return;
+            }
+            if(event.data?.type === 'skills-changed') {
+                requestDeepSeekHarnessRefresh();
                 return;
             }
             forwardStudioApiChange(event.data);
@@ -3028,9 +3099,8 @@
             frame.dataset.promptCaseBridge = '1';
             frame.addEventListener('load', () => {
                 applyPendingPromptCaseToFrame(frame);
-                applyPendingPromptCaseOpenToFrame(document.getElementById('frame-prompt-library'));
             });
-            const libraryFrame = document.getElementById('frame-prompt-library');
+            const libraryFrame = document.getElementById('frame-asset-manager');
             libraryFrame?.addEventListener('load', () => applyPendingPromptCaseOpenToFrame(libraryFrame));
         }
 
@@ -3172,8 +3242,8 @@
         }
 
         function setAppearanceSkin(skin) {
-            const accents = {dark:'#18a38d',soft:'#2f8f73',warm:'#b45f06',minimal:'#3b82f6'};
-            updateAppearanceSettings({ skin, eyeCare:skin === 'soft', accent:accents[skin] || '#3b82f6' });
+            const accents = {dark:'#18a38d',soft:'#2f8f73',warm:'#b45f06',minimal:'#0e7490'};
+            updateAppearanceSettings({ skin, eyeCare:skin === 'soft', accent:accents[skin] || '#0e7490' });
         }
 
         function setAppearanceColor(color) {
@@ -3342,7 +3412,7 @@
         function compactVersion(value) {
             const text = String(value || '').trim();
             const parts = text.match(/\d+/g) || [];
-            if(parts.length >= 3 && Number(parts[0]) >= 2000) return `${parts[1]}.${parts[2]}`;
+            if(parts.length >= 3) return `${parts[1]}.${parts[2]}`;
             return text.replace(/^v/i, '') || '-';
         }
 
@@ -3355,13 +3425,12 @@
         function setProjectVersionBadge(version) {
             const badge = document.getElementById('project-version-badge');
             if(!badge) return;
-            const displayVersion = String(appInfo.displayVersion || '').trim() || version;
-            const full = versionLabel(displayVersion);
+            const full = versionLabel(version);
             badge.replaceChildren();
-            if(displayVersion) {
+            if(version) {
                 const compactSpan = document.createElement('span');
                 compactSpan.className = 'project-version-compact';
-                compactSpan.textContent = versionLabel(displayVersion, 'compact');
+                compactSpan.textContent = versionLabel(version, 'compact');
                 const fullSpan = document.createElement('span');
                 fullSpan.className = 'project-version-full';
                 fullSpan.textContent = full;
@@ -3377,7 +3446,7 @@
         function refreshUpdateButtonText() {
             const btn = document.getElementById('update-now-btn');
             const text = document.getElementById('update-now-text');
-            if(!btn || !text) return;
+            if(!btn || !text || !btn.classList.contains('show')) return;
             const remoteVersion = btn.dataset.remoteVersion || '';
             const isEn = window.StudioI18n?.lang?.() === 'en';
             text.removeAttribute('data-i18n');
@@ -3396,9 +3465,8 @@
                 text.append(prefixSpan, compactSpan, fullSpan);
                 btn.setAttribute('aria-label', `${prefix} ${versionLabel(remoteVersion)}`);
             } else {
-                text.textContent = isEn ? 'Check for updates' : '检查更新';
+                text.textContent = isEn ? 'Update' : '一键更新';
                 btn.setAttribute('aria-label', text.textContent);
-                btn.title = isEn ? 'Check for updates' : '检查更新';
             }
         }
 
@@ -3421,37 +3489,6 @@
             updateBtn.dataset.localVersion = localVersion || '';
             updateBtn.dataset.remoteVersion = remoteVersion || '';
             updateProjectUpdateTitle();
-        }
-
-        function clearUpdateNotice() {
-            const btn = document.getElementById('update-now-btn');
-            btn?.classList.remove('update-available', 'show');
-            if(btn) { delete btn.dataset.remoteVersion; delete btn.dataset.localVersion; }
-            refreshUpdateButtonText();
-        }
-
-        function applyDesktopUpdateStatus(result) {
-            if(!result) return;
-            const current = result.currentVersion || (result.status === 'current' ? result.version : '');
-            if(current) {
-                appInfo.version = current;
-                setProjectVersionBadge(current);
-            }
-            if(result.displayVersion) appInfo.displayVersion = result.displayVersion;
-            if(result.status === 'available') showUpdateNotice(current, result.displayVersion || result.version);
-            if(result.status === 'current') clearUpdateNotice();
-        }
-
-        let desktopUpdateInfoPromise = null;
-        function getDesktopUpdateInfo() {
-            if(!window.electronAPI?.getUpdateInfo) return Promise.resolve(null);
-            if(!desktopUpdateInfoPromise) {
-                desktopUpdateInfoPromise = window.electronAPI.getUpdateInfo().catch(() => {
-                    desktopUpdateInfoPromise = null;
-                    return null;
-                });
-            }
-            return desktopUpdateInfoPromise;
         }
 
         function setProjectUpdateNotes(notes) {
@@ -3575,8 +3612,8 @@
             const github = sources.github || {};
             const ms = sources.modelscope || {};
             return [
-                { name:'GitHub 更新列表', url:github.tree_url || appInfo.tree_url || 'https://api.github.com/repos/jkjk-8614/xiaomei/git/trees/main?recursive=1', source:'github', required:true },
-                { name:'GitHub 版本文件', url:github.version_url || appInfo.version_url || 'https://raw.githubusercontent.com/jkjk-8614/xiaomei/main/VERSION', source:'github', required:true },
+                { name:'GitHub 更新列表', url:github.tree_url || appInfo.tree_url || 'https://api.github.com/repos/hero8152/Infinite-Canvas/git/trees/main?recursive=1', source:'github', required:true },
+                { name:'GitHub 版本文件', url:github.version_url || appInfo.version_url || 'https://raw.githubusercontent.com/hero8152/Infinite-Canvas/main/VERSION', source:'github', required:true },
                 { name:'GitHub 主页', url:'https://github.com/', source:'github' },
                 { name:'ModelScope 版本文件', url:ms.version_url || 'https://www.modelscope.cn/api/v1/studio/Daniel8152/Infinite-Canvas/repo?Revision=master&FilePath=VERSION', source:'modelscope', required:true },
                 { name:'ModelScope 空间页面', url:ms.repo_url || 'https://modelscope.cn/studios/Daniel8152/Infinite-Canvas', source:'modelscope' },
@@ -3733,8 +3770,7 @@
         });
 
         async function runProjectUpdate() {
-            if(projectUpdateRunning || projectUpdateCheckPromise) return;
-            await checkForUpdates(true);
+            openProjectUpdateModal();
         }
 
         function computeConnectivitySources(results) {
@@ -3865,7 +3901,6 @@
         }
 
         async function confirmProjectUpdate() {
-            if(projectUpdateRunning || window.electronAPI?.checkForUpdates && (await getDesktopUpdateInfo())?.isPackaged !== false) return;
             const isEn = window.StudioI18n?.lang?.() === 'en';
             const btn = document.getElementById('update-now-btn');
             const text = document.getElementById('update-now-text');
@@ -3883,7 +3918,6 @@
             setUpdateSummary('warn', isEn ? 'Updating' : '正在更新', isEn ? `Downloading files from ${sourceName} and creating a local backup.` : `正在从 ${sourceName} 下载文件，并创建本地备份。`);
             // 客户端兜底超时：即使后端异常挂起，UI 也能恢复，不会永远停在「更新中」
             const ac = new AbortController();
-            projectUpdateAbort = ac;
             const killer = setTimeout(() => ac.abort(), 300000);
             try {
                 const res = await fetch('/api/update-from-github', {
@@ -3913,10 +3947,10 @@
                             ? `Updated ${data.count || 0} files. Please restart the backend, then refresh this page.`
                             : `已更新 ${data.count || 0} 个文件。请重启后端，然后刷新页面。`)) + fallbackNote
                 );
-                const newVersion = data.version || btn?.dataset.remoteVersion || appInfo.version;
-                appInfo.version = newVersion;
-                setProjectVersionBadge(newVersion);
-                clearUpdateNotice();
+                const updateBtn = document.getElementById('update-now-btn');
+                updateBtn?.classList.remove('update-available');
+                btn?.classList.remove('show');
+                setProjectVersionBadge(data.version || updateBtn?.dataset.remoteVersion || appInfo.version);
                 if(restarting) waitForBackendAndReload();
             } catch(e) {
                 const msg = (e && e.name === 'AbortError')
@@ -3925,7 +3959,6 @@
                 setUpdateSummary('fail', isEn ? 'Update failed' : '更新失败', msg);
             } finally {
                 clearTimeout(killer);
-                projectUpdateAbort = null;
                 projectUpdateRunning = false;
                 if(btn) btn.disabled = false;
                 if(confirmBtn) confirmBtn.disabled = false;
@@ -3983,100 +4016,68 @@
         window.rollbackProjectUpdate = rollbackProjectUpdate;
 
         async function checkForUpdates(manual = false) {
-            if(projectUpdateRunning) return;
-            if(projectUpdateCheckPromise) return projectUpdateCheckPromise;
             const isEn = window.StudioI18n?.lang?.() === 'en';
-            const btn = document.getElementById('update-now-btn');
-            const text = document.getElementById('update-now-text');
             const badge = document.getElementById('project-version-badge');
-            if(manual) {
-                badge?.classList.add('checking');
-                if(btn) btn.disabled = true;
-                if(text) text.textContent = isEn ? 'Checking...' : '检查中...';
-            }
-            projectUpdateCheckPromise = (async () => {
-                let timeout;
+            if(manual && badge) badge.classList.add('checking');
+            try {
+                const info = await fetch('/api/app-info', { cache:'no-store' }).then(r => r.json()).catch(() => ({}));
+                appInfo = {...appInfo, ...info};
+                let current = String(appInfo.version || '').trim();
+                setProjectVersionBadge(current);
+                let best = null;
+                let reachable = false;
+                let serverChecked = false;
+                // 优先走后端检测：服务端用系统代理同时检测 GitHub 和 ModelScope，避免浏览器跨域/被墙
                 try {
-                    const desktopInfo = await getDesktopUpdateInfo();
-                    if(window.electronAPI?.checkForUpdates && desktopInfo?.isPackaged !== false) {
-                        if(desktopInfo?.displayVersion) appInfo.displayVersion = desktopInfo.displayVersion;
-                        if(desktopInfo?.version) {
-                            appInfo.version = desktopInfo.version;
-                            setProjectVersionBadge(desktopInfo.version);
-                        }
-                        if(desktopInfo?.result) applyDesktopUpdateStatus(desktopInfo.result);
-                        // 启动检查由主进程执行，避免页面和主进程重复提醒。
-                        if(!manual) return;
-                        const result = await window.electronAPI.checkForUpdates({manual: true});
-                        applyDesktopUpdateStatus(result);
-                        return result;
+                    const r = await fetch('/api/check-update', { cache:'no-store' });
+                    if(r.ok) {
+                        const d = await r.json();
+                        serverChecked = true;
+                        reachable = !!d.reachable;
+                        if(d.current) { current = String(d.current).trim(); setProjectVersionBadge(current); }
+                        if(d.latest?.version) best = {source:d.latest.source, version:d.latest.version, update_notes:d.latest.update_notes || d.update_notes || null};
                     }
-                    const controller = new AbortController();
-                    timeout = setTimeout(() => controller.abort(), 30000);
-                    const fetchOptions = { cache:'no-store', signal:controller.signal };
-                    const info = await fetch('/api/app-info', fetchOptions).then(r => r.json()).catch(() => ({}));
-                    appInfo = {...appInfo, ...info};
-                    let current = String(appInfo.version || '').trim();
-                    setProjectVersionBadge(current);
-                    let best = null;
-                    let reachable = false;
-                    let serverChecked = false;
-                    try {
-                        const r = await fetch('/api/check-update', fetchOptions);
-                        if(r.ok) {
-                            const d = await r.json();
-                            serverChecked = true;
-                            reachable = !!d.reachable;
-                            if(d.current) {
-                                current = String(d.current).trim();
-                                appInfo.version = current;
-                                setProjectVersionBadge(current);
-                            }
-                            if(d.latest?.version) best = {source:d.latest.source, version:d.latest.version, update_notes:d.latest.update_notes || d.update_notes || null};
-                        }
-                    } catch(e) {}
-                    if(!serverChecked) {
-                        const sources = appInfo.sources || {};
-                        const candidates = [
-                            {source:'github', url:sources.github?.version_url || appInfo.version_url || ''},
-                            {source:'modelscope', url:sources.modelscope?.version_url || ''},
-                        ].filter(item => item.url);
-                        for(const item of candidates) {
-                            try {
-                                const remoteText = await fetch(`${item.url}${item.url.includes('?') ? '&' : '?'}t=${Date.now()}`, fetchOptions).then(r => r.ok ? r.text() : '');
-                                const remote = String(remoteText || '').trim().split(/\r?\n/)[0].trim();
-                                if(remote){ reachable = true; if(!best || compareVersions(remote, best.version) > 0) best = {source:item.source, version:remote}; }
-                            } catch(e) {}
-                        }
+                } catch(e) {}
+                // 兜底：旧后端无 /api/check-update 时，浏览器直接拉取双源 VERSION
+                if(!serverChecked) {
+                    const sources = appInfo.sources || {};
+                    const candidates = [
+                        {source:'github', url:sources.github?.version_url || appInfo.version_url || ''},
+                        {source:'modelscope', url:sources.modelscope?.version_url || ''},
+                    ].filter(item => item.url);
+                    for(const item of candidates) {
+                        try {
+                            const remoteText = await fetch(`${item.url}${item.url.includes('?') ? '&' : '?'}t=${Date.now()}`, { cache:'no-store' }).then(r => r.ok ? r.text() : '');
+                            const remote = String(remoteText || '').trim().split(/\r?\n/)[0].trim();
+                            if(remote){ reachable = true; if(!best || compareVersions(remote, best.version) > 0) best = {source:item.source, version:remote}; }
+                        } catch(e) {}
                     }
-                    const hasUpdate = !!(current && best?.version && compareVersions(best.version, current) > 0);
-                    if(hasUpdate) {
-                        if(best.source === 'modelscope') setUpdateSource('modelscope');
-                        setProjectUpdateNotes(best.update_notes || null);
-                        showUpdateNotice(current, best.version);
-                        if(manual) openProjectUpdateModal();
-                    } else if(reachable) {
-                        clearUpdateNotice();
-                    } else if(manual) {
-                        alert(isEn ? 'Could not reach the update server. Check your network and try again.' : '无法连接更新源，请检查网络或代理后重试。');
-                    }
-                } catch(e) {
-                    if(manual) alert(isEn ? 'Update check failed. Please try again.' : '检测更新失败，请重试。');
-                } finally {
-                    clearTimeout(timeout);
-                    badge?.classList.remove('checking');
-                    if(manual && btn) btn.disabled = false;
-                    refreshUpdateButtonText();
                 }
-            })();
-            try { return await projectUpdateCheckPromise; } finally { projectUpdateCheckPromise = null; }
+                const hasUpdate = !!(current && best?.version && compareVersions(best.version, current) > 0);
+                if(hasUpdate) {
+                    if(best.source === 'modelscope') setUpdateSource('modelscope');
+                    setProjectUpdateNotes(best.update_notes || null);
+                    showUpdateNotice(current, best.version);
+                }
+                if(manual) {
+                    if(hasUpdate) {
+                        openProjectUpdateModal();
+                    } else if(reachable) {
+                        alert(isEn ? `You are on the latest version (${versionLabel(current)}).` : `已是最新版本（${versionLabel(current)}）。`);
+                    } else {
+                        alert(isEn ? 'Could not reach GitHub or ModelScope. Check your network/proxy and try again.' : '无法连接 GitHub 或 ModelScope 更新源，请检查网络或代理后重试。');
+                    }
+                }
+            } catch(e) {
+                // 离线包里没有网络时保持安静，不影响本地使用。
+                if(manual) alert(isEn ? 'Update check failed.' : '检测更新失败。');
+            } finally {
+                if(badge) badge.classList.remove('checking');
+            }
         }
-        window.electronAPI?.onUpdateStatus?.(applyDesktopUpdateStatus);
-        window.setTimeout(() => checkForUpdates(false), 900);
     </script>
-    <link rel="stylesheet" href="/static/css/mcp-settings.css?v=2026.10.01.1789283121">
-    <script src="/static/js/mcp-settings.js?v=2026.10.01.1789283281"></script>
+    <link rel="stylesheet" href="/static/css/mcp-settings.css?v=2026.10.11.1789283121">
+    <script src="/static/js/mcp-settings.js?v=2026.10.11.1789283281"></script>
 </body>
 
 </html>
-

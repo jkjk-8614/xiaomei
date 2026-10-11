@@ -11,9 +11,9 @@
             if(params.get('manager') === '1') document.documentElement.classList.add('manager-mode');
         } catch(e) {}
     </script>
-    <script src="/static/vendor/js/lucide.js?v=2026.10.01.1784161005"></script>
-    <script src="/static/js/theme.js?v=2026.10.01.1790178169"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.01.1785985827">
+    <script src="/static/vendor/js/lucide.js?v=2026.10.11.1784161005"></script>
+    <script src="/static/js/theme.js?v=2026.10.11.1791335865"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.11.1791343786">
     <style>
         *{box-sizing:border-box}
         :root{--bg:#f7faf6;--card:#fff;--text:#111827;--muted:#8993a4;--line:#e5ebe4;--soft:#eef5ec;--accent:#111827;--danger:#d94b4b}
@@ -37,6 +37,14 @@
         .filter.active{background:var(--accent);color:var(--bg);border-color:var(--accent)}
         .summary{margin-left:auto;color:var(--muted);font-size:12px;display:flex;align-items:center;padding:0 6px;white-space:nowrap}
         .grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+        .history-date-groups{display:flex;flex-direction:column;gap:0}
+        .history-date-group{min-width:0}
+        .history-date-group + .history-date-group{margin-top:8px;padding-top:15px;border-top:1px solid var(--line)}
+        .history-date-group-head{display:flex;align-items:center;gap:8px;min-height:30px;margin:0 0 10px;color:var(--text)}
+        .history-date-group-head strong{font-size:13px;font-weight:900}
+        .history-date-group-head span{color:var(--muted);font-size:10px;font-weight:800}
+        .history-date-group-head i,.history-date-group-head svg{width:14px;height:14px;color:var(--muted)}
+        .history-date-group .grid{grid-column:auto}
         .card{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:17px;overflow:hidden;transition:.2s ease;box-shadow:0 2px 8px rgba(20,40,25,.025)}
         .card:hover{transform:translateY(-3px);box-shadow:0 12px 28px rgba(20,40,25,.09)}
         .thumb{position:relative;aspect-ratio:1/1;background:var(--soft);cursor:grab;overflow:hidden}
@@ -113,12 +121,26 @@
         .manager-media-filters{display:none;align-items:center;gap:6px}
         .manager-media-filter{height:34px;border-radius:10px;padding:0 12px;font-size:11px;white-space:nowrap}
         .manager-media-filter.active{background:#e2e6ee;color:#253650;border-color:#d7dce6}
-        .manager-actions{display:none;align-items:center;gap:6px;flex-wrap:wrap}
-        .manager-actions:not([hidden]){display:flex}
+        .history-sort-controls{display:none;align-items:center;gap:5px;margin-left:auto;white-space:nowrap}
+        .history-sort-label{color:var(--muted);font-size:11px;font-weight:800}
+        .history-sort-button{width:34px;height:34px;padding:0;border-radius:10px;font-size:15px;line-height:1}
+        .history-sort-button svg{width:14px;height:14px}
+        .history-sort-button.active{background:var(--apple-accent-soft);color:var(--apple-accent);border-color:color-mix(in srgb,var(--apple-accent) 28%,var(--line))}
+        .history-group-button{height:34px;border-radius:10px;padding:0 11px;font-size:11px;white-space:nowrap}
+        .history-group-button.active{background:var(--apple-accent-soft);color:var(--apple-accent);border-color:color-mix(in srgb,var(--apple-accent) 28%,var(--line))}
+        .history-date-group-select{display:none;align-items:center;gap:5px;height:28px;margin-left:auto;padding:0 9px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--muted);font-size:10px;font-weight:800;cursor:pointer}
+        .history-date-group-select:hover{border-color:var(--apple-accent);color:var(--apple-accent);background:var(--apple-accent-soft);transform:none}
+        .history-date-group-select.active{border-color:var(--apple-accent);background:var(--apple-accent);color:#fff}
+        .history-date-group-select svg{width:13px;height:13px;color:currentColor}
+        .manager-selection-bar{display:none;align-items:center;gap:6px;flex-wrap:wrap}
+        .manager-selection-bar:not([hidden]){display:flex}
+        .manager-selection-bar[hidden]{display:none!important}
+        .manager-selection-bar-divider{width:1px;height:20px;background:var(--line);margin:0 4px;flex:0 0 auto}
+        html.manager-mode body.manager-selection-mode .manager-selection-bar:not([hidden]){padding:4px 10px;border:1px solid color-mix(in srgb,var(--apple-accent) 30%,var(--line));border-radius:11px;background:var(--apple-accent-soft)}
         .manager-action-button{height:34px;border-radius:10px;padding:0 10px;font-size:11px;white-space:nowrap}
         .manager-action-button svg{width:14px;height:14px}
         .manager-action-button.primary{background:var(--accent);color:var(--bg);border-color:var(--accent)}
-        .manager-action-button.active{background:#e2e6ee;color:#253650;border-color:#d7dce6}
+        .manager-action-button.active{background:var(--apple-accent-soft);color:var(--apple-accent);border-color:color-mix(in srgb,var(--apple-accent) 28%,var(--line))}
         .manager-action-button.danger{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 35%,var(--line))}
         .manager-action-button.danger:not(:disabled):hover{background:var(--danger);border-color:var(--danger);color:#fff}
         .manager-action-button:disabled{opacity:.42;cursor:not-allowed;transform:none}
@@ -136,36 +158,58 @@
         .manager-card-check svg{width:14px;height:14px;stroke-width:3}
         html.manager-mode,html.manager-mode body{height:100%;overflow:hidden}
         html.manager-mode body{padding:0;background:#f0f2f5}
-        html.manager-mode .page{width:100%;height:100dvh;max-width:none;margin:0;display:grid;grid-template-columns:220px minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto;overflow:hidden}
+        html.manager-mode .page{width:100%;height:100dvh;max-width:none;margin:0;display:grid;grid-template-columns:220px minmax(0,1fr);grid-template-rows:auto auto auto minmax(0,1fr) auto;overflow:hidden}
         html.manager-mode .history-manager-sidebar{grid-column:1;grid-row:1 / -1;display:flex;min-height:0;flex-direction:column;gap:2px;padding:24px 14px 20px;background:#f4f5f7;border-right:1px solid var(--line);overflow:auto}
         html.manager-mode .history-manager-sidebar-title{padding:0 10px 20px;font-size:17px;font-weight:900;letter-spacing:-.03em}
         html.manager-mode .history-manager-sidebar-heading{padding:14px 10px 5px;color:var(--muted);font-size:11px;font-weight:800}
         html.manager-mode .manager-sidebar-type-heading{padding-top:22px}
         html.manager-mode .history-manager-sidebar-note{margin: auto 10px 0;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:10px;line-height:1.6}
-        html.manager-mode .head{grid-column:2;grid-row:1;min-width:0;align-items:center;margin:0;padding:22px 28px 16px;border-bottom:1px solid var(--line)}
+        html.manager-mode .head{grid-column:2;grid-row:1;display:grid;grid-template-columns:minmax(230px,.75fr) minmax(0,1.25fr);align-items:center;gap:24px;min-width:0;margin:0;padding:22px 28px 16px;border-bottom:1px solid var(--line)}
         html.manager-mode h1{font-size:23px;margin-bottom:7px}
         html.manager-mode .subtitle{font-size:11px}
-        html.manager-mode .toolbar{min-width:0;justify-content:flex-end}
+        html.manager-mode .toolbar{min-width:0;justify-content:flex-end;align-content:center;row-gap:8px}
         html.manager-mode .search{width:260px}
         html.manager-mode .manage-open-button{display:none}
-        html.manager-mode .filters > .filter[data-type="all"],html.manager-mode .filters > .filter[data-type="online"],html.manager-mode .filters > .filter[data-type="chat"],html.manager-mode .filters > .filter[data-type="canvas"],html.manager-mode .filters > .filter[data-type="comfyui"],html.manager-mode .filters > .filter[data-type="commerce"],html.manager-mode .filters > .filter[data-type="video"]{display:none}
+        html.manager-mode .filters > .filter[data-type="all"],html.manager-mode .filters > .filter[data-type="chat"],html.manager-mode .filters > .filter[data-type="canvas"],html.manager-mode .filters > .filter[data-type="comfyui"],html.manager-mode .filters > .filter[data-type="commerce"],html.manager-mode .filters > .filter[data-type="video"]{display:none}
         html.manager-mode .manager-media-filters{display:flex}
+        html.manager-mode .history-sort-controls{display:flex}
         html.manager-mode .manager-sidebar-project-heading{padding-top:22px}
         html.manager-mode .filters{grid-column:2;grid-row:2;align-items:center;margin:0;padding:13px 28px 12px;border-bottom:1px solid var(--line)}
+        /* 管理态筛选行用固定五列网格：媒体筛选 | 选择模式 | 弹性空隙 | 日期排序分组 | 刷新 | 条数。
+           不用 flex，避免外部主题的 space-between、auto 边距、按钮拉伸或界面缩放把控件推散换行。 */
+        html.manager-mode .filters{
+            display:grid !important;
+            grid-template-columns:auto auto auto minmax(0,1fr) auto auto;
+            gap:8px;overflow-x:auto;
+        }
+        html.manager-mode .filters > *{margin:0 !important;min-width:0;width:auto}
+        html.manager-mode .filters > .history-sort-controls{justify-self:end}
+        html.manager-mode .filters button{width:auto !important;min-width:0 !important;max-width:none !important;flex:0 0 auto !important}
+        /* 管理态把刷新并入筛选行，和选择模式、日期排序保持同一条水平线。 */
+        html.manager-mode .head .toolbar .history-refresh-button{display:none}
+        .manager-refresh-button{display:none}
+        html.manager-mode .manager-refresh-button{display:inline-flex}
+        html.manager-mode .toolbar{flex-wrap:nowrap !important;justify-content:flex-end !important}
+        html.manager-mode .toolbar > *{margin:0 !important}
+        .manager-cleanup-button{display:none;white-space:nowrap}
+        html.manager-mode .manager-cleanup-button{display:inline-flex}
+        .manager-cleanup-button:disabled{opacity:.55;cursor:wait}
         html.manager-mode .filter{height:34px;border-radius:10px;padding:0 12px;font-size:11px}
         html.manager-mode .filter.active{background:#e2e6ee;color:#253650;border-color:#d7dce6}
         html.manager-mode .content-placeholder{grid-column:2}
-        html.manager-mode #content{grid-column:2;grid-row:3;min-width:0;min-height:0;overflow:auto;padding:0 28px 28px;overscroll-behavior:contain;scrollbar-gutter:stable}
+        html.manager-mode #content{grid-column:2;grid-row:4;min-width:0;min-height:0;overflow:auto;padding:0 28px 28px;overscroll-behavior:contain;scrollbar-gutter:stable}
         html.manager-mode #content::-webkit-scrollbar{width:8px!important}
         html.manager-mode .grid{grid-template-columns:repeat(auto-fill,minmax(188px,1fr));gap:16px}
+        html.manager-mode .history-date-group .grid{grid-template-columns:repeat(auto-fill,minmax(188px,1fr));gap:16px}
         html.manager-mode .card{border-radius:15px;content-visibility:auto;contain-intrinsic-size:320px;transition:none;box-shadow:none}
         html.manager-mode .card:hover{transform:none;box-shadow:none}
         html.manager-mode .thumb img,html.manager-mode .thumb video{transition:none}
         html.manager-mode .thumb{aspect-ratio:1/1}
-        html.manager-mode .more{grid-column:2;grid-row:4;margin:0;padding:0 28px 20px}
+        html.manager-mode .more{grid-column:2;grid-row:5;margin:0;padding:0 28px 20px}
         html.manager-mode body.manager-selection-mode .manager-card-check{display:grid}
+        html.manager-mode .history-date-group-select{display:inline-flex}
         html.manager-mode body.manager-selection-mode .type{left:42px}
-        html.manager-mode body.manager-selection-mode .card.hbm-selected{outline:3px solid var(--accent);outline-offset:-3px}
+        html.manager-mode body.manager-selection-mode .card.hbm-selected{outline:2px solid var(--apple-accent);outline-offset:-2px}
         html.manager-mode body.manager-selection-mode .card.hbm-selected .manager-card-check{background:var(--accent);border-color:var(--accent);color:var(--bg)}
         html.manager-mode .empty,html.manager-mode .loading{min-height:330px}
         html.studio-theme-dark.manager-mode body{background:#111814}
@@ -175,16 +219,54 @@
         html.studio-theme-dark.manager-mode .filter.active{background:#2c3d32;color:#e8f2eb;border-color:#3b5042}
         html.studio-theme-dark.manager-mode .manager-media-filter.active{background:#2c3d32;color:#e8f2eb;border-color:#3b5042}
         html.studio-theme-dark.manager-mode .manager-action-button.active{background:#2c3d32;color:#e8f2eb;border-color:#3b5042}
+        /* 日期选择面板：日历式批量挑选某天的记录。 */
+        .history-date-panel{display:none;flex-direction:column;gap:10px;grid-column:2;grid-row:3;margin:0;padding:14px 28px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--card) 55%,transparent)}
+        html.manager-mode .history-date-panel:not([hidden]){display:flex}
+        .history-date-panel[hidden]{display:none!important}
+        .history-date-panel-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+        .history-date-panel-title{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:900}
+        .history-date-panel-title svg{width:14px;height:14px;color:var(--muted)}
+        .history-date-panel-legend{display:inline-flex;align-items:center;gap:5px;color:var(--muted);font-size:10px;font-weight:800}
+        .history-date-panel-legend .dot{width:9px;height:9px;border-radius:50%;display:inline-block;font-style:normal}
+        .history-date-panel-legend .dot.has-records{background:var(--apple-accent,#b45309)}
+        .history-date-panel-legend .dot.no-records{background:var(--line);border:1px solid var(--muted)}
+        .history-date-panel-legend em{font-style:normal;margin-right:4px}
+        .history-date-panel-summary{margin-left:auto;color:var(--muted);font-size:11px;font-weight:700}
+        .history-date-panel-clear{height:28px;padding:0 10px;border-radius:9px;font-size:11px}
+        .history-date-panel-months{display:flex;gap:14px;flex-wrap:wrap;overflow:auto;max-height:320px;padding:2px}
+        .history-date-panel-month{flex:0 0 auto;width:242px;padding:10px;border:1px solid var(--line);border-radius:13px;background:var(--card)}
+        .history-date-panel-month-head{display:flex;align-items:center;gap:7px;margin-bottom:8px}
+        .history-date-panel-month-head strong{font-size:12px;font-weight:900}
+        .history-date-panel-month-head > span{color:var(--muted);font-size:10px;font-weight:700}
+        .history-date-panel-month-select{margin-left:auto;height:24px;padding:0 8px;border-radius:8px;font-size:10px;white-space:nowrap}
+        .history-date-panel-month-select.active{background:var(--apple-accent);border-color:var(--apple-accent);color:#fff}
+        .history-date-panel-week,.history-date-panel-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+        .history-date-panel-week span{text-align:center;color:var(--muted);font-size:9px;font-weight:800;padding:2px 0}
+        .history-date-panel-day{height:34px;padding:1px 2px;border:1px solid transparent;border-radius:8px;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--muted)}
+        .history-date-panel-day b{font-size:11px;line-height:1.1}
+        .history-date-panel-day i{font-style:normal;font-size:9px;font-weight:800;line-height:1;margin-top:2px}
+        .history-date-panel-day.no-records{background:color-mix(in srgb,var(--muted) 9%,transparent);color:color-mix(in srgb,var(--muted) 72%,transparent)}
+        .history-date-panel-day.no-records b{opacity:.5}
+        .history-date-panel-day.has-records{background:var(--apple-accent-soft);color:var(--apple-accent);border-color:color-mix(in srgb,var(--apple-accent) 30%,var(--line));cursor:pointer}
+        .history-date-panel-day.has-records:hover{transform:none;filter:brightness(.96)}
+        .history-date-panel-day.selected{background:var(--apple-accent);border-color:var(--apple-accent);color:#fff}
+        .history-date-panel-day.selected i{color:#fff}
+        .history-date-panel-day.is-blank{pointer-events:none}
+        .history-date-panel-empty{padding:12px 4px;color:var(--muted);font-size:11px;font-weight:700}
+        html.studio-theme-dark .history-date-panel-day.selected{color:#fff}
         @media(max-width:760px){
-            html.manager-mode .page{grid-template-columns:1fr;grid-template-rows:auto auto minmax(0,1fr) auto}
+            html.manager-mode .page{grid-template-columns:1fr;grid-template-rows:auto auto auto minmax(0,1fr) auto}
             html.manager-mode .history-manager-sidebar{display:none}
-            html.manager-mode .head{grid-column:1;grid-row:1;align-items:flex-start;flex-direction:column;padding:18px 16px 12px}
+            html.manager-mode .head{grid-column:1;grid-row:1;grid-template-columns:1fr;align-items:flex-start;gap:0;padding:18px 16px 12px}
             html.manager-mode .toolbar{width:100%;margin-top:10px;justify-content:flex-start}
             html.manager-mode .search{flex:1;width:auto;min-width:120px}
-            html.manager-mode .manager-actions{width:100%;padding-top:2px}
-            html.manager-mode .filters{grid-column:1;grid-row:2;padding:10px 16px;overflow:auto}
-            html.manager-mode #content{grid-column:1;grid-row:3;padding:0 16px 20px}
-            html.manager-mode .more{grid-column:1;grid-row:4;padding:0 16px 16px}
+            html.manager-mode .filters{grid-column:1;grid-row:2;padding:10px 16px;overflow:auto;display:flex !important;flex-wrap:wrap;row-gap:8px}
+            html.manager-mode .filters > *{width:auto}
+            html.manager-mode .filters > .history-sort-controls{margin-left:auto}
+            html.manager-mode .history-date-panel{grid-column:1;grid-row:3;padding:12px 16px}
+            html.manager-mode .history-sort-controls{margin-left:0}
+            html.manager-mode #content{grid-column:1;grid-row:4;padding:0 16px 20px}
+            html.manager-mode .more{grid-column:1;grid-row:5;padding:0 16px 16px}
         }
         @media(prefers-reduced-motion:reduce){
             *,*::before,*::after{scroll-behavior:auto!important;transition-duration:0.01ms!important;animation-duration:0.01ms!important;animation-iteration-count:1!important}
@@ -200,6 +282,7 @@
         }
         html.manager-mode body > .page > .head{padding:22px 28px 16px !important;margin:0 !important}
         html.manager-mode body > .page > .filters{padding:13px 28px 12px !important;margin:0 !important}
+        html.manager-mode body > .page > .history-date-panel{border-radius:0 !important;box-shadow:none !important;margin:0 !important}
         html.manager-mode body > .page > .filters .filter.active,
         html.manager-mode body > .page > .filters .manager-media-filter.active{
             background:#e2e6ee !important;
@@ -208,7 +291,7 @@
             box-shadow:none !important;
         }
         /* 外部主题会给工具栏按钮设置 display；管理态必须让 hidden 语义优先。 */
-        html.manager-mode body > .page .manager-actions [hidden]{
+        html.manager-mode body > .page .manager-selection-bar [hidden]{
             display:none !important;
         }
         /* 抽屉态：把标题、搜索和主要操作收敛成一块清晰的操作卡。 */
@@ -227,8 +310,8 @@
         .history-search .search::placeholder{color:var(--muted)}
         .history-search:focus-within{border-color:var(--apple-accent)!important;box-shadow:0 0 0 3px var(--apple-accent-soft)!important}
         .history-refresh-button{white-space:nowrap}
-        html.manager-mode .history-search{width:260px}
-        html.manager-mode .history-search .search{width:100%}
+        html.manager-mode .history-search{flex:0 1 300px !important;width:300px !important;min-width:210px;max-width:min(430px,34vw)}
+        html.manager-mode .history-search .search{width:100% !important;flex:1 1 auto !important}
         html.drawer-mode body > .page > .head{flex-direction:column!important;align-items:stretch!important;gap:0!important;margin-bottom:14px!important;padding:18px 18px 16px!important;border:1px solid var(--line)!important;border-radius:20px!important;background:linear-gradient(145deg,color-mix(in srgb,var(--card) 97%,var(--apple-accent) 3%),var(--card))!important;box-shadow:0 10px 25px rgba(56,40,20,.08)!important}
         html.drawer-mode .history-heading{width:100%}
         html.drawer-mode .history-title-row{gap:9px}
@@ -257,9 +340,9 @@
             html.manager-mode body > .page > .filters{padding:10px 16px !important}
         }
     </style>
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.01.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.01.1790574407">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.01.1790178173"></script>
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.11.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.11.1791346900">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.11.1790178173"></script>
 </head>
 <body>
     <div class="page">
@@ -276,11 +359,8 @@
                 <i data-lucide="archive-x"></i><span>生成失败</span><b id="managerFailedCount">0</b>
             </button>
             <div class="history-manager-sidebar-heading manager-sidebar-type-heading">按来源</div>
-            <button class="manager-filter" type="button" data-manager-source="online" onclick="setManagerSourceFilter(this)">
-                <i data-lucide="image"></i><span>在线生图</span><b id="managerOnlineCount">0</b>
-            </button>
             <button class="manager-filter" type="button" data-manager-source="chat" onclick="setManagerSourceFilter(this)">
-                <i data-lucide="message-square"></i><span>GPT 对话</span><b id="managerChatCount">0</b>
+                <i data-lucide="message-square"></i><span>DeepSeek 对话</span><b id="managerChatCount">0</b>
             </button>
             <button class="manager-filter" type="button" data-manager-source="canvas" onclick="setManagerSourceFilter(this)">
                 <i data-lucide="layout-dashboard"></i><span>小美画布</span><b id="managerCanvasCount">0</b>
@@ -310,23 +390,11 @@
                     <i data-lucide="panels-top-left"></i><span>管理历史</span>
                 </button>
                 <button class="history-refresh-button" type="button" onclick="loadHistory(true)" title="刷新历史记录" aria-label="刷新历史记录"><i data-lucide="refresh-cw"></i><span>刷新</span></button>
-                <div id="managerActions" class="manager-actions" hidden>
-                    <button id="managerSelectMode" class="manager-action-button" type="button" aria-pressed="false" onclick="toggleSelectionMode()">
-                        <i data-lucide="check-square"></i><span>选择模式</span>
-                    </button>
-                    <span id="managerSelectionCount" class="manager-selection-count" hidden>已选 0 个</span>
-                    <button id="managerSelectAll" class="manager-action-button" type="button" hidden onclick="toggleSelectAll()">全选</button>
-                    <button id="managerDeleteSelected" class="manager-action-button danger" type="button" hidden disabled onclick="deleteSelectedRecords()">
-                        <i data-lucide="trash-2"></i><span>删除所选</span>
-                    </button>
-                    <button id="managerExitSelection" class="manager-action-button primary" type="button" hidden onclick="toggleSelectionMode(false)">完成</button>
-                </div>
             </div>
         </div>
         <div class="filters">
             <button class="filter active" data-type="all" onclick="setFilter(this)">全部</button>
-            <button class="filter" data-type="online" onclick="setFilter(this)">在线生图</button>
-            <button class="filter" data-type="chat" onclick="setFilter(this)">GPT 对话</button>
+            <button class="filter" data-type="chat" onclick="setFilter(this)">DeepSeek 对话</button>
             <button class="filter" data-type="canvas" onclick="setFilter(this)">小美画布</button>
             <button class="filter" data-type="comfyui" onclick="setFilter(this)">ComfyUI 工作台</button>
             <button class="filter" data-type="commerce" onclick="setFilter(this)">电商工作台</button>
@@ -336,7 +404,38 @@
                 <button class="manager-media-filter" type="button" data-media-type="image" onclick="setMediaFilter(this)">图片</button>
                 <button class="manager-media-filter" type="button" data-media-type="video" onclick="setMediaFilter(this)">视频</button>
             </div>
+            <div id="managerActions" class="manager-selection-bar" hidden>
+                <span class="manager-selection-bar-divider" aria-hidden="true"></span>
+                <button id="managerSelectMode" class="manager-action-button" type="button" aria-pressed="false" onclick="toggleSelectionMode()">
+                    <i data-lucide="check-square"></i><span>选择模式</span>
+                </button>
+                <span id="managerSelectionCount" class="manager-selection-count" hidden>已选 0 个</span>
+                <button id="managerSelectAll" class="manager-action-button" type="button" hidden onclick="toggleSelectAll()">全选</button>
+                <button id="managerDeleteSelected" class="manager-action-button danger" type="button" hidden disabled onclick="deleteSelectedRecords()">
+                    <i data-lucide="trash-2"></i><span>删除所选</span>
+                </button>
+                <button id="managerExitSelection" class="manager-action-button primary" type="button" hidden onclick="toggleSelectionMode(false)">完成</button>
+            </div>
+            <button id="managerCleanupButton" class="manager-cleanup-button manager-action-button" type="button" onclick="cleanupUnreferencedFiles()" title="把图片空间中不再被历史记录、画布或素材收藏引用的文件移入回收站（可恢复）">
+                <i data-lucide="eraser"></i><span>清理未引用文件</span>
+            </button>
+            <div class="history-sort-controls" role="group" aria-label="历史记录排序和分组">
+                <span class="history-sort-label">生成日期</span>
+                <button id="historySortAsc" class="history-sort-button" type="button" aria-label="按生成日期升序" title="按生成日期升序" onclick="setHistorySort('asc')"><i data-lucide="arrow-up"></i></button>
+                <button id="historySortDesc" class="history-sort-button active" type="button" aria-label="按生成日期降序" title="按生成日期降序" onclick="setHistorySort('desc')"><i data-lucide="arrow-down"></i></button>
+                <button id="historyGroupByDate" class="history-group-button" type="button" aria-label="按日期分组" title="按日期分组" aria-pressed="false" onclick="toggleDateGrouping()"><i data-lucide="calendar-days"></i><span>日期分组</span></button>
+            </div>
+            <button class="manager-action-button manager-refresh-button" type="button" onclick="loadHistory(true)" title="刷新历史记录" aria-label="刷新历史记录"><i data-lucide="refresh-cw"></i><span>刷新</span></button>
             <div id="summary" class="summary">0 条记录</div>
+        </div>
+        <div id="datePanel" class="history-date-panel" hidden>
+            <div class="history-date-panel-head">
+                <span class="history-date-panel-title"><i data-lucide="calendar-days"></i><strong>日期选择</strong></span>
+                <span class="history-date-panel-legend"><i class="dot has-records"></i><em>有生图</em><i class="dot no-records"></i><em>无生图</em></span>
+                <span id="datePanelSummary" class="history-date-panel-summary">点击日期选中当天全部记录，可多选</span>
+                <button type="button" class="history-date-panel-clear" onclick="clearDateSelection()">清空选择</button>
+            </div>
+            <div id="datePanelMonths" class="history-date-panel-months"></div>
         </div>
         <div id="content"><div class="loading"><i data-lucide="loader-circle"></i><span>正在加载历史记录</span></div></div>
         <div id="historyNotice" class="history-notice" role="status" aria-live="polite" aria-atomic="true" hidden></div>
@@ -355,6 +454,8 @@
         let activeType = 'all';
         let activeQuickFilter = 'all';
         let activeSourceFilter = '';
+        let historySortDirection = 'desc';
+        let historyDateGrouping = false;
         let visibleCount = 60;
         let selectionMode = false;
         const selectedTimestamps = new Set();
@@ -375,7 +476,7 @@
 
         const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
         const VIDEO_URL_RE = /\.(mp4|webm|mov|m4v|avi|mkv|flv)(?:[?#].*)?$/i;
-        const GROUP_LABELS = {online:'在线生图',chat:'GPT 对话',canvas:'小美画布',comfyui:'ComfyUI 工作台',commerce:'电商工作台',video:'视频'};
+        const GROUP_LABELS = {online:'生成记录',chat:'DeepSeek 对话',canvas:'小美画布',comfyui:'ComfyUI 工作台',commerce:'电商工作台',video:'视频'};
         const COMFYUI_PROJECT_ID = '__comfyui__';
         const UNASSIGNED_PROJECT_ID = '__unassigned__';
         function mediaUrl(value){
@@ -418,21 +519,24 @@
         }
         function recordGroup(item){
             const hintedGroup = String(item?.history_group || '').trim();
-            if(hintedGroup) return hintedGroup;
             const type = String(item?.type || '').toLowerCase();
             const source = recordSource(item);
             if(recordHasVideo(item) || type === 'video' || type.includes('video')) return 'video';
+            // Older canvas callers submitted local ComfyUI work with a
+            // canvas source. Workflow metadata still identifies the result.
+            if((source === '' || source === 'canvas' || source === 'smart_canvas')
+                && !['online','chat','commerce'].includes(type)
+                && (item.workflow_json || item.prompt_id || item.backend)) return 'comfyui';
             if(source === 'comfyui' || source === 'comfy_ui' || source === 'comfy_app' || source === 'comfyui_workbench' || type === 'comfyui' || type === 'comfy-app' || type === 'comfy_app') return 'comfyui';
             if(source === 'online' || source === 'online_image') return 'online';
             if(source === 'chat' || source === 'gpt_chat' || source === 'gpt') return 'chat';
             if(source === 'canvas' || source === 'smart_canvas') return 'canvas';
             if(source === 'commerce' || source === 'commerce_workbench' || source === 'ecommerce') return 'commerce';
+            if(hintedGroup) return hintedGroup;
             if(type === 'online') return 'online';
             if(type === 'chat' || type === 'gpt-chat' || type === 'gpt_chat') return 'chat';
             if(type === 'commerce' || type.includes('commerce')) return 'commerce';
             if(type === 'canvas' || type.includes('canvas')) return 'canvas';
-            // ComfyUI records from older canvas builds did not carry a source field.
-            if(item.workflow_json || item.prompt_id || item.backend) return 'canvas';
             return 'other';
         }
         function recordIsFailed(item){
@@ -441,6 +545,175 @@
             return Boolean(error) || ['failed','failure','error','cancelled','canceled'].includes(status);
         }
         function recordTimestamp(item){ return Number(item?.timestamp || 0); }
+        function formatDateGroup(ts){
+            const date = new Date(Number(ts) * 1000);
+            if(Number.isNaN(date.getTime())) return '未知日期';
+            const now = new Date();
+            const sameYear = date.getFullYear() === now.getFullYear();
+            return date.toLocaleDateString('zh-CN', sameYear
+                ? {month:'long', day:'numeric'}
+                : {year:'numeric', month:'long', day:'numeric'});
+        }
+        function refreshHistorySortUi(){
+            const asc = document.getElementById('historySortAsc');
+            const desc = document.getElementById('historySortDesc');
+            const group = document.getElementById('historyGroupByDate');
+            if(asc) asc.classList.toggle('active', historySortDirection === 'asc');
+            if(desc) desc.classList.toggle('active', historySortDirection === 'desc');
+            if(group){
+                group.classList.toggle('active', historyDateGrouping);
+                group.setAttribute('aria-pressed', historyDateGrouping ? 'true' : 'false');
+            }
+            refreshDateGroupSelectionUi();
+        }
+        function setHistorySort(direction){
+            const next = String(direction || '').toLowerCase() === 'asc' ? 'asc' : 'desc';
+            if(historySortDirection === next) return;
+            historySortDirection = next;
+            refreshHistorySortUi();
+            visibleCount = 60;
+            applyFilters();
+        }
+        function toggleDateGrouping(){
+            historyDateGrouping = !historyDateGrouping;
+            const panel = document.getElementById('datePanel');
+            if(panel) panel.hidden = !historyDateGrouping;
+            if(historyDateGrouping) renderDatePanel();
+            refreshHistorySortUi();
+            render();
+        }
+        // 日期统一用本地 YYYY-MM-DD 作为分组键，日历面板与列表分组共用。
+        function recordDateKey(item){
+            const date = new Date(recordTimestamp(item) * 1000);
+            if(Number.isNaN(date.getTime()) || recordTimestamp(item) <= 0) return 'unknown';
+            return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+        }
+        function dateGroupRecords(key){
+            const wanted = String(key || '');
+            return filteredRecords.filter(item => recordDateKey(item) === wanted);
+        }
+        function applyDateKeySelection(keys){
+            const allSelected = keys.length > 0 && keys.every(key => selectedTimestamps.has(key));
+            keys.forEach(key => {
+                if(allSelected) selectedTimestamps.delete(key);
+                else selectedTimestamps.add(key);
+            });
+        }
+        function toggleDateGroupSelection(key){
+            if(!selectionMode) toggleSelectionMode(true);
+            applyDateKeySelection(dateGroupRecords(key).map(item => String(recordTimestamp(item))));
+            refreshSelectionUi();
+            syncRenderedSelectionState();
+        }
+        function toggleMonthSelection(monthKey){
+            if(!selectionMode) toggleSelectionMode(true);
+            const prefix = `${String(monthKey || '')}-`;
+            applyDateKeySelection(filteredRecords
+                .filter(item => recordDateKey(item).startsWith(prefix))
+                .map(item => String(recordTimestamp(item))));
+            refreshSelectionUi();
+            syncRenderedSelectionState();
+        }
+        function clearDateSelection(){
+            selectedTimestamps.clear();
+            refreshSelectionUi();
+            syncRenderedSelectionState();
+        }
+        function buildDateMonthData(){
+            const months = new Map();
+            filteredRecords.forEach(item => {
+                const key = recordDateKey(item);
+                if(key === 'unknown') return;
+                const monthKey = key.slice(0,7);
+                let month = months.get(monthKey);
+                if(!month){
+                    month = {key:monthKey, days:new Map(), count:0};
+                    months.set(monthKey, month);
+                }
+                let day = month.days.get(key);
+                if(!day){
+                    day = {key, count:0, ts:recordTimestamp(item)};
+                    month.days.set(key, day);
+                }
+                day.count += 1;
+                month.count += 1;
+            });
+            return [...months.values()].sort((left, right) => right.key.localeCompare(left.key));
+        }
+        function renderDatePanel(){
+            const target = document.getElementById('datePanelMonths');
+            if(!target || !historyDateGrouping) return;
+            const panel = document.getElementById('datePanel');
+            if(!panel || panel.hidden) return;
+            const months = buildDateMonthData();
+            if(!months.length){
+                target.innerHTML = '<div class="history-date-panel-empty">当前筛选下没有可按日期选择的记录</div>';
+                refreshDateGroupSelectionUi();
+                return;
+            }
+            const weekdayLabels = ['一','二','三','四','五','六','日'];
+            target.innerHTML = months.map(month => {
+                const [year, monthNumber] = month.key.split('-').map(Number);
+                const firstDay = new Date(year, monthNumber - 1, 1);
+                const lead = (firstDay.getDay() + 6) % 7;
+                const daysInMonth = new Date(year, monthNumber, 0).getDate();
+                let cells = '';
+                for(let index = 0; index < lead; index += 1) cells += '<span class="history-date-panel-day is-blank"></span>';
+                for(let day = 1; day <= daysInMonth; day += 1){
+                    const key = `${month.key}-${String(day).padStart(2,'0')}`;
+                    const info = month.days.get(key);
+                    const className = info ? 'has-records' : 'no-records';
+                    const title = info ? `${formatDateGroup(info.ts)} · ${info.count} 条 · 点击选择` : '当天没有生成记录';
+                    const badge = info ? `<i>${info.count}</i>` : '';
+                    cells += `<button type="button" class="history-date-panel-day ${className}" data-date-group="${key}" aria-pressed="false" title="${esc(title)}" onclick="toggleDateGroupSelection('${key}')"><b>${day}</b>${badge}</button>`;
+                }
+                return `<div class="history-date-panel-month"><div class="history-date-panel-month-head"><strong>${year}年${monthNumber}月</strong><span>${month.count} 条</span><button type="button" class="history-date-panel-month-select" data-month="${month.key}" onclick="toggleMonthSelection('${month.key}')">全选本月</button></div><div class="history-date-panel-week">${weekdayLabels.map(label => `<span>${label}</span>`).join('')}</div><div class="history-date-panel-grid">${cells}</div></div>`;
+            }).join('');
+            refreshDateGroupSelectionUi();
+        }
+        function updateDatePanelSummary(){
+            const summary = document.getElementById('datePanelSummary');
+            if(!summary) return;
+            const daySet = new Set();
+            let count = 0;
+            filteredRecords.forEach(item => {
+                if(selectedTimestamps.has(String(recordTimestamp(item)))){
+                    daySet.add(recordDateKey(item));
+                    count += 1;
+                }
+            });
+            summary.textContent = daySet.size
+                ? `已选 ${daySet.size} 天 · ${count} 条，可用上方“删除所选”批量删除`
+                : '点击日期选中当天全部记录，可多选';
+        }
+        function refreshDateGroupSelectionUi(){
+            document.querySelectorAll('.history-date-group-select').forEach(button => {
+                const records = dateGroupRecords(button.dataset.dateGroup || '');
+                const keys = records.map(item => String(recordTimestamp(item)));
+                const allSelected = keys.length > 0 && keys.every(key => selectedTimestamps.has(key));
+                button.classList.toggle('active', allSelected);
+                button.setAttribute('aria-pressed', allSelected ? 'true' : 'false');
+                const text = button.querySelector('span');
+                if(text) text.textContent = allSelected ? '取消本日' : '选择本日';
+            });
+            document.querySelectorAll('.history-date-panel-day[data-date-group]').forEach(cell => {
+                const records = dateGroupRecords(cell.dataset.dateGroup || '');
+                const keys = records.map(item => String(recordTimestamp(item)));
+                const allSelected = keys.length > 0 && keys.every(key => selectedTimestamps.has(key));
+                cell.classList.toggle('selected', allSelected);
+                cell.setAttribute('aria-pressed', allSelected ? 'true' : 'false');
+            });
+            document.querySelectorAll('.history-date-panel-month-select').forEach(button => {
+                const prefix = `${button.dataset.month || ''}-`;
+                const keys = filteredRecords
+                    .filter(item => recordDateKey(item).startsWith(prefix))
+                    .map(item => String(recordTimestamp(item)));
+                const allSelected = keys.length > 0 && keys.every(key => selectedTimestamps.has(key));
+                button.classList.toggle('active', allSelected);
+                button.textContent = allSelected ? '取消本月' : '全选本月';
+            });
+            updateDatePanelSummary();
+        }
         function recordIsRecent(item){
             const timestamp = recordTimestamp(item);
             return timestamp > 0 && timestamp >= (Date.now() / 1000) - (7 * 24 * 60 * 60);
@@ -737,6 +1010,10 @@
                 if(!query) return true;
                 return [item.prompt,item.model,item.provider_name,item.type,item.history_source,item.params?.source].some(value => String(value || '').toLowerCase().includes(query));
             });
+            filteredRecords.sort((left, right) => {
+                const delta = recordTimestamp(left) - recordTimestamp(right);
+                return historySortDirection === 'asc' ? delta : -delta;
+            });
             const visibleKeys = new Set(filteredRecords.map(item => String(recordTimestamp(item))));
             selectedTimestamps.forEach(key => {
                 if(!visibleKeys.has(key)) selectedTimestamps.delete(key);
@@ -752,9 +1029,28 @@
                 document.getElementById('more').hidden = true;
                 refreshHistoryIcons(document.getElementById('content')); return;
             }
-            document.getElementById('content').innerHTML = `<div class="grid">${records.map(cardHtml).join('')}</div>`;
+            document.getElementById('content').innerHTML = historyDateGrouping
+                ? renderDateGroups(records)
+                : `<div class="grid">${records.map(cardHtml).join('')}</div>`;
             document.getElementById('more').hidden = records.length >= filteredRecords.length;
             refreshHistoryIcons(document.getElementById('content'));
+            if(historyDateGrouping) renderDatePanel();
+            refreshDateGroupSelectionUi();
+        }
+        function renderDateGroups(records){
+            const groups = [];
+            const byKey = new Map();
+            records.forEach(item => {
+                const key = recordDateKey(item);
+                let group = byKey.get(key);
+                if(!group){
+                    group = {key, label:formatDateGroup(recordTimestamp(item)), records:[]};
+                    byKey.set(key, group);
+                    groups.push(group);
+                }
+                group.records.push(item);
+            });
+            return `<div class="history-date-groups">${groups.map(group => `<section class="history-date-group"><div class="history-date-group-head"><i data-lucide="calendar-days" aria-hidden="true"></i><strong>${esc(group.label)}</strong><span>${group.records.length} 条</span><button class="history-date-group-select" type="button" data-date-group="${esc(group.key)}" aria-label="选择${esc(group.label)}的记录" aria-pressed="false" onclick="event.stopPropagation();toggleDateGroupSelection('${esc(group.key)}')"><i data-lucide="check-square"></i><span>选择本日</span></button></div><div class="grid">${group.records.map(cardHtml).join('')}</div></section>`).join('')}</div>`;
         }
         function cardHtml(item){
             const mediaItems = recordMediaEntries(item);
@@ -786,7 +1082,7 @@
             if(element) element.textContent = String(value);
         }
         function updateManagerCounts(){
-            const counts = {all:allRecords.length, recent:0, failed:0, online:0, chat:0, canvas:0, comfyui:0, commerce:0};
+            const counts = {all:allRecords.length, recent:0, failed:0, chat:0, canvas:0, comfyui:0, commerce:0};
             allRecords.forEach(item => {
                 if(recordIsRecent(item)) counts.recent += 1;
                 if(recordIsFailed(item)) counts.failed += 1;
@@ -796,7 +1092,6 @@
             setManagerCount('managerAllCount', counts.all);
             setManagerCount('managerRecentCount', counts.recent);
             setManagerCount('managerFailedCount', counts.failed);
-            setManagerCount('managerOnlineCount', counts.online);
             setManagerCount('managerChatCount', counts.chat);
             setManagerCount('managerCanvasCount', counts.canvas);
             setManagerCount('managerComfyuiCount', counts.comfyui);
@@ -832,6 +1127,7 @@
                 modeButton.setAttribute('aria-pressed', selectionMode ? 'true' : 'false');
                 modeButton.classList.toggle('active', selectionMode);
             }
+            refreshDateGroupSelectionUi();
         }
         function toggleSelectionMode(force){
             const next = typeof force === 'boolean' ? force : !selectionMode;
@@ -846,6 +1142,7 @@
                 const selected = selectedTimestamps.has(String(card.dataset.historyTs || ''));
                 card.classList.toggle('hbm-selected',selected);
             });
+            refreshDateGroupSelectionUi();
         }
         function toggleSelectAll(){
             if(!selectionMode) return;
@@ -869,6 +1166,11 @@
             if(actions) actions.hidden = !active;
             if(!active){
                 activeProjectFilter = '';
+                historySortDirection = 'desc';
+                historyDateGrouping = false;
+                const panel = document.getElementById('datePanel');
+                if(panel) panel.hidden = true;
+                refreshHistorySortUi();
                 toggleSelectionMode(false);
             }else {
                 activeProjectFilter = '';
@@ -936,8 +1238,34 @@
                 }
             }
         }
+        function cleanupUnreferencedFiles(){
+            if(!historyManagerEnabled()) return;
+            if(!confirm('将扫描图片空间（上传素材 / 生成素材 / 本地素材），把不再被历史记录、画布、对话或素材收藏引用的文件移入回收站，可在素材库回收站恢复。是否继续？')) return;
+            const button = document.getElementById('managerCleanupButton');
+            if(button) button.disabled = true;
+            showHistoryNotice('正在扫描图片空间并清理未引用文件…', 'pending', 0);
+            fetch('/api/storage/cleanup-unreferenced', {method:'POST'})
+                .then(async response => {
+                    const data = await response.json().catch(() => ({}));
+                    if(!response.ok || !data.success) throw new Error(data.message || `清理失败（${response.status}）`);
+                    const freedMb = (Number(data.freed_bytes) || 0) / 1048576;
+                    const errorCount = Array.isArray(data.errors) ? data.errors.length : 0;
+                    const suffix = errorCount ? `，${errorCount} 个文件处理失败` : '';
+                    showHistoryNotice(`已清理 ${data.cleaned || 0} 个未引用文件，释放 ${freedMb.toFixed(1)} MB${suffix}。文件在素材库回收站可恢复`, 'success', 6000);
+                    loadHistory(true);
+                })
+                .catch(error => {
+                    showHistoryNotice(`清理失败：${error.message || '请稍后重试'}`, 'error', 4600);
+                })
+                .finally(() => { if(button) button.disabled = false; });
+        }
         document.getElementById('content').addEventListener('click', event => {
             if(!selectionMode || !historyManagerEnabled()) return;
+            // Keep card actions usable while selecting.  The selection
+            // handler runs in capture phase, so without this guard it would
+            // swallow the delete/download/preview button clicks and never
+            // let their onclick handlers reach the server.
+            if(event.target.closest('button,a,input,select,textarea,video')) return;
             const card = event.target.closest('.card');
             if(!card || !event.currentTarget.contains(card)) return;
             event.preventDefault();
@@ -1297,6 +1625,7 @@
         } else {
             loadHistory(true);
         }
+        refreshHistorySortUi();
         refreshHistoryIcons(document);
     </script>
 </body>

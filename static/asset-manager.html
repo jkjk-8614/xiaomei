@@ -3,39 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="/static/images/logo.png?v=2026.10.01" type="image/png">
-    <title>图片空间</title>
-    <script src="/static/vendor/js/lucide.js?v=2026.10.01.1784161005"></script>
-    <script src="/static/js/theme.js?v=2026.10.01.1790178169"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.01.1785985827">
-    <script src="/static/js/canvas-editor-core.js?v=2026.10.01.1786171437"></script>
-    <script src="/static/js/background-removal-bridge.js?v=2026.10.01.1789009721"></script>
-    <link rel="stylesheet" href="/static/css/asset-manager.css?v=2026.10.01.1790494438">
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.01.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.01.1790574407">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.01.1790178173"></script>
+    <link rel="icon" href="/static/images/logo.png?v=2026.10.11" type="image/png">
+    <title>资产管理</title>
+    <script src="/static/vendor/js/lucide.js?v=2026.10.11.1784161005"></script>
+    <script src="/static/js/theme.js?v=2026.10.11.1791335865"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.11.1791343786">
+    <script src="/static/js/canvas-editor-core.js?v=2026.10.11.1786171437"></script>
+    <script src="/static/js/background-removal-bridge.js?v=2026.10.11.1789009721"></script>
+    <link rel="stylesheet" href="/static/css/asset-manager.css?v=2026.10.11.1791644325">
+    <link rel="stylesheet" href="/static/css/skill-market.css?v=2026.10.11.1791644321">
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.11.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.11.1791346900">
+    <link rel="stylesheet" href="/static/css/workflow-preview.css?v=2026.10.11.1791372473">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.11.1790178173"></script>
 </head>
 <body>
     <div class="asset-page">
         <header class="asset-page-head">
             <div>
-                <div class="asset-title">图片空间</div>
-                <div class="asset-sub">统一管理上传素材、生成素材和本地素材。</div>
+                <div class="asset-title">资产管理</div>
+                <div class="asset-sub">统一管理素材、提示词模板、工作流与 Skill。</div>
             </div>
             <div class="asset-head-actions">
-                <button id="storageSettingsBtn" class="asset-btn primary asset-settings-btn" type="button" title="打开图片空间设置" aria-label="打开图片空间设置"><i data-lucide="folder-cog"></i><span>图片空间设置</span></button>
+                <div id="assetStatus" class="asset-status" role="status" aria-live="polite">准备就绪</div>
             </div>
         </header>
 
         <div class="asset-tabs">
-            <button id="assetTabAssets" class="active" type="button" data-tab="assets"><i data-lucide="images"></i><span>图片空间</span></button>
-            <button id="assetTabWorkflows" type="button" data-tab="workflows"><i data-lucide="workflow"></i><span>工作流管理</span></button>
-            <button id="assetTabPrompts" type="button" data-tab="prompts"><i data-lucide="text-cursor-input"></i><span>文字模板库</span></button>
-            <button id="assetTabCanvasAssets" type="button" data-tab="canvas-assets"><i data-lucide="layout-dashboard"></i><span>画布资产</span></button>
+            <button id="assetTabAssets" class="active" type="button" data-tab="assets"><i data-lucide="images"></i><span>素材</span></button>
+            <button id="assetTabWorkflows" type="button" data-tab="workflows"><i data-lucide="workflow"></i><span>工作流</span></button>
+            <button id="assetTabPrompts" type="button" data-tab="prompts"><i data-lucide="text-cursor-input"></i><span>提示词模板</span></button>
+            <button id="assetTabSkills" type="button" data-tab="skills"><i data-lucide="sparkles"></i><span>Skill 管理</span></button>
         </div>
 
         <div id="imageSpaceSubtabs" class="image-space-subtabs" hidden>
-            <span class="image-space-label"><i data-lucide="folder-tree"></i><strong>图片空间</strong></span>
+            <span class="image-space-label"><i data-lucide="folder-tree"></i><strong>资产管理</strong></span>
             <button type="button" data-tab="assets"><i data-lucide="upload"></i><span>上传素材</span></button>
             <button type="button" data-tab="generated"><i data-lucide="sparkles"></i><span>生成素材</span></button>
             <button type="button" data-tab="local"><i data-lucide="folder-open"></i><span>本地素材</span></button>
@@ -45,7 +47,40 @@
     </div>
 
     <input id="assetUploadInput" type="file" accept="image/*,video/*,audio/*,.json,.zip,application/json,application/zip" multiple hidden>
-    <script src="/static/js/image-space.js?v=2026.10.01.1790494351"></script>
-    <script src="/static/js/asset-manager.js?v=2026.10.01.1790494995"></script>
+
+    <div id="promptCaseDrawer" class="case-drawer" hidden>
+        <div class="case-drawer-backdrop" data-close-case-drawer></div>
+        <aside class="case-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="caseDetailTitle">
+            <header class="case-drawer-header">
+                <div>
+                    <span class="case-drawer-kicker">收藏提示词</span>
+                    <h2 id="caseDetailTitle">案例详情</h2>
+                </div>
+                <button class="asset-icon-btn" type="button" data-close-case-drawer title="关闭详情" aria-label="关闭详情"><i data-lucide="x"></i></button>
+            </header>
+            <div id="caseDetailBody" class="case-detail-body"></div>
+        </aside>
+    </div>
+
+    <div id="caseCategoryModal" class="asset-modal-overlay" hidden>
+        <div class="asset-modal-backdrop" data-close-case-category-modal></div>
+        <section class="asset-modal case-category-modal" role="dialog" aria-modal="true" aria-labelledby="caseCategoryModalTitle">
+            <header class="panel-head">
+                <div class="panel-title"><strong id="caseCategoryModalTitle">管理案例分类</strong><span>删除分类不会删除案例</span></div>
+                <button class="asset-icon-btn" type="button" data-close-case-category-modal title="关闭" aria-label="关闭"><i data-lucide="x"></i></button>
+            </header>
+            <div class="case-category-add-row">
+                <input id="newCaseCategoryInput" type="text" maxlength="30" placeholder="新增分类名称">
+                <button id="addCaseCategoryButton" class="asset-btn" type="button"><i data-lucide="plus"></i><span>新增</span></button>
+            </div>
+            <div id="caseCategoryList" class="case-category-list"></div>
+        </section>
+    </div>
+
+    <script src="/static/js/image-space.js?v=2026.10.11.1790494351"></script>
+    <script src="/static/js/shared-agent-skill.js?v=2026.10.11.1791504727"></script>
+      <script src="/static/js/skill-market.js?v=2026.10.11.1791644309"></script>
+    <script src="/static/js/workflow-preview.js?v=2026.10.11.1791372436"></script>
+    <script src="/static/js/asset-manager.js?v=2026.10.11.1791687390"></script>
 </body>
 </html>

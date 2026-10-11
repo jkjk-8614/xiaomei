@@ -3,22 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="/static/images/logo.png?v=2026.10.01" type="image/png">
+    <link rel="icon" href="/static/images/logo.png?v=2026.10.11" type="image/png">
     <title data-i18n="smart.title">智能画布</title>
-    <script src="/static/vendor/js/lucide.js?v=2026.10.01.1784161005"></script>
-    <script src="/static/vendor/js/perfect-freehand-1.2.3.js?v=2026.10.01.1789185308"></script>
-    <script src="/static/js/theme.js?v=2026.10.01.1790178169"></script>
-    <script src="/static/js/touch-mouse.js?v=2026.10.01.1784161005"></script>
-    <script src="/static/js/i18n.js?v=2026.10.01.1790690599"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.01.1785985827">
-    <link rel="stylesheet" href="/static/css/canvas-editor-common.css?v=2026.10.01.1786168693">
-<link rel="stylesheet" href="/static/css/smart-canvas.css?v=2026.10.01.1790782420">
-    <link rel="stylesheet" href="/static/css/canvas-folder-batch.css?v=2026.10.01.1789432724">
-    <script src="/static/js/background-removal-bridge.js?v=2026.10.01.1789009721"></script>
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.01.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.01.1790574407&agent-model-picker=2026.09.28.1">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.01.1790178173"></script>
-    <link rel="stylesheet" href="/static/css/image-layers.css?v=2026.10.01.1790738147">
+    <script src="/static/vendor/js/lucide.js?v=2026.10.11.1784161005"></script>
+    <script src="/static/vendor/js/perfect-freehand-1.2.3.js?v=2026.10.11.1789185308"></script>
+    <script src="/static/js/theme.js?v=2026.10.11.1791335865"></script>
+    <script src="/static/js/touch-mouse.js?v=2026.10.11.1784161005"></script>
+    <script src="/static/js/i18n.js?v=2026.10.11.1791611714"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.11.1791343786">
+    <link rel="stylesheet" href="/static/css/canvas-editor-common.css?v=2026.10.11.1786168693">
+<link rel="stylesheet" href="/static/css/smart-canvas.css?v=2026.10.11.1791688003">
+    <link rel="stylesheet" href="/static/css/canvas-folder-batch.css?v=2026.10.11.1789432724">
+    <script src="/static/js/background-removal-bridge.js?v=2026.10.11.1789009721"></script>
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.11.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.11.1791346900&agent-model-picker=2026.09.28.1">
+    <link rel="stylesheet" href="/static/css/smart-canvas-agent.css?v=2026.10.11.1791632366">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.11.1790178173"></script>
+    <link rel="stylesheet" href="/static/css/image-layers.css?v=2026.10.11.1790738147">
 </head>
 <body>
     <div id="shell" class="shell">
@@ -43,15 +44,13 @@
                         <button id="composerTemplateBtn" class="composer-template-btn" type="button" title="模板库" aria-label="模板库" data-i18n-title="smart.promptTemplateLibrary">
                             <i data-lucide="library"></i><span data-i18n="smart.promptTemplateLibrary">模板库</span>
                         </button>
-                        <button id="promptOptimizeBtn" class="prompt-optimize-btn" type="button" title="优化提示词" aria-label="优化提示词">
-                            <i data-lucide="wand-sparkles"></i><span>优化提示词</span>
-                        </button>
                         <div id="mentionPicker" class="mention-picker"></div>
                     </div>
                     <div class="param-row">
                         <div id="dynamicParams" class="dynamic-params"></div>
                     </div>
                     <div class="composer-actions">
+                        <button id="promptOptimizeBtn" class="prompt-optimize-btn" type="button" title="优化提示词" aria-label="优化提示词"><i data-lucide="wand-sparkles"></i><span>优化提示词</span></button>
                         <button id="runBtn" class="run-btn" type="button" title="运行（Ctrl/Cmd + Enter）" data-i18n-title="smart.runShortcut" aria-keyshortcuts="Control+Enter Meta+Enter"><i data-lucide="sparkles"></i><span data-i18n="smart.run">运行</span></button>
                     </div>
                 </div>
@@ -70,7 +69,23 @@
             </section>
         </div>
         <div id="canvasCollabCursors" class="canvas-collab-cursors" aria-hidden="true"></div>
-        <button id="canvasAgentToggle" class="canvas-agent-toggle" type="button"><i data-lucide="bot"></i><span>Agent</span></button>
+        <button id="canvasAgentToggle" class="canvas-agent-toggle" type="button" data-agent-orb aria-label="打开画布 Agent" aria-controls="canvasAgentPanel" aria-expanded="false" title="打开画布 Agent">
+            <span class="canvas-agent-orb" aria-hidden="true">
+                <!-- 平面柔光 Agent：glow/body 是固定圆形，不随鼠标形变、不追鼠标；
+                     只有眼睛追踪鼠标（js/canvas-agent-orb.js），四套皮肤配色见 smart-canvas-agent.css -->
+                <span class="agent-glow"></span>
+                <span class="agent-body">
+                    <span class="agent-flow"></span>
+                    <span class="agent-eyes-position">
+                        <span class="agent-eyes-blink">
+                            <span class="agent-eye agent-eye-left"></span>
+                            <span class="agent-eye agent-eye-right"></span>
+                        </span>
+                    </span>
+                </span>
+            </span>
+            <span class="canvas-agent-toggle-label">Agent</span>
+        </button>
         <aside id="canvasAgentPanel" class="canvas-agent-panel" aria-label="画布 Agent">
             <header>
                 <strong>Agent</strong>
@@ -123,7 +138,11 @@
                         <button type="button" data-agent-media="video">视频</button>
                     </div>
                     <div class="canvas-agent-generation-section">
-                        <span class="canvas-agent-generation-label">选择比例</span>
+                        <span class="canvas-agent-generation-label">画质</span>
+                        <div id="canvasAgentResolutionOptions" class="canvas-agent-resolution-grid"></div>
+                    </div>
+                    <div class="canvas-agent-generation-section">
+                        <span class="canvas-agent-generation-label">比例</span>
                         <div id="canvasAgentRatioOptions" class="canvas-agent-ratio-grid"></div>
                         <div id="canvasAgentCustomRatioFields" class="canvas-agent-custom-ratio-fields" hidden>
                             <label class="canvas-agent-custom-ratio-field">
@@ -137,10 +156,6 @@
                             </label>
                             <small id="canvasAgentCustomRatioHint" class="canvas-agent-custom-ratio-hint">请输入宽和高，例如 710:229</small>
                         </div>
-                    </div>
-                    <div class="canvas-agent-generation-section">
-                        <span class="canvas-agent-generation-label">清晰度</span>
-                        <div id="canvasAgentResolutionOptions" class="canvas-agent-resolution-grid"></div>
                     </div>
                 </div>
                 <p id="canvasAgentGenerationHint">普通发送会基于当前正式任务范围自动写入并运行；计划模式才会展开多节点方案。</p>
@@ -233,7 +248,7 @@
                     <time id="canvasAgentComposerStatusTime" class="canvas-agent-composer-status-time" datetime="PT0S" aria-label="已运行时间">00:00</time>
                 </div>
                 <div id="canvasAgentComposerAttachments" class="canvas-agent-composer-attachments" role="listbox" aria-label="已选素材图" hidden></div>
-                <textarea id="canvasAgentInput" rows="3" placeholder="描述你想完成的任务…"></textarea>
+                <textarea id="canvasAgentInput" rows="3" placeholder="询问画布，或描述要创建、修改和运行的任务…"></textarea>
                 <input id="canvasAgentComposerFileInput" type="file" accept="image/*" multiple hidden>
                 <div class="canvas-agent-composer-actions">
                     <div class="canvas-agent-composer-left">
@@ -397,36 +412,72 @@
             <div id="promptTemplateCats" class="prompt-template-cats"></div>
             <div id="promptTemplateBody" class="prompt-template-body"></div>
         </div>
-        <button id="smartArrangeBtn" class="minimap-arrange-btn" type="button" title="整理选中节点" aria-label="整理选中节点"><i data-lucide="layout-grid"></i><span>整理选中</span></button>
-        <div id="minimap" class="smart-minimap" aria-hidden="true">
-            <div id="minimapContent" class="smart-minimap-content">
-                <div id="minimapViewport" class="smart-minimap-viewport"></div>
+        <section id="canvasNavPanel" class="canvas-nav-panel" aria-label="画布导航">
+            <button id="smartArrangeBtn" class="minimap-arrange-btn" type="button" title="整理选中节点" aria-label="整理选中节点"><i data-lucide="layout-grid"></i><span>整理选中</span></button>
+            <div id="minimap" class="smart-minimap" aria-label="画布小地图">
+                <div id="minimapContent" class="smart-minimap-content">
+                    <div id="minimapViewport" class="smart-minimap-viewport"></div>
+                </div>
             </div>
-        </div>
+            <div class="canvas-nav-toolbar" role="toolbar" aria-label="画布快捷设置">
+                <button id="canvasFollowToggle" class="canvas-nav-tool" type="button" aria-pressed="false" title="跟随：拖动节点时，下游节点一起位移"><i data-lucide="corner-down-right"></i><span class="sr-only">跟随</span></button>
+                <button id="canvasGuidesToggle" class="canvas-nav-tool active" type="button" aria-pressed="true" title="对齐辅助线：拖动节点时显示对齐线"><i data-lucide="align-center"></i><span class="sr-only">对齐辅助线</span></button>
+                <button id="canvasSnapToggle" class="canvas-nav-tool active" type="button" aria-pressed="true" title="吸附：拖动节点时对齐到网格"><i data-lucide="magnet"></i><span class="sr-only">吸附</span></button>
+                <button id="canvasAvoidToggle" class="canvas-nav-tool active" type="button" aria-pressed="true" title="自动避让：新建节点自动寻找空位"><i data-lucide="move-diagonal"></i><span class="sr-only">自动避让</span></button>
+                <button id="canvasFitToggle" class="canvas-nav-tool" type="button" title="适配全部节点" aria-label="适配全部节点"><i data-lucide="scan"></i></button>
+                <div class="canvas-nav-zoom" role="group" aria-label="画布缩放" title="画布缩放">
+                    <button id="canvasZoomOut" class="canvas-nav-zoom-btn" type="button" aria-label="缩小画布" title="缩小画布"><i data-lucide="minus"></i></button>
+                    <input id="canvasZoomRange" type="range" min="0.06" max="2" step="0.05" value="1" aria-label="画布缩放">
+                    <button id="canvasZoomIn" class="canvas-nav-zoom-btn" type="button" aria-label="放大画布" title="放大画布"><i data-lucide="plus"></i></button>
+                </div>
+                <button id="canvasNavToggle" class="canvas-nav-tool active" type="button" aria-pressed="true" title="导航：显示或隐藏小地图"><i data-lucide="eye"></i><span class="sr-only">导航</span></button>
+            </div>
+        </section>
+        <div id="canvasAlignmentGuides" class="canvas-alignment-guides" aria-hidden="true"><i class="canvas-alignment-guide guide-v"></i><i class="canvas-alignment-guide guide-h"></i></div>
         <div id="promptOptimizerModelControl" class="prompt-optimizer-model-control">
             <button id="promptOptimizerModelButton" class="prompt-optimizer-model-button" type="button" aria-haspopup="listbox" aria-expanded="false" title="选择优化提示词使用的聊天模型">
                 <i data-lucide="wand-sparkles"></i><span>优化模型</span><strong id="promptOptimizerModelLabel">请选择</strong><i data-lucide="chevron-down"></i>
             </button>
             <div id="promptOptimizerModelMenu" class="prompt-optimizer-model-menu" role="listbox"></div>
         </div>
-        <button id="smartWorkflowToggle" class="smart-workflow-toggle" type="button" title="导入导出工作流" aria-label="导入导出工作流"><i data-lucide="package-open"></i><span>工作流</span></button>
+        <button id="smartWorkflowToggle" class="smart-workflow-toggle" type="button" title="添加、导入或导出工作流" aria-label="工作流"><i data-lucide="package-open"></i><span>工作流</span></button>
         <button id="smartShortcutToggle" class="smart-shortcut-toggle" type="button" onclick="openSmartCanvasShortcuts()" title="快捷键" aria-label="快捷键" data-i18n-title="smart.shortcuts"><i data-lucide="keyboard"></i><span data-i18n="smart.shortcuts">快捷键</span></button>
         <button id="smartLogToggle" class="smart-log-toggle" type="button" onclick="openSmartCanvasLog()" title="日志" aria-label="日志" data-i18n-title="canvas.logs"><i data-lucide="list-todo"></i><span data-i18n="canvas.logs">日志</span></button>
         <button id="assetToggle" class="asset-toggle" type="button"><i data-lucide="library"></i><span data-i18n="smart.assetLibrary">资产库</span></button>
         <aside id="smartWorkflowTransferModal" class="workflow-transfer-panel">
             <div class="workflow-transfer-head">
                 <div>
-                    <div class="workflow-transfer-title">导入导出工作流</div>
-                    <div id="smartWorkflowTransferSub" class="workflow-transfer-sub">导出选中节点，或把工作流导入到当前画布</div>
+                    <div class="workflow-transfer-title">工作流</div>
+                    <div id="smartWorkflowTransferSub" class="workflow-transfer-sub">从收藏模板快速添加，或导入 JSON / ZIP</div>
                 </div>
                 <button class="asset-mini-btn" type="button" onclick="closeSmartWorkflowTransferModal()" title="关闭"><i data-lucide="x"></i></button>
             </div>
             <div class="workflow-transfer-body">
+                <section class="workflow-transfer-card workflow-library-card">
+                    <div class="workflow-transfer-card-head workflow-library-card-head">
+                        <div class="workflow-library-source-actions">
+                            <button class="workflow-transfer-link active" type="button" data-smart-workflow-source="library"><i data-lucide="library"></i><span>从收藏库添加</span></button>
+                            <button class="workflow-transfer-link" type="button" data-smart-workflow-source="import"><i data-lucide="file-up"></i><span>导入 JSON / ZIP</span></button>
+                        </div>
+                    </div>
+                    <div class="workflow-library-toolbar">
+                        <label class="workflow-library-search" for="smartWorkflowLibrarySearch"><i data-lucide="search"></i><input id="smartWorkflowLibrarySearch" type="search" placeholder="搜索工作流" autocomplete="off"></label>
+                    </div>
+                    <div class="workflow-library-toolbar workflow-library-filter-row">
+                        <select id="smartWorkflowLibraryCategory" class="workflow-library-category" aria-label="工作流分类"><option value="">全部分类</option></select>
+                    </div>
+                    <div class="workflow-library-section-label"><span>最近使用</span><small>最多显示 5 个</small></div>
+                    <div id="smartWorkflowRecentList" class="workflow-library-list"></div>
+                    <div class="workflow-library-section-label"><span>我的收藏</span><small id="smartWorkflowLibraryCount">星标优先</small></div>
+                    <div id="smartWorkflowFavoriteList" class="workflow-library-list"></div>
+                    <div id="smartWorkflowLibraryEmpty" class="workflow-library-empty" hidden>暂无收藏工作流。可先在画布中收藏模板。</div>
+                </section>
                 <section class="workflow-transfer-card">
-                    <div class="workflow-transfer-card-head"><i data-lucide="upload"></i><strong>导出工作流</strong></div>
-                    <p>使用当前选中的节点和它们之间的连线生成工作流。</p>
+                    <div class="workflow-transfer-card-head"><i data-lucide="upload"></i><strong>导出或收藏工作流</strong></div>
+                    <p>使用当前选中的节点和它们之间的连线导出文件，或收藏为可复用模板。</p>
                     <div id="smartWorkflowExportMeta" class="workflow-transfer-meta">未选择节点</div>
                     <div class="workflow-transfer-actions workflow-export-actions">
+                        <button class="workflow-transfer-btn primary" id="smartWorkflowSaveTemplateBtn" type="button" onclick="saveSelectedSmartWorkflowTemplate()"><i data-lucide="bookmark-plus"></i><span>收藏模板</span></button>
                         <button class="workflow-transfer-btn secondary" type="button" onclick="exportSelectedSmartWorkflow(false)"><i data-lucide="file-json"></i><span>导出 JSON</span></button>
                         <button class="workflow-transfer-btn primary" type="button" onclick="exportSelectedSmartWorkflow(true)"><i data-lucide="package"></i><span>导出并包含资源</span></button>
                     </div>
@@ -442,6 +493,9 @@
                     <input id="smartWorkflowImportInput" type="file" accept=".json,.zip" hidden>
                 </section>
             </div>
+            <div class="workflow-transfer-foot">
+                <button class="workflow-transfer-link" type="button" data-smart-workflow-manage title="打开资产管理中的工作流库"><i data-lucide="settings-2"></i><span>管理收藏库</span><i data-lucide="arrow-up-right"></i></button>
+            </div>
         </aside>
         <aside id="assetPanel" class="asset-panel">
             <div class="asset-head">
@@ -450,11 +504,9 @@
             </div>
             <div class="asset-tabs">
                 <button class="asset-tab active" type="button" data-asset-tab="image" data-i18n="smart.assetImages">图片资产</button>
-                <button class="asset-tab" type="button" data-asset-tab="url">URL素材</button>
-                <button class="asset-tab" type="button" data-asset-tab="workflow" data-i18n="smart.assetWorkflows">工作流</button>
             </div>
             <div id="assetImageControls">
-                <select id="assetLibrarySelect" class="asset-category-select asset-library-select" title="选择资产库"></select>
+                <select id="assetLibrarySelect" class="asset-category-select asset-library-select" title="选择收藏库"></select>
                 <div class="asset-category-row">
                     <select id="assetCategorySelect" class="asset-category-select"></select>
                     <button id="assetAddCategoryBtn" class="asset-mini-btn" type="button" title="新建文件夹" data-i18n-title="smart.assetNewFolder"><i data-lucide="folder-plus"></i></button>
@@ -467,7 +519,7 @@
             </div>
             <div id="assetDropZone" class="asset-drop-zone" data-i18n="smart.assetDropHint">把画布图片拖到这里保存到当前文件夹</div>
             <div id="assetGrid" class="asset-grid"></div>
-            <div id="workflowEmpty" class="workflow-empty" style="display:none" data-i18n="smart.assetWorkflowEmpty">工作流资产先预留在这里，后续接入。</div>
+        <div id="workflowEmpty" class="workflow-empty" style="display:none" data-i18n="smart.assetWorkflowEmpty">暂无工作流收藏</div>
         </aside>
         <div id="assetDialogBackdrop" class="asset-dialog-backdrop" hidden>
             <div class="asset-dialog">
@@ -503,7 +555,6 @@
                     <div class="shortcut-item"><span class="shortcut-keys"><kbd>Ctrl/Cmd</kbd><kbd>Enter</kbd></span><span data-i18n="smart.shortcutRun">运行当前节点</span></div>
                     <div class="shortcut-item"><span class="shortcut-keys"><kbd>Shift</kbd></span><span data-i18n="smart.shortcutBoxAdd">按住并拖拽加选节点</span></div>
                     <div class="shortcut-item"><span class="shortcut-keys"><kbd>Ctrl</kbd></span><span data-i18n="smart.shortcutBoxSubtract">按住并拖拽减选节点</span></div>
-                    <div class="shortcut-item"><span class="shortcut-keys"><kbd>多选</kbd><kbd>拖端点</kbd></span><span>把所有已选节点批量连接到目标</span></div>
                     <div class="shortcut-item"><span class="shortcut-keys"><kbd>Ctrl</kbd><kbd>鼠标右键</kbd></span><span>按住并拖动擦除连线</span></div>
                     <div class="shortcut-item"><span class="shortcut-keys"><kbd>Ctrl</kbd><kbd>G</kbd></span><span data-i18n="smart.shortcutGroup">合并选中的图片为组</span></div>
                     <div class="shortcut-item"><span class="shortcut-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>G</kbd></span><span data-i18n="smart.shortcutUngroup">释放选中的分组</span></div>
@@ -511,7 +562,7 @@
                     <div class="shortcut-item"><span class="shortcut-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Z</kbd></span><span data-i18n="smart.shortcutUndoAlt">恢复上一步操作</span></div>
                     <div class="shortcut-item"><span class="shortcut-keys"><kbd>Ctrl</kbd><kbd>C</kbd></span><span data-i18n="smart.shortcutCopy">复制选中的节点</span></div>
                     <div class="shortcut-item"><span class="shortcut-keys"><kbd>Ctrl</kbd><kbd>V</kbd></span><span data-i18n="smart.shortcutPaste">粘贴节点或剪贴板图片</span></div>
-                    <div class="shortcut-item"><span class="shortcut-keys"><kbd>Alt</kbd></span><span data-i18n="smart.shortcutAltCopy">按住并拖动复制节点及相连的线（上传节点不复制连线）</span></div>
+                    <div class="shortcut-item"><span class="shortcut-keys"><kbd>Alt</kbd></span><span data-i18n="smart.shortcutAltCopy">按住并拖动复制节点及相连的线（分组和上传节点不复制连线）</span></div>
                     <div class="shortcut-item"><span class="shortcut-keys"><kbd>A</kbd></span><span data-i18n="smart.shortcutAssets">打开/关闭资源库</span></div>
                     <div class="shortcut-item"><span class="shortcut-keys"><kbd>Z</kbd></span><span data-i18n="smart.shortcutOverview">缩小画布视图</span></div>
                     <div class="shortcut-item"><span class="shortcut-keys"><kbd>双击</kbd></span><span data-i18n="smart.shortcutCreateMenu">打开快捷菜单</span></div>
@@ -532,11 +583,16 @@
                         <button type="button" data-image-edit-mode="preview" class="active"><i data-lucide="eye" class="w-3.5 h-3.5"></i><span data-i18n="smart.modePreview">预览</span></button>
                         <button type="button" data-image-edit-mode="crop"><i data-lucide="crop" class="w-3.5 h-3.5"></i><span data-i18n="canvas.modeCrop">裁剪</span></button>
                         <button type="button" data-image-edit-mode="outpaint"><i data-lucide="expand" class="w-3.5 h-3.5"></i><span data-i18n="canvas.modeOutpaint">扩图</span></button>
-                        <button type="button" data-image-edit-mode="mask"><i data-lucide="brush" class="w-3.5 h-3.5"></i><span data-i18n="canvas.modeMask">遮罩</span></button>
+                        <button type="button" data-image-edit-mode="mask"><i data-lucide="eraser" class="w-3.5 h-3.5"></i><span>抹除</span></button>
+                        <button type="button" data-image-edit-mode="ocr"><i data-lucide="scan-text" class="w-3.5 h-3.5"></i><span>OCR 改字</span></button>
                         <button type="button" data-image-edit-mode="brush"><i data-lucide="paintbrush" class="w-3.5 h-3.5"></i><span data-i18n="canvas.modeBrush">画笔</span></button>
                         <button type="button" data-image-edit-mode="local-repair"><i data-lucide="wand-sparkles" class="w-3.5 h-3.5"></i><span>局部修复</span></button>
                         <button type="button" data-image-edit-mode="smart-edit"><i data-lucide="wand-sparkles" class="w-3.5 h-3.5"></i><span>智能改图</span></button>
                         <button type="button" data-image-edit-mode="grid"><i data-lucide="grid-3x3" class="w-3.5 h-3.5"></i><span data-i18n="canvas.modeGrid">宫格切分</span></button>
+                    </div>
+                    <div class="ocr-workspace-meta" aria-live="polite">
+                        <span id="ocrWorkspaceName">image.png</span>
+                        <span>文字区域</span>
                     </div>
                     <div id="outpaintHeadActions" class="outpaint-head-actions" aria-label="扩图快捷操作">
                         <button type="button" data-outpaint-action="download" title="下载原图"><i data-lucide="download"></i><span>下载</span></button>
@@ -585,14 +641,46 @@
                     <button id="maskUndoBtn" class="image-edit-btn secondary" type="button" onclick="undoEditDrawing()" title="撤销"><i data-lucide="undo-2" class="w-4 h-4"></i></button>
                     <button id="maskRedoBtn" class="image-edit-btn secondary" type="button" onclick="redoEditDrawing()" title="恢复"><i data-lucide="redo-2" class="w-4 h-4"></i></button>
                     <button class="image-edit-btn secondary" type="button" onclick="clearEditDrawing()"><i data-lucide="eraser" class="w-4 h-4"></i><span data-i18n="canvas.clear">清空</span></button>
-                    <span class="image-edit-sub" data-i18n="canvas.maskHint">白色区域为要编辑的遮罩</span>
+                    <span class="image-edit-sub">涂抹要抹除的区域，应用后生成清理结果</span>
                 </div>
+                <aside id="imageOcrTools" class="image-edit-tools image-ocr-tools" aria-label="OCR 智能改字">
+                    <div class="ocr-panel-heading">
+                        <div class="ocr-panel-heading-icon"><i data-lucide="scan-text" class="w-4 h-4"></i></div>
+                        <div class="ocr-panel-heading-copy">
+                            <strong>OCR 智能改字</strong>
+                            <span id="ocrStatus" role="status" aria-live="polite">相邻文字已合并成组，只生成已修改内容</span>
+                        </div>
+                        <button class="ocr-panel-close" type="button" onclick="closeImageEditor()" title="关闭 OCR 面板" aria-label="关闭 OCR 面板"><i data-lucide="x" class="w-4 h-4"></i></button>
+                    </div>
+                    <div id="ocrTextList" class="ocr-text-list"></div>
+                    <div id="ocrEmptyState" class="ocr-empty-state">
+                        <i data-lucide="scan-search" class="w-5 h-5"></i>
+                        <span id="ocrEmptyLabel">图片加载后自动识别文字</span>
+                    </div>
+                    <div class="ocr-panel-footer">
+                        <div class="ocr-count-row"><span id="ocrCountLabel">识别 0 组 · 已改 0 组</span><button id="ocrModelToggle" class="ocr-model-toggle" type="button" onclick="toggleOcrModelSettings()" aria-expanded="false" aria-controls="ocrModelSettings">模型<i data-lucide="chevron-down"></i></button></div>
+                        <div id="ocrModelSettings" hidden>
+                            <label class="ocr-model-select-wrap">
+                                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                                <select id="ocrModelSelect" aria-label="改字模型"></select>
+                                <i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>
+                            </label>
+                            <p id="ocrModelHint" class="ocr-model-hint">改字需要支持参考图编辑的模型</p>
+                        </div>
+                        <div class="ocr-panel-actions">
+                            <button id="ocrRecognizeBtn" class="image-edit-btn secondary" type="button" onclick="recognizeImageText()"><i data-lucide="scan-text" class="w-4 h-4"></i><span>重新识别</span></button>
+                            <button id="ocrGenerateBtn" class="image-edit-btn primary" type="button" onclick="applyImageOcrEdit()" disabled><i data-lucide="wand-sparkles" class="w-4 h-4"></i><span>生成改字图</span></button>
+                        </div>
+                    </div>
+                </aside>
                 <div id="imageBrushTools" class="image-edit-tools">
                     <button class="image-edit-btn primary" type="button" data-brush-tool="free" onclick="setBrushTool('free')" title="自由画笔"><i data-lucide="paintbrush" class="w-4 h-4"></i></button>
                     <button class="image-edit-btn secondary" type="button" data-brush-tool="rect" onclick="setBrushTool('rect')" title="矩形"><i data-lucide="square" class="w-4 h-4"></i></button>
                     <button class="image-edit-btn secondary" type="button" data-brush-tool="ellipse" onclick="setBrushTool('ellipse')" title="椭圆"><i data-lucide="circle" class="w-4 h-4"></i></button>
+                    <button class="image-edit-btn secondary" type="button" data-brush-tool="arrow" onclick="setBrushTool('arrow')" title="箭头"><i data-lucide="arrow-up-right" class="w-4 h-4"></i></button>
                     <button class="image-edit-btn secondary" type="button" data-brush-tool="label" onclick="setBrushTool('label')" title="数字标签"><i data-lucide="list-ordered" class="w-4 h-4"></i></button>
                     <button class="image-edit-btn secondary" type="button" data-brush-tool="text" onclick="setBrushTool('text')" title="文字标签"><i data-lucide="type" class="w-4 h-4"></i></button>
+                    <button class="image-edit-btn secondary" type="button" data-brush-tool="eraser" onclick="setBrushTool('eraser')" title="抹除标注"><i data-lucide="eraser" class="w-4 h-4"></i></button>
                     <label><span data-i18n="canvas.color">颜色</span> <input id="paintBrushColor" type="color" value="#ff2d55"></label>
                     <label><span data-i18n="canvas.brushSize">笔刷</span> <input id="paintBrushSize" type="range" min="2" max="80" value="14"></label>
                     <button id="brushUndoBtn" class="image-edit-btn secondary" type="button" onclick="undoEditDrawing()" title="撤销"><i data-lucide="undo-2" class="w-4 h-4"></i></button>
@@ -614,6 +702,11 @@
                     <div class="smart-edit-compose-row">
                         <textarea id="smartEditPrompt" rows="1" placeholder="补充整图修改要求（可选）" aria-label="整图修改要求"></textarea>
                         <button id="smartEditSubmitBtn" class="image-edit-btn primary smart-edit-submit" type="button" onclick="applyImageEdit()"><i data-lucide="arrow-up" class="w-4 h-4"></i><span>发送改图</span></button>
+                    </div>
+                    <div class="smart-edit-settings-row">
+                        <label class="smart-edit-model-control"><span>模型</span><select id="smartEditModelSelect" aria-label="智能改图模型"></select></label>
+                        <label><span>分辨率</span><select id="smartEditResolutionSelect" aria-label="智能改图分辨率"><option value="auto">自动</option><option value="1k">1K</option><option value="2k">2K</option><option value="4k">4K</option><option value="custom">原图尺寸</option></select></label>
+                        <span class="smart-edit-output-count">输出 1 张</span>
                     </div>
                     <span id="smartEditMarkerHint" class="image-edit-sub smart-edit-marker-hint" aria-live="polite">在图片上拖动框选区域，也可直接输入整图修改要求。</span>
                 </div>
@@ -683,6 +776,7 @@
                         </div>
                         <div id="cropCanvas" class="crop-canvas">
                             <img id="cropImage" alt="crop source">
+                            <div id="ocrRegionLayer" class="ocr-region-layer" aria-label="识别文字区域"></div>
                             <div id="gridJoinCanvas" class="grid-join-canvas"></div>
                             <canvas id="editDrawCanvas" class="edit-draw-canvas"></canvas>
                             <canvas id="editTextCanvas" class="edit-text-canvas"></canvas>
@@ -860,24 +954,31 @@
         <div id="toast" class="toast"></div>
         <div id="mentionPreview" class="mention-preview"><img alt="preview"></div>
     </div>
-    <script src="/static/js/upstream-rerun-utils.js?v=2026.10.01.1785467783"></script>
-    <script src="/static/js/smart-camera-node.js?v=2026.10.01.1786063012"></script>
-    <script src="/static/js/smart-color-node.js?v=2026.10.01.1788945447"></script>
-    <script src="/static/js/smart-drawing-board-node.js?v=2026.10.01.1790491245&drawing-ratio=2026.09.27.2"></script>
-    <script src="/static/js/smart-canvas-data-video.js?v=2026.10.01.1790738032"></script>
-<script src="/static/js/generation-notifications.js?v=2026.10.01.1787131165"></script>
-<script src="/static/js/image-task-client.js?v=2026.10.01.1788592790"></script>
-    <script src="/static/js/canvas-editor-core.js?v=2026.10.01.1786171437"></script>
-      <script src="/static/js/outpaint-geometry.js?v=2026.10.01.1790090615"></script>
-      <script src="/static/js/smart-canvas.js?v=2026.10.01.1790755925"></script>
-    <script src="/static/js/smart-canvas-edit-suite.js?v=2026.10.01.1790580701&v=2026.10.01"></script>
-<script src="/static/js/local-bridge-ui.js?v=2026.10.01.1789536752"></script>
-    <script src="/static/js/shared-agent-skill.js?v=2026.10.01.1789201401"></script>
-<script src="/static/js/link-analysis-client.js?v=2026.10.01.1786411347"></script>
-    <script src="/static/js/canvas-folder-batch.js?v=2026.10.01.1789432948"></script>
-<script src="/static/js/canvas-agent.js?v=2026.10.01.1790555550&agent-pref-sync=2026.09.24.2&agent-model-picker=2026.09.28.1"></script>
-<script src="/static/vendor/js/ag-psd-seethrough.bundle.js?v=2026.10.01.1790092014&layers=2026.09.22.3"></script>
-<script src="/static/js/image-layer-psd.js?v=2026.10.01.1790233758"></script>
-<script src="/static/js/smart-image-layers.js?v=2026.10.01.1790749439"></script>
+    <script src="/static/js/upstream-rerun-utils.js?v=2026.10.11.1785467783"></script>
+    <script src="/static/js/smart-camera-node.js?v=2026.10.11.1786063012"></script>
+    <script src="/static/js/smart-color-node.js?v=2026.10.11.1788945447"></script>
+    <script src="/static/js/smart-drawing-board-node.js?v=2026.10.11.1790491245&drawing-ratio=2026.09.27.2"></script>
+    <script src="/static/js/smart-canvas-data-video.js?v=2026.10.11.1791538279&connect-types=2"></script>
+<script src="/static/js/generation-notifications.js?v=2026.10.11.1787131165"></script>
+<script src="/static/js/image-task-client.js?v=2026.10.11.1791025940"></script>
+    <script src="/static/js/canvas-editor-core.js?v=2026.10.11.1786171437"></script>
+      <script src="/static/js/outpaint-geometry.js?v=2026.10.11.1790090615"></script>
+      <link rel="stylesheet" href="/static/css/workflow-save-dialog.css?v=2026.10.11.1791355337">
+      <link rel="stylesheet" href="/static/css/workflow-preview.css?v=2026.10.11.1791372473">
+      <script src="/static/js/workflow-preview.js?v=2026.10.11.1791372436"></script>
+      <script src="/static/js/workflow-save-dialog.js?v=2026.10.11.1791365029"></script>
+      <script src="/static/js/smart-canvas.js?v=2026.10.11.1791687974"></script>
+    <script src="/static/js/smart-canvas-edit-suite.js?v=2026.10.11.1791198166"></script>
+<script src="/static/js/local-bridge-ui.js?v=2026.10.11.1789536752"></script>
+    <script src="/static/js/shared-agent-skill.js?v=2026.10.11.1791504727"></script>
+<script src="/static/js/link-analysis-client.js?v=2026.10.11.1791637062"></script>
+    <script src="/static/js/canvas-folder-batch.js?v=2026.10.11.1789432948"></script>
+<script src="/static/js/canvas-agent-orb.js?v=2026.10.11.1791679756"></script>
+<script src="/static/js/canvas-agent.js?v=2026.10.11.1791637041&agent-pref-sync=2026.10.02.1&agent-model-picker=2026.09.28.1&canvas-wide-agent=2026.10.08.1&canvas-command-tools=2026.10.10.commerce-rules.1"></script>
+<script src="/static/vendor/js/ag-psd-seethrough.bundle.js?v=2026.10.11.1790092014&layers=2026.09.22.3"></script>
+<script src="/static/js/image-layer-psd.js?v=2026.10.11.1790233758"></script>
+<script src="/static/js/smart-image-layers.js?v=2026.10.11.1790749439"></script>
 </body>
 </html>
+\n
+

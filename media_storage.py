@@ -26,16 +26,21 @@ def write_media_snapshot(path, payload):
     os.makedirs(directory, exist_ok=True)
     digest = hashlib.sha256(payload).digest()
     with _lock:
-        for entry in os.scandir(directory):
-            # Adapter output filenames can be overwritten in place. Only reuse
-            # immutable snapshots created by this application's naming policy.
-            if not (entry.name[:8].isdigit() and entry.name[8:9] == '_'):
-                continue
-            try:
-                if entry.is_file() and entry.stat().st_size == len(payload) and file_digest(entry.path) == digest:
-                    return entry.path
-            except OSError:
-                continue
+        # Keep the directory iterator closed even when an identical snapshot
+        # is found and the function returns from inside the loop.  Returning
+        # directly from a bare ``os.scandir`` iterator leaves its native handle
+        # for garbage collection, which produced ResourceWarning under load.
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                # Adapter output filenames can be overwritten in place. Only reuse
+                # immutable snapshots created by this application's naming policy.
+                if not (entry.name[:8].isdigit() and entry.name[8:9] == '_'):
+                    continue
+                try:
+                    if entry.is_file() and entry.stat().st_size == len(payload) and file_digest(entry.path) == digest:
+                        return entry.path
+                except OSError:
+                    continue
         fd, temporary = tempfile.mkstemp(dir=directory, suffix='.tmp')
         try:
             with os.fdopen(fd, 'wb') as stream:

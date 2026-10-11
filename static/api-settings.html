@@ -11,17 +11,17 @@
             } catch(e) {}
         })();
     </script>
-    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.10.01.1784161005"></script>
-    <script src="/static/vendor/js/lucide.js?v=2026.10.01.1784161005"></script>
-    <script src="/static/vendor/js/qrcode-generator-2.0.4.js?v=2026.10.01.499162500"></script>
-    <script src="/static/vendor/js/qrcode-generator-utf8-2.0.4.js?v=2026.10.01.499162500"></script>
-    <script src="/static/js/theme.js?v=2026.10.01.1790178169"></script>
-    <script src="/static/js/i18n.js?v=2026.10.01.1790690599"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.01.1785985827">
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.01.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.01.1790574407">
-    <link rel="stylesheet" href="/static/css/api-settings.css?v=2026.10.01.1790755796">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.01.1790178173"></script>
+    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.10.11.1784161005"></script>
+    <script src="/static/vendor/js/lucide.js?v=2026.10.11.1784161005"></script>
+    <script src="/static/vendor/js/qrcode-generator-2.0.4.js?v=2026.10.11.499162500"></script>
+    <script src="/static/vendor/js/qrcode-generator-utf8-2.0.4.js?v=2026.10.11.499162500"></script>
+    <script src="/static/js/theme.js?v=2026.10.11.1791335865"></script>
+    <script src="/static/js/i18n.js?v=2026.10.11.1791611714"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.11.1791343786">
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.11.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.11.1791346900">
+    <link rel="stylesheet" href="/static/css/api-settings.css?v=2026.10.11.1791376124">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.11.1790178173"></script>
 </head>
 <body>
     <div class="page">
@@ -223,7 +223,9 @@
                                         <ol>
                                             <li>首次使用 WSL：双击 <code>install_wsl_ubuntu.bat</code>，按提示允许管理员权限；如需重启电脑，重启后打开 Ubuntu，完成用户名和密码设置。已有可用的 Ubuntu 可跳过。</li>
                                             <li>双击 <code>install_jimeng_cli.bat</code> 安装或更新即梦 CLI，等待窗口提示完成。</li>
-                                            <li>完全退出并重新打开小美画布，点击“重新检测”，显示“未登录”后点击“扫码登录”。也可双击 <code>login_jimeng_cli.bat</code> 登录。</li>
+                                            <li>完全退出并重新打开小美画布，点击“重新检测”，显示“未登录”后点击“扫码登录”，应用会自动在系统浏览器打开即梦登录页。请不要双击 <code>login_jimeng_cli.bat</code>，它会打开命令行窗口，仅用于高级排障。</li>
+                                            <li>如果网页端和 CLI 显示的积分不同，请先点击“退出登录”，再用网页端同一个即梦账号扫码登录；“查询积分”会同时显示 CLI 账号 ID。</li>
+                                            <li>有网页积分不代表已经开通 CLI 权限。如果提示“当前账号没有 dreamina_cli 使用权限 / 仅限会员用户使用”，说明账号登录成功，但当前账号暂未获得 CLI 资格；不一定需要额外充值，具体以即梦账号权益页面为准。</li>
                                         </ol>
                                         <p>也可在小美画布文件夹中打开 PowerShell，运行安装脚本：</p>
                                         <div class="cli-install-command"><code id="jimengInstallCommand">.\CLI\windows\jimeng\install_jimeng_cli.bat</code><button class="action-btn" type="button" onclick="copyJimengInstallCommand()">复制命令</button></div>
@@ -344,7 +346,7 @@
                             <div class="block-head">
                                 <div>
                                     <div class="block-title" data-i18n="api.chatModels">聊天模型</div>
-                                    <div class="block-desc" data-i18n="api.chatHint">GPT 对话和 LLM 节点使用</div>
+                                    <div class="block-desc" data-i18n="api.chatHint">DeepSeek 对话和 LLM 节点使用</div>
                                 </div>
                                 <button class="ghost-btn" type="button" onclick="addModel('chat')"><i data-lucide="plus" class="w-3.5 h-3.5"></i><span data-i18n="api.model">模型</span></button>
                         </div>
@@ -521,6 +523,6 @@
         </div>
     </div>
 
-    <script src="/static/js/api-settings.js?v=2026.10.01.1790755796"></script>
+    <script src="/static/js/api-settings.js?v=2026.10.11.1790912633"></script>
 </body>
 </html>

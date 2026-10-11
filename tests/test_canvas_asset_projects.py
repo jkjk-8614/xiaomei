@@ -25,6 +25,7 @@ class CanvasAssetProjectTests(unittest.TestCase):
                 ("wedding", "smart", "wedding", "/assets/wedding.png", False),
                 ("classic", "classic", "wedding", "/assets/classic.png", False),
                 ("deleted", "smart", "wedding", "/assets/deleted.png", True),
+                ("retired", "smart", "retired", "/assets/retired.png", False),
             ]
             for canvas_id, kind, project, url, deleted in fixtures:
                 (canvas_dir / f"{canvas_id}.json").write_text(json.dumps({
@@ -43,6 +44,7 @@ class CanvasAssetProjectTests(unittest.TestCase):
                 "load_projects": lambda: [
                     {"id": "wedding", "name": "婚纱相框", "order": 1},
                     {"id": "default", "name": "水晶相框", "order": 0},
+                    {"id": "retired", "name": "已删除项目", "order": 2, "deleted_at": 123},
                 ],
                 "iter_canvas_asset_values": lambda node: [("url", node["url"], node["url"])],
                 "canvas_asset_kind": lambda raw, url: "image",

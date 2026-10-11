@@ -6,6 +6,11 @@
         'smart-timeline': {title:'视频时间线', inputs:['image','video','audio'], outputs:['video']},
         'smart-prompt': {title:'LLM / 提示词', inputs:['text','image','video','table'], outputs:['text']},
         'smart-paint': {title:'绘画', inputs:['text','image','video','table'], outputs:['image','video']},
+        'smart-camera': {title:'视角控制', inputs:['image'], outputs:['image','text']},
+        // 循环节点把已连接的图片和/或提示词逐项传给下游绘画节点。
+        // 之前这里没有声明它的输出类型，导致尚未生成结果时被误判为“无输出”。
+        'smart-loop': {title:'循环', inputs:['text','image','video','table'], outputs:['image','text']},
+        'smart-group': {title:'智能分组', inputs:['image','video','audio','text'], outputs:['image','text']},
         'smart-upload': {title:'上传', inputs:[], outputs:['image','video','audio']},
         'smart-agent': {title:'Agent', inputs:['text','image','video','table'], outputs:['text']},
         'smart-compare': {title:'对比', inputs:['image'], outputs:[]}
@@ -22,6 +27,21 @@
         if(node?.type === 'smart-table') return ['table','text'];
         if(node?.type === 'smart-timeline') return node.timelineOutput?.url ? ['video'] : [];
         if(node?.type === 'smart-prompt' || node?.type === 'smart-agent') return ['text'];
+        if(node?.type === 'smart-loop'){
+            const types = [];
+            if(node.imageInput === true) types.push('image');
+            if(node.showPrompt === true || String(node.variablePrompt || '').trim() || (Array.isArray(node.variablePrompts) && node.variablePrompts.some(item => String(item || '').trim()))) types.push('text');
+            return types;
+        }
+        if(node?.type === 'smart-group'){
+            // 图片收进分组后写入 images；提示词、循环及旧图片成员保留在 items。
+            const mediaTypes = Array.isArray(node.images)
+                ? [...new Set(node.images.filter(item => item?.url).map(typeOfMedia))]
+                : [];
+            const hasMembers = Array.isArray(node.items) && node.items.length;
+            if(mediaTypes.length) return [...new Set([...mediaTypes, ...(hasMembers ? ['text'] : [])])];
+            return hasMembers ? definitions['smart-group'].outputs : [];
+        }
         const media = (node?.images || []).filter(item => item?.url).map(typeOfMedia);
         return [...new Set(media.length ? media : definitions[node?.type]?.outputs || [])];
     }

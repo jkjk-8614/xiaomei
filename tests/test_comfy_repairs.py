@@ -48,6 +48,19 @@ class ComfyRepairTests(unittest.TestCase):
             self.assertFalse(candidates)
             self.assertEqual(unresolved[0]['value'], 'ae.sft')
 
+    def test_legacy_zimage_alias_uses_current_model_file(self):
+        with tempfile.TemporaryDirectory() as root:
+            service = AppLibrary(SimpleNamespace(BASE_DIR=root))
+            service.runtime.base = Path(root) / 'comfy-base'
+            model = service.runtime.base / 'models' / 'diffusion_models' / 'z_image_turbo_bf16.safetensors'
+            model.parent.mkdir(parents=True)
+            model.write_bytes(b'z-image')
+            item = {'source': {'nodes': [{'type': 'UNETLoader', 'widgets_values': ['Z-Image_Turbo-diffusion', 'default']}]},
+                    'report': {}}
+            report = service._refresh_static_report(item)
+            self.assertEqual(report['missing_models'], [])
+            self.assertEqual(report['model_requirements'][0]['resolved_name'], 'z_image_turbo_bf16.safetensors')
+
     def test_interrupted_download_resumes_without_duplicate_bytes(self):
         with tempfile.TemporaryDirectory() as root:
             runtime = ManagedRuntime(root); runtime.base = Path(root)

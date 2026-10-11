@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="/static/images/logo.png?v=2026.10.01" type="image/png">
-    <title>GPT 对话</title>
-    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.10.01.1784161005"></script>
-    <script src="/static/vendor/js/lucide.js?v=2026.10.01.1784161005"></script>
-    <script src="/static/js/theme.js?v=2026.10.01.1790178169"></script>
-    <script src="/static/js/i18n.js?v=2026.10.01.1790690599"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.01.1785985827">
+    <link rel="icon" href="/static/images/logo.png?v=2026.10.11" type="image/png">
+    <title>DeepSeek 对话</title>
+    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.10.11.1784161005"></script>
+    <script src="/static/vendor/js/lucide.js?v=2026.10.11.1784161005"></script>
+    <script src="/static/js/theme.js?v=2026.10.11.1791335865"></script>
+    <script src="/static/js/i18n.js?v=2026.10.11.1791611714"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.11.1791343786">
     <style>
-        @import url('/static/vendor/css/fonts.css?v=2026.10.01.1784161005');
+        @import url('/static/vendor/css/fonts.css?v=2026.10.11.1784161005');
         :root {
             --ease:cubic-bezier(.4,0,.2,1);
             --chat-bg:#eef2f6;
@@ -38,17 +38,17 @@
         body.studio-theme-dark,
         html.theme-dark,
         body.theme-dark {
-            --chat-bg:#0f141d;
-            --chat-panel:#171d29;
-            --chat-panel-2:#111722;
-            --chat-soft:#1d2533;
-            --chat-line:#2a3444;
-            --chat-line-2:#334155;
+            --chat-bg:#0c0c0d;
+            --chat-panel:#1a1a1d;
+            --chat-panel-2:#141416;
+            --chat-soft:#232327;
+            --chat-line:#2a2a2e;
+            --chat-line-2:#3a3a3f;
             --chat-text:#e5e9f0;
             --chat-muted:#98a4b7;
             --chat-faint:#6f7d91;
             --chat-strong:#d8dee9;
-            --chat-strong-text:#10141d;
+            --chat-strong-text:#f0f0f2;
             --chat-strong-hover:#f1f5f9;
             --chat-active-bg:#222b3a;
             --chat-active-text:#e5e9f0;
@@ -256,6 +256,43 @@
         .image-draft-buttons button.primary { border-color:var(--chat-strong); background:var(--chat-strong); color:var(--chat-strong-text); }
         .image-draft-buttons button:disabled { cursor:not-allowed; opacity:.55; }
         .image-draft-buttons i,.image-draft-buttons svg { width:14px; height:14px; }
+        .design-plan-bubble { width:min(820px,82%); max-width:min(820px,82%); }
+        .design-plan-card { margin-top:12px; padding:14px; display:flex; flex-direction:column; gap:11px; border:1px solid rgba(180,120,32,.26); border-radius:15px; background:linear-gradient(145deg,var(--chat-panel-2),rgba(255,247,228,.76)); white-space:normal; }
+        .design-plan-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+        .design-plan-title { display:flex; align-items:center; gap:7px; color:var(--chat-text); font-size:13px; font-weight:950; }
+        .design-plan-title i,.design-plan-title svg { width:16px; height:16px; color:#a45a0a; }
+        .design-plan-meta { color:var(--chat-faint); font-size:10px; font-weight:850; text-align:right; }
+        .design-plan-summary { color:var(--chat-muted); font-size:11px; line-height:1.6; }
+        .design-plan-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+        .design-plan-field { min-width:0; padding:9px 10px; border:1px solid var(--chat-line); border-radius:10px; background:var(--chat-panel); }
+        .design-plan-field strong { display:block; margin-bottom:4px; color:var(--chat-text); font-size:10px; font-weight:950; }
+        .design-plan-field span { display:block; color:var(--chat-muted); font-size:10.5px; line-height:1.5; white-space:pre-wrap; }
+        .design-plan-directions { display:flex; flex-wrap:wrap; gap:6px; }
+        .design-plan-direction { padding:6px 8px; border-radius:8px; background:rgba(164,90,10,.09); color:var(--chat-muted); font-size:10px; line-height:1.45; }
+        .design-plan-editor { width:100%; min-height:112px; max-height:280px; resize:vertical; padding:10px 11px; border:1px solid var(--chat-line); border-radius:11px; background:var(--chat-panel); color:var(--chat-text); font:inherit; font-size:11px; line-height:1.6; outline:none; }
+        .design-plan-editor:focus { border-color:rgba(164,90,10,.62); box-shadow:0 0 0 3px rgba(164,90,10,.1); }
+        .design-plan-actions { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+        .design-plan-status { min-height:18px; color:var(--chat-faint); font-size:10px; font-weight:750; }
+        .design-plan-status.ready { color:#047857; }
+        .design-plan-status.warn { color:#a16207; }
+        .design-plan-buttons { display:flex; gap:7px; margin-left:auto; }
+        .design-plan-buttons button { min-height:32px; padding:0 11px; display:inline-flex; align-items:center; justify-content:center; gap:6px; border:1px solid var(--chat-line); border-radius:9px; background:var(--chat-panel); color:var(--chat-muted); font-size:10.5px; font-weight:900; }
+        .design-plan-buttons button:hover { border-color:var(--chat-strong); color:var(--chat-text); }
+        .design-plan-buttons button.primary { border-color:var(--chat-strong); background:var(--chat-strong); color:var(--chat-strong-text); }
+        .design-plan-buttons i,.design-plan-buttons svg { width:14px; height:14px; }
+        .design-workbench { position:absolute; top:72px; right:18px; bottom:18px; z-index:18; width:min(360px,calc(100vw - 36px)); display:flex; flex-direction:column; gap:12px; padding:14px; border:1px solid var(--chat-line); border-radius:17px; background:color-mix(in srgb,var(--chat-panel) 96%,transparent); box-shadow:0 22px 54px rgba(15,23,42,.18); backdrop-filter:blur(18px); overflow:auto; }
+        .design-workbench.hidden { display:none; }
+        .design-workbench-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+        .design-workbench-head strong { color:var(--chat-text); font-size:13px; font-weight:950; }
+        .design-workbench-head small { display:block; margin-top:4px; color:var(--chat-faint); font-size:9px; line-height:1.4; }
+        .design-workbench-close { width:28px; height:28px; display:grid; place-items:center; border:1px solid var(--chat-line); border-radius:8px; background:var(--chat-panel-2); color:var(--chat-muted); }
+        .design-workbench-section { padding-top:10px; border-top:1px solid var(--chat-line); }
+        .design-workbench-section strong { display:block; margin-bottom:5px; color:var(--chat-text); font-size:10px; font-weight:950; }
+        .design-workbench-section p { margin:0; color:var(--chat-muted); font-size:10px; line-height:1.55; white-space:pre-wrap; }
+        .design-workbench-chips { display:flex; flex-wrap:wrap; gap:5px; }
+        .design-workbench-chip { padding:5px 7px; border-radius:7px; background:var(--chat-soft); color:var(--chat-muted); font-size:9px; line-height:1.35; }
+        .design-workbench-status { padding:8px 9px; border-radius:9px; background:rgba(164,90,10,.08); color:#8f4d08; font-size:9px; line-height:1.45; }
+        @media (max-width:720px) { .design-plan-grid { grid-template-columns:1fr; } .design-workbench { top:64px; right:10px; bottom:10px; width:min(360px,calc(100vw - 20px)); } }
         .generated-grid { display:grid; gap:8px; }
         .generated-grid.count-2,
         .generated-grid.count-3,
@@ -1714,11 +1751,11 @@
         .skill-category-manager-status.success { color:#059669; }
         .skill-category-manager-status.error { color:#dc2626; }
     </style>
-    <link rel="stylesheet" href="/static/css/workspace-polish.css?v=2026.10.01.1789456340">
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.01.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.01.1790574407">
-    <link rel="stylesheet" href="/static/css/gpt-chat-reference.css?v=2026.10.01.1790643611">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.01.1790178173"></script>
+    <link rel="stylesheet" href="/static/css/workspace-polish.css?v=2026.10.11.1789456340">
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.11.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.11.1791346900">
+    <link rel="stylesheet" href="/static/css/gpt-chat-reference.css?v=2026.10.11.1790643611">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.11.1790178173"></script>
 </head>
 <body>
     <div class="chat-shell">
@@ -1727,7 +1764,7 @@
                 <div class="conversation-brand">
                     <div class="conversation-brand-mark" aria-hidden="true"><i data-lucide="message-square-more"></i></div>
                     <div class="conversation-brand-copy">
-                        <div class="conversation-brand-title">AI 对话</div>
+                        <div class="conversation-brand-title">DeepSeek 对话</div>
                         <div class="conversation-brand-subtitle">小美画布</div>
                     </div>
                 </div>
@@ -1824,6 +1861,17 @@
             </header>
 
             <section id="messages" class="messages"></section>
+            <aside id="designWorkbench" class="design-workbench hidden" aria-label="设计工作台">
+                <div class="design-workbench-head">
+                    <div><strong>设计工作台</strong><small id="designWorkbenchSubtitle">自动识别到视觉设计任务后显示</small></div>
+                    <button id="designWorkbenchClose" type="button" class="design-workbench-close" title="关闭"><i data-lucide="x"></i></button>
+                </div>
+                <div id="designWorkbenchStatus" class="design-workbench-status">等待设计方案</div>
+                <section class="design-workbench-section"><strong>当前方向</strong><p id="designWorkbenchSummary">—</p></section>
+                <section class="design-workbench-section"><strong>风格方向</strong><div id="designWorkbenchDirections" class="design-workbench-chips"></div></section>
+                <section class="design-workbench-section"><strong>提示词</strong><p id="designWorkbenchPrompt">—</p></section>
+                <section class="design-workbench-section"><strong>输出建议</strong><div id="designWorkbenchOutputs" class="design-workbench-chips"></div></section>
+            </aside>
 
             <div class="composer-wrap">
                 <div class="composer">
@@ -1929,8 +1977,8 @@
         <img id="imagePreviewImg" src="" alt="preview" onclick="event.stopPropagation()">
     </div>
 
-<script src="/static/js/link-analysis-client.js?v=2026.10.01.1786411347"></script>
-<script src="/static/js/shared-agent-skill.js?v=2026.10.01.1789201401"></script>
+<script src="/static/js/link-analysis-client.js?v=2026.10.11.1791637062"></script>
+<script src="/static/js/shared-agent-skill.js?v=2026.10.11.1791504727"></script>
     <script>
         lucide.createIcons();
         function tr(key){ return window.StudioI18n ? StudioI18n.t(key) : key; }
@@ -1947,6 +1995,7 @@
         window.addEventListener('message', event => {
             if(event.data?.type === 'studio-lang') applyLanguage(event.data.lang);
             if(event.data?.type === 'launcher-focus' && event.data.focus === 'conversation') {
+                receiveCanvasReferences(event.data.canvasReferences || []);
                 toggleHistory(true);
                 document.getElementById('messageInput')?.focus();
             }
@@ -2044,6 +2093,8 @@
         let modelPickerHome = null;
         let resolutionPickerHome = null;
         let refs = [];
+        let designWorkbenchPlan = null;
+        let designHarnessStatus = null;
         let config = { chat_model: 'gpt-5.6-terra', image_model: 'gpt-image-2', ms_chat_models: [] };
 
         const SIZE_OPTIONS = {
@@ -3327,15 +3378,124 @@
             return (SIZE_OPTIONS[key] || SIZE_OPTIONS.square).find(([, label]) => label === targetLabel)?.[0] || fallbackSize;
         }
 
+        function designPlanStatusText(plan){
+            const status = String(plan?.harness_status || '').toLowerCase();
+            if(status === 'ready') return 'DeepSeek Harness 已返回设计方案';
+            if(status === 'model-fallback') return '本地 Harness 暂未提供设计路由，已用当前聊天模型整理方案';
+            return '本地 Harness 暂不可用，已使用小美的本地保守方案';
+        }
+
+        function updateDesignWorkbench(plan){
+            const panel = document.getElementById('designWorkbench');
+            if(!panel) return;
+            designWorkbenchPlan = plan || null;
+            if(!plan){ panel.classList.add('hidden'); return; }
+            panel.classList.remove('hidden');
+            const subtitle = document.getElementById('designWorkbenchSubtitle');
+            const status = document.getElementById('designWorkbenchStatus');
+            const summary = document.getElementById('designWorkbenchSummary');
+            const prompt = document.getElementById('designWorkbenchPrompt');
+            const directions = document.getElementById('designWorkbenchDirections');
+            const outputs = document.getElementById('designWorkbenchOutputs');
+            if(subtitle) subtitle.textContent = `${plan.category_label || '视觉设计'} · ${plan.title || '设计方案'}`;
+            if(status){ status.textContent = designPlanStatusText(plan); status.className = `design-workbench-status ${plan.harness_status === 'ready' ? 'ready' : 'warn'}`; }
+            if(summary) summary.textContent = plan.summary || '—';
+            if(prompt) prompt.textContent = plan.prompt || '—';
+            if(directions) directions.innerHTML = (plan.directions || []).map(item => `<span class="design-workbench-chip">${escapeHtml(item)}</span>`).join('') || '<span class="design-workbench-chip">待补充</span>';
+            if(outputs) outputs.innerHTML = (plan.outputs || []).map(item => `<span class="design-workbench-chip">${escapeHtml(item)}</span>`).join('') || '<span class="design-workbench-chip">待补充</span>';
+            lucide.createIcons();
+        }
+
+        async function loadDesignHarnessStatus(){
+            try {
+                designHarnessStatus = await fetch('/api/deepseek-harness/status',{cache:'no-store'}).then(r=>r.json());
+            } catch(error) { designHarnessStatus = {available:false,detail:'本地 Harness 状态暂时无法读取'}; }
+        }
+
+        function renderDesignPlanCard(msg){
+            const plan = msg.design_plan || {};
+            const card = document.createElement('section');
+            card.className = 'design-plan-card';
+            const head = document.createElement('div');
+            head.className = 'design-plan-head';
+            const title = document.createElement('div');
+            title.className = 'design-plan-title';
+            title.innerHTML = '<i data-lucide="palette"></i><span></span>';
+            title.querySelector('span').textContent = plan.title || '视觉设计方案';
+            const meta = document.createElement('div');
+            meta.className = 'design-plan-meta';
+            meta.textContent = `${plan.category_label || '视觉设计'} · ${designPlanStatusText(plan)}`;
+            head.append(title,meta);
+            const summary = document.createElement('div');
+            summary.className = 'design-plan-summary';
+            summary.textContent = plan.summary || '';
+            const directions = document.createElement('div');
+            directions.className = 'design-plan-directions';
+            (plan.directions || []).forEach(item => { const chip=document.createElement('span'); chip.className='design-plan-direction'; chip.textContent=item; directions.appendChild(chip); });
+            const grid = document.createElement('div');
+            grid.className = 'design-plan-grid';
+            [['配色',plan.palette],['字体',plan.typography],['构图',plan.layout],['文案层级',plan.copy]].forEach(([label,value])=>{
+                const field=document.createElement('div'); field.className='design-plan-field';
+                const strong=document.createElement('strong'); strong.textContent=label;
+                const span=document.createElement('span'); span.textContent=value || '待补充';
+                field.append(strong,span); grid.appendChild(field);
+            });
+            const editor = document.createElement('textarea');
+            editor.className = 'design-plan-editor';
+            editor.value = String(plan.prompt || '');
+            editor.setAttribute('aria-label','设计方案生图提示词');
+            const actions = document.createElement('div');
+            actions.className = 'design-plan-actions';
+            const status = document.createElement('div');
+            status.className = `design-plan-status ${plan.harness_status === 'ready' ? 'ready' : 'warn'}`;
+            status.textContent = plan.harness_error ? `${designPlanStatusText(plan)}：${plan.harness_error}` : designPlanStatusText(plan);
+            const buttons = document.createElement('div'); buttons.className='design-plan-buttons';
+            const copy = document.createElement('button'); copy.type='button'; copy.innerHTML='<i data-lucide="copy"></i><span>复制提示词</span>'; copy.addEventListener('click',()=>copyDesignPrompt(editor,status));
+            const use = document.createElement('button'); use.type='button'; use.className='primary'; use.innerHTML='<i data-lucide="wand-sparkles"></i><span>进入生图草稿</span>'; use.addEventListener('click',()=>continueDesignPlan(msg,editor,use,status));
+            buttons.append(copy,use); actions.append(status,buttons);
+            card.append(head,summary,directions,grid,editor,actions);
+            updateDesignWorkbench(plan);
+            return card;
+        }
+
+        async function copyDesignPrompt(editor,status){
+            const value=String(editor?.value||'').trim(); if(!value)return;
+            try{ await navigator.clipboard?.writeText(value); status.textContent='提示词已复制；尚未调用图片模型。'; status.className='design-plan-status ready'; }
+            catch(error){ status.textContent='复制失败，请手动复制提示词。'; status.className='design-plan-status warn'; }
+        }
+
+        function continueDesignPlan(msg,editor,button,status){
+            const prompt=String(editor?.value||'').trim();
+            if(!prompt){ status.textContent='请先填写设计提示词。'; status.className='design-plan-status warn'; editor?.focus(); return; }
+            button.disabled=true;
+            status.textContent='正在把方案交给现有生图草稿流程…';
+            const request={
+                designPlan: msg,
+                designPrompt: prompt,
+            };
+            sendMessage({...request, designButton:button, designStatus:status}).catch(()=>{ button.disabled=false; status.textContent='提交失败，方案仍保留，可再次尝试。'; });
+        }
+
+        function sanitizeSavedAssistantMessage(value){
+            const text = String(value ?? '');
+            if(/^[0-9a-f]{8}-[0-9a-f-]{27}\s+SUCCESS\s+read_file\s+ViewFile$/i.test(text.trim())){
+                return '附件读取失败，Antigravity CLI 没有完成图片读取。请重新发送附件后重试。';
+            }
+            return text;
+        }
+
         function renderMessages(messages){
             const box = document.getElementById('messages');
             box.innerHTML = '';
             if(!messages.length){
+                updateDesignWorkbench(null);
                 box.innerHTML = `<div class="empty-state"><div class="empty-state-icon" aria-hidden="true"><i data-lucide="bot"></i></div><strong class="empty-state-title">你好，我是小美</strong><span class="empty-state-subtitle">可以帮你分析商品、整理文案或生成图片</span><div class="empty-state-text">${tr('chat.ready')}</div></div>`;
                 lucide.createIcons();
                 return;
             }
             messages.forEach(addMessageBubble);
+            const latestPlan = [...messages].reverse().find(item => item?.role === 'assistant' && item?.type === 'design_plan');
+            updateDesignWorkbench(latestPlan?.design_plan || null);
             scrollBottom();
         }
 
@@ -3348,8 +3508,9 @@
             const imageUrls = Array.isArray(msg.image_urls) && msg.image_urls.length ? msg.image_urls : (msg.image_url ? [msg.image_url] : []);
             if(imageUrls.length) bubble.classList.add('image-bubble');
             if(msg.role === 'assistant' && msg.type === 'image_draft') bubble.classList.add('image-draft-bubble');
+            if(msg.role === 'assistant' && msg.type === 'design_plan') bubble.classList.add('design-plan-bubble');
             const text = document.createElement('div');
-            text.textContent = msg.type === 'image' ? (msg.agent_reply || tr('chat.generated')) : (msg.content || '');
+            text.textContent = msg.type === 'image' ? (msg.agent_reply || tr('chat.generated')) : (msg.role === 'assistant' ? sanitizeSavedAssistantMessage(msg.content) : (msg.content || ''));
             text.className = 'bubble-text';
             bubble.appendChild(text);
             if(msg.attachments?.length){
@@ -3369,6 +3530,9 @@
             }
             if(msg.role === 'assistant' && msg.type === 'image_draft' && msg.draft_prompt){
                 bubble.appendChild(renderImageDraftCard(msg));
+            }
+            if(msg.role === 'assistant' && msg.type === 'design_plan' && msg.design_plan){
+                bubble.appendChild(renderDesignPlanCard(msg));
             }
             if(imageUrls.length){
                 const grid = document.createElement('div');
@@ -3596,6 +3760,19 @@
             updateComposerOverflow();
         }
 
+        function receiveCanvasReferences(references){
+            const incoming = (Array.isArray(references) ? references : []).filter(ref => isImageRef(ref) && ref.url);
+            if(!incoming.length) return;
+            const seen = new Set(refs.map(ref => String(ref?.url || '')));
+            incoming.forEach(ref => {
+                const url = String(ref.url || '');
+                if(!url || seen.has(url) || refs.length >= CHAT_ATTACHMENT_MAX) return;
+                seen.add(url);
+                refs.push({...ref, kind:'image'});
+            });
+            renderRefs();
+        }
+
         function removeRef(i){ refs.splice(i,1); renderRefs(); }
 
         window.addEventListener('paste', e => {
@@ -3655,6 +3832,9 @@
                 skill_id: activeSkillId,
                 link_job_ids: [],
                 retry_failed: false,
+                confirm_design_plan: false,
+                design_plan_id: '',
+                generation_prompt: '',
             };
         }
 
@@ -3756,7 +3936,9 @@
         async function sendMessage(options = {}){
             const input = document.getElementById('messageInput');
             const retryRequest = options.retryRequest || null;
-            const message = String(retryRequest?.message || input.value || '').trim();
+            const designPlan = options.designPlan || null;
+            const designPrompt = String(options.designPrompt || '').trim();
+            const message = String(retryRequest?.message || designPrompt || input.value || '').trim();
             if(!message) return;
             const btn = document.getElementById('sendBtn');
             if(btn?.disabled) return;
@@ -3769,6 +3951,12 @@
             const request = retryRequest
                 ? {...retryRequest, message, mode:requestMode, size:requestedSize, reference_images:pendingRefs, retry_failed:true}
                 : buildRequestSnapshot(message, requestedSize, pendingRefs, requestMode);
+            if(designPlan){
+                request.mode = 'agent';
+                request.confirm_design_plan = true;
+                request.design_plan_id = String(designPlan.id || '').trim();
+                request.generation_prompt = designPrompt;
+            }
             if(!retryRequest){
                 refs = [];
                 renderRefs();
@@ -3823,6 +4011,9 @@
                             skill_id:request.skill_id,
                             link_job_ids:request.link_job_ids || [],
                             retry_failed:request.retry_failed,
+                            confirm_design_plan:!!request.confirm_design_plan,
+                            design_plan_id:request.design_plan_id || '',
+                            generation_prompt:request.generation_prompt || '',
                         })
                     }).then(async r => { if(!r.ok) throw new Error((await r.json()).detail || tr('chat.requestFailed')); return r.json(); });
                     currentConversation = data.conversation;
@@ -3850,6 +4041,9 @@
                             skill_id:request.skill_id,
                             link_job_ids:request.link_job_ids || [],
                             retry_failed:request.retry_failed,
+                            confirm_design_plan:!!request.confirm_design_plan,
+                            design_plan_id:request.design_plan_id || '',
+                            generation_prompt:request.generation_prompt || '',
                         })
                     }).then(async r => { if(!r.ok) throw new Error((await r.json()).detail || tr('chat.requestFailed')); return r.json(); });
                     currentConversation = data.conversation;
@@ -3860,6 +4054,8 @@
                 }
             } catch(err) {
                 showRequestError(assistantBubble, err, request);
+                if(options.designButton) options.designButton.disabled = false;
+                if(options.designStatus) options.designStatus.textContent = `提交失败：${err?.message || tr('chat.requestFailed')}。方案仍保留，可再次尝试。`;
             } finally {
                 btn.disabled = false;
                 scrollBottom();
@@ -4019,10 +4215,12 @@
             applyLanguage();
             bindConversationControls();
             bindSkillLibraryControls();
+            document.getElementById('designWorkbenchClose')?.addEventListener('click', () => document.getElementById('designWorkbench')?.classList.add('hidden'));
             syncSystemPromptUI();
             setChatRatio(chatRatio);
             setChatResolution(chatResolution);
             await loadConfig();
+            await loadDesignHarnessStatus();
             await loadSkills();
             await loadConversations();
             updateComposerOverflow();
@@ -4030,7 +4228,3 @@
     </script>
 </body>
 </html>
-
-
-
-

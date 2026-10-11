@@ -375,6 +375,39 @@ class AssetRegistry:
             self._write_locked()
             return copy.deepcopy(record)
 
+    def trash_many(self, updates: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        """Mark several assets as trashed with one registry write.
+
+        Moving a folder used to call ``trash`` once per file, which rewrote and
+        fsynced the complete JSON registry for every asset.  The filesystem
+        operation remains reversible, while this method makes the metadata
+        update atomic from the registry's point of view.
+        """
+        if not isinstance(updates, dict) or not updates:
+            return {}
+        with self._lock:
+            data = self._load_locked()
+            assets = data.get("assets", {})
+            timestamp = now_ms()
+            changed = False
+            result: Dict[str, Dict[str, Any]] = {}
+            for raw_id, metadata in updates.items():
+                asset_id = str(raw_id or "").strip()
+                record = assets.get(asset_id)
+                if not isinstance(record, dict) or record.get("deleted_at"):
+                    continue
+                if isinstance(metadata, dict):
+                    current = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+                    current.update(_clean_metadata(metadata))
+                    record["metadata"] = current
+                record["deleted_at"] = timestamp
+                record["updated_at"] = timestamp
+                result[asset_id] = copy.deepcopy(record)
+                changed = True
+            if changed:
+                self._write_locked()
+            return result
+
     def restore(self, asset_id: Any) -> Optional[Dict[str, Any]]:
         asset_id = str(asset_id or "").strip()
         with self._lock:

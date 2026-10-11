@@ -44,7 +44,7 @@ const providers = [
             } else if(path === '/api/gemini-cli/status'){
                 data = {installed:false, version:'', path:''};
             } else if(path === '/api/jimeng/status'){
-                data = {installed:true, logged_in:true, version_ok:true, raw:{credits:100}};
+                data = {installed:true, logged_in:true, version_ok:true, raw:{total_credit:0, user_id:'1026301996304889'}};
             } else {
                 const installMatch = path.match(/^\/api\/(codex|gemini-cli|jimeng)\/install$/);
                 if(installMatch){
@@ -102,6 +102,8 @@ const providers = [
         await page.evaluate(() => selectProvider('jimeng'));
         await page.waitForFunction(() => document.querySelector('#jimengCliAction').textContent.trim() === '最新版本');
         await page.waitForFunction(() => document.querySelector('#jimengCliStatus').textContent.trim() === '已登录');
+        await page.waitForFunction(() => document.querySelector('#jimengCredit').textContent.includes('当前积分：0'));
+        assert.match(await page.locator('#jimengCredit').textContent, /即梦账号：1026301996304889/);
 
         errorMode = true;
         await page.evaluate(() => {

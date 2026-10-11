@@ -303,6 +303,13 @@
     flushParagraph();
     return blocks.join('') || '<p></p>';
   }
+  function sanitizeSavedAssistantMessage(value) {
+    const text = String(value ?? '');
+    if (/^[0-9a-f]{8}-[0-9a-f-]{27}\s+SUCCESS\s+read_file\s+ViewFile$/i.test(text.trim())) {
+      return '附件读取失败，Antigravity CLI 没有完成图片读取。请重新发送附件后重试。';
+    }
+    return text;
+  }
   const text = (value, fallback = '未返回') => String(value ?? '').trim() || fallback;
   function isUsableProductTitle(value) {
     const normalized = String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -1043,7 +1050,15 @@
     if (panel) { panel.hidden = !state.assistantOpen; panel.setAttribute('aria-hidden', String(!state.assistantOpen)); }
     if (button) { button.hidden = state.assistantOpen; button.setAttribute('aria-expanded', String(state.assistantOpen)); }
     requestBoundsUpdate();
+    syncProductAgentOrbBridge();
   }
+  // 右下角入口球有 DOM 与商品页内注入两份：面板收起时商品页是原生顶层视图，
+  // 会盖住 DOM 入口，由桌面壳在商品页里注入同一颗球；这里只把面板开合同步给
+  // 主进程，何时显示/撤下由主进程结合页面可见性统一裁决。
+  function syncProductAgentOrbBridge() { try { shellApi()?.setProductAgentOrb?.(!state.assistantOpen); } catch {} }
+  // 商品页内注入的入口球点击后，由桌面壳 executeJavaScript 回调这里开面板，
+  // 行为与右上角入口按钮完全一致。
+  window.__xiaomeiCommerceOpenAssistant = () => { state.assistantManualHidden = false; state.assistantOverride = true; setAssistantVisible(true); };
   // 商品信息卡的展开状态属于当前商品标签页。切换链接时保留用户最后一次
   // 选择，避免新页面加载过程把用户主动收起的卡片又强制打开。
   function productInfoPreferenceForTab(tab = activeCommerceTab()) {
@@ -2503,12 +2518,17 @@
       const specs = Array.isArray(item.specs) ? item.specs.some((spec) => spec && (spec.value || spec.name)) : String(item.specs || item.specText || '').trim();
       return Boolean(id && (path || specs));
     });
-    const skuImageUrls = new Set();
-    [...skuItems, ...(Array.isArray(sku.specs) ? sku.specs : []).flatMap((spec) => Array.isArray(spec?.values) ? spec.values : [])].forEach((entry) => {
+    const itemImageUrls = new Set();
+    skuItems.forEach((entry) => {
       const url = entry && typeof entry === 'object' ? String(entry.image || entry.imageUrl || entry.pic || entry.picUrl || entry.skuImage || entry.skuImageUrl || '').trim() : '';
-      if (url) skuImageUrls.add(url);
+      if (url) itemImageUrls.add(url);
     });
-    const skuImageCount = skuImageUrls.size;
+    const specImageUrls = new Set();
+    if (!itemImageUrls.size) (Array.isArray(sku.specs) ? sku.specs : []).flatMap((spec) => Array.isArray(spec?.values) ? spec.values : []).forEach((entry) => {
+      const url = entry && typeof entry === 'object' ? String(entry.image || entry.imageUrl || entry.pic || entry.picUrl || entry.skuImage || entry.skuImageUrl || '').trim() : '';
+      if (url) specImageUrls.add(url);
+    });
+    const skuImageCount = (itemImageUrls.size ? itemImageUrls : specImageUrls).size;
     const people = result?.peopleStructure || result?.audience || result?.people || {};
     const peopleItems = Array.isArray(people)
       ? people
@@ -2557,10 +2577,10 @@
     // SKU 图是 SKU 模块的子资源，不能拿 SKU 列表/规格组数量兜底；否则没有图片
     // 时也会把一个当前 SKU 误显示成“SKU 图 ×1”。
     if (id === 'sku_images') {
-      return firstPresent(exactResource?.totalCount, exactResource?.sampleCount, sku.specImageCount, resourceObservedCount(result, id)) || '';
+      return firstPresent(resourceObservedCount(result, id), exactResource?.sampleCount, sku.specImageCount) || '';
     }
     if (id === 'sku_list') {
-      return firstPresent(exactResource?.totalCount, moduleState.totalCount, sku.totalCount, product.skuCount, exactResource?.sampleCount, resourceObservedCount(result, id)) || '';
+      return firstPresent(resourceObservedCount(result, id), exactResource?.sampleCount, sku.itemCount, sku.totalCount, product.skuCount) || '';
     }
     // 商品页上的“累计评价/问大家”数量是用户实际看到的口径；接口响应里的
     // totalCount 有时只是当前分页或当前筛选的数量，不能覆盖商品页数量。
@@ -2616,9 +2636,9 @@
       const totalCount = isDetailMedia
         ? (sampleCount || null)
         : id === 'sku_images'
-        ? (hasExactResource ? (source.totalCount ?? (sampleCount || null)) : (hasValue(sku?.specImageCount) ? sku.specImageCount : (sampleCount || null)))
+        ? (sampleCount || null)
         : id === 'sku_list' && hasExactResource
-          ? (source.totalCount ?? (sampleCount || null))
+          ? (sampleCount || null)
         : ['reviews', 'questions'].includes(id)
           ? (hasValue(pageTotalCount) ? pageTotalCount : (hasValue(source.pageTotalCount) ? source.pageTotalCount : (hasValue(source.totalCount) ? source.totalCount : (hasValue(moduleState.totalCount) ? moduleState.totalCount : (hasValue(count) ? count : null)))))
         : (hasValue(source.totalCount) ? source.totalCount : hasValue(moduleState.totalCount) ? moduleState.totalCount : (hasValue(count) ? count : null));
@@ -2629,7 +2649,9 @@
       if (id === 'sku_list') {
         if (totalRank && Number(sampleCount || 0) < totalRank) operationStatus = 'partial';
         else if (!sampleCount) operationStatus = 'missing';
+        else operationStatus = 'ready';
       }
+      if (id === 'sku_images' && sampleCount) operationStatus = 'ready';
       const skuListComplete = id !== 'sku_list' || !totalRank || Number(sampleCount || 0) >= totalRank;
       const skuListHasRows = id !== 'sku_list' || observedCount > 0;
       return {
@@ -3730,7 +3752,7 @@
     box.appendChild(node); scrollChatToBottom(box);
     if (!options.skipState) { state.messages.push({ role, content: message, attachments: attachments.map((item) => item?.id || item?.url || ''), merchant_changes: Array.isArray(options.merchantChanges) ? options.merchantChanges : [] }); renderChatHistory(); }
   }
-  function renderSavedConversation(messages = []) { const box = $('chatMessages'); if (!box) return; state.messages = Array.isArray(messages) ? messages.slice() : []; state.chatScrollFollow = true; box.innerHTML = ''; if (!state.messages.length) { const siteView = activeSiteAssistantView(); const siteProfile = assistantProfileForTab(); appendMessage('assistant', siteView?.greeting || (siteProfile ? `你好，我是小美。${siteProfile.title}的当前可见资料会随本标签页单独保存和分析。` : '你好，我是小美。登录淘宝或 1688 并完成商品采集后，我可以帮你分析评价、主图、详情页、视频和运营数据。'), siteProfile ? [] : ['先看看这个商品的核心卖点和风险', '评价里用户最在意什么？'], [], { skipState: true }); return; } state.messages.forEach((item) => { const role = item?.role === 'user' ? 'user' : 'assistant'; const content = item?.type === 'image' ? (item.agent_reply || '已生成图片') : String(item?.content || ''); appendMessage(role, content, [], Array.isArray(item?.attachments) ? item.attachments : [], { skipState: true, merchantChanges: item?.merchant_changes }); }); renderChatHistory(); }
+  function renderSavedConversation(messages = []) { const box = $('chatMessages'); if (!box) return; state.messages = Array.isArray(messages) ? messages.map((item) => item?.role === 'assistant' && item?.type !== 'image' ? { ...item, content: sanitizeSavedAssistantMessage(item.content) } : item).slice() : []; state.chatScrollFollow = true; box.innerHTML = ''; if (!state.messages.length) { const siteView = activeSiteAssistantView(); const siteProfile = assistantProfileForTab(); appendMessage('assistant', siteView?.greeting || (siteProfile ? `你好，我是小美。${siteProfile.title}的当前可见资料会随本标签页单独保存和分析。` : '你好，我是小美。登录淘宝或 1688 并完成商品采集后，我可以帮你分析评价、主图、详情页、视频和运营数据。'), siteProfile ? [] : ['先看看这个商品的核心卖点和风险', '评价里用户最在意什么？'], [], { skipState: true }); return; } state.messages.forEach((item) => { const role = item?.role === 'user' ? 'user' : 'assistant'; const content = item?.type === 'image' ? (item.agent_reply || '已生成图片') : String(item?.content || ''); appendMessage(role, content, [], Array.isArray(item?.attachments) ? item.attachments : [], { skipState: true, merchantChanges: item?.merchant_changes }); }); renderChatHistory(); }
   function renderConversationHistoryList(items = []) { const list = $('conversationHistoryList'); if (!list) return; if (!items.length) { list.innerHTML = '<div class="conversation-history-empty">还没有已保存的对话。</div>'; return; } list.innerHTML = items.slice(0, 50).map((item) => `<button type="button" class="conversation-history-item ${item.id === state.conversationId ? 'is-active' : ''}" data-shared-conversation-id="${escapeHtml(item.id)}"><strong>${escapeHtml(item.title || '新对话')}</strong><small>${escapeHtml(item.last_message || '暂无消息')}</small></button>`).join(''); }
   async function loadConversationHistoryList() { try { const data = await api('/api/conversations', { headers: { 'Cache-Control': 'no-cache' } }); renderConversationHistoryList(Array.isArray(data.conversations) ? data.conversations : []); } catch (error) { const list = $('conversationHistoryList'); if (list) list.innerHTML = `<div class="conversation-history-empty">无法读取记录：${escapeHtml(error.message)}</div>`; } }
   function toggleConversationHistory(force) { const popover = $('conversationHistoryPopover'); const button = $('conversationHistoryButton'); if (!popover) return; const open = typeof force === 'boolean' ? force : popover.hidden; popover.hidden = !open; button?.setAttribute('aria-expanded', String(open)); if (open) loadConversationHistoryList(); }
@@ -4110,11 +4132,10 @@
     drawer.removeAttribute('data-desktop-view');
     const close = $('desktopDrawerClose');
     if (close) { close.textContent = '×'; close.setAttribute('aria-label', '关闭'); close.removeAttribute('title'); }
-    window.XiaomeiSkillMarket?.close?.();
   }
   function openDesktopDrawer(kind) {
     const drawer = $('desktopDrawer'); if (!drawer) return; drawer.hidden = false; drawer.setAttribute('aria-hidden', 'false');
-    const fullPage = kind === 'skills' || kind === 'tasks';
+    const fullPage = kind === 'tasks';
     drawer.classList.toggle('is-full-page', fullPage);
     drawer.dataset.desktopView = kind;
     const close = $('desktopDrawerClose');
@@ -4124,7 +4145,7 @@
       if (fullPage) close.setAttribute('title', '返回工作应用'); else close.removeAttribute('title');
     }
     const request = ++desktopDrawerRequest; const body = $('desktopDrawerBody'); body.classList.toggle('is-task-manager', kind === 'tasks'); body.innerHTML = '<div class="desktop-drawer-empty">正在读取本地数据…</div>';
-    if (kind === 'files') renderDesktopFiles(request); else if (kind === 'skills') renderDesktopSkills(request); else renderDesktopTasks(request);
+    if (kind === 'files') renderDesktopFiles(request); else renderDesktopTasks(request);
   }
   function switchDesktopTaskView(view = 'scheduled') {
     const next = view === 'commerce' ? 'commerce' : 'scheduled';
@@ -4182,41 +4203,10 @@
       $('desktopDrawerBody').innerHTML = list.length ? `<div class="desktop-data-list">${list.map((group) => `<button type="button" class="desktop-data-row" data-open-assets="1"><span class="desktop-data-row-icon">▱</span><span class="desktop-data-row-main"><strong>${escapeHtml(group.category)}</strong><small>${escapeHtml(group.library)} · ${group.count} 个素材</small></span><span class="desktop-data-row-action">打开素材库</span></button>`).join('')}</div><div class="desktop-drawer-footer"><button type="button" class="primary-button" data-open-assets="1">打开完整素材库（${total} 个素材）</button></div>` : '<div class="desktop-drawer-empty">当前素材库还没有可显示的素材。</div>';
     } catch (error) { if (request === desktopDrawerRequest) $('desktopDrawerBody').innerHTML = `<div class="desktop-drawer-empty">无法读取素材库：${escapeHtml(error.message)}</div>`; }
   }
-  async function renderDesktopSkills(request) {
-    const body = $('desktopDrawerBody');
-    if (!body || request !== desktopDrawerRequest) return;
-    state.skillId = readSharedSkillId() || state.skillId;
-    if (window.XiaomeiSkillMarket?.open) {
-      await window.XiaomeiSkillMarket.open({
-        body,
-        selectedId: state.skillId,
-        notify: (message) => message && toast(message),
-        onSelected: (id, skill) => {
-          state.skillId = String(id || '').trim();
-          const shared = window.StudioSharedSkill;
-          if (shared?.setSelected && shared.getSelected?.() !== state.skillId) shared.setSelected(state.skillId);
-        },
-      });
-      return;
-    }
-    $('desktopDrawerEyebrow').textContent = 'AVAILABLE SKILLS'; $('desktopDrawerTitle').textContent = '技能市场'; $('desktopDrawerDescription').textContent = '从已安装的真实 Skill 列表中选择一个，后续“商品研究”将带上它的受控指令。';
-    try {
-      const data = await api('/api/agent-skills'); if (request !== desktopDrawerRequest) return;
-      const skills = (Array.isArray(data.skills) ? data.skills : []).filter((skill) => skill && skill.enabled !== false).slice(0, 60);
-      $('desktopDrawerBody').innerHTML = skills.length ? `<div class="desktop-data-list">${skills.map((skill) => { const id = String(skill.id || skill.slug || ''); const selected = id && id === state.skillId; return `<button type="button" class="desktop-data-row" data-select-skill="${escapeHtml(id)}"><span class="desktop-data-row-icon">✦</span><span class="desktop-data-row-main"><strong>${escapeHtml(skill.display_name || skill.name || id)}</strong><small>${escapeHtml(skill.description || skill.category_label || '可用于商品研究对话')}</small></span>${selected ? '<span class="desktop-skill-selected">已选择</span>' : '<span class="desktop-data-row-action">选择</span>'}</button>`; }).join('')}</div>` : '<div class="desktop-drawer-empty">当前没有已启用的 Skill。可在技能管理中安装或启用。</div>';
-    } catch (error) { if (request === desktopDrawerRequest) $('desktopDrawerBody').innerHTML = `<div class="desktop-drawer-empty">无法读取 Skill：${escapeHtml(error.message)}</div>`; }
-  }
   async function openSavedJob(id) {
     if (!id) return; try { const job = await api(`/api/commerce-analysis/jobs/${encodeURIComponent(id)}`); const sourceUrl = job.url || resultSourceUrl(job.result); if (sourceUrl && isDetailCommerceUrl(sourceUrl)) { const tab = openCommerceTab(sourceUrl, '商品详情', { newTab: true, kind: 'detail', load: false }); const shell = shellApi(); if (tab && shell?.openProduct) Promise.resolve(shell.openProduct(sourceUrl, tab.id)).catch((error) => toast(error.message)); } else if (sourceUrl) { syncProductContext(sourceUrl); $('productUrl').value = sourceUrl; state.embeddedUrl = sourceUrl; } if (!renderJob(job)) return toast('这条报告不属于当前商品，已阻止混用'); hideAnalysisDesktop(); openReport('overview'); toast('已打开这条商品分析报告'); } catch (error) { toast(error.message); }
   }
   function openOuterAssets() { closeDesktopDrawer(); postParent({ type: 'studio-switch-ui', page: 'asset-manager' }); }
-  function selectDesktopSkill(id) {
-    const next = String(id || '').trim(); if (!next) return;
-    state.skillId = next;
-    if (window.StudioSharedSkill?.setSelected) window.StudioSharedSkill.setSelected(next);
-    else { try { localStorage.setItem(SHARED_SKILL_SELECTION_KEY, next); } catch {} }
-    toast('已选择 Skill，后续商品研究会带上它');
-  }
   async function openSellerFromDesktop(site) {
     try {
       const shell = shellApi();
@@ -4280,7 +4270,7 @@
     if (appId === 'taobao' || desktopPlatformDefinitions[appId]) { openPlatformFromDesktop(appId); return; }
     if (appId === 'qianniu' || appId === 'sycm') { openSellerFromDesktop(appId); return; }
     if (appId === 'ai') { openGptConversation(); return; }
-    if (appId === 'files' || appId === 'skills' || appId === 'tasks') { showAnalysisDesktop(appId, appId); }
+    if (appId === 'files' || appId === 'tasks') { showAnalysisDesktop(appId, appId); }
   }
   function filterDesktopApps(value) { const needle = String(value || '').trim().toLowerCase(); q('[data-desktop-app]').forEach((button) => { if (!button.classList.contains('desktop-app-card')) return; button.classList.toggle('is-filtered', Boolean(needle) && !String(button.dataset.search || '').toLowerCase().includes(needle)); }); }
   function wire() {
@@ -4389,6 +4379,7 @@
     });
     $('closeAssistant')?.addEventListener('click', () => { state.assistantManualHidden = true; state.assistantOverride = false; setAssistantVisible(false); });
     $('showAssistant')?.addEventListener('click', () => { state.assistantManualHidden = false; state.assistantOverride = true; setAssistantVisible(true); });
+    syncProductAgentOrbBridge();
     setAssistantMode(state.assistantMode);
     q('.quick-grid:not(.site-quick-grid) button').forEach((button) => { button.onclick = () => button.dataset.pageModule ? runSearchQuickAnalysis(button.dataset.pageModule) : quickAction(button.dataset.module); }); $('quickCard')?.addEventListener('click', (event) => { const button = event.target.closest('[data-page-module]'); if (button) runSearchQuickAnalysis(button.dataset.pageModule); }); document.querySelector('.quick-grid:not(.site-quick-grid)')?.addEventListener('click', (event) => { const button = event.target.closest('[data-page-module]'); if (button && !button.onclick) runSearchQuickAnalysis(button.dataset.pageModule); }); $('siteQuickGrid')?.addEventListener('click', (event) => { const button = event.target.closest('[data-site-action]'); if (button) void runSiteQuickAction(button.dataset.siteAction); }); $('refreshPageContext')?.addEventListener('click', () => { const tab = activeCommerceTab(); if (isSiteAssistantTab(tab)) void captureSiteAssistantContext({ tab, force: true }); else if (isSearchCommerceUrl(activeProductUrl())) void captureCurrentPageContext({ url: activeProductUrl(), force: true }); }); $('chatMessages').addEventListener('click', (event) => { const merchantAction = event.target.closest?.('[data-merchant-change-action]'); if (merchantAction) { event.preventDefault(); void handleMerchantChangeAction(merchantAction); return; } const suggestion = event.target.closest?.('[data-suggest]'); if (suggestion) { event.preventDefault(); prepareChatDraft(suggestion.dataset.suggest); return; } const copyButton = event.target.closest?.('[data-copy-search-context]'); if (copyButton) { event.preventDefault(); copySearchPageGreeting(copyButton); return; } const siteCopyButton = event.target.closest?.('[data-copy-site-context]'); if (siteCopyButton) { event.preventDefault(); void copySiteContextPreview(siteCopyButton); } });
     $('chatMessages').addEventListener('click', openCommerceLinkInNewTab);
@@ -4396,12 +4387,11 @@
     const openDesktop = () => showAnalysisDesktop(); q('[data-nav="desktop"]').forEach((button) => button.onclick = openDesktop);
     q('.rail-item').filter((button) => button.dataset.nav !== 'desktop').forEach((button) => button.onclick = () => { const nav = button.dataset.nav; if (nav === 'ai') { openGptConversation(); return; } showAnalysisDesktop(nav, nav); });
     $('desktopAppGrid')?.addEventListener('click', (event) => { const button = event.target.closest('[data-desktop-app]'); if (button) routeDesktopApp(button.dataset.desktopApp); });
-    $('desktopDrawerClose')?.addEventListener('click', closeDesktopDrawer); $('desktopDrawerBackdrop')?.addEventListener('click', closeDesktopDrawer); $('desktopDrawerBody')?.addEventListener('click', (event) => { const taskView = event.target.closest('[data-task-view]'); const job = event.target.closest('[data-open-job]'); const assets = event.target.closest('[data-open-assets]'); const skill = event.target.closest('[data-select-skill]'); if (taskView) switchDesktopTaskView(taskView.dataset.taskView); else if (job) openSavedJob(job.dataset.openJob); else if (assets) openOuterAssets(); else if (skill) selectDesktopSkill(skill.dataset.selectSkill); });
+    $('desktopDrawerClose')?.addEventListener('click', closeDesktopDrawer); $('desktopDrawerBackdrop')?.addEventListener('click', closeDesktopDrawer); $('desktopDrawerBody')?.addEventListener('click', (event) => { const taskView = event.target.closest('[data-task-view]'); const job = event.target.closest('[data-open-job]'); const assets = event.target.closest('[data-open-assets]'); if (taskView) switchDesktopTaskView(taskView.dataset.taskView); else if (job) openSavedJob(job.dataset.openJob); else if (assets) openOuterAssets(); });
     const syncSharedSkill = (id) => {
       state.skillId = String(id || '').trim();
       updateAssistantSkillButton();
       renderAssistantSkillPicker();
-      window.XiaomeiSkillMarket?.syncSelected?.(state.skillId);
     };
     if (window.StudioSharedSkill?.subscribe) window.StudioSharedSkill.subscribe(syncSharedSkill);
     else window.addEventListener('storage', (event) => { if (event.key === SHARED_SKILL_SELECTION_KEY) syncSharedSkill(event.newValue); });

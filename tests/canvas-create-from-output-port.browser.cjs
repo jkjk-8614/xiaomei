@@ -83,7 +83,7 @@ test('dropping an output port on the canvas keeps the node menu open and connect
         const source = createNode(340, 220, [
             {url:'/output/original-a.png', name:'original-a.png', kind:'image'},
             {url:'/output/original-b.png', name:'original-b.png', kind:'image'}
-        ], {nodeType:'smart-upload', select:false, skipUndo:true});
+        ], {nodeType:'smart-upload', select:true, skipUndo:true});
         const sink = createPaintNodeAt({x:1100, y:220}, {select:false, skipUndo:true});
         connectInputNode(source.id, sink.id);
         render();
@@ -101,7 +101,12 @@ test('dropping an output port on the canvas keeps the node menu open and connect
 
     const grouped = await page.evaluate(({sourceId, sinkId}) => {
         const group = nodes.find(isSmartGroupNode);
+        const groupEl = world.querySelector(`.image-node[data-id="${group?.id}"]`);
+        const outputPort = groupEl.querySelector('.node-port.port-out');
         return {
+            inputPortCount:groupEl.querySelectorAll('.node-port.port-in').length,
+            outputVisible:getComputedStyle(outputPort).visibility === 'visible' && getComputedStyle(outputPort).pointerEvents === 'auto',
+            plusOpacity:getComputedStyle(outputPort, '::after').opacity,
             sourceRemoved:!nodes.some(node => node.id === sourceId),
             imageUrls:(group?.images || []).map(image => image.url).sort(),
             rerouted:Boolean(group && canvas.connections.some(connection => (
@@ -114,5 +119,8 @@ test('dropping an output port on the canvas keeps the node menu open and connect
     assert.equal(grouped.sourceRemoved, true, 'group creation should move the original node contents');
     assert.deepEqual(grouped.imageUrls, ['/output/original-a.png', '/output/original-b.png']);
     assert.equal(grouped.rerouted, true, 'existing connections should follow the source into the group');
+    assert.equal(grouped.inputPortCount, 0);
+    assert.equal(grouped.outputVisible, true);
+    assert.equal(grouped.plusOpacity, '1');
     assert.deepEqual(errors, []);
 });

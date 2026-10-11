@@ -3,7 +3,7 @@
 
     const DEFAULT_TASK_PATH = taskId => `/api/canvas-image-tasks/${encodeURIComponent(taskId)}`;
     const DEFAULT_INTERVAL_MS = 1800;
-    const DEFAULT_MAX_ATTEMPTS = 900;
+    const DEFAULT_MAX_ATTEMPTS = 1800;
 
     function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
@@ -272,6 +272,7 @@
         const classifyTask = typeof options.classifyTask === 'function' ? options.classifyTask : defaultTaskDecision;
         const maxNetworkFailures = Math.max(0, Number(options.maxNetworkFailures || 0));
         let networkFailures = 0;
+        let hasPolled = false;
 
         for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
             if (typeof options.beforePoll === 'function') {
@@ -281,7 +282,8 @@
                     throw preDecision.error instanceof Error ? preDecision.error : httpError(preDecision.error);
                 }
             }
-            const delay = attempt === 0 ? initialDelayMs : intervalMs;
+            const delay = hasPolled ? intervalMs : initialDelayMs;
+            hasPolled = true;
             if (delay) await sleep(delay);
             let task;
             try {
@@ -320,6 +322,28 @@
             const decision = (await classifyTask(task, { attempt, taskId: id })) || defaultTaskDecision(task);
             if (decision?.action === 'resolve') return decision.value;
             if (decision?.action === 'reject') throw decision.error instanceof Error ? decision.error : httpError(decision.error);
+            // 排队等待并发名额的任务还没有开始生成，这段时间不应消耗超时额度；
+            // 服务端重启或任务被清理时会返回失败/404，轮询仍然会正常结束。
+            const isQueued = typeof options.isQueuedTask === 'function'
+                ? options.isQueuedTask(task)
+                : String(task?.status || '').toLowerCase() === 'queued';
+            if (isQueued) {
+                attempt -= 1;
+            }
+        }
+        if (typeof options.onTimeout === 'function') {
+            // 超时前最后查询一次：任务可能刚好完成，或已经拿到可续查的平台任务号。
+            const fetchTask = () => requestJson(taskPath(id, maxAttempts), {
+                ...options,
+                fetchImpl,
+                method: 'GET',
+                fallbackMessage: options.fallbackMessage || '查询生图任务失败',
+            });
+            const finalDecision = await options.onTimeout({ taskId: id, fetchTask });
+            if (finalDecision?.action === 'resolve') return finalDecision.value;
+            if (finalDecision?.action === 'reject') {
+                throw finalDecision.error instanceof Error ? finalDecision.error : httpError(finalDecision.error);
+            }
         }
         throw httpError(options.timeoutMessage || '生图任务超时');
     }

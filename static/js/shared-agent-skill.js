@@ -2,9 +2,6 @@
     'use strict';
 
     const KEY = 'xiaomei_agent_skill_selection_v1';
-    const LEGACY_SKILL_ALIASES = Object.freeze({
-        'dabi-browser': 'browser-agent',
-    });
     let skillListPromise = null;
 
     function normalizeId(value) {
@@ -12,8 +9,7 @@
     }
 
     function canonicalId(value) {
-        const id = normalizeId(value);
-        return Object.prototype.hasOwnProperty.call(LEGACY_SKILL_ALIASES, id) ? LEGACY_SKILL_ALIASES[id] : id;
+        return normalizeId(value);
     }
 
     function getSelected(fallback = '') {
@@ -21,11 +17,7 @@
             const raw = localStorage.getItem(KEY);
             // An explicit empty choice must take precedence over older panel preferences.
             const stored = normalizeId(raw === null ? fallback : raw);
-            const selected = canonicalId(stored);
-            if (selected !== stored) {
-                try { localStorage.setItem(KEY, selected); } catch (_) {}
-            }
-            return selected;
+            return canonicalId(stored);
         } catch (error) {
             return '';
         }
@@ -85,11 +77,7 @@
         const onStorage = event => {
             if (event.key !== KEY) return;
             const stored = normalizeId(event.newValue);
-            const selected = canonicalId(stored);
-            if (selected !== stored) {
-                try { localStorage.setItem(KEY, selected); } catch (_) {}
-            }
-            callback(selected);
+            callback(canonicalId(stored));
         };
         const onChange = event => callback(canonicalId(event.detail?.id));
         window.addEventListener('storage', onStorage);

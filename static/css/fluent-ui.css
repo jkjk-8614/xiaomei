@@ -65,6 +65,7 @@ html.studio-theme-dark body {
     --apple-border-soft: var(--colorNeutralStroke2) !important;
     --apple-accent: var(--colorBrandBackground) !important;
     --apple-accent-soft: var(--colorBrandBackground2) !important;
+    --apple-sidebar: #1c1c1c !important;
     --apple-shadow-sm: var(--shadow2) !important;
     --apple-shadow-md: var(--shadow8) !important;
     --apple-shadow-lg: var(--shadow16) !important;
@@ -153,7 +154,7 @@ body:not(.studio-theme-dark) {
 .app-shell > .sidebar .logo-ring:hover,
 .app-shell > .sidebar .logo-ring:focus-visible {
     background: var(--apple-surface-soft) !important;
-    border-color: rgba(0, 113, 227, .38) !important;
+    border-color: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 3800%, transparent) !important;
     box-shadow: 0 0 0 4px var(--apple-accent-soft), var(--apple-shadow-sm);
 }
 
@@ -179,8 +180,8 @@ body:not(.studio-theme-dark) {
 
 .app-shell > .sidebar .nav-item.active {
     background: var(--apple-accent) !important;
-    color: #fff !important;
-    box-shadow: 0 6px 16px rgba(0, 113, 227, .22);
+    color: var(--colorNeutralForegroundOnBrand) !important;
+    box-shadow: 0 6px 16px color-mix(in srgb, var(--studio-skin-accent, #0071e3) 2200%, transparent);
 }
 
 .app-shell > .sidebar .divider {
@@ -224,7 +225,7 @@ html body select:hover,
 .nano-input:hover,
 .select-shell:hover,
 .select-lite:hover {
-    border-color: rgba(0, 113, 227, .36) !important;
+    border-color: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 3600%, transparent) !important;
 }
 
 html body input:focus,
@@ -256,8 +257,8 @@ html body textarea::placeholder {
     border: 0 !important;
     border-radius: 11px !important;
     background: var(--apple-accent) !important;
-    color: #fff !important;
-    box-shadow: 0 7px 16px rgba(0, 113, 227, .18) !important;
+    color: var(--colorNeutralForegroundOnBrand) !important;
+    box-shadow: 0 7px 16px color-mix(in srgb, var(--studio-skin-accent, #0071e3) 1800%, transparent) !important;
     transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease !important;
 }
 
@@ -273,7 +274,7 @@ html body textarea::placeholder {
 .llm-run:hover,
 .canvas-agent-send.primary:hover {
     background: #0077ed !important;
-    box-shadow: 0 10px 22px rgba(0, 113, 227, .24) !important;
+    box-shadow: 0 10px 22px color-mix(in srgb, var(--studio-skin-accent, #0071e3) 2400%, transparent) !important;
     transform: translateY(-1px);
 }
 
@@ -322,7 +323,7 @@ html body textarea::placeholder {
 .smart-workflow-toggle:hover,
 .prompt-optimizer-model-button:hover,
 .canvas-agent-toggle:hover {
-    border-color: rgba(0, 113, 227, .38) !important;
+    border-color: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 3800%, transparent) !important;
     background: var(--apple-accent-soft) !important;
     color: var(--apple-accent) !important;
 }
@@ -478,7 +479,7 @@ html[data-studio-skin] body .shell {
 .resource-card.is-selected,
 .quick-grid button:hover,
 .desktop-data-row:hover {
-    border-color: rgba(0, 113, 227, .35) !important;
+    border-color: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 3500%, transparent) !important;
     background: var(--blue-soft) !important;
     box-shadow: none !important;
 }
@@ -493,7 +494,7 @@ html[data-studio-skin] body .shell {
 .assistant-mark,
 .desktop-avatar {
     background: var(--apple-accent) !important;
-    box-shadow: 0 8px 18px rgba(0, 113, 227, .20) !important;
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--studio-skin-accent, #0071e3) 2000%, transparent) !important;
 }
 
 .primary-button,
@@ -584,7 +585,7 @@ html[data-studio-skin] body .workspace {
     --strong-text: #ffffff !important;
     --accent: var(--apple-accent) !important;
     --accent-soft: var(--apple-accent-soft) !important;
-    --accent-line: rgba(0, 113, 227, .24) !important;
+    --accent-line: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 2400%, transparent) !important;
     --shadow: rgba(30, 30, 35, .07) !important;
     --shadow-strong: rgba(30, 30, 35, .13) !important;
 }
@@ -632,7 +633,7 @@ html[data-studio-skin] body .ws-icon-btn {
 html[data-studio-skin] body .ws-side-add:hover,
 html[data-studio-skin] body .ws-icon-btn:hover {
     color: var(--apple-accent) !important;
-    border-color: rgba(0, 113, 227, .36) !important;
+    border-color: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 3600%, transparent) !important;
     background: var(--apple-accent-soft) !important;
 }
 
@@ -652,8 +653,8 @@ html[data-studio-skin] body .ws-create-toggle-btn.active,
 html[data-studio-skin] body .ws-mini-btn.primary {
     background: var(--apple-accent) !important;
     border-color: var(--apple-accent) !important;
-    color: #ffffff !important;
-    box-shadow: 0 8px 18px rgba(0, 113, 227, .18) !important;
+    color: var(--colorNeutralForegroundOnBrand) !important;
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--studio-skin-accent, #0071e3) 1800%, transparent) !important;
 }
 
 html[data-studio-skin] body .ws-project-row.active .ws-project-name,
@@ -684,7 +685,7 @@ html[data-studio-skin] body .ws-create-card {
 }
 
 html[data-studio-skin] body .ws-card:hover {
-    border-color: rgba(0, 113, 227, .34) !important;
+    border-color: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 3400%, transparent) !important;
     box-shadow: 0 18px 38px rgba(30, 30, 35, .13) !important;
 }
 
@@ -698,7 +699,7 @@ html[data-studio-skin] body .ws-create-toggle {
 
 html[data-studio-skin] body .ws-card-kind.smart {
     background: var(--apple-accent-soft) !important;
-    border-color: rgba(0, 113, 227, .22) !important;
+    border-color: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 2200%, transparent) !important;
     color: var(--apple-accent) !important;
 }
 
@@ -829,8 +830,8 @@ body > .page > .filters {
 .image-space-subtabs button.active {
     background: var(--apple-accent) !important;
     border-color: var(--apple-accent) !important;
-    color: #ffffff !important;
-    box-shadow: 0 7px 16px rgba(0, 113, 227, .18) !important;
+    color: var(--colorNeutralForegroundOnBrand) !important;
+    box-shadow: 0 7px 16px color-mix(in srgb, var(--studio-skin-accent, #0071e3) 1800%, transparent) !important;
 }
 
 .action-btn:not(.save-btn):not(.primary-btn),
@@ -847,7 +848,7 @@ body > .page > .filters {
 .asset-btn:not(.primary):hover,
 .asset-icon-btn:hover,
 .asset-refresh-btn:hover {
-    border-color: rgba(0, 113, 227, .36) !important;
+    border-color: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 3600%, transparent) !important;
     background: var(--apple-accent-soft) !important;
     color: var(--apple-accent) !important;
 }
@@ -872,11 +873,11 @@ body > .page > .filters .filter {
 body > .page > .filters .filter.active {
     background: var(--apple-accent) !important;
     border-color: var(--apple-accent) !important;
-    color: #ffffff !important;
+    color: var(--colorNeutralForegroundOnBrand) !important;
 }
 
 body > .page > #content .card:hover {
-    border-color: rgba(0, 113, 227, .34) !important;
+    border-color: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 3400%, transparent) !important;
     box-shadow: var(--apple-shadow-md) !important;
 }
 
@@ -925,7 +926,7 @@ html[data-studio-skin] body .container-box .studio-select-trigger:hover,
 html[data-studio-skin] body .container-box .image-model-trigger:hover,
 html[data-studio-skin] body .container-box .size-select:focus,
 html[data-studio-skin] body .container-box .size-custom:focus {
-    border-color: rgba(0, 113, 227, .42) !important;
+    border-color: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 4200%, transparent) !important;
     box-shadow: 0 0 0 4px var(--apple-accent-soft) !important;
 }
 
@@ -933,8 +934,8 @@ html[data-studio-skin] body .container-box .glass-btn {
     background: var(--apple-accent) !important;
     border: 1px solid var(--apple-accent) !important;
     border-radius: 14px !important;
-    color: #ffffff !important;
-    box-shadow: 0 10px 22px rgba(0, 113, 227, .20) !important;
+    color: var(--colorNeutralForegroundOnBrand) !important;
+    box-shadow: 0 10px 22px color-mix(in srgb, var(--studio-skin-accent, #0071e3) 2000%, transparent) !important;
 }
 
 html[data-studio-skin] body .container-box .glass-btn:hover {
@@ -958,7 +959,7 @@ html[data-studio-skin] body .container-box .model-option.active,
 html[data-studio-skin] body .container-box .studio-select-menu-item.active,
 html[data-studio-skin] body .container-box .image-model-menu-item.active {
     background: var(--apple-accent-soft) !important;
-    border-color: rgba(0, 113, 227, .28) !important;
+    border-color: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 2800%, transparent) !important;
     color: var(--apple-accent) !important;
 }
 
@@ -999,7 +1000,7 @@ html.studio-theme-dark body .container-box .image-model-menu {
 html.studio-theme-dark body .container-box .glass-btn {
     background: var(--apple-accent) !important;
     border-color: var(--apple-accent) !important;
-    color: #ffffff !important;
+    color: var(--colorNeutralForegroundOnBrand) !important;
 }
 
 /* GPT 对话：消息层级更清楚，保留原有模型选择、上传和发送入口。 */
@@ -1018,7 +1019,7 @@ html[data-studio-skin] body .chat-shell {
     --chat-strong-text: #ffffff !important;
     --chat-active-bg: var(--apple-accent-soft) !important;
     --chat-active-text: var(--apple-accent) !important;
-    --chat-active-border: rgba(0, 113, 227, .24) !important;
+    --chat-active-border: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 2400%, transparent) !important;
     --chat-user-bg: var(--apple-accent) !important;
     --chat-user-text: #ffffff !important;
     --chat-shadow: var(--apple-shadow-sm) !important;
@@ -1045,7 +1046,7 @@ html[data-studio-skin] body .chat-shell .image-draft-card {
 
 html[data-studio-skin] body .chat-shell .thread-item.active {
     background: var(--apple-accent-soft) !important;
-    border-color: rgba(0, 113, 227, .24) !important;
+    border-color: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 2400%, transparent) !important;
     color: var(--apple-accent) !important;
 }
 
@@ -1065,7 +1066,7 @@ html[data-studio-skin] body .chat-shell .model-picker-button:hover,
 html[data-studio-skin] body .chat-shell .resolution-picker-button:hover,
 html[data-studio-skin] body .chat-shell .upload-btn:hover {
     background: var(--apple-accent-soft) !important;
-    border-color: rgba(0, 113, 227, .34) !important;
+    border-color: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 3400%, transparent) !important;
     color: var(--apple-accent) !important;
 }
 
@@ -1073,8 +1074,8 @@ html[data-studio-skin] body .chat-shell .bubble.user,
 html[data-studio-skin] body .chat-shell .send-btn {
     background: var(--apple-accent) !important;
     border-color: var(--apple-accent) !important;
-    color: #ffffff !important;
-    box-shadow: 0 8px 18px rgba(0, 113, 227, .18) !important;
+    color: var(--colorNeutralForegroundOnBrand) !important;
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--studio-skin-accent, #0071e3) 1800%, transparent) !important;
 }
 
 html[data-studio-skin] body .chat-shell .system-prompt-popover,
@@ -1121,7 +1122,7 @@ html.studio-theme-dark body .chat-shell .bubble.user,
 html.studio-theme-dark body .chat-shell .send-btn {
     background: var(--apple-accent) !important;
     border-color: var(--apple-accent) !important;
-    color: #ffffff !important;
+    color: var(--colorNeutralForegroundOnBrand) !important;
 }
 
 /* 经典画布：保留网格、节点和工具入口，只统一面板和激活态。 */
@@ -1163,7 +1164,7 @@ html[data-studio-skin] body .shell.no-canvas .tool-btn:hover,
 html[data-studio-skin] body .shell.no-canvas .menu-btn:hover,
 html[data-studio-skin] body .shell.no-canvas .workflow-transfer-btn:hover {
     background: var(--apple-accent-soft) !important;
-    border-color: rgba(0, 113, 227, .34) !important;
+    border-color: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 3400%, transparent) !important;
     color: var(--apple-accent) !important;
 }
 
@@ -1172,8 +1173,8 @@ html[data-studio-skin] body .shell.no-canvas .canvas-item.active,
 html[data-studio-skin] body .shell.no-canvas .workflow-transfer-btn.primary {
     background: var(--apple-accent) !important;
     border-color: var(--apple-accent) !important;
-    color: #ffffff !important;
-    box-shadow: 0 8px 18px rgba(0, 113, 227, .18) !important;
+    color: var(--colorNeutralForegroundOnBrand) !important;
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--studio-skin-accent, #0071e3) 1800%, transparent) !important;
 }
 
 html[data-studio-skin] body .shell.no-canvas .canvas-item,
@@ -1208,7 +1209,7 @@ html.studio-theme-dark body .shell.no-canvas .canvas-item.active,
 html.studio-theme-dark body .shell.no-canvas .workflow-transfer-btn.primary {
     background: var(--apple-accent) !important;
     border-color: var(--apple-accent) !important;
-    color: #ffffff !important;
+    color: var(--colorNeutralForegroundOnBrand) !important;
 }
 
 /* 电商工作台：表单、结果区和弹窗使用同一套层级。 */
@@ -1255,15 +1256,15 @@ html[data-studio-skin] body .commerce-page .primary-btn,
 html[data-studio-skin] body .commerce-page .prompt-editor-primary {
     background: var(--apple-accent) !important;
     border-color: var(--apple-accent) !important;
-    color: #ffffff !important;
-    box-shadow: 0 8px 18px rgba(0, 113, 227, .18) !important;
+    color: var(--colorNeutralForegroundOnBrand) !important;
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--studio-skin-accent, #0071e3) 1800%, transparent) !important;
 }
 
 html[data-studio-skin] body .commerce-page .ghost-btn:hover,
 html[data-studio-skin] body .commerce-page .task-card:hover,
 html[data-studio-skin] body .commerce-page .task-card.task-selected {
     background: var(--apple-accent-soft) !important;
-    border-color: rgba(0, 113, 227, .30) !important;
+    border-color: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 3000%, transparent) !important;
     color: var(--apple-accent) !important;
 }
 
@@ -1285,7 +1286,7 @@ html[data-studio-skin] body .commerce-page .textarea:focus,
 html[data-studio-skin] body .commerce-page input:focus,
 html[data-studio-skin] body .commerce-page select:focus,
 html[data-studio-skin] body .commerce-page textarea:focus {
-    border-color: rgba(0, 113, 227, .42) !important;
+    border-color: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 4200%, transparent) !important;
     box-shadow: 0 0 0 4px var(--apple-accent-soft) !important;
 }
 
@@ -1324,7 +1325,7 @@ html.studio-theme-dark body .commerce-page .prompt-editor-primary,
 html.studio-theme-dark body .commerce-page .workflow-tab.active {
     background: var(--apple-accent) !important;
     border-color: var(--apple-accent) !important;
-    color: #ffffff !important;
+    color: var(--colorNeutralForegroundOnBrand) !important;
 }
 
 html.studio-theme-dark body .commerce-page .mode-switch,
@@ -1529,7 +1530,7 @@ html[data-studio-skin="minimal"][data-studio-skin]:not(.studio-theme-dark) {
     --apple-accent-soft: var(--colorBrandBackground2) !important;
     --apple-grid: var(--colorNeutralStroke2) !important;
     --apple-sidebar: var(--colorNeutralBackground2) !important;
-    --studio-skin-accent: #3b82f6 !important;
+    --studio-skin-accent: #0e7490 !important;
 }
 
 html[data-studio-skin="soft"][data-studio-skin]:not(.studio-theme-dark) body .shell,
@@ -2606,7 +2607,7 @@ html[data-studio-skin] body .shell .composer.comfy-run-only > .composer-card > .
     border: 1px solid var(--apple-accent) !important;
     border-radius: 13px !important;
     background: var(--apple-accent) !important;
-    color: #fff !important;
+    color: var(--colorNeutralForegroundOnBrand) !important;
     box-shadow: 0 7px 16px var(--apple-accent-soft), inset 0 1px 0 rgba(255, 255, 255, .24) !important;
     font-size: 12px;
     font-weight: 800;
@@ -2704,7 +2705,7 @@ html[data-studio-skin] body .shell .composer.comfy-run-only > .composer-card > .
         --accent-soft: var(--colorBrandBackground2) !important;
         --grid: var(--colorNeutralStroke2) !important;
         --chat-bg: var(--colorNeutralBackground2) !important;
-        --chat-sidebar: var(--colorNeutralBackground3) !important;
+        --chat-sidebar: #1c1c1c !important;
         --chat-panel: var(--colorNeutralBackground1) !important;
         --chat-panel-2: var(--colorNeutralBackground2) !important;
         --chat-soft: var(--colorNeutralBackground3) !important;
@@ -2978,4 +2979,35 @@ html[data-studio-skin="warm"]:not(.studio-theme-dark) .recommend-guide-save-btn 
 html[data-studio-skin="warm"]:not(.studio-theme-dark) .recommend-guide-save-btn:hover:not(:disabled) {
     background: var(--colorBrandBackgroundHover) !important;
 }
+}
+
+/* 暗色侧栏保持独立的深色表面，并确保导航和设置控件有足够对比度。
+   这些规则必须位于 Fluent 层的末尾，才能覆盖上方同层 !important。 */
+@layer fluent {
+    html.studio-theme-dark[data-studio-skin] body .app-shell > .sidebar {
+        background: #1c1c1c !important;
+    }
+    html.studio-theme-dark[data-studio-skin] body .app-shell > .sidebar :is(.nav-item, .side-pill),
+    html.studio-theme-dark[data-studio-skin] body .app-shell > .sidebar :is(.nav-item, .side-pill) :is(.nav-text, .side-pill-text, svg, i) {
+        color: #fff !important;
+    }
+    html.studio-theme-dark[data-studio-skin] body .app-shell > .sidebar :is(.nav-item:hover, .side-pill:hover),
+    html.studio-theme-dark[data-studio-skin] body .app-shell > .sidebar :is(.nav-item.active, .side-pill.active) {
+        color: #fff !important;
+    }
+    html.studio-theme-dark[data-studio-skin] body .app-shell > .sidebar .nav-item,
+    html.studio-theme-dark[data-studio-skin] body .app-shell > .sidebar .side-pill,
+    html.studio-theme-dark[data-studio-skin] body .app-shell > .sidebar .nav-item.active,
+    html.studio-theme-dark[data-studio-skin] body .app-shell > .sidebar .side-pill.active {
+        color: #fff !important;
+    }
+    html.studio-theme-dark[data-studio-skin] body .ws-card-kind.smart {
+        background: #164e63 !important;
+        border-color: #1f6b80 !important;
+        color: #b8f1ff !important;
+    }
+    html.studio-theme-dark[data-studio-skin] body .paint-node-main,
+    html.studio-theme-dark[data-studio-skin] body .paint-node-main :is(svg, i) {
+        color: #fff !important;
+    }
 }

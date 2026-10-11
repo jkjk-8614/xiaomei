@@ -229,3 +229,12 @@ html,body{background:var(--commerce-bg);color:var(--text,#513b27)}
 .form-shell>.form-stack{flex:1;min-height:0;overflow-y:auto;padding-bottom:15px}
 .form-shell>.form-action-bar{position:relative;flex:0 0 auto;margin:0;padding:10px 13px 13px;background:linear-gradient(to bottom,transparent 0,var(--commerce-card) 34%);border-top:1px solid color-mix(in srgb,var(--commerce-line) 82%,transparent);box-shadow:0 -5px 16px color-mix(in srgb,var(--commerce-accent) 5%,transparent)}
 @media (max-width:820px){#workflowForm{display:block;overflow:visible}.form-shell{display:block}.form-shell>.form-stack{overflow:visible;padding-bottom:calc(80px + env(safe-area-inset-bottom))}.form-shell>.form-action-bar{position:fixed;left:0;right:0;top:calc(100vh / var(--studio-ui-scale,1) - 76px);bottom:auto;z-index:30;margin:0;padding:10px 8px calc(12px + env(safe-area-inset-bottom));background:color-mix(in srgb,var(--commerce-card) 94%,transparent);backdrop-filter:blur(14px);box-shadow:0 -8px 24px color-mix(in srgb,var(--commerce-accent) 12%,transparent)}}
+
+/* Dark pass: commerce follows body.studio-theme-dark tokens via --commerce-*; these
+   cover the few hardcoded light surfaces left (planning-failed state). */
+body.studio-theme-dark .empty-results.planning-failed{border-color:rgba(248,113,113,.32);background:color-mix(in srgb,var(--commerce-danger) 8%,var(--commerce-card));color:#fca5a5}
+body.studio-theme-dark .empty-results.planning-failed span{color:#fca5a5}
+body.studio-theme-dark .planning-retry{border-color:rgba(248,113,113,.36);background:transparent;color:#fca5a5}
+body.studio-theme-dark .planning-retry:hover{background:rgba(248,113,113,.12)}
+body.studio-theme-dark .task-select{border-color:color-mix(in srgb,var(--commerce-line) 80%,var(--text))}
+body.studio-theme-dark .task-zoom{color:var(--faint)}

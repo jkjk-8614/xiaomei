@@ -10,6 +10,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   writeImageToClipboard: (bytes) => ipcRenderer.invoke('clipboard:write-image', bytes),
   showGenerationNotification: (payload) => ipcRenderer.invoke('generation:notify', payload || {}),
+  setDeepSeekHarnessVisible: (visible, bounds) => ipcRenderer.invoke('deepseek-harness:visible', Boolean(visible), bounds || null),
+  refreshDeepSeekHarness: () => ipcRenderer.invoke('deepseek-harness:refresh'),
+  checkDeepSeekHarnessUpdate: () => ipcRenderer.invoke('deepseek-harness:check-update'),
+  updateDeepSeekHarness: () => ipcRenderer.invoke('deepseek-harness:update'),
+  onDeepSeekHarnessUpdateStatus: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('deepseek-harness:update-status', listener);
+    return () => ipcRenderer.removeListener('deepseek-harness:update-status', listener);
+  },
+  onDeepSeekHarnessUpdateProgress: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('deepseek-harness:update-progress', listener);
+    return () => ipcRenderer.removeListener('deepseek-harness:update-progress', listener);
+  },
+  setDeepSeekHarnessBounds: (bounds) => ipcRenderer.send('deepseek-harness:bounds', bounds || {}),
   openExternal: (url) => ipcRenderer.invoke('app:open-external', String(url || '')),
   openSharedCanvas: (url) => ipcRenderer.invoke('canvas-share:open', String(url || '')),
   openProduct: (url, tabId) => ipcRenderer.invoke('commerce:open-product', url, tabId),
@@ -32,6 +47,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   captureAssistantContext: (options) => ipcRenderer.invoke('commerce:capture-assistant-context', options || {}),
   setProductBounds: (bounds, tabId) => ipcRenderer.send('commerce:set-product-bounds', bounds, tabId),
   setProductVisible: (visible, tabId) => ipcRenderer.send('commerce:set-product-visible', Boolean(visible), tabId),
+  setProductAgentOrb: (visible) => ipcRenderer.send('commerce:set-product-agent-orb', Boolean(visible)),
   captureOperations: () => ipcRenderer.invoke('commerce:capture-operations'),
   captureMerchantReport: (kind) => ipcRenderer.invoke('commerce:capture-merchant-report', String(kind || 'operations')),
   importMerchantReport: (kind) => ipcRenderer.invoke('commerce:import-merchant-report', String(kind || 'operations')),

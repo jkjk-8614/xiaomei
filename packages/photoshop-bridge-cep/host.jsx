@@ -33,3 +33,35 @@ function importInfiniteCanvasImage(filePath, layerName, openMode) {
         return "ERROR:" + error;
     }
 }
+
+// Export the active Photoshop layer without changing the user's document.
+// The CEP panel reads the temporary PNG and sends it to the canvas inbox.
+function exportActiveLayerToPng(filePath) {
+    var source = null;
+    var temporary = null;
+    try {
+        if (!app.documents.length) {
+            return "ERROR:请先在 Photoshop 打开一个文档。";
+        }
+        source = app.activeDocument;
+        if (!source.activeLayer) {
+            return "ERROR:请先在图层面板选中一个图层。";
+        }
+        var layerName = String(source.activeLayer.name || "Photoshop 图层").replace(/[\\/:*?\"<>|]/g, "_");
+        var documentName = String(source.name || "Photoshop 文档").replace(/[\\/:*?\"<>|]/g, "_");
+        temporary = app.documents.add(source.width, source.height, source.resolution, "小美图层导出", NewDocumentMode.RGB, DocumentFill.TRANSPARENT);
+        source.activeLayer.duplicate(temporary, ElementPlacement.PLACEATBEGINNING);
+        app.activeDocument = temporary;
+        var file = new File(String(filePath || ""));
+        var options = new PNGSaveOptions();
+        temporary.saveAs(file, options, true, Extension.LOWERCASE);
+        temporary.close(SaveOptions.DONOTSAVECHANGES);
+        temporary = null;
+        app.activeDocument = source;
+        return "OK|" + layerName + "|" + documentName;
+    } catch (error) {
+        try { if (temporary) temporary.close(SaveOptions.DONOTSAVECHANGES); } catch (_) {}
+        try { if (source) app.activeDocument = source; } catch (_) {}
+        return "ERROR:" + error;
+    }
+}

@@ -1,0 +1,396 @@
+/* Agent 生成参数与画布底部“生成参数”卡片保持同一套紧凑布局。 */
+html[data-studio-skin] body .canvas-agent-generation-popover {
+    width: min(342px, calc(100vw - 32px)) !important;
+    max-width: calc(100vw - 32px) !important;
+    padding: 0 !important;
+    overflow: hidden;
+    border-radius: 14px !important;
+}
+
+html[data-studio-skin] body .canvas-agent-generation-popover > header {
+    min-height: 48px;
+    padding: 10px 10px 8px 12px;
+    border-bottom: 1px solid var(--line) !important;
+}
+
+html[data-studio-skin] body .canvas-agent-generation-popover > header > strong {
+    gap: 7px;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+html[data-studio-skin] body .canvas-agent-generation-popover > header > strong svg {
+    width: 15px;
+    height: 15px;
+}
+
+html[data-studio-skin] body .canvas-agent-generation-body {
+    display: grid;
+    gap: 0;
+    max-height: min(540px, calc(100vh - 150px));
+    padding: 8px 10px 10px;
+}
+
+html[data-studio-skin] body .canvas-agent-generation-body .canvas-agent-generation-section {
+    gap: 6px;
+    padding: 9px 2px 10px;
+}
+
+html[data-studio-skin] body .canvas-agent-generation-label {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.4;
+    font-weight: 700;
+}
+
+/* 图2的画质控件是同一行的分段按钮，选中态只抬起表面，不填满橙色。 */
+html[data-studio-skin] body .canvas-agent-resolution-grid {
+    min-width: 0;
+    padding: 3px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 3px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--text) 6%, var(--card));
+}
+
+html[data-studio-skin] body .canvas-agent-resolution-grid > button {
+    min-width: 0;
+    min-height: 36px;
+    height: auto;
+    padding: 3px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 650;
+    transition: background .13s ease, color .13s ease, border-color .13s ease, box-shadow .13s ease;
+}
+
+html[data-studio-skin] body .canvas-agent-resolution-grid > button:hover {
+    border-color: var(--line);
+    color: var(--text);
+}
+
+html[data-studio-skin] body .canvas-agent-resolution-grid > button.active {
+    border-color: transparent;
+    background: var(--card);
+    color: var(--text);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, .08);
+}
+
+/* 比例采用图2的五列卡片网格，图标和文字沿用画布已有的线框图标。 */
+html[data-studio-skin] body .canvas-agent-ratio-grid {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px;
+}
+
+html[data-studio-skin] body .canvas-agent-ratio-grid > button {
+    min-width: 0;
+    min-height: 55px;
+    height: auto;
+    padding: 6px 3px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--text) 6%, var(--card));
+    color: var(--muted);
+    font-size: 12px;
+    transition: background .13s ease, color .13s ease, border-color .13s ease;
+}
+
+html[data-studio-skin] body .canvas-agent-ratio-grid > button:hover {
+    border-color: color-mix(in srgb, var(--line) 65%, transparent);
+    background: var(--card);
+    color: var(--text);
+}
+
+html[data-studio-skin] body .canvas-agent-ratio-grid > button.active {
+    border-color: color-mix(in srgb, var(--text) 70%, var(--line));
+    background: var(--card);
+    color: var(--text);
+    box-shadow: none;
+}
+
+html[data-studio-skin] body .canvas-agent-ratio-grid .ratio-icon {
+    flex: 0 0 auto;
+    margin: 0;
+    width: 16px;
+    height: 16px;
+}
+
+html[data-studio-skin] body .canvas-agent-ratio-grid .ratio-icon.r-portrait { width: 11px; height: 18px; }
+html[data-studio-skin] body .canvas-agent-ratio-grid .ratio-icon.r-portrait43 { width: 12px; height: 18px; }
+html[data-studio-skin] body .canvas-agent-ratio-grid .ratio-icon.r-landscape { width: 20px; height: 13px; }
+html[data-studio-skin] body .canvas-agent-ratio-grid .ratio-icon.r-landscape43 { width: 18px; height: 13px; }
+html[data-studio-skin] body .canvas-agent-ratio-grid .ratio-icon.r-wide { width: 21px; height: 12px; }
+html[data-studio-skin] body .canvas-agent-ratio-grid .ratio-icon.r-story { width: 10px; height: 20px; }
+html[data-studio-skin] body .canvas-agent-ratio-grid .ratio-icon.r-source { width: 17px; height: 15px; }
+
+html[data-studio-skin] body .canvas-agent-ratio-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: inherit;
+    font-size: 12px;
+    line-height: 1.4;
+    font-weight: 650;
+}
+
+html[data-studio-skin] body .canvas-agent-generation-popover > p {
+    margin: 0 12px 10px;
+    font-size: 10px;
+    line-height: 1.45;
+}
+
+@media (max-width: 520px) {
+    html[data-studio-skin] body .canvas-agent-generation-popover {
+        width: calc(100vw - 22px) !important;
+        max-width: calc(100vw - 22px) !important;
+    }
+
+    html[data-studio-skin] body .canvas-agent-ratio-grid {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 4px;
+    }
+
+    html[data-studio-skin] body .canvas-agent-ratio-grid > button {
+        min-height: 51px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html[data-studio-skin] body .canvas-agent-generation-popover * {
+        transition-duration: 0s !important;
+    }
+}
+
+
+/* 右下角 Agent 悬浮球：入口复用现有按钮与面板。平面柔光小球——
+   身体是固定圆形（border-radius:50%），不随鼠标形变、不追鼠标；
+   只有眼睛层跟随鼠标（canvas-agent-orb.js 的 translate3d），
+   眨眼是独立子层 scaleY，两者不冲突。 */
+
+html[data-studio-skin] body #canvasAgentToggle.canvas-agent-toggle {
+    position: fixed !important;
+    top: auto !important;
+    right: max(36px, env(safe-area-inset-right)) !important;
+    bottom: max(36px, env(safe-area-inset-bottom)) !important;
+    z-index: 141 !important;
+    width: 84px !important;
+    height: 84px !important;
+    min-width: 84px !important;
+    min-height: 84px !important;
+    padding: 0 !important;
+    display: grid !important;
+    place-items: center !important;
+    border: 0 !important;
+    border-radius: 50% !important;
+    background: transparent !important;
+    color: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: opacity .2s ease, visibility .2s ease, transform .2s ease;
+}
+
+html[data-studio-skin] body #canvasAgentToggle.canvas-agent-toggle:focus-visible {
+    outline: 0 !important;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--colorBrandBackground, var(--strong, #0f6cbd)) 38%, transparent) !important;
+}
+
+/* 面板打开后入口让位 */
+html[data-studio-skin] body #canvasAgentToggle.canvas-agent-toggle.active {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: scale(.76);
+}
+
+/* 锚定按钮盒：按钮是 grid + place-items:center，orb 若用 width:100% 会
+   因循环百分比收缩为 0，必须绝对定位撑满 */
+html[data-studio-skin] body #canvasAgentToggle .canvas-agent-orb {
+    position: absolute;
+    inset: 0;
+    display: block;
+    pointer-events: none;
+}
+
+/* 底层柔光：大一号的模糊光圈，边缘全软 */
+html[data-studio-skin] body #canvasAgentToggle .agent-glow {
+    position: absolute;
+    inset: 1px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--cao-glow-core) 0%, var(--cao-glow-mid) 46%, transparent 70%);
+    filter: blur(10px);
+    opacity: .55;
+    transform: scale(1.1);
+    animation: agent-glow-breathe 6s ease-in-out infinite;
+}
+
+/* 主体：固定圆形平面渐变（青/薄荷/浅绿多层柔和融合，无高光点、无立体塑形） */
+html[data-studio-skin] body #canvasAgentToggle .agent-body {
+    position: absolute;
+    inset: 6px; /* 84px 命中区 → 72px 主体 */
+    border-radius: 50%;
+    overflow: hidden;
+    background:
+        radial-gradient(120% 120% at 64% 38%, var(--cao-lime) 0%, transparent 58%),
+        radial-gradient(130% 130% at 34% 64%, var(--cao-mint) 0%, transparent 62%),
+        radial-gradient(circle at 50% 46%, var(--cao-core) 0%, var(--cao-mid) 52%, var(--cao-rim) 100%);
+}
+
+/* 内部颜色极缓慢游动：纯 CSS，与鼠标无关，轮廓不动 */
+html[data-studio-skin] body #canvasAgentToggle .agent-flow {
+    position: absolute;
+    inset: -20%;
+    background: radial-gradient(circle at 50% 50%, var(--cao-lime) 0%, transparent 56%);
+    opacity: .38;
+    filter: blur(8px);
+    animation: agent-flow-drift 18s ease-in-out infinite alternate;
+}
+
+/* 眼睛：追踪位移层（JS translate3d）→ 眨眼层（JS scaleY）→ 两只眼 */
+html[data-studio-skin] body #canvasAgentToggle .agent-eyes-position {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    will-change: transform;
+}
+
+html[data-studio-skin] body #canvasAgentToggle .agent-eyes-blink {
+    display: flex;
+    gap: 11px;
+    transform-origin: center;
+}
+
+html[data-studio-skin] body #canvasAgentToggle .agent-eye {
+    display: block;
+    width: 6px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--cao-eye);
+}
+
+/* 任务运行中：柔光脉动加快（不改变轮廓，不做位移） */
+html[data-studio-skin] body #canvasAgentToggle.canvas-agent-toggle.is-running .agent-glow {
+    animation-duration: 1.6s;
+}
+html[data-studio-skin] body #canvasAgentToggle.canvas-agent-toggle.is-running .agent-flow {
+    animation-duration: 6s;
+}
+
+@keyframes agent-glow-breathe {
+    0%, 100% { opacity: .5; transform: scale(1.08); }
+    50% { opacity: .64; transform: scale(1.14); }
+}
+
+@keyframes agent-flow-drift {
+    0% { transform: translate(-7%, 5%) scale(1); }
+    50% { transform: translate(6%, -5%) scale(1.06); }
+    100% { transform: translate(-3%, 6%) scale(.97); }
+}
+
+.canvas-agent-toggle-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+@media (max-width: 900px) {
+    html[data-studio-skin] body #canvasAgentToggle.canvas-agent-toggle {
+        right: max(24px, env(safe-area-inset-right)) !important;
+        bottom: max(24px, env(safe-area-inset-bottom)) !important;
+        width: 72px !important;
+        height: 72px !important;
+        min-width: 72px !important;
+        min-height: 72px !important;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html[data-studio-skin] body #canvasAgentToggle.canvas-agent-toggle {
+        transition-duration: .01ms !important;
+    }
+
+    html[data-studio-skin] body #canvasAgentToggle .agent-glow,
+    html[data-studio-skin] body #canvasAgentToggle .agent-flow {
+        animation: none !important;
+    }
+}
+
+/* 悬浮球是唯一的 Agent 入口，顶部工具栏取消预留的 Agent 空位，整体向右补齐。 */
+html[data-studio-skin] body .asset-toggle { right: 22px; }
+html[data-studio-skin] body .smart-log-toggle { right: 130px; }
+html[data-studio-skin] body .smart-shortcut-toggle { right: 238px; }
+html[data-studio-skin] body .smart-workflow-toggle { right: 346px; }
+html[data-studio-skin] body .prompt-optimizer-model-control { right: 454px; }
+
+@media (max-width: 900px) {
+    html[data-studio-skin] body .asset-toggle { right: 14px; }
+    html[data-studio-skin] body .smart-log-toggle { right: 62px; }
+    html[data-studio-skin] body .smart-shortcut-toggle { right: 110px; }
+    html[data-studio-skin] body .smart-workflow-toggle { right: 158px; }
+    html[data-studio-skin] body .prompt-optimizer-model-control { right: 14px; }
+}
+
+/* 共享画布模式仍由原有规则控制，不让固定定位覆盖访客只读界面。 */
+html[data-studio-skin] body.canvas-share-mode #canvasAgentToggle.canvas-agent-toggle {
+    display: none !important;
+}
+
+/* ---- Agent 平面配色：全部走 --cao-* 变量，四种皮肤各一套。
+   顺序即优先级：dark 块放最后，深色皮肤（html.studio-theme-dark）覆盖亮色默认。
+   主体 = 青色核心 + 薄荷绿/黄绿色软斑融合；无白色高光、无立体明暗。 ---- */
+html[data-studio-skin] body #canvasAgentToggle.canvas-agent-toggle {
+    /* minimal（默认，#f5f5f5 浅灰底） */
+    --cao-core:#a9f8de; --cao-mid:#4ce3b4; --cao-rim:#1db894;
+    --cao-mint:rgba(47,232,176,.55);
+    --cao-lime:rgba(173,246,105,.5);
+    --cao-glow-core:#5ceebc; --cao-glow-mid:rgba(56,224,168,.4);
+    --cao-eye:#0d1a15;
+}
+html[data-studio-skin="soft"] body #canvasAgentToggle.canvas-agent-toggle {
+    /* 护眼浅绿底 #e7efe6：边缘加深拉开与背景的层次 */
+    --cao-mid:#40d8aa; --cao-rim:#12987a;
+    --cao-mint:rgba(43,224,168,.6);
+    --cao-lime:rgba(170,240,100,.55);
+    --cao-glow-core:#35dda8; --cao-glow-mid:rgba(38,205,152,.46);
+}
+html[data-studio-skin="warm"] body #canvasAgentToggle.canvas-agent-toggle {
+    /* 暖米底 #f4ecd9：黄绿色偏暖与背景协调 */
+    --cao-rim:#159884;
+    --cao-lime:rgba(190,238,110,.55);
+    --cao-glow-core:#45dda9; --cao-glow-mid:rgba(50,210,155,.42);
+}
+html.studio-theme-dark body #canvasAgentToggle.canvas-agent-toggle {
+    /* 深色底 #0c0c0d：整体提亮，柔光绽放 */
+    --cao-core:#b7ffe6; --cao-mid:#54eebd; --cao-rim:#17c69e;
+    --cao-mint:rgba(64,240,190,.6);
+    --cao-lime:rgba(180,250,110,.55);
+    --cao-glow-core:#4df2bd; --cao-glow-mid:rgba(61,235,178,.55);
+    --cao-eye:#07130e;
+}
+
+/* 电商计划卡：屏数是计划参数，保持轻量且不误触发整套执行。 */
+.canvas-agent-commerce-count{display:flex;align-items:center;gap:10px;margin:8px 0;padding:8px 10px;border:1px solid rgba(16,185,129,.28);border-radius:9px;background:rgba(16,185,129,.06);}
+.canvas-agent-commerce-count label{display:flex;align-items:center;gap:7px;color:var(--text);font-size:var(--fs-sm);font-weight:700;}
+.canvas-agent-commerce-count input{width:58px;padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--text);font:inherit;text-align:center;}
+.canvas-agent-commerce-count small{color:var(--muted);font-size:var(--fs-2xs);}

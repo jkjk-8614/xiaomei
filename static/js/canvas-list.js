@@ -305,10 +305,13 @@ function renderProjects(){
         row.innerHTML = `
             <span class="ws-project-icon"><i data-lucide="${isDefault ? 'folder' : 'folder-open'}" class="w-4 h-4"></i></span>
             <span class="ws-project-name">${escapeHtml(p.name)}</span>
+            ${isDefault ? `<span class="ws-project-default-badge">${L('默认','Default')}</span>` : ''}
             <span class="ws-project-count">${count}</span>
             <span class="ws-project-actions">
                 <button class="ws-proj-act rename" type="button" title="${L('重命名','Rename')}" aria-label="${L('重命名','Rename')}"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
-                ${isDefault ? '' : `<button class="ws-proj-act del" type="button" title="${L('删除','Delete')}" aria-label="${L('删除','Delete')}"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`}
+                ${isDefault
+                    ? `<button class="ws-proj-act del" type="button" disabled title="${L('默认项目不可删除','The default project cannot be deleted')}" aria-label="${L('默认项目不可删除','The default project cannot be deleted')}"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`
+                    : `<button class="ws-proj-act del" type="button" title="${L('删除','Delete')}" aria-label="${L('删除','Delete')}"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`}
             </span>`;
         row.onclick = e => {
             if(e.target.closest('.ws-proj-act')) return;
@@ -317,7 +320,7 @@ function renderProjects(){
         const renameBtn = row.querySelector('.ws-proj-act.rename');
         if(renameBtn) renameBtn.onclick = e => { e.stopPropagation(); startProjectRename(p.id, row); };
         const delBtn = row.querySelector('.ws-proj-act.del');
-        if(delBtn) delBtn.onclick = e => { e.stopPropagation(); pendingDeleteProjectId = p.id; renderProjects(); };
+        if(delBtn && !delBtn.disabled) delBtn.onclick = e => { e.stopPropagation(); pendingDeleteProjectId = p.id; renderProjects(); };
         projectListEl.appendChild(row);
     });
     refreshIcons();
@@ -539,7 +542,7 @@ function openCanvas(c){
     const project = encodeURIComponent(c.project || currentProjectId || 'default');
     rememberProjectId(c.project || currentProjectId || 'default');
     window.location.href = (c.kind === 'smart')
-        ? `/static/smart-canvas.html?id=${enc}&project=${project}&v=2026.09.27.image-model-picker3`
+        ? `/static/smart-canvas.html?id=${enc}&project=${project}&v=2026.10.11.local-assets-default.1`
         : `/static/canvas.html?id=${enc}&project=${project}&v=2026.09.10.1`;
 }
 
@@ -599,7 +602,7 @@ async function openSoftFurnishingInbox(){
         const projectId = data.canvas.project || currentProjectId || 'default';
         rememberProjectId(projectId);
         created = true;
-        window.location.href = `/static/smart-canvas.html?id=${encodeURIComponent(data.canvas.id)}&project=${encodeURIComponent(projectId)}&v=2026.09.27.image-model-picker3`;
+        window.location.href = `/static/smart-canvas.html?id=${encodeURIComponent(data.canvas.id)}&project=${encodeURIComponent(projectId)}&v=2026.10.11.local-assets-default.1`;
         return true;
     } catch(e){
         console.error('open soft furnishing inbox failed', e);
@@ -637,7 +640,7 @@ async function openComfyWorkflowInbox(){
         const projectId = data.canvas.project || currentProjectId || 'default';
         rememberProjectId(projectId);
         created = true;
-        window.location.href = `/static/smart-canvas.html?id=${encodeURIComponent(data.canvas.id)}&project=${encodeURIComponent(projectId)}&v=2026.09.27.image-model-picker3`;
+        window.location.href = `/static/smart-canvas.html?id=${encodeURIComponent(data.canvas.id)}&project=${encodeURIComponent(projectId)}&v=2026.10.11.local-assets-default.1`;
         return true;
     } catch(e){
         console.error('open ComfyUI workflow inbox failed', e);

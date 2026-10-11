@@ -736,6 +736,12 @@ async function collectCommerceFast(page, capture, targetUrl) {
                 }
             }
         }
+        // 页面可见 DOM 可能把规格组父节点也识别成一个选项。真实规格值
+        // 通常带 valueId；当组内已有至少两个带 ID 的值时，过滤掉这些拼接噪声。
+        for (const group of specs) {
+            const identified = group.values.filter((value) => String(value?.id || '').trim());
+            if (identified.length >= 2) group.values = identified;
+        }
         const items = [];
         const itemKeys = new Set();
         const isRealSkuItem = (rawItem) => {
@@ -764,13 +770,17 @@ async function collectCommerceFast(page, capture, targetUrl) {
         };
         const explicitTotal = Math.max(numeric(left?.totalCount || left?.skuCount), numeric(right?.totalCount || right?.skuCount));
         result.itemCount = result.items.length;
-        result.totalCount = Math.max(explicitTotal, result.itemCount);
-        const imageUrls = new Set();
-        for (const item of [...result.items, ...result.specs.flatMap((group) => group.values || [])]) {
-            const image = String(item?.image || item?.imageUrl || item?.pic || '').trim();
-            if (image) imageUrls.add(image);
+        if (result.itemCount) {
+            if (explicitTotal && explicitTotal !== result.itemCount) result.pageTotalCount = explicitTotal;
+            result.totalCount = result.itemCount;
+        } else {
+            result.totalCount = explicitTotal;
         }
-        result.specImageCount = Math.max(numeric(left?.specImageCount), numeric(right?.specImageCount), imageUrls.size);
+        const itemImageUrls = new Set(result.items.map((item) => String(item?.image || item?.imageUrl || item?.pic || '').trim()).filter(Boolean));
+        const specImageUrls = new Set(result.specs.flatMap((group) => group.values || []).map((item) => String(item?.image || item?.imageUrl || item?.pic || '').trim()).filter(Boolean));
+        // SKU 图按真实组合的图片计数；只有组合没有返回图片时才回退到规格值图片。
+        const imageUrls = itemImageUrls.size ? itemImageUrls : specImageUrls;
+        result.specImageCount = imageUrls.size || Math.max(numeric(left?.specImageCount), numeric(right?.specImageCount));
         result.matrixComplete = Boolean(result.itemCount && (!result.totalCount || result.itemCount >= result.totalCount));
         result.available = Boolean(result.available || result.totalCount || specs.length || items.length);
         return result;

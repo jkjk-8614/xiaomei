@@ -181,6 +181,7 @@ jobs:
             --directory release-assets \
             --output release-assets/update.json \
             --version "$VERSION" \
+            --display-version "$DISPLAY_VERSION" \
             --build-revision "$GITHUB_RUN_NUMBER" \
             --tag "$RELEASE_TAG" \
             --repository "$GITHUB_REPOSITORY"

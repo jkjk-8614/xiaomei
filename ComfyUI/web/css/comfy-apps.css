@@ -431,3 +431,50 @@ body.studio-theme-dark .model-delete.blocked,body.studio-theme-dark .model-delet
 .app-workflow-groups > p { font-size:12px; line-height:1.6; color:var(--muted,#718096); margin-bottom:4px; }
 .app-workflow-groups .app-group-choice { width:100%; text-align:left; border-radius:10px; padding:11px 13px; line-height:1.5; }
 .app-workflow-groups .app-group-choice.active { border-color:var(--accent,#d95b20); background:color-mix(in srgb,var(--accent,#d95b20) 9%,var(--card,#fff)); color:var(--accent,#d95b20); font-weight:700; }
+
+/* 页面局部层级使用 Fluent 灰阶；与共享控件同层，避免主题覆盖。 */
+@layer fluent {
+  :is(html.studio-theme-dark body.comfy-workspace,body.comfy-workspace.studio-theme-dark) {
+    --app-surface-soft: var(--colorNeutralBackground3) !important;
+    --app-line: var(--colorNeutralStroke3) !important;
+    --app-surface-raised: color-mix(in srgb, var(--colorNeutralBackground1) 92%, var(--colorNeutralBackground2)) !important;
+  }
+  :is(html.studio-theme-dark body.comfy-workspace,body.comfy-workspace.studio-theme-dark) :is(.workspace-header,.workflow-sidebar) {
+    background: var(--colorNeutralBackground1) !important;
+  }
+  :is(html.studio-theme-dark body.comfy-workspace,body.comfy-workspace.studio-theme-dark) .app-result-panel {
+    background: var(--app-surface-raised) !important;
+  }
+  :is(html.studio-theme-dark body.comfy-workspace,body.comfy-workspace.studio-theme-dark) :is(.app-search input,.app-filter select,.app-panel input:not([type=file]):not([type=checkbox]):not([type=radio]):not([type=range]),.app-panel textarea,.app-panel select,.app-upload,.app-empty-result) {
+    background: var(--colorNeutralBackground3) !important;
+    border-color: var(--colorNeutralStroke3) !important;
+  }
+  :is(html.studio-theme-dark body.comfy-workspace,body.comfy-workspace.studio-theme-dark) .app-upload:hover {
+    background: var(--colorNeutralBackground2) !important;
+    border-color: var(--colorBrandStroke1) !important;
+  }
+  :is(html.studio-theme-dark body.comfy-workspace,body.comfy-workspace.studio-theme-dark) :is(.app-card-action,.app-group-choice,.workspace-nav button:not(.nav-action),.workspace-tools summary) {
+    background: var(--colorNeutralBackground1) !important;
+    color: var(--colorNeutralForeground2) !important;
+    border-color: var(--colorNeutralStroke3) !important;
+  }
+  :is(html.studio-theme-dark body.comfy-workspace,body.comfy-workspace.studio-theme-dark) :is(.app-card-action,.app-group-choice,.workspace-nav button:not(.nav-action),.workspace-tools summary):hover {
+    background: var(--colorNeutralBackground1Hover) !important;
+    color: var(--colorNeutralForeground1) !important;
+    border-color: var(--colorNeutralStroke1) !important;
+  }
+  :is(html.studio-theme-dark body.comfy-workspace,body.comfy-workspace.studio-theme-dark) :is(.app-card.selected,.app-group-choice.active) {
+    background: var(--colorBrandBackground2) !important;
+    border-color: var(--colorBrandStroke1) !important;
+    color: var(--colorBrandForeground1) !important;
+  }
+  :is(html.studio-theme-dark body.comfy-workspace,body.comfy-workspace.studio-theme-dark) .workspace-nav button[aria-pressed=true] {
+    background: var(--colorNeutralBackgroundInverted) !important;
+    border-color: var(--colorNeutralBackgroundInverted) !important;
+    color: var(--colorNeutralForegroundInverted) !important;
+  }
+  :is(html.studio-theme-dark body.comfy-workspace,body.comfy-workspace.studio-theme-dark) .workspace-nav button[aria-pressed=true]:hover {
+    background: var(--colorNeutralBackgroundInvertedHover) !important;
+    color: var(--colorNeutralForegroundInverted) !important;
+  }
+}

@@ -4,7 +4,7 @@
     const BROWSER_SKILL_ID = 'browser-agent';
     const $=id=>document.getElementById(id);
     const panel=$('canvasAgentPanel'), messagesEl=$('canvasAgentMessages'), input=$('canvasAgentInput');
-    const sendLabelEl=$('canvasAgentSendLabel'), agentInputPlaceholder=input?.getAttribute('placeholder')||'让 Agent 分析图片、粘贴商品链接、策划提示词或修改当前节点…';
+    const sendLabelEl=$('canvasAgentSendLabel'), agentInputPlaceholder=input?.getAttribute('placeholder')||'询问画布，或描述要创建、修改和运行的任务…';
     const fontSizeEl=$('canvasAgentFontSize'), fontSizeValueEl=$('canvasAgentFontSizeValue');
     const providerEl=$('canvasAgentProvider'), modelEl=$('canvasAgentModel'), skillEl=$('canvasAgentSkill');
     const settingsEl=$('canvasAgentSettings'), generationSettingsEl=$('canvasAgentGenerationSettings'), historyEl=$('canvasAgentHistory'), skillPopover=$('canvasAgentSkillPopover'), skillQuickPopover=$('canvasAgentSkillQuickPopover');
@@ -148,10 +148,12 @@
         videoResolution:''
     };
     const generationRatioOptions=[
-        ['smart','智能'],['square','1:1'],['wide','16:9'],['story','9:16'],
-        ['landscape43','4:3'],['portrait43','3:4'],['landscape','3:2'],['portrait','2:3'],
-        ['ratio54','5:4'],['ratio45','4:5'],['ultrawide','21:9'],['custom','自定义']
+        ['square','1:1'],['portrait','2:3'],['landscape','3:2'],['portrait43','3:4'],['landscape43','4:3'],
+        ['story','9:16'],['wide','16:9'],['ultrawide','21:9'],['smart','适配输入'],['custom','自定义']
     ];
+    // 旧版本曾保存 5:4 / 4:5。保留它们用于兼容已有画布，但不再把它们放进默认参数卡片。
+    const generationLegacyRatioOptions=[['ratio54','5:4'],['ratio45','4:5']];
+    const allGenerationRatioOptions=()=>generationRatioOptions.concat(generationLegacyRatioOptions);
     const imageResolutionOptions=[['1k','1K'],['2k','2K'],['4k','4K']];
     const videoResolutionOptions=[['','自动'],['480p','480P'],['720p','720P'],['1080p','1080P']];
     const esc=value=>escapeHtml(String(value||''));
@@ -246,9 +248,9 @@
         const token='(\\d{1,2}|一|二|两|俩|三|四|五|六|七|八|九|十)';
         const chinese={一:1,二:2,两:2,俩:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9,十:10};
         const patterns=[
-            new RegExp(`(?:一共|共|再|请|需要|要|给我|帮我|帮忙)?\\s*(?:生成|生图|出图|输出|绘制|制作|创建|提供|做|来)\\s*${token}\\s*(?:张|幅|个|组|套)(?:\\s*(?:图|图片|图像|结果))?`,'ig'),
-            new RegExp(`^(?:一共|共|请|给我|请给我)?\\s*${token}\\s*(?:张|幅|个|组|套)(?:\\s*(?:图|图片|图像|结果))?`,'ig'),
-            new RegExp(`(?:数量|张数|结果数|生成数量)\\s*(?:是|为|设为|设置为)?\\s*${token}\\s*(?:张|幅|个|组|套)?`,'ig'),
+            new RegExp(`(?:一共|共|再|请|需要|要|给我|帮我|帮忙)?\\s*(?:生成|生图|出图|输出|绘制|制作|创建|提供|做|来)\\s*${token}\\s*(?:张|幅|个)(?:\\s*(?:图|图片|图像|结果))?`,'ig'),
+            new RegExp(`^(?:一共|共|请|给我|请给我)?\\s*${token}\\s*(?:张|幅|个)(?:\\s*(?:图|图片|图像|结果))?`,'ig'),
+            new RegExp(`(?:数量|张数|结果数|生成数量)\\s*(?:是|为|设为|设置为)?\\s*${token}\\s*(?:张|幅|个)?`,'ig'),
             new RegExp(`(?:generate|create|make|produce|output)\\s*${token}\\s*(?:images?|pictures?|results?)`,'ig')
         ];
         const negative=/(?:没有说|没说|不要|别|不需要|无需|不用|未|没|不想|不打算|不希望|不)(?:要|去|再|给我|请给我)?$/i;
@@ -270,12 +272,13 @@
         if(count)Object.assign(requested,{media:'image',count});
         // 优先读取“比例/画幅/宽高比”后面的值，避免把素材尺寸（如 465:453）
         // 误当成用户要求的输出比例。
-        const labeled=source.match(/(?:图像|图片|画面|输出|生成|目标|最终)?\s*(?:比例|画幅|宽高比|aspect\s*ratio)\s*(?:是|为|设为|设置为|使用)?\s*(\d{1,3}\s*(?:[:：xX×/]|比)\s*\d{1,3})/i);
+        const labeled=source.match(/(?:图像|图片|画面|输出|生成|目标|最终)?\s*(?:比例|画幅|宽高比|aspect\s*ratio)\s*(?:是|为|设为|设置为|使用)?\s*(\d{1,3}\s*(?:[:：;；xX×/]|比)\s*\d{1,3})/i);
         // 只有明确写在“比例/画幅/宽高比”后的数值才是输出约束。不能把
         // 商品、相框等参考物的尺寸（例如 30×30cm）当成画布比例并覆盖右侧选择。
-        const ratioMatch=labeled?.[1]||'';
+        const bare=source.match(/(\d{1,3}\s*[:：;；]\s*\d{1,3})\s*的?\s*(?:主图|详情页|详情图|图片|画面)/i);
+        const ratioMatch=labeled?.[1]||bare?.[1]||'';
         let width=0,height=0;
-        const numeric=ratioMatch.replace(/：/g,':').match(/(\d{1,3})\s*(?:[:xX×/]|比)\s*(\d{1,3})/i);
+        const numeric=ratioMatch.replace(/[：;；]/g,':').match(/(\d{1,3})\s*(?:[:xX×/]|比)\s*(\d{1,3})/i);
         if(numeric){width=Number(numeric[1]);height=Number(numeric[2]);}
         else {
             // “相框是正方形”描述的是参考物，不是输出比例。仅在句子明确要求
@@ -368,7 +371,7 @@
         next.customRatio=customRatio.customRatio;
         next.customRatioWidth=customRatio.customRatioWidth;
         next.customRatioHeight=customRatio.customRatioHeight;
-        next.ratio=generationRatioOptions.some(([value])=>value===next.ratio)?next.ratio:'square';
+        next.ratio=allGenerationRatioOptions().some(([value])=>value===next.ratio)?next.ratio:'square';
         next.resolution=['1k','2k','4k'].includes(next.resolution)?next.resolution:'1k';
         next.quality=['auto','low','medium','high','xhigh','max'].includes(next.quality)?next.quality:'auto';
         next.background=['auto','opaque','transparent'].includes(next.background)?next.background:'auto';
@@ -486,8 +489,8 @@
         if(media==='video'){
             const value=String(source.videoAspect||'16:9');
             if(['keep_ratio','adaptive'].includes(value))return 'smart';
-            const hit=generationRatioOptions.find(([,label])=>label===value);
-            return hit?.[0]||generationRatioOptions.find(([key])=>key===value)?.[0]||'wide';
+            const hit=allGenerationRatioOptions().find(([,label])=>label===value);
+            return hit?.[0]||allGenerationRatioOptions().find(([key])=>key===value)?.[0]||'wide';
         }
         const value=String(source.ratio||'square');
         if(value==='source')return 'smart';
@@ -499,7 +502,7 @@
             }[custom];
             return hit||'custom';
         }
-        return generationRatioOptions.some(([key])=>key===value)?value:'square';
+        return allGenerationRatioOptions().some(([key])=>key===value)?value:'square';
     }
     function generationStateFromCanvasSettings(source={},fallback={}){
         const media=source.apiKind==='video'?'video':(fallback.media||'image');
@@ -533,6 +536,12 @@
     function syncGenerationPreferencesFromCanvas(source=settings){
         if(!source||source.apiKind==='video')return;
         const saved=generationPreferences();
+        // 手动模式下，画布自身的设置变化不能覆盖 Agent 面板刚选的比例。
+        // 只有开启“自动跟随”时，画布设置才是 Agent 偏好的来源。
+        if(!saved.auto){
+            renderGenerationPreferences();
+            return;
+        }
         const state=generationStateFromCanvasSettings(source,saved);
         const custom=state.ratio==='custom'?normalizeGenerationCustomRatio(state):{customRatio:'',customRatioWidth:'',customRatioHeight:''};
         const patch={media:'image',ratio:state.ratio,...custom};
@@ -788,7 +797,10 @@
         document.querySelectorAll('[data-agent-mode]').forEach(button=>button.classList.toggle('active',button.dataset.agentMode===state.mode));
         document.querySelectorAll('[data-agent-media]').forEach(button=>button.classList.toggle('active',button.dataset.agentMedia===state.media));
         if(ratioOptionsEl){
-            const ratioOptions=state.media==='video'?generationRatioOptions.filter(([value])=>value!=='custom'):generationRatioOptions;
+            const ratioOptions=(state.media==='video'?generationRatioOptions.filter(([value])=>value!=='custom'):generationRatioOptions).slice();
+            // Keep a legacy 5:4 / 4:5 choice visible while an older saved preference is active.
+            const legacy=allGenerationRatioOptions().find(([value])=>value===state.ratio);
+            if(legacy&&!ratioOptions.some(([value])=>value===legacy[0]))ratioOptions.splice(Math.max(0,ratioOptions.length-1),0,legacy);
             const visibleState=state.media==='video'&&state.ratio==='custom'?{...state,ratio:'wide'}:state;
             ratioOptionsEl.innerHTML=ratioOptions.map(([value,label])=>`<button type="button" class="${value===visibleState.ratio?'active':''}" data-agent-ratio="${esc(value)}" aria-pressed="${value===visibleState.ratio?'true':'false'}" title="${esc(label)}">${generationRatioSwatch(value)}<span class="canvas-agent-ratio-label">${esc(label)}</span></button>`).join('');
             ratioOptionsEl.querySelectorAll('[data-agent-ratio]').forEach(button=>button.onclick=()=>setManualGenerationPreference({ratio:button.dataset.agentRatio}));
@@ -1455,6 +1467,42 @@
         });
         return scope;
     }
+    function canvasWideTaskScope(){
+        // A canvas question or a graph-level plan may start without a selected
+        // node. Keep the scope explicit so the model can inspect the full
+        // graph while the write executor still creates only the operation the
+        // user requested.
+        let generationSettings={};
+        try{
+            generationSettings=typeof canvasTaskScopeGenerationSettings==='function'
+                ?canvasTaskScopeGenerationSettings(null)
+                :{};
+        }catch(_){generationSettings={};}
+        return {
+            valid:true,
+            mode:'canvas',
+            selectedNodeIds:[],
+            targetNodeId:'',
+            sourceNodeIds:[],
+            formalInputNodeIds:[],
+            upstreamNodeIds:[],
+            selectedImage:{nodeId:'',index:-1},
+            selectedReferenceKeys:[],
+            referenceImages:[],
+            generationSettings,
+            excludedNodeIds:[],
+            excludedReferenceKeys:[]
+        };
+    }
+    function isCanvasReadOnlyQuestion(text){
+        const source=String(text||'').trim();
+        if(!source)return false;
+        const mutation=/(?:创建|新增|添加|删除|移除|修改|编辑|移动|重命名|连接|连线|断开|运行|生成|生图|改图|执行|写入|替换|调整|批量|导出|发布|购买)/i.test(source);
+        if(mutation)return false;
+        return /(?:几个|多少|有哪些|列出|查看|看看|统计|状态|当前|这个画布|画布中|画布里|节点|连线|工作流|素材|任务|结果|图片).*(?:吗|呢|么|？|\?|有|包含|数量|列表|状态|情况)?$/i.test(source)
+            || /^(?:请|帮我)?(?:分析|检查|读取|概括|介绍)(?:一下)?(?:当前|这个)?画布/i.test(source)
+            || noGenerationRequested(source);
+    }
     function serializedTaskScope(scope=currentTaskScope()){
         if(typeof canvasTaskScopeSnapshot==='function')return canvasTaskScopeSnapshot(scope);
         return {
@@ -1588,6 +1636,9 @@
         toast('已恢复本次 Agent 任务的全部来源和引用图');
     }
     function renderTaskScopeDetails(scope){
+        if(scope?.mode==='canvas'){
+            return `<div class="canvas-agent-scope-details"><div class="canvas-agent-scope-detail-label"><span>当前任务范围 · 整张画布</span></div><div class="canvas-agent-scope-no-reference"><i data-lucide="layout-dashboard"></i><span>Agent 可以读取全部节点、连线和节点文字；执行修改前会先生成可预览方案。</span></div></div>`;
+        }
         const sourceIds=scope?.targetNodeId?(scope.formalInputNodeIds||[]):(scope?.sourceNodeIds||[]);
         const sourceNodes=sourceIds.map(id=>nodes.find(node=>node.id===id)).filter(Boolean);
         const references=typeof uniqueReferenceImages==='function'
@@ -1722,7 +1773,7 @@
         renderComposerAttachments(scope);
         if(!scopeEl)return;
         if(!scope.valid){
-            scopeEl.innerHTML=`<div class="canvas-agent-scope-empty"><i data-lucide="mouse-pointer-2"></i><span>未选择画布节点。先选中素材、提示词或绘画节点，Agent 才会创建/修改正式任务。</span></div>`;
+            scopeEl.innerHTML=`<div class="canvas-agent-scope-empty"><i data-lucide="mouse-pointer-2"></i><span>未选择画布节点。可以直接询问整张画布；要修改现有节点，请先选中目标节点。</span></div>`;
             if(typeof refreshIcons==='function')refreshIcons();
             return;
         }
@@ -1745,9 +1796,12 @@
         if(typeof refreshIcons==='function')refreshIcons();
     }
     function planModeRequested(text){
-        // 计划模式是显式高级开关：普通“分析一下”仍走当前节点的直接写入与运行，
-        // 只有面板开关或明确说“开启/使用计划模式”才进入多节点编排。
-        return generationPreferences().planMode||/(?:开启|使用|进入)\s*(?:计划|规划)\s*模式|\b(?:enable|use)\s+plan\s*mode\b/i.test(String(text||''));
+        // 计划模式必须由用户显式开启，或在消息中明确要求进入计划模式。
+        // 提到节点、工作流或连线只表示任务范围，不应改变用户选择的执行模式。
+        const source=String(text||'');
+        const explicitPlan=/(?:开启|使用|进入)\s*(?:计划|规划)\s*模式|先\s*(?:做|进行)?\s*(?:计划|规划)(?:模式)?|\b(?:enable|use)\s+plan\s*mode\b/i.test(source);
+        const rejectedPlan=/(?:不|没|未|不要|无需|不用|别|禁止|没有)\s*(?:调用|开启|使用|进入)?\s*(?:计划|规划)\s*模式/i.test(source);
+        return generationPreferences().planMode||(explicitPlan&&!rejectedPlan);
     }
     function noGenerationRequested(text){
         return /(?:只|仅|单纯|单独)\s*(?:做|要)?\s*分析|(?:不要|别|不需要|无需|不用|不)\s*(?:生成|生图|出图|改图|修改|写入|运行|执行)|\bonly\s+analy[sz]e\b|\bdo\s+not\s+(?:generate|run|write)\b/i.test(String(text||''));
@@ -1765,7 +1819,13 @@
         },{});
     }
     function applyRequestedGenerationToNode(node,generation={}){
-        const requested=requestedPlanNodeSettings(generation);
+        const commerceRole=String(node?.commerceRole||node?.commerce_role||'').toLowerCase();
+        const commerceGeneration=commerceRole==='main'
+            ?{...generation,media:'image',ratio:'square',ratioLabel:'1:1',count:1}
+            :commerceRole==='detail'
+                ?{...generation,media:'image',ratio:'story',ratioLabel:'9:16',count:1}
+                :generation;
+        const requested=requestedPlanNodeSettings(commerceGeneration);
         const type=String(node?.type||'');
         if(!node||!['smart-paint','smart-image'].includes(type)||node.isHistoryGroup||node.historyFor)return;
         const base=typeof smartSettingsForNode==='function'
@@ -1779,23 +1839,47 @@
         node.runSettings=typeof settingsForStorage==='function'?settingsForStorage(next):next;
     }
     function applyRequestedGenerationToSpec(spec,generation={}){
-        const requested=requestedPlanNodeSettings(generation);
+        const role=String(spec?.commerce_role||spec?.commerceRole||'').toLowerCase();
+        const commerceGeneration=role==='main'
+            ?{...generation,media:'image',ratio:'square',ratioLabel:'1:1',count:1}
+            :role==='detail'
+                ?{...generation,media:'image',ratio:'story',ratioLabel:'9:16',count:1}
+                :generation;
+        const requested=requestedPlanNodeSettings(commerceGeneration);
         if(!requested||!spec||normalizePlanNodeType(spec.type)!=='smart-paint')return spec;
         const incoming=spec.settings&&typeof spec.settings==='object'
             ?spec.settings
             :(spec.run_settings&&typeof spec.run_settings==='object'?spec.run_settings:{});
         return {...spec,settings:{...incoming,...requested}};
     }
-    function planCanvasContext(scope=currentTaskScope()){
+    function planCanvasContext(scope=currentTaskScope(),options={}){
         const excluded=new Set((scope?.excludedNodeIds||[]).map(id=>String(id||'')));
         const selected=(Array.isArray(scope?.selectedNodeIds)?scope.selectedNodeIds:[]).filter(id=>!excluded.has(String(id||'')));
         const current=nodes.find(node=>node.id===(scope?.targetNodeId||''))||nodes.find(node=>node.id===selected[0])||null;
         const priority=[current?.id,...selected].filter(Boolean);
         const ordered=[...new Set([...priority,...nodes.map(node=>node.id)])].map(id=>nodes.find(node=>node.id===id)).filter(Boolean).slice(0,40);
+        const references=planReferenceImages(scope).map((item,index)=>({
+            role:['product','style','content'].includes(String(item?.role||item?.referenceRole||'').toLowerCase())
+                ?String(item.role||item.referenceRole).toLowerCase():'product',
+            source:String(item?.source||'canvas').slice(0,40),
+            node_id:String(item?.nodeId||item?.node_id||item?.groupNodeId||'').slice(0,120),
+            image_index:Number.isFinite(Number(item?.imageIndex))?Number(item.imageIndex):0,
+            url:String(item?.url||'').slice(0,2000),
+            name:String(item?.name||item?.alias||`商品图${index+1}`).slice(0,100)
+        }));
+        const linkJobIds=(Array.isArray(options?.linkJobIds)?options.linkJobIds:[]).map(item=>String(item||'').trim()).filter(Boolean).slice(0,3);
+        linkJobIds.forEach((id,index)=>references.push({role:'style',source:'link',link_job_id:id,name:`链接参考${index+1}`}));
         return {
             current_node_id:current?.id||'',
             selected_node_ids:selected,
             task_scope:serializedTaskScope(scope),
+            references:references.slice(0,32),
+            reference_roles:{
+                product:references.filter(item=>item.role==='product').length,
+                style:references.filter(item=>item.role==='style').length,
+                content:references.filter(item=>item.role==='content').length
+            },
+            link_job_ids:linkJobIds,
             nodes:ordered.map(node=>({
                 id:String(node.id||''),type:String(node.type||'smart-image'),title:clippedPlanText(node.title||'',80),
                 x:Number(node.x)||0,y:Number(node.y)||0,w:Number(node.w)||0,h:Number(node.h)||0,
@@ -1831,8 +1915,12 @@
                 url,
                 name:String(item?.name||item?.alias||'').slice(0,100),
                 kind:String(item?.kind||'image'),
-                nodeId:String(item?.nodeId||''),
-                groupNodeId:String(item?.groupNodeId||''),
+                role:['product','style','content'].includes(String(item?.role||item?.referenceRole||'').toLowerCase())
+                    ?String(item.role||item.referenceRole).toLowerCase():'product',
+                source:String(item?.source||'canvas').slice(0,40),
+                linkJobId:String(item?.linkJobId||item?.link_job_id||'').slice(0,120),
+                nodeId:String(item?.nodeId||item?.node_id||''),
+                groupNodeId:String(item?.groupNodeId||item?.group_node_id||''),
                 imageIndex:Number.isFinite(Number(item?.imageIndex))?Number(item.imageIndex):0
             };
         }).filter(Boolean);
@@ -1921,18 +2009,67 @@
         // 从统一节点菜单显式创建；计划仍可用提示词、循环和分组表达多阶段过程。
         return (connections||[]).map(item=>({...item}));
     }
+    function normalizePlanOperation(value){
+        if(!value||typeof value!=='object')return null;
+        const aliases={update:'update_node',edit:'update_node',set:'update_node',delete:'delete_node',remove:'delete_node',connect_nodes:'connect',disconnect_nodes:'disconnect',move:'move_node',rename:'update_node',add:'create_node',create:'create_node'};
+        const raw=String(value.op||value.kind||'').trim().toLowerCase(),op=aliases[raw]||raw;
+        if(!['update_node','create_node','delete_node','connect','disconnect','move_node','run'].includes(op))return null;
+        const result={op};
+        if(['update_node','delete_node','move_node'].includes(op))result.node=String(value.node??value.target??value.ref??'current').trim().slice(0,100)||'current';
+        if(op==='run'){
+            const targets=Array.isArray(value.targets)?value.targets:(value.node!==undefined?[value.node]:[]);
+            result.targets=targets.map(item=>String(item||'').trim().slice(0,100)).filter(Boolean).slice(0,8);
+        }
+        if(op==='create_node'){
+            const source=value.node&&typeof value.node==='object'?value.node:(value.spec&&typeof value.spec==='object'?value.spec:{});
+            result.node={...source};
+            delete result.node.id;
+        }
+        if(op==='update_node'){
+            const changes=value.changes&&typeof value.changes==='object'?value.changes:(value.fields&&typeof value.fields==='object'?value.fields:{});
+            const allowed=['title','prompt','execution_prompt','text','user_prompt','system_prompt','settings','count','mode','show_prompt','image_input','variable_prompt','prompt_split_enabled','llm_enabled','llm_instruction','llm_system_prompt','llm_provider','llm_model','agent_provider','agent_model','installed_skills'];
+            result.changes=Object.fromEntries(allowed.filter(key=>Object.prototype.hasOwnProperty.call(changes,key)).map(key=>[key,changes[key]]));
+        }
+        if(['connect','disconnect'].includes(op)){
+            result.from=String(value.from??value.source??'').trim().slice(0,100);
+            result.to=String(value.to??value.target??'').trim().slice(0,100);
+            result.kind=String(value.kind||'input').toLowerCase()==='flow'?'flow':'input';
+        }
+        if(op==='move_node'){
+            const x=Number(value.x),y=Number(value.y);
+            if(!Number.isFinite(x)||!Number.isFinite(y))return null;
+            result.x=Math.max(-100000,Math.min(100000,x));result.y=Math.max(-100000,Math.min(100000,y));
+        }
+        return result;
+    }
+    function normalizePlanOperations(value){
+        return (Array.isArray(value)?value:[]).slice(0,24).map(normalizePlanOperation).filter(Boolean);
+    }
     function normalizePlanForClient(value,text,requestedGeneration={}){
         const fallback=fallbackPlanForClient(text,requestedGeneration);
         if(!value||typeof value!=='object')return fallback;
         const rawOptions=Array.isArray(value.options)?value.options:[];
         const options=rawOptions.slice(0,4).map((raw,index)=>{
             const option=raw&&typeof raw==='object'?raw:{};
-            const optionMeta=Object.fromEntries(Object.entries(option).filter(([key])=>!['nodes','connections','run','return_to'].includes(key)));
+            const optionMeta=Object.fromEntries(Object.entries(option).filter(([key])=>!['nodes','connections','run','return_to','mode','operations'].includes(key)));
             let workflow=option.workflow&&typeof option.workflow==='object'?option.workflow:{};
             if(!Array.isArray(workflow.nodes)&&Array.isArray(option.nodes))workflow={...workflow,nodes:option.nodes,connections:option.connections||[],run:option.run||[],return_to:option.return_to||'current'};
             const fallbackWorkflow=fallback.options[Math.min(index,fallback.options.length-1)].workflow;
+            const commerceMeta=workflow.commerce&&typeof workflow.commerce==='object'?workflow.commerce:{};
+            const isCommerce=Boolean(Object.keys(commerceMeta).length||value.strict||option.strict);
+            const nodeLimit=isCommerce?41:8;
+            const connectionLimit=isCommerce?120:20;
+            const runLimit=isCommerce?40:8;
+            const operations=normalizePlanOperations(workflow.operations);
+            operations.forEach(operation=>{
+                const spec=operation?.op==='create_node'&&operation.node&&typeof operation.node==='object'?operation.node:null;
+                if(!spec||!['agent','smart-agent'].includes(String(spec.type||'').trim().toLowerCase()))return;
+                spec.type='smart-prompt';spec.text=String(spec.text||spec.prompt||spec.user_prompt||'请根据上游输入整理可执行提示词。');
+                delete spec.user_prompt;delete spec.system_prompt;delete spec.agent_provider;delete spec.agent_model;delete spec.installed_skills;delete spec.auto_analysis;
+            });
             const rawNodes=Array.isArray(workflow.nodes)?workflow.nodes:[];
-            const nodesSpec=rawNodes.slice(0,8).map((item,nodeIndex)=>{
+            const mode=String(workflow.mode||'').trim().toLowerCase()==='edit'||(operations.length&&!rawNodes.length)?'edit':'build';
+            const nodesSpec=rawNodes.slice(0,nodeLimit).map((item,nodeIndex)=>{
                 const spec=item&&typeof item==='object'?{...item}:{};
                 spec.key=String(spec.key||spec.id||`node_${nodeIndex+1}`).slice(0,60);
                 spec.type=normalizePlanNodeType(spec.type);
@@ -1944,8 +2081,8 @@
                 }
                 return applyRequestedGenerationToSpec(spec,requestedGeneration);
             });
-            if(!nodesSpec.length)nodesSpec.push(...fallbackWorkflow.nodes.map(item=>({...item})));
-            let connections=ensurePlanAnalysisAgent(nodesSpec,Array.isArray(workflow.connections)?workflow.connections.slice(0,20):[],option,text);
+            if(!nodesSpec.length&&mode!=='edit')nodesSpec.push(...fallbackWorkflow.nodes.map(item=>({...item})));
+            let connections=ensurePlanAnalysisAgent(nodesSpec,Array.isArray(workflow.connections)?workflow.connections.slice(0,connectionLimit):[],option,text);
             connections=ensurePlanLoopNode(nodesSpec,connections,option);
             return {
                 ...optionMeta,
@@ -1954,10 +2091,10 @@
                 summary:clippedPlanText(option.summary||option.description||'按当前需求执行一条画布流程',180),
                 reason:clippedPlanText(option.reason||'适合当前任务的执行方向',180),
                 steps:(Array.isArray(option.steps)?option.steps:[]).map(item=>clippedPlanText(item,100)).filter(Boolean).slice(0,6),
-                workflow:{...workflow,nodes:nodesSpec,connections,run:Array.isArray(workflow.run)?workflow.run.slice(0,8):[],return_to:workflow.return_to||'current'}
+                workflow:{...workflow,mode,nodes:nodesSpec,operations,connections,run:Array.isArray(workflow.run)?workflow.run.slice(0,runLimit):[],return_to:workflow.return_to||'current',...(isCommerce?{commerce:commerceMeta}:{})}
             };
         });
-        for(const candidate of fallback.options){
+        for(const candidate of (value.strict||options.some(item=>item.workflow?.commerce?.platform)?[]:fallback.options)){
             if(options.length>=3)break;
             if(!options.some(option=>option.id===candidate.id))options.push(candidate);
         }
@@ -1968,7 +2105,14 @@
             // 统一使用稳定的数字选项，用户点击后仍按当前数组位置执行。
             id:String(index+1)
         }));
-        return {analysis:clippedPlanText(value.analysis||value.summary||fallback.analysis,1200),approach:clippedPlanText(value.approach||value.execution_plan||fallback.approach,1200),options:normalizedOptions};
+        return {
+            analysis:clippedPlanText(value.analysis||value.summary||fallback.analysis,1200),
+            approach:clippedPlanText(value.approach||value.execution_plan||fallback.approach,1200),
+            requiresClarification:Boolean(value.requires_clarification||value.requiresClarification||value.clarification),
+            clarification:clippedPlanText(value.clarification||'',600),
+            strict:Boolean(value.strict||options.some(item=>item.workflow?.commerce?.platform)),
+            options:normalizedOptions
+        };
     }
     function parsePlanJson(value){
         if(value&&typeof value==='object')return value;
@@ -2051,6 +2195,8 @@
             if(parsed&&typeof parsed==='object'){
                 const prompt=String(parsed.prompt||parsed.generation_prompt||parsed.final_prompt||'').trim();
                 if(prompt)return {...parsed,prompt,can_apply:true};
+                const operations=normalizeCanvasAgentOperations(parsed.operations||parsed.steps);
+                if(operations.length)return {...parsed,operations,can_apply:true};
             }
             const summary=looseActionStringField(block,'summary',['prompt','generation_prompt','final_prompt','settings','generation_settings'])
                 ||looseActionStringField(block,'analysis',['approach','options','prompt','settings']);
@@ -2081,21 +2227,184 @@
     function normalizeCanvasAgentActionResponse(value){
         const data=value&&typeof value==='object'?value:{};
         if(data.no_generation)return data;
+        const operations=normalizeCanvasAgentOperations(data.operations||data.steps);
+        if(operations.length)return {...data,operations,can_apply:true};
         if(String(data.prompt||'').trim())return {...data,can_apply:true};
         const parsed=parseCanvasAgentActionText(data.text||data.raw||'');
         if(parsed?.prompt)return {...data,...parsed,can_apply:true};
         const plainPrompt=plainCanvasAgentPromptCandidate(data.text||data.raw||data.summary||'')||plainCanvasAgentPromptCandidate(data.summary||'');
         return plainPrompt?{...data,prompt:plainPrompt,settings:data.settings||{},can_apply:true}:data;
     }
+    const CANVAS_AGENT_OPERATION_ALIASES={
+        remove_background:'image.remove_background',background_remove:'image.remove_background',cutout:'image.remove_background',
+        '抠图':'image.remove_background','去背景':'image.remove_background','透明底':'image.remove_background',
+        rotate:'image.rotate','旋转':'image.rotate',flip:'image.flip','镜像':'image.flip',
+        outpaint:'image.outpaint','扩图':'image.outpaint',erase:'image.erase',mask:'image.erase','抹除':'image.erase',
+        ocr:'image.ocr',ocr_edit:'image.ocr','改字':'image.ocr',ai_layers:'image.ai_layers',layers:'image.ai_layers','分层':'image.ai_layers',
+        grid:'image.grid',grid_split:'image.grid','宫格':'image.grid',rename:'canvas.rename_node','重命名':'canvas.rename_node',move:'canvas.move_node','移动':'canvas.move_node'
+    };
+    const CANVAS_AGENT_OPERATION_TOOLS=new Set([
+        'image.remove_background','image.rotate','image.flip','image.outpaint','image.erase','image.ocr','image.ai_layers','image.grid','canvas.rename_node','canvas.move_node'
+    ]);
+    function normalizeCanvasAgentOperation(value){
+        if(!value||typeof value!=='object')return null;
+        const raw=String(value.tool||value.operation||value.op||'').trim().toLowerCase();
+        const tool=CANVAS_AGENT_OPERATION_ALIASES[raw]||raw;
+        if(!CANVAS_AGENT_OPERATION_TOOLS.has(tool))return null;
+        const args=value.args&&typeof value.args==='object'?{...value.args}:{...value};
+        delete args.tool;delete args.operation;delete args.op;delete args.target;delete args.node;delete args.ref;delete args.confirmation;
+        const target=value.target??value.node??value.ref??'current';
+        const targetValue=target&&typeof target==='object'
+            ?{nodeId:String(target.nodeId||target.node_id||target.id||'').trim(),imageIndex:Number.isFinite(Number(target.imageIndex??target.image_index))?Math.max(0,Number(target.imageIndex??target.image_index)):0}
+            :String(target||'current').trim()||'current';
+        const allowed={
+            'image.remove_background':['batch','all_images','preserve_source','model_id'],
+            'image.rotate':['direction','degrees'],'image.flip':['direction'],'image.outpaint':['prompt','ratio','resolution','edges','scale'],
+            'image.erase':['prompt','mask','mode'],'image.ocr':['prompt','text','mode'],'image.ai_layers':['layers','mode'],
+            'image.grid':['mode','rows','cols'],'canvas.rename_node':['title','name'],'canvas.move_node':['x','y','position','relative_to']
+        }[tool]||[];
+        const cleanArgs={};
+        allowed.forEach(key=>{if(Object.prototype.hasOwnProperty.call(args,key))cleanArgs[key]=args[key];});
+        if(['batch','all_images','preserve_source'].some(key=>Object.prototype.hasOwnProperty.call(cleanArgs,key)&&typeof cleanArgs[key]!=='boolean'))return null;
+        if(tool==='image.rotate'&&cleanArgs.degrees!==undefined&&!([90,180,270].includes(Number(cleanArgs.degrees))))return null;
+        if(tool==='image.rotate'&&cleanArgs.direction!==undefined&&!['left','right','ccw','cw'].includes(String(cleanArgs.direction).toLowerCase()))return null;
+        if(tool==='image.flip'&&cleanArgs.direction!==undefined&&!['horizontal','vertical'].includes(String(cleanArgs.direction).toLowerCase()))return null;
+        if(tool==='image.grid'){
+            if(cleanArgs.mode!==undefined&&!['split','join'].includes(String(cleanArgs.mode).toLowerCase()))return null;
+            for(const key of ['rows','cols'])if(cleanArgs[key]!==undefined&&(!Number.isInteger(Number(cleanArgs[key]))||Number(cleanArgs[key])<1||Number(cleanArgs[key])>10))return null;
+        }
+        if(tool==='image.ai_layers'&&cleanArgs.layers!==undefined&&(!Number.isInteger(Number(cleanArgs.layers))||Number(cleanArgs.layers)<2||Number(cleanArgs.layers)>20))return null;
+        if(tool==='canvas.rename_node'&&!String(cleanArgs.title||cleanArgs.name||'').trim())return null;
+        if(tool==='canvas.move_node'&&!(['x','y'].every(key=>Number.isFinite(Number(cleanArgs[key])))||(['left','right','above','below'].includes(String(cleanArgs.position||'').toLowerCase())&&String(cleanArgs.relative_to||'').trim())))return null;
+        const confirmation=String(value.confirmation||'').toLowerCase()==='required'?'required':'auto';
+        return {tool,target:targetValue,args:cleanArgs,confirmation};
+    }
+    function normalizeCanvasAgentOperations(value){
+        const list=Array.isArray(value)?value:(value&&Array.isArray(value.operations)?value.operations:[]);
+        return list.slice(0,16).map(normalizeCanvasAgentOperation).filter(Boolean);
+    }
+    function canvasAgentOperationTarget(scope,operation){
+        const target=operation?.target;
+        const targetId=target&&typeof target==='object'?String(target.nodeId||'').trim():String(target||'').trim();
+        const scopeTarget=String(scope?.targetNodeId||scope?.target_node_id||'').trim();
+        const selectedIds=[...(scope?.selectedNodeIds||scope?.selected_node_ids||[])].map(id=>String(id||'').trim()).filter(Boolean);
+        const selectedImage=scope?.selectedImage||scope?.selected_image||{};
+        const selectedImageNode=String(selectedImage.nodeId||selectedImage.node_id||'').trim();
+        const nodeId=targetId&&targetId!=='current'&&targetId!=='selected'
+            ?targetId:(scopeTarget||selectedImageNode||selectedIds[0]||String(typeof selectedId!=='undefined'?selectedId:'').trim());
+        const indexFromTarget=target&&typeof target==='object'?target.imageIndex:undefined;
+        const indexFromScope=selectedImage.imageIndex??selectedImage.image_index;
+        const indexFromArgs=operation?.args?.image_index;
+        const imageIndex=Number.isFinite(Number(indexFromTarget))?Math.max(0,Number(indexFromTarget))
+            :Number.isFinite(Number(indexFromArgs))?Math.max(0,Number(indexFromArgs))
+            :Number.isFinite(Number(indexFromScope))?Math.max(0,Number(indexFromScope)):0;
+        return {nodeId,imageIndex};
+    }
+    function canvasAgentOperationNode(scope,operation){
+        const target=canvasAgentOperationTarget(scope,operation);
+        const node=target.nodeId?nodes.find(item=>item.id===target.nodeId):null;
+        if(!node)throw new Error('没有找到操作目标，请先选中要处理的节点或明确指定“图几”。');
+        return {...target,node};
+    }
+    async function executeCanvasAgentOperation(scope,operation){
+        const tool=String(operation?.tool||'').trim();
+        const {node,imageIndex}=canvasAgentOperationNode(scope,operation);
+        const args=operation?.args&&typeof operation.args==='object'?operation.args:{};
+        if(tool==='image.remove_background'){
+            const batch=Boolean(args.batch||args.all_images);
+            const result=batch&&typeof removeSmartNodeBackgroundBatch==='function'
+                ?await removeSmartNodeBackgroundBatch(node)
+                :typeof removeSmartNodeBackground==='function'
+                    ?await removeSmartNodeBackground(node,imageIndex,{closeEditor:true})
+                    :null;
+            if(!result)throw new Error('去背景工具没有返回结果，原图未修改。');
+            return {message:batch?'批量去背景已完成，原图保留。':'已生成透明底节点，原图保留。',targetNodeId:result?.outputNode?.id||''};
+        }
+        if(tool==='image.rotate'||tool==='image.flip'){
+            if(typeof openSmartNodeTransform!=='function'||typeof applySmartNodeTransform!=='function'||typeof saveSmartNodeTransform!=='function')throw new Error('图片变换工具尚未加载。');
+            const direction=String(args.direction||'right').toLowerCase();
+            const operationName=tool==='image.flip'
+                ?(direction==='vertical'?'flip-vertical':'flip-horizontal')
+                :(direction==='left'||direction==='ccw'?'rotate-left':'rotate-right');
+            const before=typeof smartOriginalMediaUrl==='function'?smartOriginalMediaUrl(imageForDisplay(node.images?.[imageIndex])):'';
+            await openSmartNodeTransform(node.id,imageIndex);
+            const turns=Math.max(1,Math.min(3,Math.round(Number(args.degrees||90)/90)));
+            for(let index=0;index<(tool==='image.flip'?1:turns);index++)applySmartNodeTransform(operationName);
+            await saveSmartNodeTransform();
+            const after=typeof smartOriginalMediaUrl==='function'?smartOriginalMediaUrl(imageForDisplay(node.images?.[imageIndex])):'';
+            if(before&&after===before)throw new Error('图片变换未保存，原图未修改。');
+            return {message:tool==='image.flip'?'图片镜像已保存。':'图片旋转已保存。',targetNodeId:node.id};
+        }
+        if(tool==='image.ai_layers'&&typeof window.openSmartImageLayers==='function'){
+            window.openSmartImageLayers(node.id,imageIndex);
+            return {message:'已打开 AI 分层工具，请在分层面板确认层数和执行。',manual:true,targetNodeId:node.id};
+        }
+        const editorModes={'image.outpaint':'outpaint','image.erase':'mask','image.ocr':'ocr','image.grid':'grid'};
+        if(editorModes[tool]&&typeof openImageEditor==='function'&&typeof setImageEditMode==='function'){
+            openImageEditor(node.id,imageIndex);
+            setImageEditMode(editorModes[tool],true);
+            const prompt=String(args.prompt||args.text||'').trim();
+            if(tool==='image.outpaint'&&prompt){const field=document.getElementById('outpaintPrompt');if(field)field.value=prompt;}
+            if(tool==='image.grid'&&String(args.mode||'').toLowerCase()==='join'&&typeof setGridOperationMode==='function')setGridOperationMode('join');
+            return {message:`已打开${editorModes[tool]==='outpaint'?'扩图':editorModes[tool]==='mask'?'抹除':editorModes[tool]==='ocr'?'OCR 改字':'宫格'}工具，请在编辑器中确认区域和参数。`,manual:true,targetNodeId:node.id};
+        }
+        if(tool==='canvas.rename_node'){
+            const title=String(args.title||args.name||'').trim();
+            if(!title)throw new Error('重命名操作缺少名称。');
+            if(typeof pushUndo==='function')pushUndo();
+            node.title=title.slice(0,120);
+            if(typeof render==='function')render();
+            if(typeof scheduleSave==='function')scheduleSave();
+            return {message:`已将节点重命名为“${title.slice(0,120)}”。`,targetNodeId:node.id};
+        }
+        if(tool==='canvas.move_node'){
+            let x=Number(args.x),y=Number(args.y);
+            const position=String(args.position||'').toLowerCase();
+            const relativeId=String(args.relative_to||'').trim();
+            const relative=relativeId?nodes.find(item=>item.id===relativeId):null;
+            if(!Number.isFinite(x)||!Number.isFinite(y)){
+                const base=relative&&typeof nodeRect==='function'?nodeRect(relative):null;
+                const rect=typeof nodeRect==='function'?nodeRect(node):null;
+                if(base&&rect){
+                    x=position.includes('left')?base.x-rect.width-220:position.includes('right')?base.x+base.width+220:base.x;
+                    y=position.includes('above')?base.y-rect.height-120:position.includes('below')?base.y+base.height+120:base.y;
+                }
+            }
+            if(!Number.isFinite(x)||!Number.isFinite(y))throw new Error('移动操作缺少有效位置。');
+            if(typeof pushUndo==='function')pushUndo();
+            node.x=Math.max(-100000,Math.min(100000,Math.round(x)));node.y=Math.max(-100000,Math.min(100000,Math.round(y)));
+            if(typeof render==='function')render();
+            if(typeof scheduleSave==='function')scheduleSave();
+            return {message:'已移动目标节点。',targetNodeId:node.id};
+        }
+        throw new Error(`暂不支持画布工具：${tool||'未知操作'}`);
+    }
+    async function executeCanvasAgentOperations(scope,operations){
+        const normalized=normalizeCanvasAgentOperations(operations);
+        if(!normalized.length)return {handled:false};
+        const risky=normalized.some(operation=>operation.confirmation==='required');
+        if(risky){
+            const labels=normalized.map(operation=>operation.tool).join('、');
+            if(!window.confirm(`Agent 准备执行：${labels}\n\n批量或多对象操作可能创建多个结果，是否继续？`))return {handled:true,cancelled:true,summary:'已取消画布工具操作，画布未改动。'};
+        }
+        const results=[];
+        for(const operation of normalized){
+            assertAgentRunActive();
+            results.push(await executeCanvasAgentOperation(scope,operation));
+        }
+        const targetNodeId=results.map(item=>item?.targetNodeId).find(Boolean)||'';
+        return {handled:true,manual:results.some(item=>item?.manual),targetNodeId,summary:results.map(item=>item?.message).filter(Boolean).join('；')||'画布工具操作已完成。'};
+    }
     function planSystemPrompt(requestedGeneration={}){
-        const base='你是小美画布计划模式。只返回JSON对象，包含analysis、approach、options。options为2到4个不同方案，id按顺序使用1、2、3、4，每个包含label、summary、reason、steps和workflow；workflow包含nodes、connections、run、return_to。节点type默认只能是smart-upload、smart-prompt、smart-paint、smart-loop、smart-group，连接可引用current或临时key。节点最多8个，不删除现有节点。每个方案必须新建至少一个smart-paint作为最终输出，run必须指向该新节点；current仅用于输入引用，不能作为最终输出或运行目标。kind=input用于图片/素材输入，kind=flow用于提示词或分析结果；下游节点必须读取两类正式上游，不能只显示flow连线而丢掉其文字。绘画节点如需指定生成参数，可在settings中填写ratio、resolution、customRatio、quality、background等字段；count只有用户明确说生成几张时才填写，未说明时按1张处理。不要默认创建smart-agent持久节点。';
+        const base='你是小美画布计划模式。只返回JSON对象，包含analysis、approach、options。options为2到4个不同方案，id按顺序使用1、2、3、4，每个包含label、summary、reason、steps和workflow；workflow包含mode(build或edit)、nodes、connections、operations、run、return_to。节点type默认只能是smart-upload、smart-prompt、smart-paint、smart-loop、smart-group，连接可引用current、临时key或现有节点ID。普通计划节点最多8个；strict淘宝电商配方可包含商品事实节点和多屏单图输出，最多41个。operations最多24个。用户要求搭建/生成/创建时使用build；要求修改、删除、重命名、移动、重连、断开或只运行已有节点时使用edit。edit模式优先用operations修改上下文中的现有节点，不强制新建smart-paint；update_node的changes只写用户明确要求的字段，delete_node和disconnect只在用户明确要求时使用。build模式通常新建smart-paint作为最终输出并让run指向它。kind=input用于图片/素材输入，kind=flow用于提示词或分析结果；下游节点必须读取两类正式上游，不能只显示flow连线而丢掉其文字。绘画节点如需指定生成参数，可在settings中填写ratio、resolution、customRatio、quality、background等字段；count只有用户明确说生成几张时才填写，未说明时按1张处理。不要默认创建smart-agent持久节点。';
         const label=requestedGenerationLabel(requestedGeneration);
         return label?`${base}\n用户已明确指定${label}，所有最终smart-paint节点必须使用该比例，不得改成智能/适配输入；在workflow.nodes的绘画节点settings中写入对应ratio。`:base;
     }
-    async function requestPlan(text,provider,model,history,skillId,scope=currentTaskScope(),requestedGeneration={},linkJobIds=[]){
-        const context=planCanvasContext(scope),planRefs=snapshotReferenceImages(planReferenceImages(scope));
-        const systemPrompt=planSystemPrompt(requestedGeneration);
-        const body={message:text,messages:history,images:planRefs.map(item=>item.url),provider,model,skill_id:skillId||'',link_job_ids:linkJobIds||[],current_node_id:context.current_node_id,canvas_context:context,generation_preferences:requestedGeneration,allow_persistent_agent:false,system_prompt:systemPrompt};
+    async function requestPlan(text,provider,model,history,skillId,scope=currentTaskScope(),requestedGeneration={},linkJobIds=[],commerceDetailCount=null){
+        const context=planCanvasContext(scope,{linkJobIds}),planRefs=snapshotReferenceImages(planReferenceImages(scope));
+        const commerceHint=commercePlanInstructions(text);
+        const systemPrompt=[planSystemPrompt(requestedGeneration),commerceHint].filter(Boolean).join('\n\n');
+        const body={message:text,messages:history,images:planRefs.map(item=>item.url),provider,model,skill_id:skillId||'',link_job_ids:linkJobIds||[],current_node_id:context.current_node_id,canvas_context:context,generation_preferences:requestedGeneration,commerce_detail_count:commerceDetailCount,allow_persistent_agent:false,system_prompt:systemPrompt};
         let response=await fetchWithTimeout('/api/canvas-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},CANVAS_AGENT_REQUEST_TIMEOUT_MS);
         let data=await response.json().catch(()=>({}));
         if(response.status===404){
@@ -2105,6 +2414,23 @@
         }
         if(!response.ok)throw new Error(data.detail||data.error||`HTTP ${response.status}`);
         return {plan:normalizePlanForClient(data.plan||parsePlanJson(data.text),text,requestedGeneration),linkContext:data.link_context||{},visionInput:data.vision_input||{},skill_id:data.skill_id||skillId||'',skill_name:data.skill_name||''};
+    }
+    async function requestCanvasAgentAnswer(text,provider,model,history,scope=currentTaskScope(),references=[]){
+        const context=planCanvasContext(scope);
+        const systemPrompt='你是小美画布的只读画布助手。根据提供的当前画布上下文回答用户问题，先给出直接结论，再补充必要的节点名称、类型或连线信息。不要生成图片，不要修改、删除、创建或运行节点；如果用户的问题需要写入画布，请明确说明需要改用执行请求。只返回自然语言回答。';
+        const body={
+            message:`用户问题：\n${String(text||'').trim()}\n\n当前画布上下文（只读参考）：\n${JSON.stringify(context)}`,
+            messages:history||[],
+            images:(references||[]).map(item=>item?.url).filter(Boolean),
+            provider,model,
+            system_prompt:systemPrompt
+        };
+        const response=await fetchWithTimeout('/api/canvas-llm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},CANVAS_AGENT_REQUEST_TIMEOUT_MS);
+        const data=await response.json().catch(()=>({}));
+        if(!response.ok)throw new Error(data.detail||data.error||`HTTP ${response.status}`);
+        const answer=String(data.text||data.summary||'').trim();
+        if(!answer)throw new Error('Agent 没有返回回答');
+        return {answer,model:data.model||model};
     }
 
     function canvasReusableLinkInfo(conversation){
@@ -2151,6 +2477,30 @@
         conversation.linkUrls=linkUrls;
         return {jobIds,urls:linkUrls,partial:Boolean(prepared.partial)};
     }
+    function commerceOptionMeta(plan){
+        const option=plan?.options?.[0], commerce=option?.workflow?.commerce;
+        return commerce?.platform==='taobao'?{option,commerce}:null;
+    }
+    async function updateCommerceDetailCount(index,value){
+        const conversation=activeConversation(),message=conversation.messages[index],meta=commerceOptionMeta(message?.plan);
+        if(busy||!meta||message.planStatus==='executing')return;
+        const count=Number(value),maximum=40-Number(meta.commerce.main_count||0);
+        if(!Number.isInteger(count)||count<1||count>maximum){toast(`本次可生成 1–${maximum} 屏；更多内容可分批创建`);renderMessages();return;}
+        if(count===Number(meta.commerce.detail_count))return;
+        const token=beginAgentRun();message.planUpdating=true;renderMessages();
+        setRunStatus('running','正在调整详情页','按新的屏数重新组织每屏重点和构图');
+        try{
+            const scope=currentTaskScope(message.taskScope);
+            const history=conversation.messages.slice(0,index).slice(-12).map(item=>({role:item.role,content:item.text}));
+            const result=await requestPlan(planRequestText(message,index),providerEl.value,modelEl.value,history,message.skillId||'',scope,message.requestedGeneration||{},message.linkJobIds||[],count);
+            assertAgentRunActive(token);
+            if(result.plan?.requiresClarification)throw new Error(result.plan.clarification||'请补充商品资料');
+            message.plan=result.plan;message.planStatus='pending';message.selectedOptionId='';message.executionSummary='';
+            message.text=[result.plan.analysis,result.plan.approach].filter(Boolean).join('\n\n');
+            setRunStatus('done','详情页计划已更新',`已调整为 ${count} 屏，点击生成整套后开始生图`);
+        }catch(error){toast(error.message||'调整失败，请重试');setRunStatus('error','详情页计划未更新',error.message||'请重试');}
+        finally{message.planUpdating=false;finishAgentRun(token);saveStore();renderMessages();}
+    }
     function visionInputDetail(info){
         const normalized=Math.max(0,Number(info?.normalized)||0),skipped=Math.max(0,Number(info?.skipped)||0),parts=[];
         if(normalized)parts.push(`已自动压缩 ${normalized} 张参考图`);
@@ -2162,9 +2512,11 @@
         const plan=normalizePlanForClient(message.plan||{},planRequestText(message,index),requestedGeneration);
         const status=message.planStatus||'pending';
         const retryableDone=planNeedsOutputRetry(message);
-        const statusText=status==='executing'?'正在按所选方案编排并运行画布…':retryableDone?'上次没有创建可执行输出节点，请重新选择方案运行。':status==='done'?`已执行方案 ${message.selectedOptionId||''} · ${message.executionSummary||'结果已返回画布'}。可选择其他方案重新执行。`:status==='error'?`执行失败：${message.executionSummary||'请重新选择方案'}。可选择任意方案重试。`:'选择一个方案后将立即执行，不再额外确认。';
+        const statusText=plan.requiresClarification?(plan.clarification||'请先补充目标平台，再执行方案。'):status==='executing'?'正在按所选方案编排并运行画布…':retryableDone?'上次没有创建可执行输出节点，请重新选择方案运行。':status==='done'?`已执行方案 ${message.selectedOptionId||''} · ${message.executionSummary||'结果已返回画布'}。可选择其他方案重新执行。`:status==='error'?`执行失败：${message.executionSummary||'请重新选择方案'}。可选择任意方案重试。`:'选择方案后执行；包含删除节点的方案会再次确认。';
         const generationLabel=requestedGenerationLabel(requestedGeneration);
         const generationHint=generationLabel?`<div class="canvas-agent-plan-status">已识别并应用：${esc(generationLabel)}，点击任一方案后会锁定到最终绘画节点。</div>`:'';
+        const commerceMeta=commerceOptionMeta(plan), detailCount=commerceMeta?Number(commerceMeta.commerce.detail_count||0):0;
+        const commerceControl=commerceMeta&&detailCount?`<div class="canvas-agent-commerce-count"><label>淘宝详情页屏数 <input type="number" min="1" max="${40-Number(commerceMeta.commerce.main_count||0)}" value="${detailCount}" ${busy||status==='executing'||message.planUpdating?'disabled':''} data-commerce-detail-count="${index}" aria-label="淘宝详情页屏数"></label><small>每屏 9:16，执行前可修改</small></div>`:'';
         return `<section class="canvas-agent-plan-card">
             <div class="canvas-agent-plan-head"><strong>计划模式</strong><small>${retryableDone?'可重试':status==='done'?'已完成':status==='executing'?'执行中':'可直接执行'}</small></div>
             <div class="canvas-agent-plan-analysis">
@@ -2172,14 +2524,18 @@
                 <p>${esc(plan.approach)}</p>
             </div>
             ${generationHint}
+            ${commerceControl}
             <div class="canvas-agent-plan-options">
                 ${plan.options.map(option=>{
                     const selected=message.selectedOptionId===option.id;
-                    const disabled=status==='executing';
+                    const disabled=status==='executing'||message.planUpdating||busy||plan.requiresClarification;
                     const steps=option.steps?.length?`<div class="canvas-agent-plan-option-steps">${option.steps.slice(0,3).map(step=>`<span>${esc(step)}</span>`).join('')}</div>`:'';
+                    const workflow=option.workflow||{},operations=Array.isArray(workflow.operations)?workflow.operations:[];
+                    const operationLabels={update_node:'修改已有节点',create_node:'新增节点',delete_node:'删除节点',connect:'建立连线',disconnect:'断开连线',move_node:'移动节点',run:'运行指定节点'};
+                    const operationHint=operations.length?`<div class="canvas-agent-plan-option-steps"><span>${workflow.mode==='edit'?'编辑现有画布':'工作流操作'}</span>${operations.slice(0,3).map(item=>`<span>${esc(operationLabels[item.op]||'调整工作流')}</span>`).join('')}</div>`:'';
                     return `<button type="button" class="canvas-agent-plan-option ${selected?'selected':''}" data-plan-select="${index}" data-plan-option="${esc(option.id)}" ${disabled?'disabled':''}>
                         <span class="canvas-agent-plan-option-id">${esc(option.id)}</span>
-                        <span class="canvas-agent-plan-option-body"><strong>${esc(option.label)}</strong><small>${esc(option.summary)}${option.reason?` · ${esc(option.reason)}`:''}</small>${steps}</span>
+                        <span class="canvas-agent-plan-option-body"><strong>${esc(option.label)}</strong><small>${esc(option.summary)}${option.reason?` · ${esc(option.reason)}`:''}</small>${steps}${operationHint}</span>
                         <span class="canvas-agent-plan-option-arrow">›</span>
                     </button>`;
                 }).join('')}
@@ -2266,9 +2622,17 @@
     function syncComposerRunUi(){
         const hasStatus=runState!=='idle';
         const elapsed=composerRunStartedAt?Math.max(0,Date.now()-composerRunStartedAt):0;
+        const agentToggle=$('canvasAgentToggle');
         panel?.classList.toggle('is-running',Boolean(busy));
         panel?.classList.toggle('has-run-status',hasStatus);
         panel?.setAttribute('aria-busy',busy?'true':'false');
+        if(agentToggle){
+            const state=busy?'running':(runState||'idle');
+            agentToggle.classList.toggle('is-running',state==='running');
+            agentToggle.classList.toggle('is-done',state==='done');
+            agentToggle.classList.toggle('is-error',state==='error');
+            agentToggle.dataset.agentState=state;
+        }
         if(composerStatusEl){
             composerStatusEl.hidden=!hasStatus;
             composerStatusEl.className=`canvas-agent-composer-status ${runState||'idle'}${busy?' is-busy':''}`.trim();
@@ -2330,13 +2694,14 @@
             <article class="${message.role}${message.role==='user'&&editingUserMessageIndex===index?' is-editing':''}"${message.role==='user'&&editingUserMessageIndex===index?' style="align-self:flex-end;width:100%;max-width:100%;box-sizing:border-box;"':''}>
                 <small>${message.role==='user'?'你':'Agent'}</small>
                 ${message.role==='user'?renderUserMessage(message,index):`<div class="agent-message-text">${esc(message.text).replace(/\n/g,'<br>')}</div>`}
-                ${message.role==='assistant'&&message.kind==='plan'?renderPlanMessage(message,index):message.role==='assistant'&&message.kind==='orchestration'?renderHarnessStatus(message,index):message.role==='assistant'&&message.kind==='browser'?renderBrowserStatus(message,index):message.role==='assistant'?renderActionStatus(message,index):''}
-            </article>`).join(''):'<div class="canvas-agent-empty">描述创意或需求，使用技能，@引用参考图。<br>Agent会分析画布并把结果返回节点。</div>';
+                ${message.role==='assistant'&&message.kind==='plan'?renderPlanMessage(message,index):message.role==='assistant'&&message.kind==='orchestration'?renderHarnessStatus(message,index):message.role==='assistant'&&message.kind==='browser'?renderBrowserStatus(message,index):message.role==='assistant'&&message.kind==='answer'?'':message.role==='assistant'?renderActionStatus(message,index):''}
+            </article>`).join(''):'<div class="canvas-agent-empty">可以直接询问当前画布，也可以描述要创建、修改和运行的任务。<br>需要引用图片时，使用 @ 或添加素材。</div>';
         messagesEl.innerHTML=messageHtml;
         messagesEl.scrollTop=messagesEl.scrollHeight;
         syncMessageEditUi();
         syncComposerRunUi();
         messagesEl.querySelectorAll('[data-plan-select]').forEach(button=>button.onclick=()=>selectPlanOption(Number(button.dataset.planSelect),button.dataset.planOption));
+        messagesEl.querySelectorAll('[data-commerce-detail-count]').forEach(inputEl=>inputEl.onchange=()=>{const index=Number(inputEl.dataset.commerceDetailCount);void updateCommerceDetailCount(index,inputEl.value);});
         messagesEl.querySelectorAll('[data-agent-return]').forEach(btn=>btn.onclick=()=>returnToNode(Number(btn.dataset.agentReturn)));
         messagesEl.querySelectorAll('[data-agent-edit-message]').forEach(btn=>btn.onclick=()=>beginUserMessageEdit(Number(btn.dataset.agentEditMessage)));
         messagesEl.querySelectorAll('[data-agent-cancel-message-edit]').forEach(btn=>btn.onclick=cancelUserMessageEdit);
@@ -2363,9 +2728,10 @@
     }
     function renderActionStatus(message,index){
         const status=String(message?.actionStatus||'history');
+        const commandOperation=Array.isArray(message?.commandOperations)&&message.commandOperations.length>0;
         const target=String(message?.targetNodeId||'');
         const created=message?.actionCreated?`新建目标，正式连接 ${Number(message?.actionConnected||0)} 条`:'已更新当前绘画节点';
-        const label=status==='running'?'已写入，正在运行':status==='queued'?'已提交，画布正在生成':status==='done'?'已写入并运行':status==='analysis-only'?'仅完成分析，未改动画布':status==='no-prompt'?'未写入：没有有效生成提示词':status==='cancelled'?'已停止，未继续写入画布':status==='error'?'执行失败，已保留当前节点和连线':'历史对话记录';
+        const label=status==='running'?'已写入，正在运行':status==='queued'?'已提交，画布正在生成':status==='done'?(commandOperation?'画布工具已完成':'已写入并运行'):status==='analysis-only'?(commandOperation?'工具已打开，等待编辑器确认':'仅完成分析，未改动画布'):status==='no-prompt'?'未写入：没有有效生成提示词':status==='cancelled'?'已停止，未继续写入画布':status==='error'?'执行失败，已保留当前节点和连线':'历史对话记录';
         const detail=status==='analysis-only'||status==='no-prompt'||status==='cancelled'||status==='error'
             ?String(message?.actionDetail||'')
             :status==='queued'
@@ -2397,6 +2763,34 @@
             ${media.length?`<div class="agent-browser-media-list">${media.slice(0,20).map(item=>`<span><b>${esc(item.id||'')}</b>${esc(item.type||'媒体')} · ${esc(item.label||item.url||'')}</span>`).join('')}</div>`:''}
             ${result.file_url&&status==='downloaded'?`<a class="agent-browser-download" href="${esc(result.file_url)}" download>下载 ${esc(result.filename||'文件')}</a>`:''}
         </section>`;
+    }
+    function commercePlatformFromText(text){
+        const source=String(text||'');
+        if(/亚马逊|amazon|a\+|listing/i.test(source))return 'amazon';
+        if(/淘宝|天猫|taobao|tmall/i.test(source))return 'taobao';
+        if(/抖音|douyin|小红书|xiaohongshu|京东|jd\.com|1688|shopee|temu/i.test(source))return 'marketplace';
+        return '';
+    }
+    function commerceWorkflowRequested(text){
+        const source=String(text||'').trim();
+        const platform=commercePlatformFromText(source);
+        const deliverable=/(?:主图|主图组|详情页|详情图|详情模块|a\+|listing|商品图|电商图)/i.test(source);
+        const suite=/(?:一套|套件|整套|整组|主图[和与及].*(?:详情|卖点)|详情.*主图|多个(?:版本|模块|结果)|批量)/i.test(source);
+        return Boolean(platform&&deliverable&&(suite||/主图|详情页|详情图|a\+|listing/i.test(source)));
+    }
+    function commerceReferenceWorkflowRequested(text){
+        const source=String(text||'').trim();
+        return Boolean(/https?:\/\//i.test(source)&&commercePlatformFromText(source)&&/(?:参考|相似|类似|风格|构图|色调|主图|详情页|产品图)/i.test(source));
+    }
+    function commercePlanInstructions(text){
+        const platform=commercePlatformFromText(text);
+        if(!platform)return '';
+        const name=platform==='amazon'?'亚马逊 Listing/A+':platform==='taobao'?'淘宝主图/详情页':'目标电商平台视觉套件';
+        return `这是一个${name}任务。请复用画布内置商品分析的已完成快照。已上传/选中的商品图是商品主体；没有商品图时，当前商品链接的内置分析快照是商品来源，其它参考链接只用于风格。淘宝主图默认5张、每张1:1，适合缩略图观看、文案精简；淘宝详情页每屏9:16，每屏完整且只讲一个重点，按消费者决策顺序安排整体、场景、局部和对比构图。详情屏数可在计划卡修改。不要复制参考链接中的Logo、水印或原文案；每个生图节点只生成一张，保留可编辑提示词和后续重做入口。`;
+    }
+    function canvasGraphWorkflowRequested(text){
+        const source=String(text||'').trim();
+        return /整个画布|整张画布|全画布|整理布局|自动排版|重新排列|节点布局|批量(?:移动|重命名|删除)|(?:创建|新增|删除|移除|重命名|移动|连接|连线|断开).*(?:节点|画布)|(?:节点|画布).*(?:创建|新增|删除|移除|重命名|移动|连接|连线|断开)/i.test(source);
     }
     function harnessComplexTaskRequested(text){
         const source=String(text||'').trim();
@@ -2490,7 +2884,7 @@
         setRunStatus('running','正在启动 Codex Harness','先由 canvas-llm 分析图片和商品信息，再交给 Harness 调用画布工具');
         const response=await fetchWithTimeout('/api/canvas-agent/orchestrate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
             message:text,system_prompt:'',messages:history,images:messageRefs.map(item=>item.url),provider,model,
-            skill_id:selectedSkill?.id||'',current_node_id:scope.targetNodeId||'',task_scope:scopeSnapshot,canvas_context:planCanvasContext(scope),
+            skill_id:selectedSkill?.id||'',current_node_id:scope.targetNodeId||'',task_scope:scopeSnapshot,canvas_context:planCanvasContext(scope,{linkJobIds}),
             generation_preferences:{...effectiveGenerationPreferences(),...requestedGeneration},link_job_ids:linkJobIds||[],harness_mode:'auto',approval_mode:'confirm'
         })},45000);
         const data=await response.json().catch(()=>({}));
@@ -2640,8 +3034,8 @@
     function planExistingNode(ref,map,current){
         const key=String(ref||'').trim();
         if(!key)return null;
-        if(['current','current_node','current-node'].includes(key))return current||null;
         if(map?.has(key))return map.get(key);
+        if(['current','current_node','current-node'].includes(key))return current||null;
         return nodes.find(node=>node.id===key)||null;
     }
     function planPoint(anchor,index=0){
@@ -2658,6 +3052,7 @@
     }
     function applyPlanNodeSpec(node,spec,provider,model,fallbackPrompt=''){
         if(!node||!spec)return;
+        if(spec.commerce_role||spec.commerceRole)node.commerceRole=String(spec.commerce_role||spec.commerceRole);
         const title=String(spec.title||'').trim();
         if(title)node.title=title.slice(0,80);
         applyPlanSettings(node,spec);
@@ -2750,8 +3145,9 @@
             const toNode=planExistingNode(raw?.to,map,current);
             // current 是任务范围占位符：多选来源时必须展开为所有正式来源，
             // 而非悄悄只取第一个节点或补出跨区域旧引用。
-            const fromNodes=['current','current_node','current-node'].includes(fromRef)&&(sourceNodes||[]).length
-                ? [...new Map((sourceNodes||[]).filter(node=>node?.id).map(node=>[node.id,node])).values()]
+            const liveSources=(sourceNodes||[]).filter(node=>node?.id&&nodes.some(item=>item.id===node.id));
+            const fromNodes=['current','current_node','current-node'].includes(fromRef)&&liveSources.length
+                ? [...new Map(liveSources.map(node=>[node.id,node])).values()]
                 : [planExistingNode(fromRef,map,current)].filter(Boolean);
             if(!fromNodes.length||!toNode)return;
             const kind=String(raw?.kind||'input')==='flow'?'flow':'input';
@@ -2767,7 +3163,7 @@
         });
         const created=createdNodes||[];
         const first=created.find(node=>node.type!=='smart-group'&&node.type!=='smart-upload')||created[0];
-        const orderedSources=[...(sourceNodes||[])].filter((node,index,list)=>node?.id&&list.findIndex(item=>item?.id===node.id)===index);
+        const orderedSources=[...(sourceNodes||[])].filter((node,index,list)=>node?.id&&nodes.some(item=>item.id===node.id)&&list.findIndex(item=>item?.id===node.id)===index);
         if(first&&orderedSources.length){
             // 只在计划没有明确给首个节点安排输入时补线；旧版会把已声明的
             // current→节点再补成“所有参考图→节点”，从而导致顺序和线条重复。
@@ -2794,7 +3190,105 @@
         }
         return {connected,connections:applied};
     }
-    function planRunTargets(workflow,map,current,createdNodes){
+    function removePlanNodeWithoutUndo(node){
+        if(!node)return false;
+        if(typeof collabCanMutateCanvas==='function'&&!collabCanMutateCanvas())return false;
+        if(typeof collabCanEditNode==='function'&&!collabCanEditNode(node.id))return false;
+        const deleteIds=new Set([node.id]);
+        nodes.forEach(item=>{if(isHistoryGroupNode(item)&&item.historyFor===node.id)deleteIds.add(item.id);});
+        nodes.filter(item=>deleteIds.has(item.id)&&item.imageLayerJobId).forEach(item=>{
+            const source=nodes.find(candidate=>candidate.imageLayerTaskIds?.includes(item.imageLayerJobId));
+            if(!source||deleteIds.has(source.id))return;
+            if(item.imageLayerId==='composite')source.imageLayerHiddenJobIds=[...new Set([...(source.imageLayerHiddenJobIds||[]),item.imageLayerJobId])];
+            else source.imageLayerDeletedNodeKeys=[...new Set([...(source.imageLayerDeletedNodeKeys||[]),`${item.imageLayerJobId}:${item.imageLayerId}`])];
+        });
+        nodes=nodes.filter(item=>!deleteIds.has(item.id));
+        if(canvas)canvas.connections=(canvas.connections||[]).filter(conn=>!deleteIds.has(conn.from)&&!deleteIds.has(conn.to));
+        nodes.forEach(item=>{
+            if(Array.isArray(item.inputNodeIds))item.inputNodeIds=item.inputNodeIds.filter(id=>!deleteIds.has(id));
+            if(isSmartGroupNode(item)&&Array.isArray(item.items))item.items=item.items.filter(id=>!deleteIds.has(id));
+        });
+        if(deleteIds.has(selectedId))selectedId='';
+        selectedIds=selectedIds.filter(id=>!deleteIds.has(id));
+        if(deleteIds.has(selectedImage.nodeId))selectedImage={nodeId:'',index:-1};
+        return true;
+    }
+    function disconnectPlanConnection(fromId,toId,kind){
+        if(!canvas||!Array.isArray(canvas.connections))return 0;
+        const removed=canvas.connections.filter(conn=>conn?.from===fromId&&conn?.to===toId&&(conn.kind||'flow')===kind);
+        if(!removed.length)return 0;
+        canvas.connections=canvas.connections.filter(conn=>!(conn?.from===fromId&&conn?.to===toId&&(conn.kind||'flow')===kind));
+        removed.forEach(conn=>{
+            const target=nodes.find(node=>node.id===conn.to);
+            if(target&&Array.isArray(target.inputNodeIds))target.inputNodeIds=target.inputNodeIds.filter(id=>id!==conn.from);
+            if(target&&typeof clearDetachedRunInputRefs==='function'&&['input','flow'].includes(conn.kind||'flow'))clearDetachedRunInputRefs(target);
+        });
+        return removed.length;
+    }
+    function applyPlanOperations(operations,map,current,workflow,provider,model,skillId,skillName,anchor,createdNodes,sourceNodes,fallbackPrompt,requestedGeneration){
+        const result={updated:0,created:0,deleted:0,connected:0,disconnected:0,moved:0,runTargets:[]};
+        const connectionSpecs=Array.isArray(workflow.connections)?workflow.connections:[];
+        let deleteRequested=false;
+        (operations||[]).forEach(item=>{if(item?.op==='delete_node')deleteRequested=true;});
+        if(deleteRequested&&typeof window!=='undefined'&&typeof window.confirm==='function'&&!window.confirm('此方案包含删除画布节点的操作，确认继续吗？'))throw new Error('已取消删除节点，画布未完成本次修改');
+        (operations||[]).forEach((operation,index)=>{
+            const op=operation?.op;
+            if(op==='create_node'){
+                const spec=operation.node&&typeof operation.node==='object'?operation.node:{};
+                const key=String(spec.key||`operation_${index+1}`).slice(0,60);
+                const node=createPlanNode(spec,planPoint(anchor,createdNodes.length+index));
+                if(!node)return;
+                map.set(key,node);map.set(node.id,node);createdNodes.push(node);
+                applyPlanNodeSpec(node,spec,provider,model,fallbackPrompt);applyRequestedGenerationToNode(node,requestedGeneration);applyAgentSkillMetadataToNode(node,{skill_id:skillId,skill_name:skillName});
+                result.created+=1;
+                return;
+            }
+            if(op==='update_node'){
+                const node=planExistingNode(operation.node,map,current);
+                if(!node)return;
+                applyPlanNodeSpec(node,operation.changes||{},provider,model,fallbackPrompt);applyRequestedGenerationToNode(node,requestedGeneration);result.updated+=1;
+                return;
+            }
+            if(op==='move_node'){
+                const node=planExistingNode(operation.node,map,current);
+                if(!node)return;
+                node.x=Number(operation.x);node.y=Number(operation.y);result.moved+=1;return;
+            }
+            if(op==='delete_node'){
+                const node=planExistingNode(operation.node,map,current);
+                if(!node||!removePlanNodeWithoutUndo(node))return;
+                for(const [key,value] of [...map.entries()])if(value?.id===node.id)map.delete(key);
+                if(['current','current_node','current-node'].includes(String(operation.node||'').trim())){
+                    map.set('current',null);map.set('current_node',null);map.set('current-node',null);
+                }
+                const indexInCreated=createdNodes.findIndex(item=>item?.id===node.id);if(indexInCreated>=0)createdNodes.splice(indexInCreated,1);
+                result.deleted+=1;return;
+            }
+            if(op==='disconnect'){
+                const from=planExistingNode(operation.from,map,current),to=planExistingNode(operation.to,map,current);
+                if(from&&to){
+                    const kind=operation.kind==='flow'?'flow':'input';
+                    result.disconnected+=disconnectPlanConnection(from.id,to.id,kind);
+                    for(let connectionIndex=connectionSpecs.length-1;connectionIndex>=0;connectionIndex--){
+                        const item=connectionSpecs[connectionIndex];
+                        if(String(item?.from||'')===String(operation.from||'')&&String(item?.to||'')===String(operation.to||'')&&(String(item?.kind||'input')==='flow'?'flow':'input')===kind)connectionSpecs.splice(connectionIndex,1);
+                    }
+                }
+                return;
+            }
+            if(op==='connect'){
+                if(String(operation.from||'').trim()&&String(operation.to||'').trim())connectionSpecs.push({from:operation.from,to:operation.to,kind:operation.kind==='flow'?'flow':'input'});
+                return;
+            }
+            if(op==='run'){
+                result.runTargets=(operation.targets||[]).map(item=>String(item||'').trim()).filter(Boolean).slice(0,workflow.commerce?40:8);
+                workflow.run=result.runTargets;
+            }
+        });
+        workflow.connections=connectionSpecs;
+        return result;
+    }
+    function planRunTargets(workflow,map,current,createdNodes,allowFallback=true){
         const created=(createdNodes||[]).filter(node=>node&&isSmartImageNode(node)&&!isSmartUploadNode(node)&&!isHistoryGroupNode(node));
         const createdIds=new Set(created.map(node=>node.id));
         const listed=Array.isArray(workflow?.run)?workflow.run.map(ref=>planExistingNode(ref,map,current)).filter(Boolean):[];
@@ -2802,22 +3296,12 @@
         // 优先运行本次计划刚创建的最终绘画节点。即使模型误把 current
         // 放进 run，也不要静默重跑旧节点并制造一张历史分组。
         if(listedCreated.length)return listedCreated;
-        if(created.length)return [created[created.length-1]];
+        if(created.length&&allowFallback)return [created[created.length-1]];
         if(listed.length)return [...new Set(listed)];
-        return current?[current]:[];
+        return allowFallback&&current?[current]:[];
     }
     async function runPlanWorkflow(workflow,map,connectionItems,runTargets,createdNodes=[],requestedGeneration={}){
         const order=planWorkflowOrder(map,connectionItems);
-        for(const node of order){
-            if(node.type==='smart-agent'){
-                const before=String(node.outputText||'').trim();
-                await runAgentNode(node.id);
-                if(!String(node.outputText||'').trim()&&!before)throw new Error(`Agent 节点「${node.title||node.id}」没有返回结果`);
-            }else if(node.type==='smart-prompt'&&node.llmEnabled){
-                const promptResult=await runPromptLLMNode(node.id);
-                if(promptResult?.ok===false)throw new Error(promptResult.error||`提示词节点「${node.title||node.id}」运行失败`);
-            }
-        }
         // 只执行最终输出会跳过“阶段一 → 阶段二”里的中间绘画节点。
         // 从最终目标反向收集本次新增节点，再依照拓扑顺序执行，保证下一阶段能读取上一阶段的成图。
         const createdIds=new Set((createdNodes||[]).map(node=>node?.id).filter(Boolean));
@@ -2832,6 +3316,19 @@
                     changed=true;
                 }
             });
+        }
+        // 只运行本次目标及其新建上游，编辑已有画布时不要把同一范围内
+        // 其它启用 LLM 的节点一起重跑。
+        for(const node of order){
+            if(!requiredIds.has(node.id))continue;
+            if(node.type==='smart-agent'){
+                const before=String(node.outputText||'').trim();
+                await runAgentNode(node.id);
+                if(!String(node.outputText||'').trim()&&!before)throw new Error(`Agent 节点「${node.title||node.id}」没有返回结果`);
+            }else if(node.type==='smart-prompt'&&node.llmEnabled){
+                const promptResult=await runPromptLLMNode(node.id);
+                if(promptResult?.ok===false)throw new Error(promptResult.error||`提示词节点「${node.title||node.id}」运行失败`);
+            }
         }
         const stagedTargets=order.filter(node=>requiredIds.has(node.id)&&isSmartImageNode(node)&&!isSmartUploadNode(node)&&!isHistoryGroupNode(node));
         const executionTargets=stagedTargets.length?stagedTargets:(runTargets||[]);
@@ -2873,6 +3370,7 @@
     }
     async function executePlanOption(option,provider,model,scopeSnapshot,taskText='',requestedGeneration={},skillId='',skillName=''){
         const workflow=option?.workflow&&typeof option.workflow==='object'?option.workflow:{};
+        const editMode=String(workflow.mode||'').trim().toLowerCase()==='edit';
         const scope=currentTaskScope(scopeSnapshot);
         if(!scope.valid)throw new Error(scope.reason||'原任务范围已不可用，请重新选择画布节点后再试。');
         // 方案中的正式连线、节点创建、提示词写入和后续启动共用一份撤销快照。
@@ -2888,7 +3386,8 @@
         const map=new Map();
         if(current){map.set('current',current);map.set('current_node',current);map.set(current.id,current);}
         const createdNodes=[],createdIds=[];
-        const specs=Array.isArray(workflow.nodes)?workflow.nodes.slice(0,8):[];
+        const commerceWorkflow=Boolean(workflow.commerce?.platform);
+        const specs=Array.isArray(workflow.nodes)?workflow.nodes.slice(0,commerceWorkflow?41:8):[];
         specs.forEach((raw,index)=>{
             const spec=raw&&typeof raw==='object'?raw:{};
             const key=String(spec.key||spec.id||`node_${index+1}`).slice(0,60);
@@ -2903,11 +3402,12 @@
             applyRequestedGenerationToNode(node,requestedGeneration);
             applyAgentSkillMetadataToNode(node,{skill_id:skillId,skill_name:skillName});
         });
+        const operationResult=applyPlanOperations(normalizePlanOperations(workflow.operations),map,current,workflow,provider,model,skillId,skillName,anchor,createdNodes,sourceNodes,fallbackPrompt,requestedGeneration);
         // 当前上传节点只是参考图来源，不能作为最终执行目标。若模型只复用 current、
         // 或只创建了提示词/Agent 节点，补一个可运行的绘画输出并带上原始用户需求。
         const hasCreatedPaint=createdNodes.some(node=>isSmartImageNode(node)&&!isSmartUploadNode(node)&&!isHistoryGroupNode(node));
         let ensuredOutput=null;
-        if(!hasCreatedPaint){
+        if(!editMode&&!hasCreatedPaint){
             const key=map.has('paint_1')?'plan_output':'paint_1';
             const fallbackSpec={key,type:'smart-paint',title:'计划生成',prompt:outputPrompt||option.execution_prompt||option.summary||'根据当前需求生成结果'};
             const node=createPlanNode(fallbackSpec,planPoint(anchor,createdNodes.length));
@@ -2919,7 +3419,7 @@
                 ensuredOutput={key,node};
             }
         }
-        const connectionSpecs=Array.isArray(workflow.connections)?workflow.connections.slice(0,20):[];
+        const connectionSpecs=Array.isArray(workflow.connections)?workflow.connections.slice(0,commerceWorkflow?120:20):[];
         // 无论模型返回的中间编排如何，补出的输出节点都要直接收到用户引用的图片。
         if(ensuredOutput)sourceNodes.forEach(source=>connectionSpecs.push({from:source.id,to:ensuredOutput.key,kind:'input'}));
         const connectionResult=connectPlanWorkflow(connectionSpecs,map,current,sourceNodes,createdNodes);
@@ -2928,7 +3428,11 @@
                 if(typeof applyCanvasTaskScopeReferenceFilter==='function')applyCanvasTaskScopeReferenceFilter(node,scope);
             });
         if(createdIds.length>1&&typeof arrangeSmartIdsByConnections==='function')arrangeSmartIdsByConnections(createdIds);
-        const runTargets=planRunTargets(workflow,map,current,createdNodes);
+        const runTargets=planRunTargets(workflow,map,current,createdNodes,!editMode);
+        if(!runTargets.length&&(!editMode||!workflow.run?.length)){
+            render();updateComposer();scheduleSave();
+            return {finalNode:null,createdCount:createdNodes.length,connectedCount:connectionResult.connected,executedCount:0,operationResult};
+        }
         if(!runTargets.length)throw new Error('计划没有可执行的目标节点');
         render();updateComposer();scheduleSave();
         const runResult=await runPlanWorkflow(workflow,map,connectionResult.connections,runTargets,createdNodes,requestedGeneration);
@@ -2947,7 +3451,7 @@
             if(current.type==='smart-agent'&&option.execution_prompt)current.outputText=String(option.execution_prompt);
         }
         render();updateComposer();scheduleSave();
-        return {finalNode,createdCount:createdNodes.length,connectedCount:connectionResult.connected,executedCount:runResult.executedCount};
+        return {finalNode,createdCount:createdNodes.length,connectedCount:connectionResult.connected,executedCount:runResult.executedCount,operationResult};
     }
     async function selectPlanOption(index,optionId){
         if(busy)return;
@@ -2955,6 +3459,7 @@
         if(!message||message.role!=='assistant'||message.kind!=='plan'||message.planStatus==='executing')return;
         const requestedGeneration=message.requestedGeneration||requestedGenerationPreferences(planRequestText(message,index));
         const plan=normalizePlanForClient(message.plan||{},planRequestText(message,index),requestedGeneration),option=plan.options.find(item=>item.id===optionId)||plan.options[0];
+        if(plan.requiresClarification){toast(plan.clarification||'请先补充必要信息');return;}
         if(!option)return;
         const provider=providerEl.value,model=modelEl.value;
         if(!provider||!model){toast('请先选择 Agent 模型');return;}
@@ -2966,7 +3471,11 @@
             assertAgentRunActive(runToken);
             const result=await executePlanOption(option,provider,model,message.taskScope,planRequestText(message,index),requestedGeneration,message.skillId||message.skill_id||'',message.skillName||message.skill_name||'');
             assertAgentRunActive(runToken);
-            message.planStatus='done';message.executionSummary=`已创建 ${result.createdCount} 个节点，连接 ${result.connectedCount} 条，已按顺序生成 ${result.executedCount||1} 个阶段，结果已返回画布`;
+            const op=result.operationResult||{};
+            const editParts=[op.updated?`修改 ${op.updated} 个`:'',op.created?`新增 ${op.created} 个`:'',op.deleted?`删除 ${op.deleted} 个`:'',op.moved?`移动 ${op.moved} 个`:'',op.disconnected?`断开 ${op.disconnected} 条`:''].filter(Boolean);
+            message.planStatus='done';message.executionSummary=editParts.length
+                ?`${editParts.join('，')}；连接 ${result.connectedCount||0} 条${result.executedCount?`，已运行 ${result.executedCount} 个阶段`:''}，结果已返回画布`
+                :`已创建 ${result.createdCount} 个节点，连接 ${result.connectedCount} 条，已按顺序生成 ${result.executedCount||0} 个阶段，结果已返回画布`;
             setRunStatus('done','方案已执行',message.executionSummary);
         }catch(error){
             message.planStatus='error';
@@ -3215,7 +3724,7 @@
                 message:text,messages:history,images:messageRefs.map(item=>item.url),provider,model,
                 skill_id:selectedSkill?.id||'',
                 link_job_ids:linkJobIds,
-                target_node_id:scope.targetNodeId||actionTargetId,task_scope:scopeSnapshot,canvas_context:planCanvasContext(scope),
+                target_node_id:scope.targetNodeId||actionTargetId,task_scope:scopeSnapshot,canvas_context:planCanvasContext(scope,{linkJobIds}),
                 generation_preferences:{...effectiveGenerationPreferences(),...requestedGeneration},
                 system_prompt:rolePrompt
             })},CANVAS_AGENT_REQUEST_TIMEOUT_MS),data=normalizeCanvasAgentActionResponse(await response.json().catch(()=>({})));
@@ -3229,6 +3738,19 @@
                 action.actionStatus='analysis-only';
                 action.actionDetail='用户明确要求不生成，未改动画布。';
                 setRunStatus('done','仅完成分析','已按你的要求保持画布不变');
+                return;
+            }
+            const commandOperations=normalizeCanvasAgentOperations(data.operations);
+            if(commandOperations.length){
+                setRunStatus('running','正在执行画布工具','正在处理当前图片并保留原图');
+                const commandResult=await executeCanvasAgentOperations(scope,commandOperations);
+                assertAgentRunActive(runToken);
+                action.text=String(data.summary||'已识别画布工具操作。').trim();
+                action.actionStatus=commandResult.cancelled?'cancelled':commandResult.manual?'analysis-only':'done';
+                action.actionDetail=commandResult.summary||'画布工具操作已完成。';
+                action.commandOperations=commandOperations;
+                action.targetNodeId=commandResult.targetNodeId||actionTargetId||'';
+                setRunStatus(commandResult.cancelled?'done':'done',commandResult.cancelled?'已取消':commandResult.manual?'工具已打开':'画布工具已完成',action.actionDetail);
                 return;
             }
             if(!data.can_apply||!String(data.prompt||'').trim()){
@@ -3290,14 +3812,19 @@
         const browserSkillSelected=canonicalSkillId(skillEl.value)===BROWSER_SKILL_ID;
         const provider=providerEl.value,model=modelEl.value;if(!browserSkillSelected&&(!provider||!model)){toast('请先选择 Agent 模型');return;}
         let scope=currentTaskScope();
-        if(!scope.valid&&!browserSkillSelected){renderTaskScope();toast(scope.reason||'请先选择画布节点');return;}
+        const readOnlyQuestion=!browserSkillSelected&&isCanvasReadOnlyQuestion(text);
+        const commerceWorkflow=commerceWorkflowRequested(text)||commerceReferenceWorkflowRequested(text);
+        const canvasGraphWorkflow=canvasGraphWorkflowRequested(text);
+        const graphManagement=!browserSkillSelected&&!readOnlyQuestion&&(planModeRequested(text)||harnessComplexTaskRequested(text)||commerceWorkflow||canvasGraphWorkflow);
+        if(!scope.valid&&!browserSkillSelected&&!readOnlyQuestion&&!graphManagement){renderTaskScope();toast(scope.reason||'请先选择画布节点');return;}
+        if(!scope.valid&&(readOnlyQuestion||graphManagement))scope=canvasWideTaskScope();
         if(browserSkillSelected&&!scope.valid){
             Object.assign(scope,{valid:true,mode:'browser',selectedNodeIds:[],targetNodeId:'',sourceNodeIds:[],formalInputNodeIds:[],upstreamNodeIds:[],referenceImages:[],generationSettings:{}});
         }
         scope=scopeWithComposerReferences(scope,composerRefs);
         const conversation=activeConversation();
-        const planning=!noGenerationRequested(text)&&planModeRequested(text),harnessRequested=!planning&&!browserSkillSelected&&harnessComplexTaskRequested(text),requestedGeneration=requestedGenerationPreferences(text),messageRefs=snapshotReferenceImages(planReferenceImages(scope));
-        const generationError=!browserSkillSelected?generationPreferenceError(requestedGeneration,text):'';
+            const planning=!readOnlyQuestion&&!noGenerationRequested(text)&&(planModeRequested(text)||commerceWorkflow||canvasGraphWorkflow),harnessRequested=!readOnlyQuestion&&!planning&&!browserSkillSelected&&harnessComplexTaskRequested(text),requestedGeneration=requestedGenerationPreferences(text),messageRefs=snapshotReferenceImages(planReferenceImages(scope));
+        const generationError=(!browserSkillSelected&&!readOnlyQuestion)?generationPreferenceError(requestedGeneration,text):'';
         if(generationError){renderGenerationPreferences();toast(generationError);return;}
         const scopeSnapshot=serializedTaskScope(scope);
         const runToken=beginAgentRun();
@@ -3333,6 +3860,14 @@
                 return;
             }
             const history=conversation.messages.slice(-12,-1).map(item=>({role:item.role,content:item.text}));
+            if(readOnlyQuestion){
+                setRunStatus('running','正在读取画布','Agent 正在查看当前节点和连线');
+                const result=await requestCanvasAgentAnswer(text,provider,model,history,scope,messageRefs);
+                assertAgentRunActive(runToken);
+                conversation.messages.push({role:'assistant',kind:'answer',text:result.answer,model:result.model||model,skillId:selectedSkill?.id||'',skillName:selectedSkill?.name||'',taskScope:scopeSnapshot});
+                setRunStatus('done','已读取画布','回答基于当前画布节点和连线');
+                return;
+            }
             const hasLink=/https?:\/\//i.test(text);
             let linkJobIds=[];
             if(window.XiaomeiLinkAnalysis){
@@ -3340,7 +3875,6 @@
                 assertAgentRunActive(runToken);
                 linkJobIds=prepared.jobIds||[];
             }
-            let harnessFallback=false;
             if(harnessRequested){
                 const harnessMessage={role:'assistant',kind:'orchestration',text:'正在启动 Codex Harness…',requestText:text,skillId:selectedSkill?.id||'',skillName:selectedSkill?.name||'',taskScope:scopeSnapshot,requestedGeneration};
                 conversation.messages.push(harnessMessage);renderMessages();saveStore();
@@ -3348,10 +3882,9 @@
                 assertAgentRunActive(runToken);
                 if(!harnessResult?.fallback)return;
                 conversation.messages=conversation.messages.filter(item=>item!==harnessMessage);
-                harnessFallback=true;
-                setRunStatus('running','切换为计划模式',harnessResult.reason||'Codex Harness 当前不可用，继续使用现有画布计划执行器');
+                setRunStatus('running','继续直接执行',harnessResult.reason||'Codex Harness 当前不可用，继续使用普通 Agent');
             }
-            if(planning||harnessFallback){
+            if(planning){
                 setRunStatus('running',hasLink?'正在读取链接':'正在生成计划',hasLink?'商品快照已读取，正在结合画布上下文生成方案':'正在分析需求并整理 2–4 个可执行方向');
                 const result=await requestPlan(text,provider,model,history,selectedSkill?.id||'',scope,requestedGeneration,linkJobIds);
                 assertAgentRunActive(runToken);
@@ -3369,7 +3902,7 @@
                 message:text,messages:history,images:messageRefs.map(item=>item.url),provider,model,
                 skill_id:selectedSkill?.id||'',
                 link_job_ids:linkJobIds,
-                target_node_id:scope.targetNodeId||'',task_scope:scopeSnapshot,canvas_context:planCanvasContext(scope),
+                target_node_id:scope.targetNodeId||'',task_scope:scopeSnapshot,canvas_context:planCanvasContext(scope,{linkJobIds}),
                 generation_preferences:{...effectiveGenerationPreferences(),...requestedGeneration},
                 system_prompt:rolePrompt
             })},CANVAS_AGENT_REQUEST_TIMEOUT_MS),data=normalizeCanvasAgentActionResponse(await response.json().catch(()=>({})));
@@ -3381,6 +3914,19 @@
             if(data.no_generation){
                 conversation.messages.push({role:'assistant',kind:'action',text:summary,skillId:responseSkillId,skillName:responseSkillName,actionStatus:'analysis-only',actionDetail:'用户明确要求不生成，未改动画布。',taskScope:scopeSnapshot});
                 setRunStatus('done','仅完成分析','已按你的要求保持画布不变');
+                return;
+            }
+            const commandOperations=normalizeCanvasAgentOperations(data.operations);
+            if(commandOperations.length){
+                setRunStatus('running','正在执行画布工具','正在处理当前图片并保留原图');
+                const commandResult=await executeCanvasAgentOperations(scope,commandOperations);
+                assertAgentRunActive(runToken);
+                conversation.messages.push({
+                    role:'assistant',kind:'action',text:summary||'已识别画布工具操作。',skillId:responseSkillId,skillName:responseSkillName,
+                    requestText:text,actionStatus:commandResult.cancelled?'cancelled':commandResult.manual?'analysis-only':'done',
+                    actionDetail:commandResult.summary||'画布工具操作已完成。',commandOperations,targetNodeId:commandResult.targetNodeId||'',taskScope:scopeSnapshot
+                });
+                setRunStatus(commandResult.cancelled?'done':'done',commandResult.cancelled?'已取消':commandResult.manual?'工具已打开':'画布工具已完成',commandResult.summary||'画布工具操作已完成。');
                 return;
             }
             if(!data.can_apply||!String(data.prompt||'').trim()){
@@ -3566,9 +4112,16 @@
         });
     }
     window.closeCanvasAgentPanel=()=>{
+        const restoreFocus=panel?.contains(document.activeElement);
         closeAgentPopovers();
         panel?.classList.remove('open');
-        $('canvasAgentToggle')?.classList.remove('active');
+        const toggle=$('canvasAgentToggle');
+        toggle?.classList.remove('active');
+        resetAgentOrbEyes();
+        toggle?.setAttribute('aria-expanded','false');
+        toggle?.setAttribute('aria-label','打开画布 Agent');
+        toggle?.setAttribute('title','打开画布 Agent');
+        if(restoreFocus)toggle?.focus({preventScroll:true});
     };
     function generationToggleControls(){
         return [generationToggle].filter(Boolean);
@@ -3635,6 +4188,9 @@
     if(!sharedCanvasMode)void loadCanvasAgentRuntimeConfig();
     ensureAgentActionWatcher();
     const agentToggleEl=$('canvasAgentToggle');
+    // 液态 Agent 的 blob、眼睛、渐变与弹簧物理由 canvas-agent-orb.js 接管，
+    // 这里保留旧函数名作为桥接：面板开合时让 Agent 回到中性状态。
+    function resetAgentOrbEyes(){window.CanvasAgentOrb?.reset();}
     // Agent 入口位于画布 shell 内。阻止按下/点击继续冒泡，避免 shell
     // 把“打开面板”误判成点击空白画布，从而清空当前节点选择。
     agentToggleEl?.addEventListener('pointerdown',event=>event.stopPropagation(),true);
@@ -3642,11 +4198,16 @@
     agentToggleEl.onclick=(event)=>{
         event.stopPropagation();
         if(sharedCanvasMode)return;
+        if(panel?.classList.contains('open')){
+            window.closeCanvasAgentPanel?.();
+            return;
+        }
         window.closeSmartCanvasFeaturePanels?.('agent');
         applyFontSize();
         void loadCanvasAgentRuntimeConfig();
         panel.classList.add('open');
         agentToggleEl.classList.add('active');
+        resetAgentOrbEyes();
         syncProviders();loadSkills();loadStore();
         resizeComposerInput();
         ensureAgentActionWatcher();
@@ -3658,6 +4219,10 @@
         if(composer?.classList?.contains('open'))syncGenerationPreferencesFromCanvas(settings);
         else renderGenerationPreferences();
         renderTaskScope();
+        agentToggleEl.setAttribute('aria-expanded','true');
+        agentToggleEl.setAttribute('aria-label','关闭画布 Agent');
+        agentToggleEl.setAttribute('title','关闭画布 Agent');
+        input?.focus({preventScroll:true});
         refreshIcons();
     };
     // loadConfig() runs asynchronously in smart-canvas.js. If the panel is

@@ -1014,10 +1014,25 @@ async function main() {
             const specs = Array.isArray(item.specs) ? item.specs.some((spec) => spec && (spec.value || spec.name)) : String(item.specs || item.specText || '').trim();
             return Boolean(id && (path || specs));
         });
+        if (Array.isArray(merged.specs)) {
+            merged.specs = merged.specs.map((group) => {
+                if (!group || typeof group !== 'object' || !Array.isArray(group.values)) return group;
+                const identified = group.values.filter((value) => String(value?.id || '').trim());
+                return identified.length >= 2 ? { ...group, values: identified } : group;
+            });
+        }
         if (String(first.text || '').length > String(second.text || '').length) merged.text = first.text;
         if (!second.embedded && first.embedded) merged.embedded = first.embedded;
         merged.available = Boolean(merged.available || merged.specs?.length || merged.items?.length || merged.text || merged.id || merged.embedded);
         merged.itemCount = merged.items?.length || merged.itemCount || merged.specs?.reduce((count, item) => count + (item.values?.length || 0), 0) || 0;
+        const declaredTotal = Number(merged.totalCount || 0);
+        if (merged.itemCount) {
+            if (declaredTotal && declaredTotal !== merged.itemCount) merged.pageTotalCount = declaredTotal;
+            merged.totalCount = merged.itemCount;
+        }
+        const itemImages = new Set((merged.items || []).map((item) => String(item?.image || item?.imageUrl || item?.pic || '').trim()).filter(Boolean));
+        const specImages = new Set((merged.specs || []).flatMap((group) => group?.values || []).map((item) => String(item?.image || item?.imageUrl || item?.pic || '').trim()).filter(Boolean));
+        merged.specImageCount = (itemImages.size ? itemImages : specImages).size || merged.specImageCount || 0;
         return merged;
     };
     const structuredSku = await evaluate(client, collectCommerceSkuState.toString()).catch(() => ({}));

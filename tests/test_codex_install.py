@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException, Request
 
 def load_install_functions():
     names = {
-        "codex_cli_executable", "codex_install_require_local", "run_codex_installer",
+        "codex_cli_executable", "codex_install_require_local", "run_codex_installer", "cli_install_require_local", "run_cli_installer",
         "finish_codex_install", "codex_install_status", "codex_install",
         "_request_host_is_loopback", "_request_is_share_gateway",
     }
@@ -49,9 +49,9 @@ class CodexInstallTests(unittest.TestCase):
     def test_remote_cross_origin_and_shared_requests_rejected(self):
         for req in [request(host="192.168.1.10"), request(origin="https://example.com"), request(share=True)]:
             with self.assertRaises(HTTPException) as error:
-                self.ns["codex_install_require_local"](req)
+                self.ns["cli_install_require_local"](req)
             self.assertEqual(error.exception.status_code, 403)
-        self.ns["codex_install_require_local"](request())
+        self.ns["cli_install_require_local"](request())
 
     @unittest.skipUnless(os.name == "nt", "Windows installation")
     def test_detects_install_without_restarting_path_and_preserves_override(self):

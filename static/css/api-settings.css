@@ -2686,18 +2686,18 @@ html.studio-theme-dark body .provider-card.active {
 /* 黑夜模式统一收口：按钮、平台列表和右侧面板共用同一套深灰层级 */
 body.studio-theme-dark,
 html.studio-theme-dark body {
-    --api-dark-page:#11151b;
-    --api-dark-panel:#1c222c;
-    --api-dark-soft:#171b23;
-    --api-dark-raised:#202632;
-    --api-dark-hover:#2a3342;
-    --api-dark-line:rgba(255,255,255,.075);
-    --api-dark-line-strong:rgba(255,255,255,.14);
-    --api-dark-text:#e8edf5;
-    --api-dark-muted:#a7b0c0;
-    --api-dark-faint:#7f8a9b;
-    --api-dark-primary:#cbd5e1;
-    --api-dark-primary-hover:#e2e8f0;
+    --api-dark-page:#0f141b;
+    --api-dark-panel:#1a222c;
+    --api-dark-soft:#141b24;
+    --api-dark-raised:#232d39;
+    --api-dark-hover:#2b3949;
+    --api-dark-line:rgba(174,196,222,.14);
+    --api-dark-line-strong:rgba(174,196,222,.26);
+    --api-dark-text:#e9f0f8;
+    --api-dark-muted:#aebdce;
+    --api-dark-faint:#8191a5;
+    --api-dark-primary:#c6dcf4;
+    --api-dark-primary-hover:#dceaff;
     background:var(--api-dark-page);
     color:var(--api-dark-text);
 }
@@ -2712,6 +2712,21 @@ html.studio-theme-dark body .block,
 html.studio-theme-dark body .picker-modal {
     background:var(--api-dark-panel) !important;
     color:var(--api-dark-text);
+}
+
+/* 右侧外壳压低一层，区块和字段逐级抬高，避免整片暗灰糊成一块。 */
+body.studio-theme-dark .content,
+html.studio-theme-dark body .content {
+    background:var(--api-dark-page) !important;
+    border:1px solid var(--api-dark-line) !important;
+    border-radius:18px !important;
+    box-shadow:0 20px 48px rgba(0,0,0,.22) !important;
+    padding:18px !important;
+}
+
+body.studio-theme-dark .content-head,
+html.studio-theme-dark body .content-head {
+    background:#1d2732 !important;
 }
 
 body.studio-theme-dark .page-head .sub,
@@ -4692,8 +4707,8 @@ body:not(.studio-theme-dark) .onboarding-step-panel,
 html:not(.studio-theme-dark) body:not(.theme-dark) .onboarding-step-panel,
 body:not(.studio-theme-dark) .recommend-platform-card,
 html:not(.studio-theme-dark) body:not(.theme-dark) .recommend-platform-card {
-    background:#f7f9fc !important;
-    border-color:#dfe7f1 !important;
+    background:var(--soft, #f7f9fc) !important;
+    border-color:var(--line, #dfe7f1) !important;
 }
 
 body:not(.studio-theme-dark) .onboarding-rh-source-group,
@@ -4966,8 +4981,8 @@ html:not(.studio-theme-dark) body:not(.theme-dark) .recommend-guide-save {
 
 body:not(.studio-theme-dark) .recommend-platform-card,
 html:not(.studio-theme-dark) body:not(.theme-dark) .recommend-platform-card {
-    background:#f7f9fc !important;
-    border-color:#dfe7f1 !important;
+    background:var(--soft, #f7f9fc) !important;
+    border-color:var(--line, #dfe7f1) !important;
 }
 
 body:not(.studio-theme-dark) .recommend-platform-info,
@@ -5345,8 +5360,8 @@ html.studio-theme-dark body .recommend-inline-card .recommend-guide-save-btn:hov
 
 body:not(.studio-theme-dark) .recommend-account-invite,
 html:not(.studio-theme-dark) body:not(.theme-dark) .recommend-account-invite {
-    background:#f7f9fc;
-    border-color:#dfe7f1;
+    background:var(--soft, #f7f9fc);
+    border-color:var(--line, #dfe7f1);
 }
 
 body.studio-theme-dark .recommend-account-invite,
@@ -6080,18 +6095,6 @@ html.studio-theme-dark body .recommend-tag.recommend-free-tag svg {
     .recommend-inline-body .recommend-setup-flow .recommend-guide-arrow {
         display:none !important;
     }
-}
-.provider-empty {
-    display:flex;
-    align-items:flex-start;
-    gap:8px;
-    padding:14px 10px;
-    border:1px dashed var(--line);
-    border-radius:12px;
-    color:var(--faint);
-    font-size:11.5px;
-    line-height:1.55;
-    font-weight:700;
 }
 
 /* 推荐分组在同一网格内续排：下一组首卡补齐上一组的单卡空位。 */
@@ -7631,8 +7634,9 @@ html.studio-theme-dark body .sidebar .api-link-btn {
     body.studio-theme-dark .layout > .sidebar,
     html.studio-theme-dark body .layout > .sidebar {
         border-radius:18px !important;
-        background:linear-gradient(160deg,#122235 0%,#0d1927 100%) !important;
-        box-shadow:0 24px 58px rgba(0,0,0,.3) !important;
+        background:linear-gradient(160deg,#182532 0%,#141c26 100%) !important;
+        border-color:rgba(174,196,222,.18) !important;
+        box-shadow:0 20px 48px rgba(0,0,0,.26) !important;
     }
 
     html[data-studio-skin] body:not(.studio-theme-dark) .layout > .sidebar .provider-card.active,
@@ -7664,4 +7668,141 @@ html.studio-theme-dark body .sidebar .api-link-btn {
     .layout > .sidebar .cli-quick-btn {
         border-radius:13px !important;
     }
+}
+
+/* 最终暗色层级：覆盖旧主题层里的纯灰和高饱和深蓝，统一成冷灰蓝阶。 */
+@layer fluent {
+    html.studio-theme-dark body,
+    body.studio-theme-dark {
+        background-color:#0f141b !important;
+        background-image:radial-gradient(circle at 10% -12%, rgba(96,165,250,.08), transparent 30%), radial-gradient(circle at 92% 0%, rgba(148,163,184,.05), transparent 25%) !important;
+        color:#e9f0f8 !important;
+    }
+
+    html.studio-theme-dark body .layout > .content,
+    body.studio-theme-dark .layout > .content {
+        background:#111820 !important;
+        border:1px solid rgba(174,196,222,.14) !important;
+        border-radius:18px !important;
+        box-shadow:0 20px 48px rgba(0,0,0,.22) !important;
+        padding:18px !important;
+    }
+
+    html.studio-theme-dark body .content-head,
+    body.studio-theme-dark .content-head {
+        background:#1d2732 !important;
+        border-color:rgba(174,196,222,.14) !important;
+    }
+
+    html.studio-theme-dark body .block,
+    body.studio-theme-dark .block {
+        background:#1a222c !important;
+        border-color:rgba(174,196,222,.14) !important;
+    }
+
+    html.studio-theme-dark body .field-frame,
+    body.studio-theme-dark .field-frame {
+        background:#232d39 !important;
+        border-color:rgba(174,196,222,.18) !important;
+    }
+
+    html.studio-theme-dark body .model-row,
+    html.studio-theme-dark body .recommend-card,
+    body.studio-theme-dark .model-row,
+    body.studio-theme-dark .recommend-card {
+        background:#202a35 !important;
+        border-color:rgba(174,196,222,.14) !important;
+    }
+
+    html.studio-theme-dark body .key-panel,
+    html.studio-theme-dark body .advanced-endpoints,
+    html.studio-theme-dark body .rh-key-item,
+    html.studio-theme-dark body .rh-card-group,
+    html.studio-theme-dark body .lora-row,
+    html.studio-theme-dark body .recommend-note,
+    body.studio-theme-dark .key-panel,
+    body.studio-theme-dark .advanced-endpoints,
+    body.studio-theme-dark .rh-key-item,
+    body.studio-theme-dark .rh-card-group,
+    body.studio-theme-dark .lora-row,
+    body.studio-theme-dark .recommend-note {
+        background:#141b24 !important;
+        border-color:rgba(174,196,222,.14) !important;
+    }
+
+    html.studio-theme-dark body .layout > .sidebar,
+    body.studio-theme-dark .layout > .sidebar {
+        background:linear-gradient(160deg,#182532 0%,#141c26 100%) !important;
+        border-color:rgba(174,196,222,.18) !important;
+        box-shadow:0 20px 48px rgba(0,0,0,.26) !important;
+    }
+
+    html.studio-theme-dark body .sidebar .provider-card,
+    body.studio-theme-dark .sidebar .provider-card,
+    html.studio-theme-dark body .sidebar .cli-quick-btn,
+    body.studio-theme-dark .sidebar .cli-quick-btn {
+        background:#1b2a38 !important;
+        border-color:#30485c !important;
+        color:#e9f0f8 !important;
+    }
+
+    html.studio-theme-dark body .sidebar .provider-card.active,
+    body.studio-theme-dark .sidebar .provider-card.active {
+        background:#263b4b !important;
+        border-color:#6f9eb5 !important;
+    }
+
+    html.studio-theme-dark body .sidebar .provider-mark,
+    body.studio-theme-dark .sidebar .provider-mark {
+        background:#223746 !important;
+        border-color:#3b586b !important;
+        color:#c5d9e7 !important;
+    }
+
+    html.studio-theme-dark body .sidebar .api-link-btn,
+    body.studio-theme-dark .sidebar .api-link-btn {
+        background:#223746 !important;
+        border-color:#49667b !important;
+        color:#e5f0f7 !important;
+    }
+}
+
+/* 这些侧栏规则位于未分层样式中，需用同样的优先级覆盖旧的暖色参考图皮肤。 */
+html.studio-theme-dark body .sidebar .provider-card,
+body.studio-theme-dark .sidebar .provider-card,
+html.studio-theme-dark body .sidebar .cli-quick-btn,
+body.studio-theme-dark .sidebar .cli-quick-btn {
+    background:#1b2a38 !important;
+    border-color:#30485c !important;
+    color:#e9f0f8 !important;
+}
+
+html.studio-theme-dark body .sidebar .provider-card.active,
+body.studio-theme-dark .sidebar .provider-card.active {
+    background:#263b4b !important;
+    background-color:#263b4b !important;
+    background-image:none !important;
+    border-color:#6f9eb5 !important;
+    color:#e9f0f8 !important;
+}
+
+html.studio-theme-dark body .sidebar .provider-card.provider-card-sortable.active,
+body.studio-theme-dark .sidebar .provider-card.provider-card-sortable.active {
+    background:#263b4b !important;
+    background-color:#263b4b !important;
+    background-image:none !important;
+    border-color:#6f9eb5 !important;
+}
+
+html.studio-theme-dark body #providerList .provider-card.provider-card-sortable.active,
+body.studio-theme-dark #providerList .provider-card.provider-card-sortable.active {
+    background:#263b4b !important;
+    background-color:#263b4b !important;
+    background-image:none !important;
+    border-color:#6f9eb5 !important;
+}
+
+html.studio-theme-dark body .sidebar .provider-card.active .provider-name,
+body.studio-theme-dark .sidebar .provider-card.active .provider-name {
+    color:#e9f0f8 !important;
 }

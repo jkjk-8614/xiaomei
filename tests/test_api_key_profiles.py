@@ -21,7 +21,6 @@ class ApiKeyProfileTests(unittest.TestCase):
         self.env_file.write_text("API_PROVIDER_API_6789_KEY=old-secret-key\n", encoding="utf-8")
         self.profile_file = self.data_dir / "api_key_profiles.json"
         self.provider_file = self.data_dir / "api_providers.json"
-        self.provider_file.write_text('[{"id":"api-6789","name":"6789API","protocol":"openai","base_url":"https://example.com/v1"}]', encoding="utf-8")
         self.base_env_key = "API_PROVIDER_API_6789_KEY"
         self.patches = ExitStack()
         self.patches.enter_context(patch.object(main, "DATA_DIR", str(self.data_dir)))
@@ -36,10 +35,6 @@ class ApiKeyProfileTests(unittest.TestCase):
 
     def provider(self):
         return {"id": "api-6789", "protocol": "openai"}
-
-    def test_first_run_has_no_preconfigured_api_platforms(self):
-        self.provider_file.unlink()
-        self.assertEqual(main.load_api_providers(), [])
 
     def test_legacy_key_is_migrated_without_writing_secret_to_metadata(self):
         first = main.ensure_key_profile_store_for_providers([self.provider()])
@@ -137,7 +132,7 @@ class ApiKeyProfileTests(unittest.TestCase):
 
         async def request():
             transport = httpx.ASGITransport(app=main.app)
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1:3000") as client:
                 return await client.get("/api/providers/api-6789/key-profiles")
 
         response = asyncio.run(request())

@@ -442,3 +442,22 @@ button { -webkit-tap-highlight-color: transparent; }
 .task-empty p { margin:8px 0 16px; font-size:13px; }
 .task-modal-panel { max-height:calc(100vh - 32px); overflow:auto; }
 @media(max-width:600px) { .task-toolbar { flex-wrap:wrap; } .task-title-line p { white-space:normal; } .task-list-heading { flex-direction:column; gap:6px; } }
+
+/* Dark pass: remap the self-contained task tokens onto the neutral dark ramp. */
+body.studio-theme-dark{
+    --task-bg:#0c0c0d;
+    --task-surface:#141416;
+    --task-surface-strong:#1a1a1d;
+    --task-text:#f0f0f2;
+    --task-muted:#a3a3ab;
+    --task-line:#2a2a2e;
+    --task-line-strong:#3a3a3f;
+    --task-accent:#5b8def;
+    --task-accent-soft:#1d2a44;
+    --task-accent-ring:#33456b;
+    --task-success:#34d399;
+    --task-warning:#fbbf24;
+    --task-danger:#f87171;
+    --task-shadow:0 18px 45px rgba(0,0,0,.42);
+}
+body.studio-theme-dark .task-page,html.studio-theme-dark body .task-page{background:var(--task-bg);color:var(--task-text)}

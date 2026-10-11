@@ -10,6 +10,7 @@
         smartBusy:false,
         smartSession:0,
         smartPrompt:'',
+        smartModel:{provider_id:'',model:''},
         drag:null,
         references:[]
     };
@@ -159,6 +160,8 @@
         byId('smartEditSubmitBtn').disabled = state.smartBusy;
         byId('smartEditSubmitBtn').querySelector('span').textContent = state.smartBusy ? '正在提交…' : '发送改图';
         byId('smartEditPrompt').disabled = state.smartBusy;
+        byId('smartEditModelSelect').disabled = state.smartBusy || !state.smartModel.model;
+        byId('smartEditResolutionSelect').disabled = state.smartBusy;
         byId('smartEditClearMarkersBtn').disabled = state.smartBusy || (!state.smartRegions.length && !state.smartDraft);
         editor?.querySelectorAll('button,textarea').forEach(el => {el.disabled = state.smartBusy;});
     }
@@ -278,6 +281,43 @@
         state.repairQuad=defaultQuad();
         requestAnimationFrame(renderQuad);
     };
+    window.syncSmartEditModelControls = function(){
+        const select=byId('smartEditModelSelect');
+        if(!select) return;
+        const entries=outpaintImageModelEntries();
+        const current=entries.find(item=>item.providerId===state.smartModel.provider_id && item.model===state.smartModel.model);
+        if(!current) state.smartModel=outpaintModelSelectionForNode(currentEditImage().node);
+        select.replaceChildren();
+        const groups=new Map();
+        entries.forEach(item=>{
+            if(!groups.has(item.providerId)){
+                const group=document.createElement('optgroup');
+                group.label=item.providerName;
+                groups.set(item.providerId,group);
+                select.appendChild(group);
+            }
+            const option=document.createElement('option');
+            option.value=JSON.stringify([item.providerId,item.model]);
+            option.textContent=item.model;
+            groups.get(item.providerId).appendChild(option);
+        });
+        if(entries.length){
+            select.value=JSON.stringify([state.smartModel.provider_id,state.smartModel.model]);
+        }else{
+            const option=document.createElement('option');
+            option.textContent='暂无图片模型，请在 API 设置中拉取';
+            option.value='';
+            select.appendChild(option);
+        }
+        select.disabled=state.smartBusy || !entries.length;
+        select.title=entries.length ? select.selectedOptions[0]?.parentElement.label || '' : '请在 API 设置中启用平台并拉取图片模型';
+    };
+    byId('smartEditModelSelect')?.addEventListener('change',event=>{
+        if(state.smartBusy) return;
+        const [provider_id,model]=JSON.parse(event.target.value);
+        state.smartModel={provider_id,model};
+        syncSmartEditModelControls();
+    });
     function resetSmartEdit(){
         state.smartSession++;
         state.smartRegions=[];
@@ -287,6 +327,11 @@
         state.smartPrompt='';
         const prompt = byId('smartEditPrompt');
         if(prompt) prompt.value='';
+        state.smartModel=outpaintModelSelectionForNode(currentEditImage().node);
+        syncSmartEditModelControls();
+        const resolution=byId('smartEditResolutionSelect');
+        const source=smartSettingsForNode(currentEditImage().node);
+        if(resolution) resolution.value=['auto','1k','2k','4k','custom'].includes(source.resolution) ? source.resolution : 'auto';
         requestAnimationFrame(renderSmartMarkers);
     }
     window.clearSmartEditMarkers = function(){
@@ -397,6 +442,11 @@
         if(!collabCanMutateCanvas()) return;
         const {node,image,index}=currentEditImage(), target=byId('cropImage');
         if(!node||!image||!target?.naturalWidth){toast('当前图片尚未加载完成，请稍后再试');return;}
+        syncSmartEditModelControls();
+        if(!state.smartModel.model){toast('暂无可用的图片模型，请先在 API 设置中启用平台并拉取模型');byId('smartEditModelSelect')?.focus();return;}
+        const runSettings=settingsForStorage(smartSettingsForNode(node));
+        Object.assign(runSettings,state.smartModel,{engine:'api',apiKind:'image',imageOperation:'generate',count:1,resolution:byId('smartEditResolutionSelect').value || 'auto'});
+        delete runSettings.outpaintResolutionLocked;
         const session=state.smartSession;
         const sourceUrl=smartOriginalMediaUrl(image);
         const width=target.naturalWidth, height=target.naturalHeight;
@@ -440,8 +490,7 @@
             outputNode.title='智能改图';
             outputNode.smartEditSource={nodeId:node.id,imageIndex:index,sourceUrl,width,height};
             outputNode.smartEditRegions=regions;
-            if(typeof smartSettingsForNode==='function'&&typeof settingsForStorage==='function') outputNode.runSettings=settingsForStorage(smartSettingsForNode(node));
-            Object.assign(outputNode.runSettings,{apiKind:'image',imageOperation:'generate',ratio:'source',customRatio:`${width}:${height}`,customRatioWidth:width,customRatioHeight:height});
+            outputNode.runSettings={...runSettings,ratio:'source',customRatio:`${width}:${height}`,customRatioWidth:width,customRatioHeight:height};
             if(outputNode.runSettings.resolution==='custom') Object.assign(outputNode.runSettings,{customWidth:width,customHeight:height,customSize:`${width}x${height}`});
             if(markerFile) outputNode.manualInputRefs=[{...markerFile,name:'智能改图区域图',kind:'image',manualAdded:true,helperRole:'智能改图区域图'}];
             setPromptDraftForNode(outputNode,finalPrompt);

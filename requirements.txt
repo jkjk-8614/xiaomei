@@ -5,10 +5,13 @@ requests
 pydantic
 python-multipart
 httpx
-websockets>=13,<16
-mcp>=1.12,<2
+websockets>=16,<17
+mcp>=1.30,<2
 pillow
 numpy
+# 本地中文 OCR；首次使用时按 PaddlePaddle 官方 Windows/CUDA 版本安装对应运行时
+paddleocr
+paddlepaddle
 # NVIDIA Windows 优先使用 CUDA；CPU-only 环境可将此行替换为 onnxruntime
 onnxruntime-gpu[cuda,cudnn]
 # ComfyUI custom-node dependencies belong to its separate venv; pinned sources: comfy_node_registry.py.

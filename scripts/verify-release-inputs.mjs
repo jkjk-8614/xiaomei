@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { readdir, stat } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
 const root = process.cwd();
@@ -15,6 +16,13 @@ const forbidden = [
 ];
 
 const found = [];
+const tracked = execFileSync('git', ['ls-files'], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 }).split(/\r?\n/).filter(Boolean);
+const trackedForbidden = tracked.filter((file) => /^(?:data|output|assets|user_data|logs|node_modules|python|\.xiaomei-data)(?:[\\/]|$)|(?:^|[\\/])history\.json$|(?:^|[\\/])\.env$/i.test(file));
+if (trackedForbidden.length) {
+  console.error('Git 跟踪列表包含运行数据或本地安装文件：');
+  for (const file of trackedForbidden.slice(0, 30)) console.error(`- ${file}`);
+  process.exit(1);
+}
 async function walk(directory, relative = '') {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     if (ignored.has(entry.name)) continue;

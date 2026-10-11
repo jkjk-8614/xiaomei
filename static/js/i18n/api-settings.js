@@ -32,7 +32,7 @@
         "api.imageModels": { zh: "生图模型", en: "Image Models" },
         "api.imageHint": { zh: "在线生图和无限画布 API 生成使用。", en: "Used by Online Image and Canvas API generation." },
         "api.chatModels": { zh: "聊天模型", en: "Chat Models" },
-        "api.chatHint": { zh: "GPT 对话和 LLM 节点使用。", en: "Used by GPT Chat and LLM nodes." },
+        "api.chatHint": { zh: "DeepSeek 对话和 LLM 节点使用。", en: "Used by DeepSeek Chat and LLM nodes." },
         "api.videoModels": { zh: "视频模型", en: "Video Models" },
         "api.videoHint": { zh: "无限画布视频生成节点使用。", en: "Used by Infinite Canvas video generation nodes." },
         "api.model": { zh: "模型", en: "Model" },

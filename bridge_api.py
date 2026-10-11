@@ -30,10 +30,7 @@ router = APIRouter(prefix="/api", tags=["local-bridges"])
 
 
 def _runtime_root() -> Path:
-    """Resolve the persistent user-data directory in source and packaged builds."""
-    configured = str(os.environ.get("XIAOMEI_CANVAS_DATA_ROOT") or "").strip()
-    if configured:
-        return Path(configured).expanduser().resolve()
+    """Resolve the persistent application directory in source and PyInstaller builds."""
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent

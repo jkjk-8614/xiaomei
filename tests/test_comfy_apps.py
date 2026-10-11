@@ -129,7 +129,45 @@ class AppTests(unittest.TestCase):
             if not dictionary_links:
                 self.assertEqual(json.dumps(source), original)
         source['links'].append({'origin_id': 1, 'target_id': 4})
-        self.assertEqual(len(workflow_groups(source)), 3)
+        groups = workflow_groups(source)
+        self.assertEqual([g['id'] for g in groups], ['0', '1'])
+        self.assertIn('4', next(g for g in groups if g['id'] == '1')['nodes'])
+
+    def test_cross_branch_comparison_attaches_without_staying_standalone(self):
+        # 对比器同时消费两个分支（文生图 vs 图生图）时，没有任何分组能覆盖
+        # 全部依赖：仍然必须并入分组运行，不能单独拆出“图像对比”入口。
+        source = {'nodes': [
+            {'id': 1, 'type': 'LoadImage', 'pos': [10, 10]},
+            {'id': 2, 'type': 'KSampler', 'pos': [20, 10]},
+            {'id': 3, 'type': 'LoadImage', 'pos': [10, 210]},
+            {'id': 4, 'type': 'KSampler', 'pos': [20, 210]},
+            {'id': 5, 'type': 'Image Comparer (rgthree)', 'pos': [10, 410]},
+            {'id': 6, 'type': 'SaveImage', 'pos': [20, 410]}],
+            'groups': [{'id': 0, 'title': '文生图', 'bounding': [0, 0, 100, 90]},
+                       {'id': 1, 'title': '图生图', 'bounding': [0, 200, 100, 90]},
+                       {'id': 2, 'title': '图像对比', 'bounding': [0, 400, 100, 90]}],
+            'links': [[0, 1, 0, 2, 0, 'IMAGE'], [1, 3, 0, 4, 0, 'IMAGE'],
+                      [2, 2, 0, 5, 0, 'IMAGE'], [3, 4, 0, 5, 1, 'IMAGE']]}
+        groups = workflow_groups(source)
+        self.assertEqual([g['title'] for g in groups], ['文生图', '图生图'])
+        owner = next(g for g in groups if '5' in g['nodes'])
+        self.assertEqual(owner['title'], '图生图')
+
+    def test_comparison_tie_attaches_to_the_adjacent_group(self):
+        # 依赖重叠相同时，挂到画布上与对比组相邻的那个分组。
+        source = {'nodes': [
+            {'id': 1, 'type': 'KSampler', 'pos': [10, 10]},
+            {'id': 2, 'type': 'KSampler', 'pos': [10, 210]},
+            {'id': 3, 'type': 'Image Comparer (rgthree)', 'pos': [10, 60]},
+            {'id': 4, 'type': 'SaveImage', 'pos': [20, 60]}],
+            'groups': [{'id': 0, 'title': '甲', 'bounding': [0, 0, 100, 40]},
+                       {'id': 1, 'title': '乙', 'bounding': [0, 200, 100, 40]},
+                       {'id': 2, 'title': '图像对比', 'bounding': [0, 50, 100, 40]}],
+            'links': [[0, 1, 0, 3, 0, 'IMAGE'], [1, 2, 0, 3, 1, 'IMAGE']]}
+        groups = workflow_groups(source)
+        self.assertEqual([g['title'] for g in groups], ['甲', '乙'])
+        owner = next(g for g in groups if '3' in g['nodes'])
+        self.assertEqual(owner['title'], '甲')
 
     def test_group_selection_enables_dependencies_without_changing_source(self):
         source = {'nodes': [

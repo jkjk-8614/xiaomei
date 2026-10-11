@@ -163,24 +163,59 @@ def workflow_groups(source, include_preset_groups=False):
         if members:
             result.append({'id': str(group.get('id', index)),
                            'title': str(group.get('title') or f'分组 {index + 1}'),
-                           'nodes': members})
+                           'nodes': members,
+                           'bounding': [x, y, width, height]})
     incoming = _workflow_incoming(source)
     nodes = {str(node['id']): node for node in source['nodes']}
+    # 图像对比组只是结果查看器，必须跟随它消费的分组一起启用；
+    # 否则它会被拆成一个没有独立运行意义的“图像对比”工作流入口。
+    comparisons = [group for group in result
+                   if any(nodes[key].get('type') == 'Image Comparer (rgthree)' for key in group['nodes'])]
     attached = set()
-    for comparison in result:
-        if not any(nodes[key].get('type') == 'Image Comparer (rgthree)' for key in comparison['nodes']):
-            continue
+    for comparison in comparisons:
         members = set(comparison['nodes'])
         dependencies = _workflow_ancestors(members, incoming) - members
         if not dependencies:
             continue
-        for owner in result:
-            if owner is comparison or members.intersection(owner['nodes']):
+        direct = set()
+        for link in source.get('links') or []:
+            if isinstance(link, list) and len(link) >= 5 and str(link[3]) in members:
+                direct.add(str(link[1]))
+            elif isinstance(link, dict) and str(link.get('target_id')) in members:
+                direct.add(str(link.get('origin_id')))
+        owners = [group for group in result
+                  if group is not comparison and not members.intersection(group['nodes'])]
+        covered = [group for group in owners
+                   if dependencies <= _workflow_ancestors(group['nodes'], incoming)]
+        if covered:
+            # 依赖全部落在一个分组内：优先挂到产出对比器直接输入的那个分组。
+            owner = max(covered, key=lambda group: (
+                bool(direct.intersection(group['nodes'])),
+                len(_workflow_ancestors(group['nodes'], incoming))))
+        else:
+            # 跨分支对比（例如文生图 vs 图生图）没有分组能覆盖全部依赖，
+            # 挂到依赖重叠最多的分组；平手时选画布上紧挨着它的那个。
+            ancestors_by_owner = {group['id']: _workflow_ancestors(group['nodes'], incoming)
+                                  for group in owners}
+            overlaps = {group['id']: len(dependencies.intersection(ancestors_by_owner[group['id']]))
+                        for group in owners}
+            best = max(overlaps.values(), default=0)
+            if best <= 0:
                 continue
-            if dependencies <= _workflow_ancestors(owner['nodes'], incoming):
-                owner['nodes'] = list(dict.fromkeys(owner['nodes'] + comparison['nodes']))
-                attached.add(comparison['id'])
-    return [group for group in result if group['id'] not in attached]
+            candidates = [group for group in owners if overlaps[group['id']] == best]
+            if len(candidates) > 1:
+                box = comparison.get('bounding') or [0, 0, 0, 0]
+                def gap(group):
+                    other = group.get('bounding') or [0, 0, 0, 0]
+                    dx = max(other[0] - (box[0] + box[2]), box[0] - (other[0] + other[2]), 0)
+                    dy = max(other[1] - (box[1] + box[3]), box[1] - (other[1] + other[3]), 0)
+                    return (dy, dx)
+                candidates.sort(key=gap)
+            owner = candidates[0]
+        owner['nodes'] = list(dict.fromkeys(owner['nodes'] + comparison['nodes']))
+        attached.add(comparison['id'])
+    return [{key: value for key, value in group.items() if key != 'bounding'}
+            for group in result if group['id'] not in attached]
 
 
 def dlss5_preset_field(item, info=None):
@@ -351,12 +386,13 @@ LEGACY_SCHEDULER_ALIASES = {
     'FlowMatchEulerDiscreteScheduler': 'simple',
 }
 
-# A few public Z-Image workflow exports predate the current ComfyUI model
-# filename.  Treat the old reference as the same VAE only when the current
-# backend exposes the replacement or the local model tree already contains
-# it; never download an arbitrary same-name file as a substitute.
+# A few public workflow exports predate the current ComfyUI model filenames.
+# Treat these explicit references as aliases only when the current backend
+# exposes the replacement or the local model tree already contains it; never
+# download an arbitrary same-name file as a substitute.
 LEGACY_MODEL_ALIASES = {
     'ae.sft': 'ae.safetensors',
+    'z-image_turbo-diffusion': 'z_image_turbo_bf16.safetensors',
 }
 
 
