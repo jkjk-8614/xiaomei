@@ -17,4 +17,10 @@ project_root = project_root.resolve()
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
+data_root = os.environ.get("XIAOMEI_CANVAS_DATA_ROOT")
+if data_root:
+    gpu_root = Path(data_root) / "components" / "onnx-gpu-1.23.2"
+    if (gpu_root / "gpu-ready.json").is_file():
+        sys.path.insert(0, str(gpu_root))
+
 runpy.run_path(str(project_root / "main.py"), run_name="__main__")

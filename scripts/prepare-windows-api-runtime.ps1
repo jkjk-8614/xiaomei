@@ -53,7 +53,7 @@ $sitePackages = Join-Path $runtimeRoot 'Lib/site-packages'
 New-Item -ItemType Directory -Force -Path $sitePackages | Out-Null
 & $BuildPython -m pip install --upgrade pip
 if ($LASTEXITCODE -ne 0) { throw 'Unable to update pip for the Windows release build' }
-& $BuildPython -m pip install --no-cache-dir --disable-pip-version-check --no-compile --only-binary=:all: --target $sitePackages -r requirements.txt
+& $BuildPython -m pip install --no-cache-dir --disable-pip-version-check --no-compile --only-binary=:all: --target $sitePackages -r requirements.txt pip
 if ($LASTEXITCODE -ne 0) { throw 'Unable to vendor Windows API dependencies' }
 
 $entry = Join-Path (Get-Location) 'windows_api_entry.py'

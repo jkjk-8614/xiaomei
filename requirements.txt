@@ -12,7 +12,8 @@ numpy
 # 本地中文 OCR；首次使用时按 PaddlePaddle 官方 Windows/CUDA 版本安装对应运行时
 paddleocr
 paddlepaddle
-# NVIDIA Windows 优先使用 CUDA；CPU-only 环境可将此行替换为 onnxruntime
-onnxruntime-gpu[cuda,cudnn]
+# 基础安装使用 CPU 版，避免把 CUDA/cuDNN 运行库打进 Windows 安装包。
+# NVIDIA 用户可运行 tools/install-windows-gpu-runtime.ps1 按需安装 GPU 组件。
+onnxruntime
 # ComfyUI custom-node dependencies belong to its separate venv; pinned sources: comfy_node_registry.py.
 # See 交付文档/依赖与资源清单.md for installation and resource details.
