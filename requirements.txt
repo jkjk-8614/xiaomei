@@ -9,9 +9,9 @@ websockets>=16,<17
 mcp>=1.30,<2
 pillow
 numpy
-# 本地中文 OCR；首次使用时按 PaddlePaddle 官方 Windows/CUDA 版本安装对应运行时
-paddleocr
-paddlepaddle
+# 本地中文 OCR，匹配当前模型推理版本
+paddleocr==3.7.0
+paddlepaddle==3.2.2
 # 基础安装使用 CPU 版，避免把 CUDA/cuDNN 运行库打进 Windows 安装包。
 # NVIDIA 用户可运行 tools/install-windows-gpu-runtime.ps1 按需安装 GPU 组件。
 onnxruntime

@@ -34,6 +34,8 @@ import math
 import shlex
 import functools
 import html
+import importlib.util
+from importlib import metadata as importlib_metadata
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from html.parser import HTMLParser
@@ -509,7 +511,7 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 GLOBAL_LOOP = None
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.4"
 GITHUB_REPO_URL = "https://github.com/jkjk-8614/xiaomei"
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/jkjk-8614/xiaomei/main/VERSION"
 GITHUB_TREE_URL = "https://api.github.com/repos/jkjk-8614/xiaomei/git/trees/main?recursive=1"
@@ -688,6 +690,44 @@ LOCAL_UPLOAD_DIR = os.path.join(ASSETS_DIR, "uploads")
 HISTORY_FILE = os.path.join(BASE_DIR, "history.json")
 API_ENV_FILE = os.path.join(BASE_DIR, "API", ".env")
 DATA_DIR = os.path.join(BASE_DIR, "data")
+PADDLE_OCR_PACKAGE_REQUIREMENT = "paddleocr==3.7.0"
+PADDLE_OCR_PADDLE_REQUIREMENT = "paddlepaddle==3.2.2"
+
+
+def _configure_paddle_ocr_runtime():
+    """Keep PaddleX's native model files on a path that Paddle can open on Windows."""
+    configured = str(os.getenv("XIAOMEI_PADDLE_CACHE_HOME") or os.getenv("PADDLE_PDX_CACHE_HOME") or "").strip()
+    candidates = []
+    if configured and all(ord(char) < 128 for char in configured):
+        candidates.append(configured)
+    if os.name == "nt":
+        candidates.extend((
+            os.path.join(os.environ.get("PUBLIC", r"C:\Users\Public"), "xiaomei-paddle-cache"),
+            r"C:\ProgramData\xiaomei-paddle-cache",
+            r"C:\xiaomei-paddle-cache",
+        ))
+    else:
+        candidates.append(os.path.join(DATA_DIR, "models", "paddleocr"))
+    for candidate in candidates:
+        if not candidate or any(ord(char) >= 128 for char in candidate):
+            continue
+        try:
+            os.makedirs(candidate, exist_ok=True)
+            probe = os.path.join(candidate, ".xiaomei-write-test")
+            with open(probe, "wb") as handle:
+                handle.write(b"ok")
+            os.remove(probe)
+            os.environ["PADDLE_PDX_CACHE_HOME"] = candidate
+            # Avoid a network probe on every startup; missing model files still
+            # download when OCR is first used.
+            os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+            return candidate
+        except (OSError, PermissionError):
+            continue
+    return configured or ""
+
+
+PADDLE_OCR_CACHE_HOME = _configure_paddle_ocr_runtime()
 BACKGROUND_REMOVAL_MODEL_DIR = os.path.join(DATA_DIR, "models", "background-removal")
 LOCAL_UPSCALE_MODEL_DIR = os.path.join(DATA_DIR, "models", "upscale")
 LOCAL_UPSCALE_REAL_ESRGAN_ID = "real-esrgan"
@@ -829,6 +869,8 @@ LOCAL_IMAGE_IMPORT_MAX_BYTES = int(os.getenv("LOCAL_IMAGE_IMPORT_MAX_BYTES", str
 _PADDLE_OCR_ENGINE = None
 _PADDLE_OCR_LOCK = Lock()
 _PADDLE_OCR_ERROR = ""
+_PADDLE_OCR_INSTALL_STATE = {"status": "idle", "message": "", "log_path": ""}
+_PADDLE_OCR_INSTALL_TASK = None
 LOCAL_IMAGE_IMPORT_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 RUNNINGHUB_THUMBNAIL_EXTS = (".jpg",)
 STORAGE_SETTINGS_FILE = os.path.join(DATA_DIR, "storage_settings.json")
@@ -31857,6 +31899,128 @@ async def inspect_local_comfy_workflow(request: Request):
             raise HTTPException(status_code=400, detail=str(exc))
     raise HTTPException(status_code=503, detail="本地 ComfyUI 未连接，请启动后重新检查")
 
+def _paddle_ocr_missing_packages():
+    """Return the import names that are absent from the current Python runtime."""
+    missing = []
+    for module_name, package_name in (("paddleocr", PADDLE_OCR_PACKAGE_REQUIREMENT), ("paddle", PADDLE_OCR_PADDLE_REQUIREMENT)):
+        try:
+            available = importlib.util.find_spec(module_name) is not None
+        except (ImportError, AttributeError, ValueError):
+            available = False
+        if not available:
+            missing.append(package_name)
+    for distribution, requirement in (("paddleocr", PADDLE_OCR_PACKAGE_REQUIREMENT), ("paddlepaddle", PADDLE_OCR_PADDLE_REQUIREMENT)):
+        if requirement in missing:
+            continue
+        try:
+            installed_version = importlib_metadata.version(distribution)
+        except importlib_metadata.PackageNotFoundError:
+            installed_version = ""
+        expected_version = requirement.split("==", 1)[1]
+        if installed_version != expected_version:
+            missing.append(requirement)
+    return missing
+
+
+def _run_paddle_ocr_installer(command, log_path):
+    """Install OCR dependencies in a child process while keeping the API responsive."""
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+    with open(log_path, "wb") as log:
+        proc = subprocess.Popen(
+            command,
+            cwd=BASE_DIR,
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            creationflags=creationflags,
+        )
+        try:
+            return proc.wait(timeout=1800)
+        except subprocess.TimeoutExpired:
+            if os.name == "nt":
+                subprocess.run(
+                    ["taskkill.exe", "/PID", str(proc.pid), "/T", "/F"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=creationflags,
+                    timeout=15,
+                )
+            else:
+                proc.kill()
+            proc.wait(timeout=15)
+            raise RuntimeError("OCR 依赖安装超过 30 分钟，请检查网络后重试。")
+
+
+async def _finish_paddle_ocr_install(command, log_path):
+    global _PADDLE_OCR_ENGINE, _PADDLE_OCR_ERROR
+    try:
+        code = await asyncio.to_thread(_run_paddle_ocr_installer, command, log_path)
+        if code != 0:
+            raise RuntimeError(f"OCR 依赖安装未完成（退出码 {code}），请查看安装日志后重试。")
+        # The packages are imported lazily on the next recognition request.  This
+        # avoids downloading OCR model weights in the installer task itself.
+        _PADDLE_OCR_ENGINE = None
+        _PADDLE_OCR_ERROR = ""
+        _PADDLE_OCR_INSTALL_STATE.update(
+            status="succeeded",
+                    message="OCR 依赖安装完成，正在重新识别图片。",
+            log_path=log_path,
+        )
+    except Exception as exc:
+        _PADDLE_OCR_INSTALL_STATE.update(
+            status="failed",
+            message=str(exc) or "OCR 依赖安装失败，请查看安装日志后重试。",
+            log_path=log_path,
+        )
+
+
+def _start_paddle_ocr_install():
+    """Start one background pip install and return its public state."""
+    global _PADDLE_OCR_INSTALL_TASK
+    if _PADDLE_OCR_INSTALL_TASK and not _PADDLE_OCR_INSTALL_TASK.done():
+        return _PADDLE_OCR_INSTALL_STATE
+    missing = _paddle_ocr_missing_packages()
+    if not missing:
+        _PADDLE_OCR_INSTALL_STATE.update(
+            status="succeeded",
+            message="OCR 依赖已安装，正在初始化模型。",
+        )
+        return _PADDLE_OCR_INSTALL_STATE
+    log_dir = os.path.join(BASE_DIR, "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, f"paddle-ocr-install-{uuid.uuid4().hex}.log")
+    command = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--upgrade",
+        "--disable-pip-version-check",
+        *missing,
+    ]
+    _PADDLE_OCR_INSTALL_STATE.clear()
+    _PADDLE_OCR_INSTALL_STATE.update(
+        status="running",
+        message="正在自动安装 OCR 依赖，首次安装可能需要几分钟…",
+        log_path=log_path,
+        packages=missing,
+    )
+    _PADDLE_OCR_INSTALL_TASK = asyncio.create_task(_finish_paddle_ocr_install(command, log_path))
+    return _PADDLE_OCR_INSTALL_STATE
+
+
+def _local_ocr_install_require_local(request: Request):
+    if (
+        not _request_host_is_loopback(getattr(request.client, "host", ""))
+        or not _request_host_is_loopback(request.url.hostname)
+        or _request_is_share_gateway(request)
+    ):
+        raise HTTPException(status_code=403, detail="请在运行小美画布的电脑上安装 OCR 依赖。")
+    origin = request.headers.get("origin")
+    if origin and origin.rstrip("/") != str(request.base_url).rstrip("/"):
+        raise HTTPException(status_code=403, detail="请从小美画布的本地页面安装 OCR 依赖。")
+
+
 def _paddle_ocr_engine():
     """懒加载 PaddleOCR，避免普通启动和未使用 OCR 时加载模型。"""
     global _PADDLE_OCR_ENGINE, _PADDLE_OCR_ERROR
@@ -31873,7 +32037,7 @@ def _paddle_ocr_engine():
                     lang="ch",
                     use_doc_orientation_classify=False,
                     use_doc_unwarping=False,
-                    use_textline_orientation=True,
+                    use_textline_orientation=False,
                 )
             except TypeError:
                 # 兼容仍在使用 PaddleOCR 2.x 的本地环境。
@@ -31882,10 +32046,12 @@ def _paddle_ocr_engine():
             return _PADDLE_OCR_ENGINE
         except Exception as exc:
             _PADDLE_OCR_ERROR = str(exc)
-            raise RuntimeError(
-                "本地 OCR 尚未安装或模型初始化失败，请安装 paddleocr 与 paddlepaddle 后重试："
-                + (f" {exc}" if exc else "")
-            ) from exc
+            missing = _paddle_ocr_missing_packages()
+            if missing:
+                message = f"本地 OCR 缺少依赖：{'、'.join(missing)}。"
+            else:
+                message = "本地 OCR 模型初始化失败，请重试；如果仍失败，请查看服务日志。"
+            raise RuntimeError(message + (f" {exc}" if exc else "")) from exc
 
 
 def _paddle_ocr_result_items(content: bytes):
@@ -31958,7 +32124,22 @@ def _paddle_ocr_result_items(content: bytes):
 
 @app.get("/api/local-ocr/status")
 async def local_ocr_status():
-    return {"installed": _PADDLE_OCR_ENGINE is not None, "ready": _PADDLE_OCR_ENGINE is not None, "error": _PADDLE_OCR_ERROR}
+    missing = _paddle_ocr_missing_packages()
+    return {
+        "installed": not missing,
+        "ready": _PADDLE_OCR_ENGINE is not None,
+        "missing": missing,
+        "error": _PADDLE_OCR_ERROR,
+        "cache_home": PADDLE_OCR_CACHE_HOME,
+        "install": dict(_PADDLE_OCR_INSTALL_STATE),
+    }
+
+
+@app.post("/api/local-ocr/install")
+async def local_ocr_install(request: Request):
+    _local_ocr_install_require_local(request)
+    state = _start_paddle_ocr_install()
+    return {**state, "supported": True}
 
 
 @app.post("/api/local-ocr")
@@ -31976,6 +32157,18 @@ async def local_ocr(payload: LocalOCRRequest):
     except HTTPException:
         raise
     except Exception as exc:
+        missing = _paddle_ocr_missing_packages()
+        if missing:
+            state = _start_paddle_ocr_install()
+            return JSONResponse(
+                status_code=202,
+                content={
+                    "success": False,
+                    "installing": state.get("status") == "running",
+                    "message": state.get("message") or "本地 OCR 依赖未安装，已开始自动安装。",
+                    "install": dict(state),
+                },
+            )
         raise HTTPException(status_code=503, detail=str(exc) or "本地 OCR 失败") from exc
 
 

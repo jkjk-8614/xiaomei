@@ -4089,7 +4089,8 @@
     }
     function newConversation(){
         if(editingUserMessageIndex>=0)resetUserMessageEditState(true);
-        releaseAgentTaskScopeLock();store.activeId='';activeConversation();saveStore();renderMessages();renderTaskScope();toast('已新建对话，已恢复实时任务范围');
+        releaseAgentTaskScopeLock();
+        store.activeId='';activeConversation();saveStore();renderMessages();renderTaskScope();toast('已新建对话，已恢复实时任务范围');
     }
     function closeAgentPopovers(except=null){
         if(except!==skillPopover)toggleSkillCategoryManager(false);

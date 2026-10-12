@@ -453,6 +453,47 @@ let panoramaState = {
 };
 window.__smartCanvasPanoramaState = panoramaState;
 let viewport = {x:0, y:0, scale:1};
+// 世界层保留完整画布数据，但 DOM 只保留视口附近的节点。缓冲区按屏幕像素
+// 定义，缩放时自动换算成世界坐标，避免固定世界距离在远景时渲染过多节点。
+const SMART_CANVAS_RENDER_MARGIN_SCREEN = 640;
+const SMART_CANVAS_RENDER_MIN_MARGIN_WORLD = 320;
+function smartCanvasRenderBounds(extraMarginScreen=0){
+    const scale = safeScale(viewport.scale);
+    const width = Math.max(1, shell?.clientWidth || window.innerWidth || 1200);
+    const height = Math.max(1, shell?.clientHeight || window.innerHeight || 800);
+    const margin = Math.max(
+        SMART_CANVAS_RENDER_MIN_MARGIN_WORLD,
+        (SMART_CANVAS_RENDER_MARGIN_SCREEN + Math.max(0, Number(extraMarginScreen) || 0)) / scale
+    );
+    const left = -Number(viewport.x || 0) / scale;
+    const top = -Number(viewport.y || 0) / scale;
+    return {left:left - margin, top:top - margin,
+        right:left + width / scale + margin, bottom:top + height / scale + margin};
+}
+function smartCanvasNodeIntersectsBounds(node, bounds){
+    if(!node || !bounds) return false;
+    const rect = nodeRect(node);
+    return rect.x < bounds.right && rect.x + rect.width > bounds.left
+        && rect.y < bounds.bottom && rect.y + rect.height > bounds.top;
+}
+function smartCanvasRenderNodes(bounds=smartCanvasRenderBounds()){
+    const selected = new Set([
+        ...selectedNodeIds(), ...(dragState?.groupIds || []), dragState?.id
+    ].filter(Boolean));
+    const visible = new Set(nodes.filter(node => node.id !== SMART_LOG_PREVIEW_NODE_ID
+        && (selected.has(node.id) || smartCanvasNodeIntersectsBounds(node, bounds))).map(node => node.id));
+    // 分组背板和成员必须成套保留，否则平移时会出现成员没有容器的闪烁。
+    const groupOwnerByMember = new Map();
+    nodes.filter(node => isSmartGroupNode(node)).forEach(group => {
+        (Array.isArray(group.items) ? group.items : []).forEach(id => groupOwnerByMember.set(id, group.id));
+        if(visible.has(group.id)) (Array.isArray(group.items) ? group.items : []).forEach(id => visible.add(id));
+    });
+    nodes.filter(node => isSmartGroupCompactMember(node) && visible.has(node.id)).forEach(member => {
+        const ownerId = groupOwnerByMember.get(member.id);
+        if(ownerId) visible.add(ownerId);
+    });
+    return nodes.filter(node => visible.has(node.id));
+}
 let settings = {
     engine:'api',
     apiKind:'image',
@@ -802,6 +843,22 @@ function refreshSmartCanvasImageResolution(){
             state = {original, src, pixels:Math.max(img.naturalWidth, img.naturalHeight) || 512, failed:new Set()};
             smartCanvasImageResolutions.set(img, state);
         }
+        // 视口外的图片不需要继续占用解码后的位图内存。节点外壳仍然保留
+        // 固定尺寸，重新进入视口时再通过 data-preview-src 重新加载。
+        // 当前选中项和正在编辑的节点保留低清预览，避免切换图片时出现空白。
+        const selected = img.closest('.image-node.selected')
+            || img.closest('.image-wrap.image-selected,.thumb-item.image-selected');
+        const keepOffscreenPreview = Boolean(selected || img.closest('.smart-image-editor,.smart-media-dialog'));
+        if(!visible && !keepOffscreenPreview && src && src !== smartMediaPreviewUrl(original, 512)){
+            // 保留一个 512px 预览作为布局占位和回归兼容；相比原图，
+            // 它只保留很小的解码位图，也不会让图片元素短暂变成 broken image。
+            const lowPreview = smartMediaPreviewUrl(original, 512);
+            img.dataset.deferredSrc = lowPreview;
+            img.src = lowPreview;
+            state.src = lowPreview;
+            state.pixels = 512;
+            return;
+        }
         if(src === target || state.failed.has(target)) return;
         // 缩小保留一档余量，避免倍率临界点来回切图；移出视口时回到小图。
         if(visible && src === state.src && pixels < state.pixels && required > state.pixels / 2.5) return;
@@ -829,6 +886,9 @@ function pumpSmartCanvasImageResolution(){
             job.state.failed.add(job.target);
         }).finally(() => {
             clearTimeout(timeout);
+            // 解码探针只用于无闪烁换源，完成后立即断开它，避免同一张图
+            // 在探针和节点 img 中各保留一份解码位图。
+            decoded.removeAttribute('src');
             --smartCanvasResolutionLoads;
             pumpSmartCanvasImageResolution();
         });
@@ -2466,6 +2526,8 @@ function setCanvasZoom(nextScale, {save=false} = {}){
     viewport.x = shell.clientWidth / 2 - center.x * scale;
     viewport.y = shell.clientHeight / 2 - center.y * scale;
     applyViewport();
+    scheduleConnectionLayerRefresh();
+    scheduleCanvasViewportRender();
     if(save) scheduleSave();
 }
 function adjustCanvasZoom(direction){
@@ -4517,21 +4579,55 @@ function arrangeSelectedSmartNodes(){
 let minimapRenderRaf = 0;
 let minimapRenderMode = 0;
 let minimapRenderUseCachedLayout = false;
+let smartMinimapLayoutDirty = true;
+let smartMinimapNodeSignatures = new Map();
+let smartMinimapNodeOrder = [];
 let viewportApplyRaf = 0;
 let viewportSaveQueued = false;
 let viewportInteractionEndTimer = 0;
 let viewportInteractionActive = false;
 let viewportWheelTarget = null;
 let panViewportApplyRaf = 0;
+let canvasViewportRenderRaf = 0;
 const COMPOSER_MIN_VISUAL_SCALE = 1;
 // 指针事件常在同一帧内触发多次。复用这一帧的屏幕→画布坐标矩阵，避免
 // 每个事件都读取 SVG 的 getScreenCTM() 而强制浏览器同步布局。
 let clientToWorldMapperCache = null;
 let clientToWorldMapperCacheRaf = 0;
 const VIEWPORT_INTERACTION_IDLE_MS = 140;
+function smartMinimapNodeSignature(node){
+    if(!node) return '';
+    const images = Array.isArray(node.images) ? node.images : [];
+    const imageLayout = images.map(image => [
+        image?.natural_w || image?.layout_w || image?.width || 0,
+        image?.natural_h || image?.layout_h || image?.height || 0
+    ].join(':')).join(';');
+    return [
+        node.type || '',
+        Number(node.x) || 0,
+        Number(node.y) || 0,
+        Number(node.w) || 0,
+        Number(node.h) || 0,
+        Number(node.scale) || 0,
+        node.collapsed ? 1 : 0,
+        images.length,
+        imageLayout
+    ].join('|');
+}
+function smartMinimapLayoutChanged(){
+    const currentNodes = nodes.filter(node => node.id !== SMART_LOG_PREVIEW_NODE_ID);
+    if(smartMinimapLayoutDirty || currentNodes.length !== smartMinimapNodeOrder.length) return true;
+    for(let index = 0; index < currentNodes.length; index++){
+        const node = currentNodes[index];
+        if(String(node.id) !== String(smartMinimapNodeOrder[index])) return true;
+        if(smartMinimapNodeSignatures.get(String(node.id)) !== smartMinimapNodeSignature(node)) return true;
+    }
+    return false;
+}
 function scheduleMinimapRender(full=true, useCachedLayout=false){
     // 结构变化需要完整重建；纯缩放/平移只更新小地图视口，避免每帧 innerHTML + 节点重排。
-    minimapRenderMode = Math.max(minimapRenderMode, full ? 1 : 0);
+    const layoutChanged = full && (!smartMinimapState || !minimapViewport?.isConnected || smartMinimapLayoutChanged());
+    minimapRenderMode = Math.max(minimapRenderMode, layoutChanged ? 1 : 0);
     minimapRenderUseCachedLayout = minimapRenderUseCachedLayout || Boolean(useCachedLayout);
     if(minimapRenderRaf) return;
     minimapRenderRaf = requestAnimationFrame(() => {
@@ -4553,6 +4649,13 @@ function scheduleMinimapViewportRender(){
         return;
     }
     updateMinimapViewport();
+}
+function scheduleCanvasViewportRender(){
+    if(canvasViewportRenderRaf) return;
+    canvasViewportRenderRaf = requestAnimationFrame(() => {
+        canvasViewportRenderRaf = 0;
+        render();
+    });
 }
 function applyViewport(options={}){
     // 保持节点布局尺寸不变，缩放和平移共用一个矩阵，避免逐帧布局取整。
@@ -4670,6 +4773,8 @@ function beginViewportInteraction(){
         shell.classList.remove('canvas-zooming');
         // 同步最终视口。
         applyViewport({scheduleMinimap:false});
+        scheduleConnectionLayerRefresh();
+        scheduleCanvasViewportRender();
         if(viewportSaveQueued){
             viewportSaveQueued = false;
             scheduleSave();
@@ -4831,7 +4936,8 @@ function renderMinimap(){
     const viewY = -viewport.y / viewport.scale;
     // 完整渲染可能发生在首次初始化，此时 smartMinimapState 仍为 null；
     // 结构变化后也必须根据当前节点重新测量，不能复用旧的小地图坐标。
-    const nodeRects = nodes.filter(n => n.id !== SMART_LOG_PREVIEW_NODE_ID).map(nodeRect);
+    const minimapNodes = nodes.filter(n => n.id !== SMART_LOG_PREVIEW_NODE_ID);
+    const nodeRects = minimapNodes.map(nodeRect);
     const rects = [...nodeRects, {x:viewX, y:viewY, width:viewW, height:viewH}];
     const minX = Math.min(...rects.map(r => r.x), -200);
     const minY = Math.min(...rects.map(r => r.y), -200);
@@ -4841,6 +4947,9 @@ function renderMinimap(){
     const offsetX = (width - (maxX - minX) * scale) / 2;
     const offsetY = (height - (maxY - minY) * scale) / 2;
     smartMinimapState = {minX, minY, scale, offsetX, offsetY, width, height, shellWidth, shellHeight, nodeRects};
+    smartMinimapNodeSignatures = new Map(minimapNodes.map(node => [String(node.id), smartMinimapNodeSignature(node)]));
+    smartMinimapNodeOrder = minimapNodes.map(node => String(node.id));
+    smartMinimapLayoutDirty = false;
     const project = r => ({
         left:offsetX + (r.x - minX) * scale,
         top:offsetY + (r.y - minY) * scale,
@@ -4887,6 +4996,7 @@ function updateMinimapViewport(options={}){
     const shellWidth = useCachedLayout ? (state.shellWidth || 0) : shell.clientWidth;
     const shellHeight = useCachedLayout ? (state.shellHeight || 0) : shell.clientHeight;
     if(!useCachedLayout && (state.width !== width || state.height !== height || state.shellWidth !== shellWidth || state.shellHeight !== shellHeight)){
+        smartMinimapLayoutDirty = true;
         scheduleMinimapRender(true);
         return;
     }
@@ -4932,6 +5042,7 @@ function fitAllNodesViewport(){
         viewport.x = shell.clientWidth / 2;
         viewport.y = shell.clientHeight / 2;
         applyViewport();
+        scheduleCanvasViewportRender();
         scheduleSave();
         return;
     }
@@ -4950,6 +5061,7 @@ function fitAllNodesViewport(){
     viewport.x = shell.clientWidth / 2 - cx * viewport.scale;
     viewport.y = shell.clientHeight / 2 - cy * viewport.scale;
     applyViewport();
+    scheduleCanvasViewportRender();
     scheduleSave();
 }
 function enterZoomPreview(){
@@ -4974,6 +5086,7 @@ function exitZoomPreview(point=null){
         viewport.y = prev.y;
     }
     applyViewport();
+    scheduleCanvasViewportRender();
     scheduleSave();
     return true;
 }
@@ -5000,6 +5113,7 @@ function exitZoomPreviewToNode(nodeId){
     viewport.x = shell.clientWidth / 2 - cx * viewport.scale;
     viewport.y = shell.clientHeight / 2 - cy * viewport.scale;
     applyViewport();
+    scheduleCanvasViewportRender();
     scheduleSave();
     return true;
 }
@@ -10623,6 +10737,32 @@ function pasteAssetsFromInbox(){
     toast(`已粘贴 ${created.length} 个素材到画布`);
     return true;
 }
+function duplicateConnectionsForAltCopy(sourceId, copyId, copyNode){
+    if(!sourceId || !copyId || !copyNode) return;
+    const nextConnections = [...(canvas.connections || [])];
+    (canvas.connections || []).forEach(connection => {
+        if(connection.from !== sourceId && connection.to !== sourceId) return;
+        const cloned = {
+            ...connection,
+            from:connection.from === sourceId ? copyId : connection.from,
+            to:connection.to === sourceId ? copyId : connection.to
+        };
+        if(!cloned.from || !cloned.to || cloned.from === cloned.to) return;
+        const kind = cloned.kind || 'flow';
+        const inputSlot = String(cloned.input_slot || cloned.inputSlot || '');
+        if(nextConnections.some(existing => (
+            existing.from === cloned.from
+            && existing.to === cloned.to
+            && (existing.kind || 'flow') === kind
+            && String(existing.input_slot || existing.inputSlot || '') === inputSlot
+        ))) return;
+        nextConnections.push(cloned);
+        if(kind === 'input' && cloned.to === copyId){
+            copyNode.inputNodeIds = Array.from(new Set([...(copyNode.inputNodeIds || []), cloned.from]));
+        }
+    });
+    canvas.connections = nextConnections;
+}
 function duplicateForAltDrag(node){
     const ids = (isNodeSelected(node.id) ? selectedNodeIds() : [node.id]);
     const sourceNodes = ids.map(id => nodes.find(n => n.id === id)).filter(Boolean);
@@ -10707,7 +10847,6 @@ function duplicateForAltDrag(node){
         }
     });
     canvas.connections = nextConnections;
-    smartAutoAvoidNewNodes(copies);
     nodes.push(...copies);
     // 让 Alt 拖动后的副本成为当前选区：多选复制时，后续拖动会带着整组副本一起移动。
     selectedId = copies.length === 1 ? copies[0].id : '';
@@ -10808,7 +10947,27 @@ function renderConnections(){
             });
         }
     });
-    const paths = items.map(item => {
+    const renderBounds = smartCanvasRenderBounds(240);
+    const focusedNodeIds = new Set(selectedNodeIds());
+    const visibleItems = items.filter(item => {
+        if(focusedNodeIds.has(item.from) || focusedNodeIds.has(item.toId)
+            || (item.targets || []).some(id => focusedNodeIds.has(id))) return true;
+        const ids = [item.from, item.toId, ...(item.targets || [])];
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        ids.forEach(id => {
+            const node = nodeMap.get(id);
+            if(!node) return;
+            const rect = rectCache.has(id) ? rectCache.get(id) : nodeRect(node);
+            rectCache.set(id, rect);
+            minX = Math.min(minX, rect.x);
+            minY = Math.min(minY, rect.y);
+            maxX = Math.max(maxX, rect.x + rect.width);
+            maxY = Math.max(maxY, rect.y + rect.height);
+        });
+        return minX < renderBounds.right && maxX > renderBounds.left
+            && minY < renderBounds.bottom && maxY > renderBounds.top;
+    });
+    const paths = visibleItems.map(item => {
         const fromNode = nodeMap.get(item.from);
         const toNode = nodeMap.get(item.toId);
         if(!fromNode || !toNode) return '';
@@ -10881,15 +11040,43 @@ function connectionGeometryForItem(item, draggedNodeIds=new Set(), nodeMap=null,
         : `M${fx} ${fy} C ${fx+dx} ${fy}, ${tx-dx} ${ty}, ${tx} ${ty}`;
     return {curve, tx, ty, mx:(fx + tx) / 2, my:(fy + ty) / 2};
 }
+let smartConnectionGroupIndexSvg = null;
+let smartConnectionGroupsByNode = new Map();
+function indexSmartConnectionGroups(svg){
+    smartConnectionGroupIndexSvg = svg;
+    smartConnectionGroupsByNode = new Map();
+    svg?.querySelectorAll?.('.conn-group').forEach(group => {
+        const ids = [
+            group.dataset.connFrom,
+            group.dataset.connTo,
+            ...(group.dataset.connTargets || '').split('|')
+        ].filter(Boolean);
+        ids.forEach(id => {
+            const key = String(id);
+            let bucket = smartConnectionGroupsByNode.get(key);
+            if(!bucket){ bucket = new Set(); smartConnectionGroupsByNode.set(key, bucket); }
+            bucket.add(group);
+        });
+    });
+}
 function refreshConnectionLayerGeometry(dirtyNodeIds=null){
     const svg = world.querySelector('svg.connection-layer');
     if(!svg) return false;
+    if(smartConnectionGroupIndexSvg !== svg) indexSmartConnectionGroups(svg);
     const nodeMap = new Map(nodes.map(node => [node.id, node]));
     const rectCache = new Map();
     const draggedNodeIds = new Set(dragState ? [...(dragState.groupIds || []), dragState.id].filter(Boolean) : []);
     const hasDirtyFilter = dirtyNodeIds instanceof Set && dirtyNodeIds.size > 0;
     let hasMetadata = true;
-    svg.querySelectorAll('.conn-group').forEach(group => {
+    let groups;
+    if(hasDirtyFilter){
+        const dirtyGroups = new Set();
+        dirtyNodeIds.forEach(id => smartConnectionGroupsByNode.get(String(id))?.forEach(group => dirtyGroups.add(group)));
+        groups = dirtyGroups;
+    } else {
+        groups = svg.querySelectorAll('.conn-group');
+    }
+    groups.forEach(group => {
         const from = group.dataset.connFrom || '';
         const toId = group.dataset.connTo || '';
         const dataIndex = group.dataset.connIndex || group.querySelector('.conn-line')?.dataset.connIndex || '';
@@ -10906,12 +11093,6 @@ function refreshConnectionLayerGeometry(dirtyNodeIds=null){
             indices,
             targets:(group.dataset.connTargets || '').split('|').filter(Boolean)
         };
-        if(hasDirtyFilter
-            && !dirtyNodeIds.has(from)
-            && !dirtyNodeIds.has(toId)
-            && !item.targets.some(targetId => dirtyNodeIds.has(targetId))){
-            return;
-        }
         const geometry = connectionGeometryForItem(item, draggedNodeIds, nodeMap, rectCache);
         if(!geometry){
             hasMetadata = false;
@@ -10940,7 +11121,14 @@ function refreshConnectionLayer(){
     const tpl = document.createElement('template');
     tpl.innerHTML = renderConnections().trim();
     const nextSvg = tpl.content.firstElementChild;
-    if(nextSvg) oldSvg.replaceWith(nextSvg);
+    // renderConnections 仍负责判断当前可见连线和状态，但只有结构/状态
+    // 真正变化时才替换 SVG；单纯的重复调度只更新已有路径几何。
+    if(nextSvg && oldSvg.outerHTML !== nextSvg.outerHTML){
+        oldSvg.replaceWith(nextSvg);
+        smartConnectionGroupIndexSvg = null;
+    } else {
+        refreshConnectionLayerGeometry();
+    }
     bindConnectionEvents();
 }
 function scheduleConnectionLayerRefresh(){
@@ -15348,11 +15536,15 @@ function rememberInlineVideoActivations(){
 }
 // Keep unchanged node DOM and decoded previews in place when a task updates one node.
 const smartRenderedNodeMarkup = new Map();
-function render(){
+function render(options={}){
+    const dirtyNodeIds = options?.nodeIds
+        ? new Set((Array.isArray(options.nodeIds) ? options.nodeIds : [...options.nodeIds]).filter(Boolean).map(String))
+        : null;
     if(smartWorkflowTransferModal?.classList.contains('open')) updateSmartWorkflowTransferMeta();
     // 首次渲染可能发生在共享会话回调、旧数据迁移或协作快照的任一时序；
     // 在生成 DOM 前再兜底一次，确保编辑者看到与本地画布相同的选中状态。
     ensureSharedEditorInitialSelection();
+    const renderNodes = smartCanvasRenderNodes();
     rememberInlineVideoActivations();
     const selectedForToolbar = selectedNodeIds().map(id => nodes.find(node => node.id === id)).filter(Boolean);
     // 智能分组使用自己的 smart-group-menu，不能被普通多图的选择态规则隐藏。
@@ -15371,7 +15563,7 @@ function render(){
         const scroller = el.querySelector('.comfy-node-fields');
         if(scroller && el.dataset.id) comfyNodeScrollTops.set(el.dataset.id, scroller.scrollTop);
     });
-    const nodeHtmlEntries = nodes
+    const nodeHtmlEntries = renderNodes
         .filter(node => node.id !== SMART_LOG_PREVIEW_NODE_ID)
         // 分组节点先渲染（DOM 靠前→层级在下），作为成员的背板；成员渲染在后、盖在分组之上，
         // 否则缩小分组把成员挪进卡片区域时会被分组卡片背景遮住而“消失”。
@@ -15439,6 +15631,7 @@ function render(){
     const changedEntries = nodeHtmlEntries.filter(entry => {
         const existing = existingNodeEls.get(entry.node.id);
         const previous = smartRenderedNodeMarkup.get(entry.node.id);
+        if(dirtyNodeIds && existing?.isConnected && !dirtyNodeIds.has(String(entry.node.id))) return false;
         return !existing?.isConnected || previous?.node !== entry.node || previous.html !== entry.html;
     });
     const tpl = document.createElement('template');
@@ -15496,9 +15689,10 @@ function render(){
         if(child === existingConnectionEl || nextNodeSet.has(child)) return;
         child.remove();
     });
-    const connectionMarkup = renderConnections().trim();
+    const canPatchConnectionGeometry = Boolean(dirtyNodeIds && existingConnectionEl && options.connectionsChanged !== true);
+    const connectionMarkup = canPatchConnectionGeometry ? '' : renderConnections().trim();
     let connectionEl = existingConnectionEl;
-    const connectionMarkupChanged = !connectionEl || existingConnectionMarkup !== connectionMarkup;
+    const connectionMarkupChanged = !canPatchConnectionGeometry && (!connectionEl || existingConnectionMarkup !== connectionMarkup);
     if(connectionMarkupChanged){
         connectionEl?.remove();
         const connectionTemplate = document.createElement('template');
@@ -15512,6 +15706,7 @@ function render(){
             world.insertBefore(connectionEl, anchor || null);
         }
     }
+    if(canPatchConnectionGeometry) refreshConnectionLayerGeometry(dirtyNodeIds);
     let nextSibling = connectionEl?.nextSibling || null;
     nodeHtmlEntries.forEach(entry => {
         const next = nextNodeEls.get(entry.node.id);
@@ -21883,6 +22078,8 @@ async function applyImageMask(){
 let imageOcrItems = [];
 let ocrModelSelection = {provider_id:'', model:''};
 let ocrRecognizePromise = null;
+let ocrInstallPollTimer = 0;
+let ocrInstallRetrying = false;
 let ocrPanelPositionRaf = 0;
 function positionOcrPanel(){
     ocrPanelPositionRaf = 0;
@@ -22050,12 +22247,51 @@ function renderImageOcrItems(){
     syncOcrCount(); renderImageOcrRegions();
 }
 function syncImageOcrGenerate(){ const btn=document.getElementById('ocrGenerateBtn'); if(btn) btn.disabled=!imageOcrItems.some(x=>String(x.replacement||'').trim() && String(x.replacement).trim() !== String(x.text || '').trim()); syncOcrCount(); }
+function stopOcrInstallPolling(){ if(ocrInstallPollTimer){ clearTimeout(ocrInstallPollTimer); ocrInstallPollTimer=0; } }
+function pollLocalOcrInstall(){
+    if(ocrInstallPollTimer) return;
+    const startedAt=Date.now();
+    const check=async()=>{
+        ocrInstallPollTimer=0;
+        if(Date.now()-startedAt>30*60*1000){ const status=document.getElementById('ocrStatus'); if(status) status.textContent='OCR 依赖安装等待超时，请查看 logs 中的安装日志后重试'; return; }
+        try{
+            const res=await fetch('/api/local-ocr/status',{cache:'no-store'}); const data=await res.json();
+            const install=data?.install || {};
+            if(install.status==='running'){
+                const status=document.getElementById('ocrStatus'); if(status) status.textContent=install.message || '正在自动安装 OCR 依赖，请稍候…';
+                ocrInstallPollTimer=setTimeout(check,1500); return;
+            }
+            if(install.status==='succeeded' && data.installed){
+                const status=document.getElementById('ocrStatus'); if(status) status.textContent='OCR 依赖安装完成，正在初始化模型…';
+                if(!ocrInstallRetrying){ ocrInstallRetrying=true; await recognizeImageText(); ocrInstallRetrying=false; }
+                return;
+            }
+            if(install.status==='succeeded' && !data.installed){
+                const status=document.getElementById('ocrStatus'); if(status) status.textContent='安装任务已结束，但 OCR 依赖仍不可用，请查看安装日志后重试';
+                return;
+            }
+            if(install.status==='failed'){
+                const status=document.getElementById('ocrStatus'); if(status) status.textContent=install.message || 'OCR 依赖安装失败，请查看安装日志后重试';
+                return;
+            }
+            if(data.ready) return;
+            ocrInstallPollTimer=setTimeout(check,1500);
+        }catch(error){ ocrInstallPollTimer=setTimeout(check,2500); }
+    };
+    check();
+}
 async function recognizeImageText(){
     const status=document.getElementById('ocrStatus'); const btn=document.getElementById('ocrRecognizeBtn'); const data=ocrSourceDataUrl(); if(!data) return;
     if(btn) btn.disabled=true; document.getElementById('imageOcrTools')?.classList.add('is-busy'); document.getElementById('ocrTextList')?.setAttribute('aria-busy','true'); if(status) status.textContent='正在识别文字…';
     try{
         const res=await fetch('/api/local-ocr',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data,filename:'canvas-ocr.png'})});
-        const payload=await res.json(); if(!res.ok) throw new Error(payload.detail||payload.error||'本地 OCR 请求失败');
+        const payload=await res.json();
+        if(payload?.installing || payload?.install?.status==='running'){
+            if(status) status.textContent=payload.message || '正在自动安装 OCR 依赖，请稍候…';
+            pollLocalOcrInstall();
+            return;
+        }
+        if(!res.ok) throw new Error(payload.detail||payload.error||'本地 OCR 请求失败');
         imageOcrItems=Array.isArray(payload.items)?payload.items.filter(x=>String(x?.text||'').trim()).map(x=>({...x,replacement:''})):[];
         renderImageOcrItems(); if(status) status.textContent=imageOcrItems.length?`识别到 ${imageOcrItems.length} 组文字，直接修改右侧内容即可`:'没有识别到可编辑文字'; syncImageOcrGenerate();
     }catch(error){ if(status) status.textContent=error?.message||'OCR 识别失败'; }
@@ -22267,6 +22503,7 @@ let lastComposerNodeId = '';
 let activeComposerSubject = null;
 let inputPromptPreviewState = {nodeId:'', text:'', expanded:false};
 let composerPromptCompactState = {nodeId:'', text:'', expanded:false};
+let composerPromptPointerDown = false;
 function currentComposerSubject(){
     return selectedNode();
 }
@@ -22503,6 +22740,11 @@ function composerPromptNeedsCompactPreview(text=''){
     if(value.length > COMPOSER_PROMPT_COMPACT_CHAR_COUNT) return true;
     return value.split(/\r?\n/).filter(line => line.trim()).length > COMPOSER_PROMPT_COMPACT_LINE_COUNT;
 }
+function collapseComposerPromptAfterEditing(){
+    if(document.activeElement === promptInput) return;
+    composerPromptCompactState.expanded = false;
+    syncComposerPromptCompactPreview(activeComposerNode());
+}
 function syncComposerPromptCompactPreview(node, options={}){
     const row = promptInput?.closest?.('.prompt-row');
     if(!row || !promptCompactPreview) return;
@@ -22586,6 +22828,7 @@ function renderInputThumbsRow(node){
         : !inputThumbsRow.classList.contains('has-items')
             && inputThumbsRow.childElementCount === 0;
     if(inputThumbsRow.dataset.thumbsSig === thumbsSignature && renderedStateMatches) return;
+    hidePaintInputRefHover();
     inputThumbsRow.dataset.thumbsSig = thumbsSignature;
     inputThumbsRow.classList.toggle('has-items', Boolean(node));
     notifyCanvasTaskScopeChange();
@@ -22644,13 +22887,171 @@ function bindInputThumbReferenceActions(){
         });
     });
 }
+let paintInputRefHover = null;
+function hidePaintInputRefHover(){
+    if(paintInputRefHover) paintInputRefHover.hidden = true;
+}
+function showPaintInputRefHover(thumb, item){
+    if(!item?.url || document.body.classList.contains('smart-input-thumb-drag')) return;
+    if(!paintInputRefHover){
+        paintInputRefHover = document.createElement('div');
+        paintInputRefHover.className = 'paint-input-ref-hover';
+        paintInputRefHover.innerHTML = '<img alt="" draggable="false">';
+        document.body.appendChild(paintInputRefHover);
+    }
+    const preview = paintInputRefHover;
+    const image = preview.querySelector('img');
+    const url = smartMediaPreviewUrl(item, 768);
+    image.onload = () => {
+        if(preview.hidden || image.dataset.refUrl !== item.url) return;
+        const maxWidth = Math.min(420, window.innerWidth - 24);
+        const maxHeight = Math.min(420, window.innerHeight * .6, window.innerHeight - 24);
+        const scale = Math.min(maxWidth / image.naturalWidth, maxHeight / image.naturalHeight);
+        const width = Math.max(1, Math.round(image.naturalWidth * scale));
+        const height = Math.max(1, Math.round(image.naturalHeight * scale));
+        image.style.width = `${width}px`;
+        image.style.height = `${height}px`;
+        const rect = thumb.getBoundingClientRect();
+        const left = rect.right + width + 24 <= window.innerWidth ? rect.right + 12 : rect.left - width - 12;
+        preview.style.left = `${Math.max(8, Math.min(window.innerWidth - width - 8, left))}px`;
+        preview.style.top = `${Math.max(8, Math.min(window.innerHeight - height - 8, rect.top + (rect.height - height) / 2))}px`;
+    };
+    image.dataset.refUrl = item.url;
+    preview.hidden = false;
+    image.src = url;
+    if(image.complete && image.naturalWidth) image.onload();
+}
+function bindPaintInputThumb(el, node, item, items, canReorder){
+    el.draggable = false;
+    el.dataset.inputReorderable = canReorder ? '1' : '0';
+    el.addEventListener('mouseenter', () => showPaintInputRefHover(el, item));
+    el.addEventListener('mouseleave', hidePaintInputRefHover);
+    let ignoreClick = false;
+    el.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        if(event.target.closest?.('.input-thumb-remove') || ignoreClick){
+            ignoreClick = false;
+            return;
+        }
+        hidePaintInputRefHover();
+        openSmartLogLightbox(item.url);
+    });
+    if(!canReorder) return;
+    el.addEventListener('pointerdown', event => {
+        if(event.button !== 0 || event.target.closest?.('.input-thumb-remove')) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const list = el.parentElement;
+        const originalOrder = [...list.querySelectorAll('.input-thumb')];
+        const startRect = el.getBoundingClientRect();
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const pointerId = event.pointerId;
+        let dragging = false;
+        let ghost = null;
+        const move = moveEvent => {
+            if(moveEvent.pointerId !== pointerId) return;
+            const dx = moveEvent.clientX - startX;
+            const dy = moveEvent.clientY - startY;
+            if(!dragging && Math.hypot(dx, dy) <= 6) return;
+            if(!dragging){
+                dragging = true;
+                hidePaintInputRefHover();
+                ghost = el.cloneNode(true);
+                ghost.querySelector('.input-thumb-remove')?.remove();
+                ghost.classList.add('paint-ref-drag-ghost');
+                ghost.style.left = `${startRect.left}px`;
+                ghost.style.top = `${startRect.top}px`;
+                ghost.style.width = `${startRect.width}px`;
+                ghost.style.height = `${startRect.height}px`;
+                document.body.appendChild(ghost);
+                el.classList.add('paint-ref-drag-source');
+                list.classList.add('paint-ref-sorting');
+                document.body.classList.add('smart-input-thumb-drag');
+            }
+            moveEvent.preventDefault();
+            moveEvent.stopPropagation();
+            ghost.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+            const bounds = list.getBoundingClientRect();
+            if(moveEvent.clientX < bounds.left + 28) list.scrollLeft -= 12;
+            else if(moveEvent.clientX > bounds.right - 28) list.scrollLeft += 12;
+            const others = [...list.querySelectorAll('.input-thumb')].filter(thumb => thumb !== el);
+            const before = others.find(thumb => moveEvent.clientX < thumb.getBoundingClientRect().left + thumb.getBoundingClientRect().width / 2);
+            if(before === el.nextElementSibling || (!before && !el.nextElementSibling)) return;
+            const previous = new Map(others.map(thumb => [thumb, thumb.getBoundingClientRect().left]));
+            list.insertBefore(el, before || null);
+            others.forEach(thumb => {
+                const offset = previous.get(thumb) - thumb.getBoundingClientRect().left;
+                if(Math.abs(offset) > 1){
+                    thumb.getAnimations().forEach(animation => animation.cancel());
+                    thumb.animate([{transform:`translateX(${offset}px)`}, {transform:'translateX(0)'}], {duration:190, easing:'cubic-bezier(.2,.8,.2,1)'});
+                }
+            });
+        };
+        const finish = endEvent => {
+            if(endEvent.pointerId !== pointerId) return;
+            document.removeEventListener('pointermove', move, true);
+            document.removeEventListener('pointerup', finish, true);
+            document.removeEventListener('pointercancel', finish, true);
+            if(!dragging) return;
+            endEvent.preventDefault();
+            endEvent.stopPropagation();
+            ignoreClick = true;
+            setTimeout(() => { ignoreClick = false; }, 0);
+            list.classList.remove('paint-ref-sorting');
+            document.body.classList.remove('smart-input-thumb-drag');
+            if(endEvent.type === 'pointercancel'){
+                originalOrder.forEach(thumb => list.appendChild(thumb));
+                el.classList.remove('paint-ref-drag-source');
+                ghost?.remove();
+                return;
+            }
+            const nextOrder = [...list.querySelectorAll('.input-thumb')].map(thumb => inputRefKey(items[Number(thumb.dataset.thumbIndex)])).filter(Boolean);
+            const currentOrder = inputRefOrderForItems(node, items);
+            const changed = !sameOrderedIds(currentOrder, nextOrder);
+            if(changed){
+                pushUndo();
+                node.inputRefOrder = nextOrder;
+                delete inputThumbsRow.dataset.thumbsSig;
+                scheduleSave();
+            }
+            const targetRect = el.getBoundingClientRect();
+            if(changed) render();
+            const settledThumb = changed
+                ? [...inputThumbsRow.querySelectorAll('.input-thumb')].find(thumb => thumb.dataset.url === item.url)
+                : el;
+            settledThumb?.classList.add('paint-ref-drag-source');
+            const finishVisual = () => {
+                ghost?.remove();
+                el.classList.remove('paint-ref-drag-source');
+                settledThumb?.classList.remove('paint-ref-drag-source');
+            };
+            if(ghost?.animate){
+                const startLeft = startRect.left + endEvent.clientX - startX;
+                const startTop = startRect.top + endEvent.clientY - startY;
+                ghost.animate([
+                    {transform:`translate3d(${startLeft - startRect.left}px, ${startTop - startRect.top}px, 0)`},
+                    {transform:`translate3d(${targetRect.left - startRect.left}px, ${targetRect.top - startRect.top}px, 0)`}
+                ], {duration:160, easing:'cubic-bezier(.2,.8,.2,1)'}).finished.then(finishVisual, finishVisual);
+            } else finishVisual();
+        };
+        document.addEventListener('pointermove', move, true);
+        document.addEventListener('pointerup', finish, true);
+        document.addEventListener('pointercancel', finish, true);
+    }, true);
+}
 function bindInputThumbsDrag(node, items, manualRefKeys=new Set()){
     if(!inputThumbsRow) return;
     inputThumbsRow.querySelectorAll('.input-thumb').forEach(el => {
         const index = Number(el.dataset.thumbIndex || -1);
         const item = items[index];
         const key = inputRefKey(item);
-        const canReorder = items.length > 1 && (manualRefKeys.has(key) || Boolean(item?.nodeId));
+        const canReorder = items.length > 1 && (node?.type === SMART_PAINT_NODE_TYPE ? Boolean(key) : (manualRefKeys.has(key) || Boolean(item?.nodeId)));
+        if(node?.type === SMART_PAINT_NODE_TYPE && mediaKindForItem(item) === 'image'){
+            bindPaintInputThumb(el, node, item, items, canReorder);
+            return;
+        }
         // 统一使用指针拖动，避免浏览器原生拖拽的 ghost image、拖动阈值和
         // dragstart 冒泡与画布节点手势相互干扰。
         el.draggable = false;
@@ -22948,6 +23349,21 @@ function smartImageNameFromUrl(url){
     }
 }
 function smartImageDropPayload(dataTransfer){
+    // History drags also carry a compressed image for external applications.
+    // On this canvas, use the history record's original URL before the browser
+    // exposes that compressed copy as a File.
+    const historyRaw = readSmartDropData(dataTransfer, 'application/x-smart-history-image');
+    if(historyRaw){
+        try {
+            const history = JSON.parse(historyRaw);
+            const url = smartOriginalMediaUrl(history?.url);
+            if(history?.source === 'history' && history?.kind === 'image' && /^https?:\/\//i.test(url)){
+                const natural_w = Number(history.natural_w) || 0;
+                const natural_h = Number(history.natural_h) || 0;
+                return {type:'url', url, natural_w, natural_h};
+            }
+        } catch(_) {}
+    }
     const files = smartImageFilesFromDataTransfer(dataTransfer);
     if(files.length) return {type:'files', files};
     const localPaths = smartLocalImagePathsFromDataTransfer(dataTransfer);
@@ -23227,7 +23643,12 @@ async function handleSmartImageDropPayload(payload, targetId='', opts={}){
             appendImagesToSmartNode(await importSmartLocalImages(payload.localPaths), targetId, opts);
         } else if(payload.type === 'url') {
             if(!opts.skipUndo) pushUndo();
-            appendImagesToSmartNode([{url:payload.url, name:smartImageNameFromUrl(payload.url), kind:'image'}], targetId, opts);
+            const image = {url:payload.url, name:smartImageNameFromUrl(payload.url), kind:'image'};
+            if(payload.natural_w > 0 && payload.natural_h > 0){
+                image.natural_w = payload.natural_w;
+                image.natural_h = payload.natural_h;
+            }
+            appendImagesToSmartNode([image], targetId, opts);
         }
     } catch(e) {
         toast(e.message || tr('smart.toastUploadFail'));
@@ -24180,7 +24601,7 @@ async function runSmartColorNode(nodeId, options={}){
     if(typeof window.SmartColorNode?.process !== 'function'){
         node.colorError = '色彩处理模块未加载，请刷新画布后重试';
         node.colorErrorSignature = signature;
-        render();
+        render({nodeIds:[node.id]});
         scheduleSave();
         return false;
     }
@@ -24189,7 +24610,7 @@ async function runSmartColorNode(nodeId, options={}){
     node.colorError = '';
     node.colorRunRequestId = requestId;
     node.colorRunInputSignature = signature;
-    render();
+    render({nodeIds:[node.id]});
     scheduleSave();
     try {
         const result = await window.SmartColorNode.process({
@@ -24201,7 +24622,7 @@ async function runSmartColorNode(nodeId, options={}){
         if(node.colorRunRequestId !== requestId || smartColorInputSignature(node) !== signature){
             node.colorProcessing = false;
             node._colorRunQueued = true;
-            render();
+            render({nodeIds:[node.id]});
             scheduleSave();
             scheduleSmartColorNodeRun(node, {immediate:true, force:true});
             return false;
@@ -24221,7 +24642,7 @@ async function runSmartColorNode(nodeId, options={}){
         if(node.colorRunRequestId !== requestId || smartColorInputSignature(node) !== signature){
             node.colorProcessing = false;
             node._colorRunQueued = true;
-            render();
+            render({nodeIds:[node.id]});
             scheduleSave();
             scheduleSmartColorNodeRun(node, {immediate:true, force:true});
             return false;
@@ -24250,7 +24671,7 @@ async function runSmartColorNode(nodeId, options={}){
         delete node.colorErrorSignature;
         node.colorProcessing = false;
         node._colorRunQueued = false;
-        render();
+        render({nodeIds:[node.id]});
         scheduleSave();
         return true;
     } catch(error){
@@ -24258,7 +24679,7 @@ async function runSmartColorNode(nodeId, options={}){
             node.colorProcessing = false;
             node.colorError = String(error?.message || '色彩还原失败').slice(0, 180);
             node.colorErrorSignature = signature;
-            render();
+            render({nodeIds:[node.id]});
             scheduleSave();
         }
         return false;
@@ -25044,7 +25465,11 @@ function buildPromptRequest(node, overrideDefaultImages=null, consumeDefault=fal
     const originalPrompt = originalPromptTextFromParts(parts);
     const blockedRefs = blockedInputRefKeys(node);
     const hasOverrideImages = Array.isArray(overrideDefaultImages);
-    const filteredDefaultImages = (hasOverrideImages ? overrideDefaultImages : stableReferenceImagesFor(node, consumeDefault, ctx))
+    const baseImages = hasOverrideImages ? overrideDefaultImages : stableReferenceImagesFor(node, consumeDefault, ctx);
+    const orderedImages = node?.type === SMART_PAINT_NODE_TYPE
+        ? orderedSmartInputReferences(node, [...baseImages, ...collectMentionedImagesFromPrompt()])
+        : baseImages;
+    const filteredDefaultImages = orderedImages
         .filter(img => !blockedRefs.has(inputRefKey(img)));
     const defaultRefs = uniqueReferenceImages(filteredDefaultImages);
     const refs = defaultRefs.map((img, index) => ({...img, role:`image_${index + 1}`}));
@@ -28006,7 +28431,7 @@ function setNodeJimengPending(node, signal){
     delete node.runFinishedAt;
     delete node.runElapsedMs;
     node.runTimerHidden = false;
-    render();
+    render({nodeIds:[node.id]});
     scheduleSave();
     startJimengPoll(node);
 }
@@ -28036,7 +28461,7 @@ async function finalizeJimengPending(node, urls, kind='image'){
     node.runElapsedMs = Math.max(0, node.runFinishedAt - Number(node.runStartedAt || node.runFinishedAt));
     node.runTimerHidden = false;
     delete node.outpaintPreserve;
-    render();
+    render({nodeIds:[node.id], connectionsChanged:true});
     scheduleSave();
     return true;
 }
@@ -28051,7 +28476,7 @@ async function applyJimengQueryResult(node, data){
         node.running = false;
         node.pending = 0;
         toast((data.error || '即梦任务失败').slice(0, 160));
-        render();
+        render({nodeIds:[node.id]});
         scheduleSave();
         return true;
     }
@@ -28060,7 +28485,7 @@ async function applyJimengQueryResult(node, data){
         node.jimengPending.message = data.message || node.jimengPending.message || '';
         node.jimengPending.updatedAt = nowMs();
     }
-    render();
+    render({nodeIds:[node.id]});
     scheduleSave();
     return false;
 }
@@ -28078,7 +28503,7 @@ async function queryJimengNow(nodeId){
     const submitId = node.jimengPending.submitId;
     const kind = node.jimengPending.kind || 'image';
     node.jimengPending.querying = true;
-    render();
+    render({nodeIds:[node.id]});
     try {
         const data = await fetchJimengQuery(submitId, kind);
         await applyJimengQueryResult(node, data);
@@ -28374,7 +28799,7 @@ async function resumeSmartPendingNode(node, logContext={}){
     };
     node.pending = tasks.length;
     node.running = false;
-    render();
+    render({nodeIds:[node.id]});
     const failures = [];
     await Promise.all(tasks.map(async task => {
         if(task.failed && task.recoverTaskId) return;
@@ -28438,7 +28863,7 @@ async function resumeSmartPendingNode(node, logContext={}){
                 logTaskFailure(message, task);
                 toast(message);
             }
-            render();
+            render({nodeIds:[node.id]});
             scheduleSave();
         } catch(e) {
             task = currentTask(task.taskId);
@@ -28446,7 +28871,7 @@ async function resumeSmartPendingNode(node, logContext={}){
             if(e && e.jimengPending && e.submitId){
                 node.pendingTasks = smartPendingTasks(node).filter(item => item.taskId !== task.taskId);
                 setNodeJimengPending(node, e);
-                render();
+                render({nodeIds:[node.id]});
                 scheduleSave();
                 return;
             }
@@ -28460,7 +28885,7 @@ async function resumeSmartPendingNode(node, logContext={}){
                 node.pending = Math.max(1, smartPendingTasks(node).length);
                 logTaskFailure(task.error, task);
                 toast('任务未丢失，可稍后手动查询结果');
-                render();
+                render({nodeIds:[node.id]});
                 scheduleSave();
                 return;
             }
@@ -28487,7 +28912,7 @@ async function resumeSmartPendingNode(node, logContext={}){
             logTaskFailure(e.message || tr('smart.errRunFailed'), task);
             if(e && typeof e === 'object') e.smartGenerationLogged = true;
             toast((e.message || tr('smart.errRunFailed')).slice(0, 160));
-            render();
+            render({nodeIds:[node.id]});
             scheduleSave();
         }
     }));
@@ -28504,12 +28929,12 @@ async function resumeSmartPendingNode(node, logContext={}){
         delete node._taskTimingStart;
         delete node._taskTimingFinish;
         delete node._terminalFinishedAt;
-        render();
+        render({nodeIds:[node.id]});
         scheduleSave();
     }
     if(failures.length && !(node.images || []).length){
         markSmartNodeFailed(node, failures[0]?.message || tr('smart.errRunFailed'));
-        render();
+        render({nodeIds:[node.id]});
         scheduleSave();
         throw failures[0];
     }
@@ -29421,7 +29846,14 @@ window.onmousemove = e => {
                     const point = screenToWorld(e);
                     selectedId = '';
                     selectedImage = {nodeId:'', index:-1};
-                    const newNode = createImageNodeAt(point, [img], {select:false, skipUndo:true});
+                    const newNode = createImageNodeAt(point, [img], {
+                        select:false,
+                        skipUndo:true,
+                        // 缩略图拖出要从当前指针位置开始，允许与来源节点叠加；
+                        // 是否复制由后续连接和分组处理决定，不改变拖动落点。
+                        autoAvoid:false
+                    });
+                    if(copy && newNode) duplicateConnectionsForAltCopy(source.id, newNode.id, newNode);
                     if(!copy){
                         newNode.detachedFromNodeId = source.id;
                         newNode.detachedFromImageIndex = thumbDragState.imgIndex;
@@ -29579,6 +30011,8 @@ window.onmouseup = e => {
         setSmartCanvasPanningMediaMode(false);
         // 松手后同步最终平移位置。
         applyViewport({scheduleMinimap:false});
+        scheduleConnectionLayerRefresh();
+        scheduleCanvasViewportRender();
         if(Number.isFinite(e.clientX) && Number.isFinite(e.clientY)){
             linkPortPointer = {x:e.clientX, y:e.clientY};
         }
@@ -29588,6 +30022,7 @@ window.onmouseup = e => {
     }
     if(smartMinimapDrag){
         smartMinimapDrag = false;
+        scheduleCanvasViewportRender();
     }
     if(dragState){
         const draggedNode = nodes.find(n => n.id === dragState.id);
@@ -30341,7 +30776,14 @@ createMenu?.addEventListener('click', event => {
     if(card) createNodeFromMenu(card.dataset.createType || 'image');
 });
 composer.addEventListener('pointerdown', event => event.stopPropagation());
+composer.addEventListener('pointerdown', () => { composerPromptPointerDown = true; }, true);
+['pointerup', 'pointercancel'].forEach(type => {
+    document.addEventListener(type, () => { composerPromptPointerDown = false; }, true);
+});
 composer.addEventListener('mousedown', event => event.stopPropagation());
+composer.addEventListener('click', event => {
+    if(!event.target.closest('.prompt-row')) collapseComposerPromptAfterEditing();
+}, true);
 composer.addEventListener('click', event => {
     // 点「生成」按钮不要收起已展开的参数栏:否则每生成一次参数栏就被收起,需重新点开。
     // 参数控件(.smart-control)内部点击本就不关;运行按钮也排除,让参数栏熬过生成与重渲染。
@@ -30359,6 +30801,10 @@ promptInput.addEventListener('input', () => {
 promptInput.addEventListener('keyup', maybeOpenMentionPicker);
 promptInput.addEventListener('mouseup', saveMentionRange);
 promptInput.addEventListener('focus', saveMentionRange);
+promptInput.addEventListener('blur', () => {
+    if(composerPromptPointerDown) return;
+    collapseComposerPromptAfterEditing();
+});
 promptInput.addEventListener('paste', event => {
     const files = [...(event.clipboardData?.files || [])].filter(isSupportedUploadFile);
     if(files.length) return;

@@ -94,16 +94,9 @@
 
 ## 下载与使用
 
-当前项目可通过 GitHub 仓库获取源码。
+普通用户可从 [GitHub Releases 最新版本](https://github.com/jkjk-8614/xiaomei/releases/latest) 下载对应平台的安装包。需要修改功能或参与开发，可从[仓库主页](https://github.com/jkjk-8614/xiaomei)获取源码。
 
-仓库地址：
-
-https://github.com/jkjk-8614/xiaomei
-
-如后续提供发布版，可通过 GitHub Releases 下载。
-
-> 如果你只是普通用户，后续建议直接下载发布版使用。  
-> 如果你希望自行修改功能或参与开发，可以直接使用源码。
+Windows 基础安装包使用 CPU 版 ONNX Runtime。需要 NVIDIA 加速时，可在安装目录运行 `tools/install-windows-gpu-runtime.ps1` 单独下载 GPU 组件。
 
 ---
 

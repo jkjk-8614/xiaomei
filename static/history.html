@@ -11,9 +11,9 @@
             if(params.get('manager') === '1') document.documentElement.classList.add('manager-mode');
         } catch(e) {}
     </script>
-    <script src="/static/vendor/js/lucide.js?v=2026.10.11.1784161005"></script>
-    <script src="/static/js/theme.js?v=2026.10.11.1791335865"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.11.1791343786">
+    <script src="/static/vendor/js/lucide.js?v=2026.10.12.1784161005"></script>
+    <script src="/static/js/theme.js?v=2026.10.12.1791335865"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.12.1791343786">
     <style>
         *{box-sizing:border-box}
         :root{--bg:#f7faf6;--card:#fff;--text:#111827;--muted:#8993a4;--line:#e5ebe4;--soft:#eef5ec;--accent:#111827;--danger:#d94b4b}
@@ -340,9 +340,9 @@
             html.manager-mode body > .page > .filters{padding:10px 16px !important}
         }
     </style>
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.11.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.11.1791346900">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.11.1790178173"></script>
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.12.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.12.1791346900">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.12.1790178173"></script>
 </head>
 <body>
     <div class="page">
@@ -491,13 +491,28 @@
         }
         function recordMediaEntries(item){
             const entries = [];
-            const seen = new Set();
+            const seen = new Map();
             const add = (value,fallback='image') => {
                 if(Array.isArray(value)){ value.forEach(itemValue => add(itemValue,fallback)); return; }
                 const url = mediaUrl(value);
-                if(!url || seen.has(url)) return;
-                seen.add(url);
-                entries.push({url,kind:mediaKind(value,fallback),name:String(value && typeof value === 'object' ? (value.name || '') : '')});
+                if(!url) return;
+                const entry = {
+                    url,kind:mediaKind(value,fallback),
+                    name:String(value && typeof value === 'object' ? (value.name || '') : ''),
+                    natural_w:Number(value && typeof value === 'object' ? (value.natural_w || value.width || 0) : 0) || 0,
+                    natural_h:Number(value && typeof value === 'object' ? (value.natural_h || value.height || 0) : 0) || 0
+                };
+                const existing = seen.get(url);
+                if(existing){
+                    if(entry.natural_w > 0 && entry.natural_h > 0){
+                        existing.natural_w = entry.natural_w;
+                        existing.natural_h = entry.natural_h;
+                    }
+                    if(!existing.name && entry.name) existing.name = entry.name;
+                    return;
+                }
+                seen.set(url, entry);
+                entries.push(entry);
             };
             add(item?.video_items,'video');
             add(item?.videos,'video');
@@ -1069,7 +1084,7 @@
             const dragHint = media.kind === 'image' ? '<span class="drag-hint">拖到画布 · 拖出自动压缩</span>' : '';
             const countBadge = mediaItems.length > 1 ? `<span class="multi">${mediaItems.length} 个</span>` : '';
             return `<article class="card${selected ? ' hbm-selected' : ''}" data-ts="${esc(recordKey)}" data-history-ts="${esc(recordKey)}">
-                <div class="thumb" draggable="${media.kind === 'image'}" data-media-url="${esc(media.url)}" data-media-kind="${media.kind}" data-media-name="${esc(media.name || '')}" onclick="openPreview(this.dataset.mediaUrl,this.closest('.card').querySelector('.prompt').dataset.full,this.dataset.mediaKind)" oncontextmenu="openHistoryImageContextMenu(event,this.dataset.mediaUrl,this.dataset.mediaKind)" ondragstart="startHistoryMediaDrag(event,this)" ondragend="endHistoryMediaDrag(event,this)" title="${media.kind === 'video' ? '点击播放视频' : '拖到画布保留原图；拖到外部自动压缩'}">
+                <div class="thumb" draggable="${media.kind === 'image'}" data-media-url="${esc(media.url)}" data-media-kind="${media.kind}" data-media-name="${esc(media.name || '')}" data-media-width="${media.natural_w}" data-media-height="${media.natural_h}" onclick="openPreview(this.dataset.mediaUrl,this.closest('.card').querySelector('.prompt').dataset.full,this.dataset.mediaKind)" oncontextmenu="openHistoryImageContextMenu(event,this.dataset.mediaUrl,this.dataset.mediaKind)" ondragstart="startHistoryMediaDrag(event,this)" ondragend="endHistoryMediaDrag(event,this)" title="${media.kind === 'video' ? '点击播放视频' : '拖到画布保留原图；拖到外部自动压缩'}">
                     ${mediaMarkup}<span class="manager-card-check" aria-hidden="true"><i data-lucide="check"></i></span><span class="type">${esc(typeLabel(item))}</span>${countBadge}${dragHint}
                 </div>
                 <div class="body"><div class="prompt" data-full="${esc(prompt)}">${esc(prompt)}</div>
@@ -1362,7 +1377,7 @@
             const externalMime = dragExport?.mime || 'image/png';
             const externalExtension = dragExport?.extension || 'png';
             const externalName = historyDragFileName(thumb,externalExtension);
-            try { transfer.setData('application/x-smart-history-image', JSON.stringify({url, source:'history', kind:'image', compressed:Boolean(dragExport), width:dragExport?.width || 0, height:dragExport?.height || 0})); } catch(e) {}
+            try { transfer.setData('application/x-smart-history-image', JSON.stringify({url, source:'history', kind:'image', natural_w:Number(thumb.dataset.mediaWidth) || 0, natural_h:Number(thumb.dataset.mediaHeight) || 0})); } catch(e) {}
             try { transfer.setData('text/uri-list', url); } catch(e) {}
             transfer.setData('text/plain', url);
             try { transfer.setData('DownloadURL', `${externalMime}:${externalName}:${externalUrl}`); } catch(e) {}

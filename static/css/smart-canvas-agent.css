@@ -151,6 +151,211 @@ html[data-studio-skin] body .canvas-agent-generation-popover > p {
     line-height: 1.45;
 }
 
+/* 深色画布里的模型浮层需要把平台列和模型列拆成两个表面。
+   平台名称属于可操作项，不能依赖透明背景与画布混在一起。 */
+html.studio-theme-dark body .image-model-popover,
+html.studio-theme-dark body .canvas-agent-generation-model-menu {
+    background: #242426 !important;
+    border-color: #4a4a4f !important;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, .48) !important;
+}
+
+html.studio-theme-dark body .image-model-picker {
+    background: #242426;
+}
+
+html.studio-theme-dark body .image-model-picker-column {
+    background: #2c2c2f;
+}
+
+html.studio-theme-dark body .image-model-picker-column + .image-model-picker-column {
+    background: #242426;
+    border-left-color: #4a4a4f !important;
+}
+
+html.studio-theme-dark body .image-model-picker-label {
+    color: #a8a8ae !important;
+}
+
+html.studio-theme-dark body .image-model-option {
+    color: #d9d9de !important;
+    opacity: 1 !important;
+}
+
+html.studio-theme-dark body .image-model-option:hover,
+html.studio-theme-dark body .image-model-option:focus-visible {
+    background: #3a3a3e !important;
+    border-color: #57575d !important;
+    color: #ffffff !important;
+}
+
+html.studio-theme-dark body .image-model-option.active {
+    background: #454549 !important;
+    border-color: #5d5d64 !important;
+    color: #ffffff !important;
+    box-shadow: inset 3px 0 0 #f0f0f2 !important;
+}
+
+html.studio-theme-dark body .image-model-option.active::after {
+    background: #f0f0f2 !important;
+}
+
+html.studio-theme-dark body .image-model-empty {
+    color: #a8a8ae !important;
+}
+
+html.studio-theme-dark body .image-model-provider-list,
+html.studio-theme-dark body .image-model-options {
+    scrollbar-color: #6a6a71 transparent;
+}
+
+html.studio-theme-dark body .image-model-provider-list::-webkit-scrollbar-thumb,
+html.studio-theme-dark body .image-model-options::-webkit-scrollbar-thumb {
+    background: #6a6a71 !important;
+    background-clip: content-box !important;
+}
+
+html.studio-theme-dark body .image-model-provider-list::-webkit-scrollbar-thumb:hover,
+html.studio-theme-dark body .image-model-options::-webkit-scrollbar-thumb:hover {
+    background: #909098 !important;
+    background-clip: content-box !important;
+}
+
+/* 深色主题下，生成偏好里的文字、按钮和图标要与各自的表面分开。
+   这些控件同时受旧画布变量和 Fluent 变量影响，这里直接给出深色表面的
+   前景色，避免变量回退成接近背景的灰色。 */
+html.studio-theme-dark body .canvas-agent-generation-popover {
+    color: #f3f3f5 !important;
+    background: #242426 !important;
+    border-color: #4a4a4f !important;
+}
+
+html.studio-theme-dark body .canvas-agent-generation-popover > header > strong,
+html.studio-theme-dark body .canvas-agent-generation-popover > header > label,
+html.studio-theme-dark body .canvas-agent-generation-popover > header > button,
+html.studio-theme-dark body .canvas-agent-generation-popover > header > strong svg,
+html.studio-theme-dark body .canvas-agent-generation-popover > header > button svg {
+    color: #f4f4f6 !important;
+    opacity: 1 !important;
+}
+
+html.studio-theme-dark body .canvas-agent-generation-popover > header > label {
+    background: #303034 !important;
+    border-color: #57575e !important;
+}
+
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-mode-row > span,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-generation-label,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-generation-field-head > span,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-plan-row strong {
+    color: #d7d7dc !important;
+}
+
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-plan-row small,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-skill-quick-current,
+html.studio-theme-dark body .canvas-agent-generation-popover > p,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-custom-ratio-hint {
+    color: #b8b8c0 !important;
+}
+
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-mode-row > button,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-skill-link,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-media-row > button,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-resolution-grid > button,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-ratio-grid > button {
+    color: #f1f1f3 !important;
+    opacity: 1 !important;
+}
+
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-mode-row > button,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-skill-link {
+    background: #303034 !important;
+    border-color: #57575e !important;
+}
+
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-mode-row > button:hover,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-mode-row > button.active,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-skill-link:hover,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-skill-link.active {
+    color: #ffffff !important;
+    background: #45454a !important;
+    border-color: #777780 !important;
+}
+
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-media-row,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-resolution-grid {
+    background: #1f1f22 !important;
+    border-color: #4b4b52 !important;
+}
+
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-media-row > button:hover,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-media-row > button.active,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-resolution-grid > button:hover,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-resolution-grid > button.active,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-ratio-grid > button:hover,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-ratio-grid > button.active {
+    color: #ffffff !important;
+    background: #414146 !important;
+    border-color: #6e6e76 !important;
+}
+
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-ratio-grid > button {
+    background: #303034 !important;
+    border-color: #4f4f56 !important;
+}
+
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-mode-row svg,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-skill-link svg,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-media-row svg,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-ratio-grid svg,
+html.studio-theme-dark body .canvas-agent-generation-popover .canvas-agent-resolution-grid svg {
+    color: #f4f4f6 !important;
+    stroke: currentColor !important;
+    opacity: 1 !important;
+}
+
+html.studio-theme-dark body .canvas-agent-composer-model-control .canvas-agent-generation-model-trigger {
+    color: #f4f4f6 !important;
+    background: #2d2d30 !important;
+    border-color: #57575e !important;
+}
+
+html.studio-theme-dark body .canvas-agent-composer-model-control .canvas-agent-generation-model-trigger:hover,
+html.studio-theme-dark body .canvas-agent-composer-model-control.is-open .canvas-agent-generation-model-trigger {
+    color: #ffffff !important;
+    background: #3c3c42 !important;
+    border-color: #777780 !important;
+}
+
+html.studio-theme-dark body .canvas-agent-composer-model-control .canvas-agent-generation-model-icon {
+    background: #414146 !important;
+    color: #ffffff !important;
+}
+
+html.studio-theme-dark body .canvas-agent-composer-model-control .canvas-agent-generation-model-icon svg,
+html.studio-theme-dark body .canvas-agent-composer-model-control .canvas-agent-generation-model-chevron {
+    color: #f4f4f6 !important;
+    stroke: currentColor !important;
+    opacity: 1 !important;
+}
+
+html.studio-theme-dark body .canvas-agent-composer-model-control .canvas-agent-generation-model-copy strong {
+    color: #ffffff !important;
+}
+
+html.studio-theme-dark body .canvas-agent-composer-model-control .canvas-agent-generation-model-copy small {
+    color: #d0d0d6 !important;
+}
+
+html.studio-theme-dark body .canvas-agent-generation-model-menu .image-model-picker-label,
+html.studio-theme-dark body .canvas-agent-generation-model-menu .image-model-empty {
+    color: #b8b8c0 !important;
+}
+
+html.studio-theme-dark body .canvas-agent-generation-model-menu .image-model-option {
+    color: #f1f1f3 !important;
+}
+
 @media (max-width: 520px) {
     html[data-studio-skin] body .canvas-agent-generation-popover {
         width: calc(100vw - 22px) !important;

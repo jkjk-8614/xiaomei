@@ -137,7 +137,7 @@ test('Alt dragging a group image preserves the source and creates one independen
             const copy = nodes.find(node => !ids.includes(node.id));
             return {
                 nodeCount: nodes.length, images: source.images, rect: nodeRect(source),
-                copyImages: copy?.images, copyPosition: copy ? { x: copy.x, y: copy.y } : null,
+                copyId: copy?.id, copyImages: copy?.images, copyPosition: copy ? { x: copy.x, y: copy.y } : null,
                 connections: canvas.connections, undoCount: undoStack.length,
                 independent: copy?.images?.[0] !== source.images[0]
             };
@@ -151,7 +151,15 @@ test('Alt dragging a group image preserves the source and creates one independen
         }
         assert.ok(copied.copyPosition.x > 800);
         assert.equal(copied.independent, true);
-        assert.deepEqual(copied.connections, before.connections);
+        const copiedEdgeKeys = new Set(copied.connections.map(edge => `${edge.from}|${edge.to}|${edge.kind || 'flow'}|${edge.input_slot || edge.inputSlot || ''}`));
+        before.connections.forEach(edge => {
+            assert.ok(copiedEdgeKeys.has(`${edge.from}|${edge.to}|${edge.kind || 'flow'}|${edge.input_slot || edge.inputSlot || ''}`));
+        });
+        before.connections.forEach(edge => {
+            const from = edge.from === id ? copied.copyId : edge.from;
+            const to = edge.to === id ? copied.copyId : edge.to;
+            assert.ok(copiedEdgeKeys.has(`${from}|${to}|${edge.kind || 'flow'}|${edge.input_slot || edge.inputSlot || ''}`));
+        });
         assert.equal(copied.undoCount, 1);
         const restored = await page.evaluate(id => {
             performUndo();

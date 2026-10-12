@@ -2728,6 +2728,7 @@ function renderWorkflowManager(){
                     <button class="asset-btn" type="button" data-workflow-select-all ${items.length ? '' : 'disabled'}><i data-lucide="check-square"></i><span>全选</span></button>
                     <button class="asset-btn" type="button" data-workflow-clear-selection ${selectedWorkflowIds.size ? '' : 'disabled'}><i data-lucide="square"></i><span>清空</span></button>
                     <button class="asset-btn" type="button" data-workflow-export-selected ${selectedWorkflowIds.size ? '' : 'disabled'}><i data-lucide="download"></i><span>导出所选</span></button>
+                    <button class="asset-btn" type="button" data-workflow-export-desktop-selected ${selectedWorkflowIds.size ? '' : 'disabled'}><i data-lucide="folder-down"></i><span>导出所选到桌面</span></button>
                     <button class="asset-btn danger" type="button" data-workflow-delete-selected ${selectedWorkflowIds.size ? '' : 'disabled'}><i data-lucide="trash-2"></i><span>移入回收站</span></button>
                 </div>
             </div>
@@ -2791,7 +2792,8 @@ function renderWorkflowDetail(item){
             <div class="panel-title"><strong>工作流详情</strong><span>${escapeHtml(workflowKindLabel(item))}</span></div>
             <div class="panel-actions">
                 <button class="asset-btn primary" type="button" data-workflow-insert="${escapeAttr(item.id)}" title="插入小美画布"><i data-lucide="corner-down-left"></i><span>插入画布</span></button>
-                <button class="asset-icon-btn" type="button" data-workflow-download="${escapeAttr(item.id)}" title="导出工作流"><i data-lucide="download"></i></button>
+                <button class="asset-btn" type="button" data-workflow-export-desktop="${escapeAttr(item.id)}" title="保存到系统桌面"><i data-lucide="folder-down"></i><span>导出桌面</span></button>
+                <button class="asset-icon-btn" type="button" data-workflow-download="${escapeAttr(item.id)}" title="下载工作流"><i data-lucide="download"></i></button>
                 <button class="asset-icon-btn danger ${pendingDeleteAssetId === item.id ? 'detail-confirm' : ''}" type="button" data-workflow-delete="${escapeAttr(item.id)}" title="${pendingDeleteAssetId === item.id ? '再次点击确认移入回收站' : '移入回收站'}"><i data-lucide="trash-2"></i></button>
             </div>
         </div>
@@ -4260,23 +4262,41 @@ async function uploadWorkflowFiles(files){
     render();
     setStatus(`已上传 ${data.items?.length || 0} 个工作流`);
 }
-async function exportWorkflowItems(ids){
+function workflowDesktopApi(){
+    try { return window.electronAPI || window.parent?.electronAPI || window.top?.electronAPI || null; } catch(_) { return null; }
+}
+async function exportWorkflowItems(ids, options = {}){
     const items = (ids || []).map(id => findWorkflowItem(id)).filter(item => item?.url);
     if(!items.length) return;
-    if(items.length === 1){
-        const item = items[0];
-        const ext = String(item.url || '').toLowerCase().split('?')[0].endsWith('.json') ? '.json' : '.zip';
-        downloadUrl(item.url, `${item.name || 'workflow'}${ext}`);
-        setStatus('已导出工作流');
+    const item = items[0];
+    const ext = String(item.url || '').split(/[?#]/)[0].toLowerCase().endsWith('.json') ? '.json' : '.zip';
+    const filename = items.length === 1 ? `${String(item.name || 'workflow').replace(/\.(json|zip)$/i, '')}${ext}` : 'workflows.zip';
+    const desktopApi = options.desktop ? workflowDesktopApi() : null;
+    if(options.desktop && !desktopApi?.saveWorkflowToDesktop){
+        setStatus('请重启小美画布桌面端后导出到桌面；浏览器中可使用下载按钮');
         return;
     }
-    const res = await fetch('/api/canvas-assets/download', {
+    if(items.length === 1 && !options.desktop){
+        await downloadUrl(item.url, filename);
+        setStatus('已开始下载工作流');
+        return;
+    }
+    setStatus(items.length === 1 ? '正在读取工作流文件…' : `正在打包 ${items.length} 个工作流…`);
+    const res = items.length === 1 ? await fetch(item.url) : await fetch('/api/canvas-assets/download', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({filename:'workflows.zip', items:items.map(item => ({url:item.url, name:item.name || 'workflow'}))})
     });
     if(!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || '导出工作流失败');
     const blob = await res.blob();
+    if(options.desktop){
+        setStatus('请选择工作流保存位置');
+        const result = await desktopApi.saveWorkflowToDesktop({filename, bytes:await blob.arrayBuffer()});
+        if(result?.canceled){ setStatus('已取消导出'); return; }
+        if(!result?.ok) throw new Error(result?.message || '保存工作流失败，请重新导出');
+        setStatus(`已保存到 ${result.path}`);
+        return;
+    }
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = 'workflows.zip';
@@ -4284,7 +4304,7 @@ async function exportWorkflowItems(ids){
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(link.href), 1200);
-    setStatus(`已导出 ${items.length} 个工作流`);
+    setStatus(`已开始下载 ${items.length} 个工作流`);
 }
 const SMART_CANVAS_WORKFLOW_INBOX_KEY = 'smart_canvas_workflow_inbox_v1';
 function sendWorkflowToCanvas(id){
@@ -5484,6 +5504,7 @@ async function handleClick(event){
     if(target.closest?.('[data-workflow-select-all]')){ currentWorkflowItems().forEach(item => selectedWorkflowIds.add(item.id)); render(); return; }
     if(target.closest?.('[data-workflow-clear-selection]')){ selectedWorkflowIds.clear(); render(); return; }
     if(target.closest?.('[data-workflow-export-selected]')){ await exportWorkflowItems([...selectedWorkflowIds]); return; }
+    if(target.closest?.('[data-workflow-export-desktop-selected]')){ await exportWorkflowItems([...selectedWorkflowIds], {desktop:true}); return; }
     if(target.closest?.('[data-workflow-delete-selected]')){ await deleteSelectedWorkflows(); return; }
     if(target.closest?.('[data-workflow-upload]')){
         if(uploadInput) uploadInput.accept = '.json,.zip,application/json,application/zip,application/x-zip-compressed';
@@ -5494,6 +5515,8 @@ async function handleClick(event){
     if(workflowInsert){ sendWorkflowToCanvas(workflowInsert.dataset.workflowInsert || ''); return; }
     const workflowDownload = target.closest?.('[data-workflow-download]');
     if(workflowDownload){ await exportWorkflowItems([workflowDownload.dataset.workflowDownload || '']); return; }
+    const workflowDesktopExport = target.closest?.('[data-workflow-export-desktop]');
+    if(workflowDesktopExport){ await exportWorkflowItems([workflowDesktopExport.dataset.workflowExportDesktop || ''], {desktop:true}); return; }
     const workflowRename = target.closest?.('[data-workflow-rename]');
     if(workflowRename){ await renameWorkflowItem(workflowRename.dataset.workflowRename || ''); return; }
     const workflowDelete = target.closest?.('[data-workflow-delete]');

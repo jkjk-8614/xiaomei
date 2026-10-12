@@ -283,6 +283,7 @@ let desktopUpdateWindowProgress = null;
 let desktopUpdateStartupTimer = null;
 let desktopUpdateLastResult = null;
 let deepSeekHarnessUpdateCheckPromise = null;
+let deepSeekHarnessUpdatePromptPromise = null;
 let deepSeekHarnessUpdateOperationPromise = null;
 let deepSeekHarnessUpdateLastResult = null;
 
@@ -2078,16 +2079,29 @@ async function updateDeepSeekHarness(result) {
       });
       deepSeekHarnessUpdateLastResult = updated;
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('deepseek-harness:update-status', updated);
-      writeDeepSeekHarnessUpdateState({ dismissedCommit: '', updatedCommit: updated.commit || '', updatedAt: Date.now() });
+      if (updated.updated) {
+        writeDeepSeekHarnessUpdateState({ dismissedCommit: '', failedCommit: '', failedMessage: '', updatedCommit: updated.commit || '', updatedAt: Date.now() });
+      }
       if (deepSeekHarnessVisible) await refreshDeepSeekHarness();
       return updated;
     } catch (error) {
       if (deepSeekHarnessVisible) {
         try { await refreshDeepSeekHarness(); } catch {}
       }
-      const failed = { status: 'error', update_available: true, message: String(error?.message || error).slice(0, 400) };
+      const failed = { status: 'error', update_available: true, remote_commit: result?.remote_commit || '', message: String(error?.message || error) };
       deepSeekHarnessUpdateLastResult = failed;
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('deepseek-harness:update-status', failed);
+      writeDeepSeekHarnessUpdateState({ failedCommit: failed.remote_commit, failedAt: Date.now(), failedMessage: failed.message });
+      const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+      const options = {
+        type: 'error',
+        title: 'DeepSeek Harness · 更新失败',
+        message: 'DeepSeek Harness 更新未完成',
+        detail: `${failed.message}\n请根据错误原因处理后手动检查更新。同一上游版本不会在启动时重复提醒。`,
+        buttons: ['知道了'],
+        noLink: true,
+      };
+      if (owner) await dialog.showMessageBox(owner, options); else await dialog.showMessageBox(options);
       return failed;
     } finally {
       deepSeekHarnessUpdateOperationPromise = null;
@@ -2097,6 +2111,7 @@ async function updateDeepSeekHarness(result) {
 }
 
 async function checkDeepSeekHarnessUpdate({ manual = false } = {}) {
+  if (deepSeekHarnessUpdatePromptPromise) return deepSeekHarnessUpdatePromptPromise;
   if (deepSeekHarnessUpdateOperationPromise) return { status: 'updating', message: 'DeepSeek Harness 更新正在进行中' };
   const check = deepSeekHarnessUpdateCheckPromise || (deepSeekHarnessUpdateCheckPromise = deepSeekHarnessUpdater.check().finally(() => {
     deepSeekHarnessUpdateCheckPromise = null;
@@ -2108,6 +2123,12 @@ async function checkDeepSeekHarnessUpdate({ manual = false } = {}) {
     const state = readDeepSeekHarnessUpdateState();
     const dismissedRecently = state.dismissedCommit === result.remote_commit
       && Number(state.dismissedAt || 0) > Date.now() - 24 * 60 * 60 * 1000;
+    if (!manual && state.failedCommit === result.remote_commit) {
+      const failed = { ...result, status: 'error', message: state.failedMessage || '此版本上次更新失败，请手动检查更新后重试' };
+      deepSeekHarnessUpdateLastResult = failed;
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('deepseek-harness:update-status', failed);
+      return failed;
+    }
     if (!manual && dismissedRecently) return result;
     const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
     const options = {
@@ -2120,12 +2141,18 @@ async function checkDeepSeekHarnessUpdate({ manual = false } = {}) {
       cancelId: 1,
       noLink: true,
     };
-    const answer = owner ? await dialog.showMessageBox(owner, options) : await dialog.showMessageBox(options);
-    if (answer.response !== 0) {
-      writeDeepSeekHarnessUpdateState({ dismissedCommit: result.remote_commit, dismissedAt: Date.now() });
-      return { ...result, dismissed: true, message: '用户选择稍后更新' };
+    // Several checks can finish before the first confirmation is answered.
+    if (!deepSeekHarnessUpdatePromptPromise) {
+      deepSeekHarnessUpdatePromptPromise = (async () => {
+        const answer = owner ? await dialog.showMessageBox(owner, options) : await dialog.showMessageBox(options);
+        if (answer.response !== 0) {
+          writeDeepSeekHarnessUpdateState({ dismissedCommit: result.remote_commit, dismissedAt: Date.now() });
+          return { ...result, dismissed: true, message: '用户选择稍后更新' };
+        }
+        return updateDeepSeekHarness(result);
+      })().finally(() => { deepSeekHarnessUpdatePromptPromise = null; });
     }
-    return updateDeepSeekHarness(result);
+    return deepSeekHarnessUpdatePromptPromise;
   }
   if (manual && result.status !== 'current') {
     const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
@@ -6585,6 +6612,48 @@ ipcMain.handle('clipboard:write-image', (event, payload) => {
   clipboard.writeImage(image);
   return { ok: true };
 });
+async function saveWorkflowToDesktop(event, payload = {}) {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  if (!mainWindow || mainWindow.isDestroyed() || owner !== mainWindow) {
+    return { ok: false, message: '请在小美画布主窗口导出工作流' };
+  }
+  try {
+    const senderUrl = event.senderFrame?.url || event.sender?.getURL?.() || '';
+    if (new URL(senderUrl).origin !== LOCAL_ORIGIN) {
+      return { ok: false, message: '请在小美画布工作流库中导出' };
+    }
+    const filename = path.basename(String(payload.filename || '').replace(/\\/g, '/'))
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/g, '');
+    const extension = path.extname(filename).toLowerCase();
+    if (!['.json', '.zip'].includes(extension)) {
+      return { ok: false, message: '工作流只能导出为 JSON 或 ZIP 文件' };
+    }
+    const bytes = payload.bytes;
+    const buffer = bytes instanceof ArrayBuffer ? Buffer.from(new Uint8Array(bytes))
+      : ArrayBuffer.isView(bytes) ? Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength) : null;
+    if (!buffer?.length) return { ok: false, message: '工作流文件为空，请重新上传后导出' };
+    const result = await dialog.showSaveDialog(owner, {
+      title: '导出工作流到桌面',
+      defaultPath: path.join(app.getPath('desktop'), filename),
+      filters: [{ name: extension === '.json' ? 'JSON 工作流' : 'ZIP 工作流包', extensions: [extension.slice(1)] }],
+    });
+    if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+    if (path.extname(result.filePath).toLowerCase() !== extension) {
+      return { ok: false, message: `请保留 ${extension} 文件后缀后重新导出` };
+    }
+    const temporaryPath = path.join(path.dirname(result.filePath), `.${crypto.randomUUID()}.tmp`);
+    try {
+      await fs.promises.writeFile(temporaryPath, buffer, { flag: 'wx' });
+      await fs.promises.rename(temporaryPath, result.filePath);
+    } finally {
+      await fs.promises.unlink(temporaryPath).catch(() => {});
+    }
+    return { ok: true, path: result.filePath };
+  } catch (error) {
+    return { ok: false, message: `保存工作流失败：${error?.message || '请检查目标文件夹是否可写后重试'}` };
+  }
+}
+ipcMain.handle('workflow:save-to-desktop', saveWorkflowToDesktop);
 ipcMain.handle('app:open-external', async (event, url) => {
   const owner = BrowserWindow.fromWebContents(event.sender);
   if (!owner || owner !== mainWindow) return { ok: false, message: '无法打开外部网页' };
@@ -6751,4 +6820,3 @@ app.on('before-quit', () => {
     terminateDeepSeekHarnessProcess(deepSeekHarnessProcess);
   }
 });
-

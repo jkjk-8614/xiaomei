@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('app:update-status', listener);
   },
   writeImageToClipboard: (bytes) => ipcRenderer.invoke('clipboard:write-image', bytes),
+  saveWorkflowToDesktop: (payload) => ipcRenderer.invoke('workflow:save-to-desktop', payload),
   showGenerationNotification: (payload) => ipcRenderer.invoke('generation:notify', payload || {}),
   setDeepSeekHarnessVisible: (visible, bounds) => ipcRenderer.invoke('deepseek-harness:visible', Boolean(visible), bounds || null),
   refreshDeepSeekHarness: () => ipcRenderer.invoke('deepseek-harness:refresh'),
