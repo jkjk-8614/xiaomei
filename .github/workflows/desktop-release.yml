@@ -249,6 +249,20 @@ jobs:
             release-assets/小美画布-v${{ steps.manifest.outputs.display_version }}-macOS-x64.zip
             release-assets/小美画布-v${{ steps.manifest.outputs.display_version }}-macOS-arm64.zip
             release-assets/update.json
+      - name: Label installer assets in Chinese
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          DISPLAY_VERSION: ${{ steps.manifest.outputs.display_version }}
+        run: |
+          for suffix in Windows-x64.exe macOS-x64.zip macOS-arm64.zip; do
+            asset_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
+              --jq ".assets[] | select(.name | endswith(\"-$suffix\")) | .id")
+            [ -n "$asset_id" ] || { echo "Missing release asset: $suffix"; exit 1; }
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
+              -f label="小美画布-v${DISPLAY_VERSION}-${suffix}" > /dev/null
+          done
       - name: Keep only the newly published release
         shell: bash
         env:
