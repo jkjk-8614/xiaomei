@@ -20,7 +20,8 @@ files:
   - tools/**
   - workflows/**
   - packages/**
-  - vendor/deepseek-harness/**
+  - bundled/deepseek-harness/**
+  - bundled/node/**
   - bundled/win-api/**
   - bundled/mac-api/**
   - python/**

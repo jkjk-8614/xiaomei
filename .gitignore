@@ -30,7 +30,7 @@ assets/prompt_libraries.json
 history.json
 logs/
 output/
-storage/
+/storage/
 tmp/
 *.log
 

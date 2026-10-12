@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13.16'
@@ -40,6 +40,12 @@ jobs:
       - name: Install desktop build tools
         shell: pwsh
         run: npm install --no-audit --no-fund --ignore-scripts
+      - name: Build DeepSeek Harness runtime
+        shell: pwsh
+        run: |
+          npm install --global pnpm@11.7.0
+          node scripts/prepare-harness-runtime.mjs
+          node scripts/smoke-harness-runtime.mjs
       - name: Build Windows installer
         shell: pwsh
         run: npx electron-builder --win nsis --x64 --publish never
@@ -53,6 +59,11 @@ jobs:
           if (-not (Test-Path -LiteralPath $runtime -PathType Leaf)) { throw 'Packaged Windows Python runtime is missing' }
           if (-not (Test-Path -LiteralPath $entry -PathType Leaf)) { throw 'Packaged Windows API entry point is missing' }
           if (Test-Path -LiteralPath $oldBackend) { throw 'The packaged app still contains the old custom API loader' }
+          foreach ($relative in 'bundled/node/node.exe','bundled/deepseek-harness/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js','bundled/deepseek-harness/node_modules/@deepseek-ai/dsh-base/package.json','bundled/deepseek-harness/node_modules/@deepseek-ai/dsh-web-app/package.json') {
+            if (-not (Test-Path -LiteralPath (Join-Path $appRoot $relative) -PathType Leaf)) { throw "Packaged Harness file is missing: $relative" }
+          }
+          node scripts/smoke-harness-runtime.mjs (Join-Path $appRoot 'bundled/deepseek-harness') (Join-Path $appRoot 'bundled/node/node.exe')
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged Harness Host failed to start' }
           if (-not (Test-Path -LiteralPath (Join-Path $appRoot 'bundled/win-api/python313.zip') -PathType Leaf)) { throw 'Packaged Python standard library is missing' }
           $signature = Get-AuthenticodeSignature -LiteralPath $runtime
           if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Python Software Foundation') { throw 'Packaged Python signature is invalid' }
@@ -104,16 +115,23 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-windows
-          path: dist-package/*
+          path: dist-package/小美画布-v*-Windows-x64.exe
           if-no-files-found: error
 
   build-macos:
-    runs-on: macos-14
+    strategy:
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: x64
+          - runner: macos-15
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -129,8 +147,13 @@ jobs:
           pyinstaller --onefile --name xiaomei-api main.py --distpath bundled/mac-api --workpath build/mac-api-work --specpath build/mac-api-spec
       - name: Install desktop build tools
         run: npm install --no-audit --no-fund --ignore-scripts
+      - name: Build DeepSeek Harness runtime
+        run: |
+          npm install --global pnpm@11.7.0
+          node scripts/prepare-harness-runtime.mjs
+          node scripts/smoke-harness-runtime.mjs
       - name: Build macOS packages
-        run: npx electron-builder --mac zip --x64 --arm64 --publish never
+        run: npx electron-builder --mac zip --${{ matrix.arch }} --publish never
       - name: Verify packaged macOS backend
         run: |
           python - <<'PY'
@@ -138,19 +161,25 @@ jobs:
           from zipfile import ZipFile
           for package in Path('dist-package').glob('*-macOS-*.zip'):
               with ZipFile(package) as archive:
-                  matches = [info for info in archive.infolist() if info.filename.endswith('/Contents/Resources/app/bundled/mac-api/xiaomei-api') and info.file_size > 0]
-                  if not matches:
-                      raise RuntimeError(f'Packaged macOS backend is missing: {package.name}')
+                  for relative in ('bundled/mac-api/xiaomei-api', 'bundled/node/bin/node', 'bundled/deepseek-harness/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js', 'bundled/deepseek-harness/node_modules/@deepseek-ai/dsh-base/package.json', 'bundled/deepseek-harness/node_modules/@deepseek-ai/dsh-web-app/package.json'):
+                      matches = [info for info in archive.infolist() if info.filename.endswith('/Contents/Resources/app/' + relative) and info.file_size > 0]
+                      if not matches:
+                          raise RuntimeError(f'Packaged macOS file is missing: {relative} in {package.name}')
           PY
+          mkdir -p "$RUNNER_TEMP/xiaomei-harness-package-smoke"
+          unzip -q dist-package/*-macOS-${{ matrix.arch }}.zip -d "$RUNNER_TEMP/xiaomei-harness-package-smoke"
+          NODE=$(find "$RUNNER_TEMP/xiaomei-harness-package-smoke" -path '*/Contents/Resources/app/bundled/node/bin/node' -type f -print -quit)
+          [ -n "$NODE" ] || { echo 'Packaged Harness Node is missing'; exit 1; }
+          RUNTIME="${NODE%/bundled/node/bin/node}/bundled/deepseek-harness"
+          node scripts/smoke-harness-runtime.mjs "$RUNTIME" "$NODE"
       - name: Rename macOS packages for users
         run: |
           VERSION=$(node -p "const pkg=require('./package.json'); pkg.displayVersion || pkg.version")
-          mv dist-package/*-macOS-x64.zip "dist-package/小美画布-v${VERSION}-macOS-x64.zip"
-          mv dist-package/*-macOS-arm64.zip "dist-package/小美画布-v${VERSION}-macOS-arm64.zip"
+          mv dist-package/*-macOS-${{ matrix.arch }}.zip "dist-package/小美画布-v${VERSION}-macOS-${{ matrix.arch }}.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: desktop-macos
-          path: dist-package/*
+          name: desktop-macos-${{ matrix.arch }}
+          path: dist-package/小美画布-v*-macOS-${{ matrix.arch }}.zip
           if-no-files-found: error
 
   publish:

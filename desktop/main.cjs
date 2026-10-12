@@ -70,7 +70,11 @@ try {
 const APP_ICON_PATH = path.join(PROJECT_ROOT, 'static', 'images', 'app-icon.ico');
 let API_PORT = CONFIGURED_API_PORT;
 let LOCAL_ORIGIN = `http://127.0.0.1:${API_PORT}`;
-const DEEPSEEK_HARNESS_ROOT = path.join(PROJECT_ROOT, 'vendor', 'deepseek-harness');
+const DEEPSEEK_HARNESS_ROOT = fs.existsSync(path.join(PROJECT_ROOT, 'bundled', 'deepseek-harness', 'node_modules', '@deepseek-ai', 'dsh-desktop-host', 'lib', 'index.js'))
+  ? path.join(PROJECT_ROOT, 'bundled', 'deepseek-harness')
+  : path.join(PROJECT_ROOT, 'vendor', 'deepseek-harness');
+const PACKAGED_DEEPSEEK_HARNESS = path.basename(DEEPSEEK_HARNESS_ROOT) === 'deepseek-harness'
+  && path.basename(path.dirname(DEEPSEEK_HARNESS_ROOT)) === 'bundled';
 const deepSeekHarnessUpdater = new DeepSeekHarnessUpdater({
   root: DEEPSEEK_HARNESS_ROOT,
   dataRoot: path.join(TEST_RUNTIME_DATA_ROOT, '.xiaomei-data'),
@@ -2111,6 +2115,16 @@ async function updateDeepSeekHarness(result) {
 }
 
 async function checkDeepSeekHarnessUpdate({ manual = false } = {}) {
+  if (PACKAGED_DEEPSEEK_HARNESS) {
+    const result = { status: 'bundled', update_available: false, message: 'DeepSeek Harness 随小美画布安装包更新，请检查小美画布的新版本。' };
+    deepSeekHarnessUpdateLastResult = result;
+    if (manual) {
+      const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+      const options = { type: 'info', title: 'DeepSeek Harness · 检查更新', message: result.message, buttons: ['知道了'], noLink: true };
+      if (owner) await dialog.showMessageBox(owner, options); else await dialog.showMessageBox(options);
+    }
+    return result;
+  }
   if (deepSeekHarnessUpdatePromptPromise) return deepSeekHarnessUpdatePromptPromise;
   if (deepSeekHarnessUpdateOperationPromise) return { status: 'updating', message: 'DeepSeek Harness 更新正在进行中' };
   const check = deepSeekHarnessUpdateCheckPromise || (deepSeekHarnessUpdateCheckPromise = deepSeekHarnessUpdater.check().finally(() => {
@@ -3214,14 +3228,18 @@ function ensureDeepSeekHarnessProfile() {
   if (!fs.existsSync(manifestPath)) {
     fs.writeFileSync(manifestPath, JSON.stringify({ name: 'xiaomei-dsh-desktop-profile', private: true, dependencies: {}, dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'] } } }, null, 2) + '\n', 'utf8');
   }
-  const dshAnchor = path.join(DEEPSEEK_HARNESS_ROOT, 'apps', 'cli', 'node_modules', '@deepseek-ai', 'dsh');
-  if (!fs.existsSync(dshAnchor)) { try { fs.symlinkSync(path.join(DEEPSEEK_HARNESS_ROOT, 'apps', 'cli'), dshAnchor, 'junction'); } catch {} }
+  const dshAnchor = PACKAGED_DEEPSEEK_HARNESS
+    ? path.join(DEEPSEEK_HARNESS_ROOT, 'node_modules', '@deepseek-ai', 'dsh')
+    : path.join(DEEPSEEK_HARNESS_ROOT, 'apps', 'cli', 'node_modules', '@deepseek-ai', 'dsh');
+  if (!PACKAGED_DEEPSEEK_HARNESS && !fs.existsSync(dshAnchor)) { try { fs.symlinkSync(path.join(DEEPSEEK_HARNESS_ROOT, 'apps', 'cli'), dshAnchor, 'junction'); } catch {} }
   const profileModules = path.join(profile, 'node_modules', '@deepseek-ai');
   fs.mkdirSync(profileModules, { recursive: true });
   for (const name of ['dsh-base', 'dsh-web-app', 'dsh-skill-filesystem', 'dsh-session-persistence-jsonl']) {
     const target = path.join(profileModules, name);
     if (!fs.existsSync(target)) {
-      const source = path.join(DEEPSEEK_HARNESS_ROOT, 'apps', 'cli', 'node_modules', '@deepseek-ai', name);
+      const source = PACKAGED_DEEPSEEK_HARNESS
+        ? path.join(DEEPSEEK_HARNESS_ROOT, 'node_modules', '@deepseek-ai', name)
+        : path.join(DEEPSEEK_HARNESS_ROOT, 'apps', 'cli', 'node_modules', '@deepseek-ai', name);
       if (fs.existsSync(source)) { try { fs.symlinkSync(source, target, 'junction'); } catch {} }
     }
   }
@@ -3319,9 +3337,11 @@ function ensureDeepSeekHarnessProfile() {
   const officeSkills = path.join(home, 'office-skills');
   fs.mkdirSync(path.join(primaryRuntime, 'dependencies', 'node', 'bin'), { recursive: true });
   fs.mkdirSync(path.join(officeSkills, 'scripts'), { recursive: true });
-  const packagedOfficeAssets = path.join(DEEPSEEK_HARNESS_ROOT, 'packages', 'skill', 'skill-office', 'assets');
+  const packagedOfficeAssets = PACKAGED_DEEPSEEK_HARNESS
+    ? path.join(DEEPSEEK_HARNESS_ROOT, 'node_modules', '@deepseek-ai', 'dsh-skill-office', 'assets')
+    : path.join(DEEPSEEK_HARNESS_ROOT, 'packages', 'skill', 'skill-office', 'assets');
   if (fs.existsSync(packagedOfficeAssets)) {
-    try { fs.cpSync(packagedOfficeAssets, officeSkills, { recursive: true, force: false, errorOnExist: false }); } catch {}
+    try { fs.cpSync(packagedOfficeAssets, officeSkills, { recursive: true, force: true }); } catch {}
   }
   const nodeStub = path.join(primaryRuntime, 'dependencies', 'node', 'bin', process.platform === 'win32' ? 'node.exe' : 'node');
   const officeCheck = path.join(officeSkills, 'scripts', 'check_office.py');
@@ -3483,10 +3503,12 @@ async function startDeepSeekHarness() {
   // 进程，也避免多个小美画布实例互相阻塞。
   deepSeekHarnessPort = await findFreeApiPort(DEEPSEEK_HARNESS_PORT_BASE);
   deepSeekHarnessReady = new Promise((resolve, reject) => {
-    const entry = path.join(DEEPSEEK_HARNESS_ROOT, 'apps', 'desktop-host', 'lib', 'index.js');
+    const entry = PACKAGED_DEEPSEEK_HARNESS
+      ? path.join(DEEPSEEK_HARNESS_ROOT, 'node_modules', '@deepseek-ai', 'dsh-desktop-host', 'lib', 'index.js')
+      : path.join(DEEPSEEK_HARNESS_ROOT, 'apps', 'desktop-host', 'lib', 'index.js');
     // The CLI workspace contains the complete runtime closure (base/web/skill/session
     // bundles). The Host entry itself remains the official desktop-host build.
-    const runtimeDir = path.join(DEEPSEEK_HARNESS_ROOT, 'apps', 'cli');
+    const runtimeDir = PACKAGED_DEEPSEEK_HARNESS ? DEEPSEEK_HARNESS_ROOT : path.join(DEEPSEEK_HARNESS_ROOT, 'apps', 'cli');
     if (!fs.existsSync(entry)) { reject(new Error('DeepSeek Harness Desktop Host 构建产物不存在')); return; }
     const { home, profile, primaryRuntime, providerEnv, fingerprint } = profileState;
     // API 设置可以在小美画布运行期间更新。Harness 的环境变量在进程启动时
@@ -6584,7 +6606,9 @@ ipcMain.handle('deepseek-harness:check-update', async (event) => {
 ipcMain.handle('deepseek-harness:update', async (event) => {
   const owner = BrowserWindow.fromWebContents(event.sender);
   if (!owner || owner !== mainWindow) return { status: 'denied', message: '只能从小美画布主窗口更新' };
-  const result = await deepSeekHarnessUpdater.check();
+  const result = PACKAGED_DEEPSEEK_HARNESS
+    ? { status: 'bundled', update_available: false, message: 'DeepSeek Harness 随小美画布安装包更新，请检查小美画布的新版本。' }
+    : await deepSeekHarnessUpdater.check();
   if (!result.update_available) return result;
   return updateDeepSeekHarness(result);
 });

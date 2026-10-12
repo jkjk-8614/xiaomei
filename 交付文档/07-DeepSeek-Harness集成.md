@@ -23,9 +23,13 @@ Harness 的 Skill 搜索目录指向小美画布的 `data/agent_skills`，会话
 在小美画布 API 设置中保存平台、模型或密钥后，桌面端会向已打开的 Harness 发送刷新请求；配置指纹
 发生变化时自动重启官方 Host 并重新加载当前会话页面，不需要重新部署模型或重新填写 Key。
 
-## 上游更新同步
+## 更新方式
 
-桌面端启动后会检查 `vendor/deepseek-harness` 的官方 `master` 分支。发现上游提交更新时会弹出确认，
+从 GitHub Release 安装的软件使用 `bundled/deepseek-harness` 中已构建的 Desktop Host、Web UI 和依赖，
+并使用安装包自带的 Node。Harness 随小美画布安装包一起更新；在软件内检查 Harness 更新时会提示检查小美画布的新版本。
+发布构建由 `scripts/prepare-harness-runtime.mjs` 准备运行目录，`scripts/smoke-harness-runtime.mjs` 验证 Host 可以启动。
+
+从源码运行时，桌面端会检查 `vendor/deepseek-harness` 的官方 `master` 分支。发现上游提交更新时会弹出确认，
 不会静默替换正在运行的 Harness。选择“立即更新”后，程序会依次：
 
 1. 停止当前 Harness Host，保存小美画布适配补丁到 `.xiaomei-data/deepseek-harness-updates/`；
