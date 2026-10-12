@@ -1965,7 +1965,7 @@ function startDesktopUpdate(result) {
   desktopUpdateLaunchInProgress = false;
   desktopUpdateWindowState = { state: 'downloading', version: result.version };
   desktopUpdateWindowProgress = null;
-  showDesktopUpdateWindow(APP_DISPLAY_VERSION);
+  showDesktopUpdateWindow(result.displayVersion || result.version);
   desktopUpdateOperationPromise = (async () => {
     try {
       setDesktopUpdateWindowState('downloading', { version: result.version });
@@ -2019,7 +2019,7 @@ async function checkDesktopUpdate({ manual = false } = {}) {
   const check = desktopUpdateCheckPromise || (desktopUpdateCheckPromise = desktopUpdater.check().finally(() => {
     desktopUpdateCheckPromise = null;
   }));
-  const result = { ...await check, currentVersion: app.getVersion(), displayVersion: APP_DISPLAY_VERSION };
+  const result = { ...await check, currentVersion: app.getVersion(), currentDisplayVersion: APP_DISPLAY_VERSION };
   desktopUpdateLastResult = result;
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('app:update-status', result);

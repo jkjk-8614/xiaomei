@@ -185,6 +185,17 @@ jobs:
             --build-revision "$GITHUB_RUN_NUMBER" \
             --tag "$RELEASE_TAG" \
             --repository "$GITHUB_REPOSITORY"
+      - name: Remove assets from an earlier build of this tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            while IFS= read -r asset; do
+              gh release delete-asset "$RELEASE_TAG" "$asset" --yes
+            done < <(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')
+          fi
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
