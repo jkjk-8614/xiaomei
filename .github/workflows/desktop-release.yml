@@ -120,6 +120,7 @@ jobs:
 
   build-macos:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - runner: macos-15-intel
@@ -142,8 +143,14 @@ jobs:
       - name: Build bundled macOS API runtime
         run: |
           python -m pip install --upgrade pip
-          grep -v '^onnxruntime-gpu' requirements.txt > /tmp/requirements-macos.txt
-          python -m pip install --no-cache-dir -r /tmp/requirements-macos.txt onnxruntime pyinstaller
+          if [ "$(uname -m)" = x86_64 ]; then
+            # PaddlePaddle 3.2.2 only publishes macOS arm64 wheels.
+            grep -Ev '^(onnxruntime|paddleocr|paddlepaddle)' requirements.txt > /tmp/requirements-macos.txt
+            python -m pip install --no-cache-dir -r /tmp/requirements-macos.txt 'onnxruntime==1.23.2' pyinstaller
+          else
+            grep -v '^onnxruntime-gpu' requirements.txt > /tmp/requirements-macos.txt
+            python -m pip install --no-cache-dir -r /tmp/requirements-macos.txt onnxruntime pyinstaller
+          fi
           pyinstaller --onefile --name xiaomei-api main.py --distpath bundled/mac-api --workpath build/mac-api-work --specpath build/mac-api-spec
       - name: Install desktop build tools
         run: npm install --no-audit --no-fund --ignore-scripts

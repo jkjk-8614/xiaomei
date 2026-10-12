@@ -31922,6 +31922,12 @@ def _paddle_ocr_missing_packages():
     return missing
 
 
+def _paddle_ocr_unsupported_message():
+    if sys.platform == "darwin" and platform.machine().lower() in ("x86_64", "amd64"):
+        return "当前 PaddlePaddle 版本没有 macOS Intel 安装包，本地 OCR 暂不可用。"
+    return ""
+
+
 def _run_paddle_ocr_installer(command, log_path):
     """Install OCR dependencies in a child process while keeping the API responsive."""
     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
@@ -31977,6 +31983,10 @@ async def _finish_paddle_ocr_install(command, log_path):
 def _start_paddle_ocr_install():
     """Start one background pip install and return its public state."""
     global _PADDLE_OCR_INSTALL_TASK
+    unsupported = _paddle_ocr_unsupported_message()
+    if unsupported:
+        _PADDLE_OCR_INSTALL_STATE.update(status="unsupported", message=unsupported)
+        return _PADDLE_OCR_INSTALL_STATE
     if _PADDLE_OCR_INSTALL_TASK and not _PADDLE_OCR_INSTALL_TASK.done():
         return _PADDLE_OCR_INSTALL_STATE
     missing = _paddle_ocr_missing_packages()
@@ -32125,11 +32135,13 @@ def _paddle_ocr_result_items(content: bytes):
 @app.get("/api/local-ocr/status")
 async def local_ocr_status():
     missing = _paddle_ocr_missing_packages()
+    unsupported = _paddle_ocr_unsupported_message()
     return {
-        "installed": not missing,
+        "installed": not missing and not unsupported,
+        "supported": not unsupported,
         "ready": _PADDLE_OCR_ENGINE is not None,
         "missing": missing,
-        "error": _PADDLE_OCR_ERROR,
+        "error": unsupported or _PADDLE_OCR_ERROR,
         "cache_home": PADDLE_OCR_CACHE_HOME,
         "install": dict(_PADDLE_OCR_INSTALL_STATE),
     }
@@ -32139,11 +32151,14 @@ async def local_ocr_status():
 async def local_ocr_install(request: Request):
     _local_ocr_install_require_local(request)
     state = _start_paddle_ocr_install()
-    return {**state, "supported": True}
+    return {**state, "supported": not bool(_paddle_ocr_unsupported_message())}
 
 
 @app.post("/api/local-ocr")
 async def local_ocr(payload: LocalOCRRequest):
+    unsupported = _paddle_ocr_unsupported_message()
+    if unsupported:
+        raise HTTPException(status_code=503, detail=unsupported)
     value = str(payload.data or "").strip()
     if not value:
         raise HTTPException(status_code=400, detail="没有收到图片")
