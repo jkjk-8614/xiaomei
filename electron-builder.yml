@@ -72,8 +72,8 @@ files:
   - "!**/global_config.json"
   - "!**/.xiaomei-data{,/**}"
   - "!**/.ui-patch-backup{,/**}"
-  - "!**/data{,/**}"
-  - "!**/assets{,/**}"
+  - "!data{,/**}"
+  - "!assets{,/**}"
   - "!**/*.log"
   - "!packages/*.whl"
   - API/.env.example
