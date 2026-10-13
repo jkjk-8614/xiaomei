@@ -10,6 +10,7 @@ const crypto = require('node:crypto');
 const { DesktopUpdater } = require('./updater.cjs');
 const { DeepSeekHarnessUpdater } = require('./deepseek-updater.cjs');
 const { installWindowLifecycle } = require('./window-lifecycle.cjs');
+const { installDesktopTray } = require('./tray.cjs');
 const {
   MODULE_TARGETS: COMMERCE_MODULE_TARGETS,
   createCommerceNetworkCapture,
@@ -68,6 +69,7 @@ try {
 } catch {}
 
 const APP_ICON_PATH = path.join(PROJECT_ROOT, 'static', 'images', 'app-icon.ico');
+let desktopTray = null;
 let API_PORT = CONFIGURED_API_PORT;
 let LOCAL_ORIGIN = `http://127.0.0.1:${API_PORT}`;
 const DEEPSEEK_HARNESS_ROOT = fs.existsSync(path.join(PROJECT_ROOT, 'bundled', 'deepseek-harness', 'node_modules', '@deepseek-ai', 'dsh-desktop-host', 'lib', 'index.js'))
@@ -6503,11 +6505,17 @@ function createWindow() {
     productViews.clear();
     productView = null;
     activeProductTabId = '';
+    desktopTray = null;
     mainWindow = null;
   });
+  try {
+    desktopTray = installDesktopTray(mainWindow, lifecycle, APP_ICON_PATH, APP_NAME);
+  } catch (error) {
+    console.warn('无法创建小美画布托盘：', error?.message || error);
+  }
   let mainWindowPresented = false;
   const revealMainWindow = () => {
-    if (lifecycle.isClosing()) return;
+    if (lifecycle.isClosing() || desktopTray?.isHidden()) return;
     if (mainWindow && !mainWindow.isDestroyed()) {
       try { if (mainWindow.isMinimized()) mainWindow.restore(); } catch {}
       if (!mainWindowPresented) {
@@ -6540,7 +6548,7 @@ function createWindow() {
     scheduleCommerceSurfaceResync();
   });
   // Electron 的顶层页面必须是完整的小美画布；商品分析台通过 iframe 作为其中一个工作区加载。
-  mainWindow.loadURL(`${LOCAL_ORIGIN}/static/index.html?page=${encodeURIComponent(START_PAGE)}&v=2026.10.08.skills-remove-old-chat.2`);
+  mainWindow.loadURL(`${LOCAL_ORIGIN}/static/index.html?page=${encodeURIComponent(START_PAGE)}&v=2026.10.13.desktop-tray.1`);
 }
 
 app.whenReady().then(async () => {
@@ -6554,7 +6562,10 @@ app.whenReady().then(async () => {
     createWindow();
     scheduleDesktopUpdateCheck();
     scheduleDeepSeekHarnessUpdateCheck();
-    app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+    app.on('activate', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) desktopTray?.show();
+      else if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
   } catch (error) {
     dialog.showErrorBox(APP_NAME, `桌面端启动失败：${error?.message || error}`);
     app.quit();
@@ -6572,6 +6583,14 @@ ipcMain.on('canvas-share:close', (event) => {
   owner.close();
 });
 ipcMain.handle('generation:notify', (event, payload) => showGenerationNotification(event.sender, payload || {}));
+ipcMain.handle('app:hide-to-tray', (event) => {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  if (!owner || owner !== mainWindow || !event.senderFrame?.url?.startsWith(`${LOCAL_ORIGIN}/`)) {
+    return { ok: false, message: '只能从小美画布主窗口隐藏到托盘。' };
+  }
+  if (!desktopTray) return { ok: false, message: '托盘图标未能创建，请退出并重新启动小美画布。' };
+  return desktopTray.hide();
+});
 ipcMain.handle('app:check-update', async (event, options = {}) => {
   const owner = BrowserWindow.fromWebContents(event.sender);
   if (!owner || owner !== mainWindow) return { status: 'denied', message: '只能从小美画布主窗口检查更新' };
@@ -6831,7 +6850,8 @@ ipcMain.handle('commerce:status', () => {
 });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('before-quit', () => {
+// 页面可取消退出；实际退出时再停止服务，避免取消后后台任务被中断。
+app.on('will-quit', () => {
   if (!desktopUpdateLaunchInProgress) {
     try { desktopUpdateAbortController?.abort(); } catch {}
   }

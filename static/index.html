@@ -1071,7 +1071,7 @@
             transition: max-height .28s var(--fluid-ease), opacity .18s ease;
         }
         .settings-fold-group:not(.is-collapsed) {
-            max-height: 176px;
+            max-height: 220px;
             opacity: 1;
             pointer-events: auto;
         }
@@ -1774,7 +1774,7 @@
     </style>
     <link rel="stylesheet" href="/static/css/workspace-polish.css?v=2026.10.13.1789456340">
     <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.13.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.13.1791851364">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.13.1791859157">
     <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.13.1790178173"></script>
 </head>
 
@@ -1872,6 +1872,12 @@
                     </svg>
                 </button>
                 <div class="settings-fold-group" id="settings-fold-group">
+                    <button class="side-pill" id="desktop-hide-to-tray" onclick="hideDesktopToTray()" type="button" title="隐藏窗口，后台任务继续运行；点击托盘图标恢复" aria-label="隐藏到托盘" style="display:none">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 3v12m-4-4 4 4 4-4"></path><path d="M4 15v5h16v-5"></path>
+                        </svg>
+                        <span class="side-pill-text">隐藏到托盘</span>
+                    </button>
                     <button class="side-pill" onclick="openAssetManagerSettings(this)" type="button" title="资产管理设置">
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M12 2v4"></path><path d="M12 18v4"></path><path d="m4.93 4.93 2.83 2.83"></path><path d="m16.24 16.24 2.83 2.83"></path><path d="M2 12h4"></path><path d="M18 12h4"></path><path d="m4.93 19.07 2.83-2.83"></path><path d="m16.24 7.76 2.83-2.83"></path><circle cx="12" cy="12" r="3"></circle>
@@ -1932,12 +1938,12 @@
 
                     <iframe id="frame-online" data-src="/static/comfyui.html?v=2026.10.13" class="active" scrolling="yes"></iframe>
         <div id="frame-gpt-chat" class="deepseek-route-placeholder" aria-hidden="true"></div>
-        <iframe id="frame-commerce" data-src="/static/commerce.html?v=2026.10.13.1791852323" scrolling="yes"></iframe>
-                <iframe id="frame-commerce-analysis" data-src="/static/commerce-analysis.html?v=2026.10.13.1791852323" scrolling="yes"></iframe>
-        <iframe id="frame-product-3d" data-src="/static/product-3d.html?v=2026.10.13.1791852323" scrolling="yes"></iframe>
-            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=2026.10.13.1791852323" scrolling="yes"></iframe>
+        <iframe id="frame-commerce" data-src="/static/commerce.html?v=2026.10.13.1791859932" scrolling="yes"></iframe>
+                <iframe id="frame-commerce-analysis" data-src="/static/commerce-analysis.html?v=2026.10.13.1791859932" scrolling="yes"></iframe>
+        <iframe id="frame-product-3d" data-src="/static/product-3d.html?v=2026.10.13.1791859932" scrolling="yes"></iframe>
+            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=2026.10.13.1791859932" scrolling="yes"></iframe>
             <div id="historyDrawerScrim" class="history-drawer-scrim" hidden onclick="closeHistoryDrawer()"></div>
-            <iframe id="frame-history" class="history-drawer-frame" data-src="/static/history.html?v=2026.10.13.1791852323&drawer=1" scrolling="yes" title="历史记录"></iframe>
+            <iframe id="frame-history" class="history-drawer-frame" data-src="/static/history.html?v=2026.10.13.1791859932&drawer=1" scrolling="yes" title="历史记录"></iframe>
             <button id="historyDrawerClose" class="history-drawer-close" type="button" hidden onclick="closeHistoryDrawer()" aria-label="关闭历史记录">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
             </button>
@@ -1965,8 +1971,8 @@
         <div id="historyPreviewContextMenu" class="history-preview-context-menu" role="menu" aria-label="媒体操作" hidden>
             <button id="historyPreviewContextCopy" type="button" role="menuitem" onclick="copyHistoryPreviewFromContextMenu(event)"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>复制图片</span></button>
         </div>
-                <iframe id="frame-api-settings" data-src="/static/api-settings.html?v=2026.10.13.1791852323" scrolling="yes"></iframe>
-                <iframe id="frame-canvas" data-src="/static/canvas-list.html?v=2026.10.13.1791852323&image-model-picker=2026.09.27.3" scrolling="yes"></iframe>
+                <iframe id="frame-api-settings" data-src="/static/api-settings.html?v=2026.10.13.1791859932" scrolling="yes"></iframe>
+                <iframe id="frame-canvas" data-src="/static/canvas-list.html?v=2026.10.13.1791859932&image-model-picker=2026.09.27.3" scrolling="yes"></iframe>
 
                 <script>
                     /* 尽早启动上次页面，避免主窗口已显示但中央 iframe 仍是空白。 */
@@ -3363,7 +3369,23 @@
             sidebarDateTimeTimer = window.setInterval(updateSidebarDateTime, 1000);
         }
 
+        async function hideDesktopToTray() {
+            const button = document.getElementById('desktop-hide-to-tray');
+            if(!window.electronAPI?.hideToTray || !button || button.disabled) return;
+            button.disabled = true;
+            try {
+                const result = await window.electronAPI.hideToTray();
+                if(!result?.ok) alert(result?.message || '隐藏到托盘失败，请稍后重试。');
+            } catch(error) {
+                alert('无法隐藏到托盘，请退出并重新启动小美画布后重试。');
+            } finally {
+                button.disabled = false;
+            }
+        }
+
         window.addEventListener('DOMContentLoaded', () => {
+            const trayButton = document.getElementById('desktop-hide-to-tray');
+            if(trayButton && window.electronAPI?.hideToTray) trayButton.style.removeProperty('display');
             if(window.StudioI18n) {
                 if(window.StudioI18n.lang?.() !== 'zh') window.StudioI18n.set('zh');
                 else window.StudioI18n.apply();

@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  hideToTray: () => ipcRenderer.invoke('app:hide-to-tray'),
   checkForUpdates: (options) => ipcRenderer.invoke('app:check-update', options || {}),
   getUpdateInfo: () => ipcRenderer.invoke('app:update-info'),
   onUpdateStatus: (callback) => {

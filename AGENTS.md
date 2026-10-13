@@ -12,7 +12,9 @@
 
 ## 项目定位
 
-小美画布是一个本地优先的 AI 电商视觉工作台。后端为单文件 FastAPI 应用 `main.py`，前端为 `static/` 下的原生 HTML/CSS/JavaScript，通过 iframe 组成主界面。默认端口为 `3000`。
+小美画布是一个本地优先的 AI 电商视觉工作台。后端为单文件 FastAPI 应用 `main.py`，主应用前端为 `static/` 下的原生 HTML/CSS/JavaScript，通过 iframe 组成主界面。默认端口为 `3000`。
+
+ComfyUI 页面、CSS 和 JavaScript 的唯一物理来源是 `ComfyUI/web/`。运行时保留的 `/static/...` 地址只是兼容访问 URL，由后端优先映射到 `ComfyUI/web/`；不要恢复 `static/comfyui-settings.*` 的重复副本。
 
 ## 关键规则
 
@@ -22,6 +24,7 @@
 - `main.py` 是历史演进形成的单体文件。修改前先搜索路由、请求模型、辅助函数和所有前端调用点，避免只改一处。
 - 前端没有打包步骤，改动后必须检查浏览器缓存版本参数；必要时更新 HTML 中资源 URL 的 `?v=`。
 - 用户目录、历史图片、素材、画布、日志属于运行数据，不应进入发布源码包。
+- 启动入口以 `README-小美画布.md` 为准；本文件是开发交接入口，详细部署说明见 `交付文档/01-部署与启动.md`。
 - 保持 Windows 中文路径兼容；文件操作使用绝对路径、UTF-8 和 `pathlib/os.path`，不要假定项目位于英文目录。
 
 ## 最小验证

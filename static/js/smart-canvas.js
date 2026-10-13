@@ -279,6 +279,7 @@ let suppressNodeClickUntil = 0;
 let textSelectionGuard = null;
 const UNDO_LIMIT = 40;
 const undoStack = [];
+const redoStack = [];
 let undoSuppressed = false;
 let pendingUndoSnapshot = null;
 let runningHubWorkflowCache = {};
@@ -309,6 +310,7 @@ function smartCascadePathForCtx(ctx=null){
 function capturePendingUndo(){ pendingUndoSnapshot = snapshotForUndo(); }
 function commitPendingUndo(){
     if(pendingUndoSnapshot){
+        redoStack.length = 0;
         undoStack.push(pendingUndoSnapshot);
         if(undoStack.length > UNDO_LIMIT) undoStack.shift();
         pendingUndoSnapshot = null;
@@ -327,12 +329,24 @@ function snapshotForUndo(){
 function pushUndo(){
     if(undoSuppressed) return;
     if(!canvas) return;
+    redoStack.length = 0;
     undoStack.push(snapshotForUndo());
     if(undoStack.length > UNDO_LIMIT) undoStack.shift();
 }
 function performUndo(){
     if(!undoStack.length){ toast(tr('smart.toastNoUndo')); return; }
+    redoStack.push(snapshotForUndo());
     const snap = undoStack.pop();
+    restoreSmartUndoSnapshot(snap);
+    toast(tr('smart.toastUndone'));
+}
+function performRedo(){
+    if(!redoStack.length){ toast('没有可重做的操作'); return; }
+    undoStack.push(snapshotForUndo());
+    restoreSmartUndoSnapshot(redoStack.pop());
+    toast('已重做');
+}
+function restoreSmartUndoSnapshot(snap){
     undoSuppressed = true;
     nodes = snap.nodes;
     if(canvas) canvas.connections = snap.connections;
@@ -349,7 +363,6 @@ function performUndo(){
         resumeSmartPendingTasks();
         resumeJimengPendingNodes();
     }
-    toast(tr('smart.toastUndone'));
 }
 let comfyWorkflowCache = {};
 const comfyWorkflowNodeHydrating = new Set();
@@ -10589,6 +10602,7 @@ function cloneSmartNode(node, dx=0, dy=0){
     if(isSmartPaintNode(copy) && !isHistoryGroupNode(copy)){
         copy.images = [];
         delete copy.outputKind;
+        delete copy.productFidelityResult;
     }
     if(copy.type === 'smart-group') copy.title = copy.title || '智能分组';
     return copy;
@@ -14369,6 +14383,7 @@ function smartNodeToolbarHtml(node){
         {key:'outpaint', icon:'expand', label:'扩图', enabled:canUseSharedImageEditor},
         {key:'ai-layers', icon:'layers', label:'AI 分层', enabled:canUseSharedImageEditor},
         {key:'mask', icon:'eraser', label:'抹除', enabled:canUseSharedImageEditor},
+        {key:'protection-mask', icon:'scan', label:'蒙版', enabled:canUseSharedImageEditor},
         {key:'ocr', icon:'scan-text', label:'OCR 改字', enabled:canUseSharedImageEditor},
         {key:'brush', icon:'paintbrush', label:'画笔', enabled:canUseSharedImageEditor},
         {key:'smart-edit', icon:'wand-sparkles', label:'智能改图', enabled:canUseSharedImageEditor},
@@ -15312,7 +15327,7 @@ function runSmartNodeToolbarAction(nodeId, action, anchorElement=null){
     }
     if(action === 'ai-layers'){ window.openSmartImageLayers(nodeId, index); return; }
     if(action === 'vectorize'){ window.openSmartImageVectorizer(nodeId, index, anchorElement); return; }
-    const modeMap = {crop:'crop', outpaint:'outpaint', mask:'mask', erase:'mask', ocr:'ocr', brush:'brush', 'smart-edit':'smart-edit', grid:'grid'};
+    const modeMap = {crop:'crop', outpaint:'outpaint', mask:'mask', erase:'mask', 'protection-mask':'protection-mask', ocr:'ocr', brush:'brush', 'smart-edit':'smart-edit', grid:'grid'};
     openImageEditor(nodeId, index);
     setImageEditMode(modeMap[action] || 'preview', true);
     if(action === 'grid' && canGridJoinCurrentNode()){
@@ -16195,12 +16210,7 @@ function bindAgentNodeControls(el, node){
             node.w = nextWidth;
             if(persist) scheduleSave();
         }
-        el.style.width = `${nextWidth}px`;
-        el.style.height = `${nextHeight}px`;
-        card.style.width = '100%';
-        card.style.height = '100%';
-        card.style.minHeight = '0';
-        scheduleConnectionLayerRefresh();
+        updateNodeElementDuringResize(node);
     };
     const queueAgentTextLayout = (persist=false) => {
         persistAgentLayout = persistAgentLayout || persist;
@@ -19292,6 +19302,7 @@ function resizeEditDrawCanvas(){
     resizeEditTextCanvas();
     if(imageEditMode === 'grid') refreshGridSplitPreview();
 }
+function isImageMaskMode(){ return imageEditMode === 'mask' || imageEditMode === 'protection-mask'; }
 function setImageEditMode(mode, userTouched=false){
     closePreviewImageContextMenu();
     const editKind = mediaKindForItem(currentEditImage().image || {});
@@ -19300,7 +19311,7 @@ function setImageEditMode(mode, userTouched=false){
     if(userTouched) imageEditModeTouched = true;
     const prev = imageEditMode;
     if(mode !== 'brush') removeEditTextInlineEditor(true);
-    imageEditMode = ['preview','crop','outpaint','mask','ocr','brush','resize','grid'].includes(mode) ? mode : 'preview';
+    imageEditMode = ['preview','crop','outpaint','mask','protection-mask','ocr','brush','resize','grid'].includes(mode) ? mode : 'preview';
     const cropCanvasEl = document.getElementById('cropCanvas');
     const previewStageEl = document.getElementById('previewStage');
     const editStageEl = document.getElementById('imageEditStage');
@@ -19336,7 +19347,7 @@ function setImageEditMode(mode, userTouched=false){
         cancelBtn.style.display = '';
         cancelBtn.textContent = isVideoPreview ? '关闭' : tr('common.cancel');
     }
-    cropCanvasEl.classList.toggle('mask-mode', imageEditMode === 'mask');
+    cropCanvasEl.classList.toggle('mask-mode', isImageMaskMode());
     cropCanvasEl.classList.toggle('ocr-mode', imageEditMode === 'ocr');
     cropCanvasEl.classList.toggle('brush-mode', imageEditMode === 'brush');
     cropCanvasEl.classList.toggle('resize-mode', imageEditMode === 'resize');
@@ -19350,7 +19361,10 @@ function setImageEditMode(mode, userTouched=false){
     });
     document.getElementById('imagePreviewTools').classList.toggle('active', isPreview && !isVideoPreview);
     document.getElementById('imageCropTools')?.classList.toggle('active', imageEditMode === 'crop');
-    document.getElementById('imageMaskTools').classList.toggle('active', imageEditMode === 'mask');
+    document.getElementById('imageMaskTools').classList.toggle('active', isImageMaskMode());
+    document.getElementById('imageMaskHint').textContent = imageEditMode === 'protection-mask'
+        ? '涂抹需要保护的产品区域，输出白色保护、黑色背景的 PNG 蒙版'
+        : '涂抹要抹除的区域，应用后生成清理结果';
     document.getElementById('imageOcrTools')?.classList.toggle('active', isOcr);
     document.getElementById('imageBrushTools').classList.toggle('active', imageEditMode === 'brush');
     document.getElementById('imageResizeTools')?.classList.toggle('active', imageEditMode === 'resize');
@@ -19384,6 +19398,10 @@ function setImageEditMode(mode, userTouched=false){
             document.getElementById('imageEditTitle').textContent = 'OCR 智能改字';
             document.getElementById('imageEditSub').textContent = '直接修改识别文字，只生成已修改内容';
             applyBtn.style.display = 'none';
+        } else if(imageEditMode === 'protection-mask'){
+            document.getElementById('imageEditTitle').textContent = '保护蒙版';
+            document.getElementById('imageEditSub').textContent = '涂抹要保留的区域，生成后可下载并用于产品保真';
+            applyBtn.innerHTML = '<i data-lucide="scan" class="w-4 h-4"></i><span>生成蒙版节点</span>';
         } else if(imageEditMode === 'resize'){
             document.getElementById('imageEditTitle').textContent = '缩放图片';
             document.getElementById('imageEditSub').textContent = '选择缩小倍数，应用会替换当前原图';
@@ -20340,16 +20358,16 @@ function setGridCustomLinePos(index, point){
 const MASK_BRUSH_ALPHA = 115;
 const MASK_BRUSH_RGB = [80, 80, 80];
 const MASK_BRUSH_COLOR = `rgba(${MASK_BRUSH_RGB.join(',')},${MASK_BRUSH_ALPHA / 255})`;
-function editBrushSize(){ return Number(document.getElementById(imageEditMode === 'mask' ? 'maskBrushSize' : 'paintBrushSize')?.value || 20); }
+function editBrushSize(){ return Number(document.getElementById(isImageMaskMode() ? 'maskBrushSize' : 'paintBrushSize')?.value || 20); }
 function brushColor(){ return document.getElementById('paintBrushColor')?.value || '#ff2d55'; }
 function setupDrawStyle(ctx){
     ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = editBrushSize();
-    ctx.strokeStyle = imageEditMode === 'mask' ? MASK_BRUSH_COLOR : brushColor();
-    ctx.fillStyle = imageEditMode === 'mask' ? MASK_BRUSH_COLOR : brushColor();
+    ctx.strokeStyle = isImageMaskMode() ? MASK_BRUSH_COLOR : brushColor();
+    ctx.fillStyle = isImageMaskMode() ? MASK_BRUSH_COLOR : brushColor();
     ctx.globalCompositeOperation = imageEditMode === 'brush' && brushTool === 'eraser' ? 'destination-out' : 'source-over';
 }
 function normalizeMaskPreviewCanvas(canvasEl=editDrawCanvas()){
-    if(imageEditMode !== 'mask' || !canvasEl?.width || !canvasEl?.height) return;
+    if(!isImageMaskMode() || !canvasEl?.width || !canvasEl?.height) return;
     const ctx = canvasEl.getContext('2d');
     const imageData = ctx.getImageData(0, 0, canvasEl.width, canvasEl.height);
     const data = imageData.data;
@@ -20434,7 +20452,7 @@ function beginEditDraw(event){
     editDrawState = {x:p.x, y:p.y, sx:p.x, sy:p.y, pointerId:event.pointerId, snapshot:(imageEditMode === 'brush' && brushTool !== 'free') ? editDrawSnapshot() : null};
     setupDrawStyle(ctx);
     ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + .01, p.y + .01);
-    if(imageEditMode === 'mask' || brushTool === 'free') ctx.stroke();
+    if(isImageMaskMode() || brushTool === 'free') ctx.stroke();
     normalizeMaskPreviewCanvas(canvasEl);
 }
 function moveEditDraw(event){
@@ -22193,6 +22211,27 @@ async function applyImageMask(){
     }
 }
 
+async function applyImageProtectionMask(){
+    if(!cropState || !editCanvasHasPixels()){ toast('请先涂抹需要保护的产品区域'); return; }
+    const {node,image}=currentEditImage();
+    if(!node || !image) return;
+    const mask=maskCanvasFromDrawCanvas(editDrawCanvas());
+    const blob=await new Promise(resolve=>mask.toBlob(resolve,'image/png'));
+    if(!blob){ toast('蒙版生成失败，请重试'); return; }
+    const base=(image.name||'image').replace(/\.[^.]+$/,'');
+    try{
+        const file=await uploadCroppedBlob(blob,`${base}_protection_mask.png`);
+        if(!file?.url){ toast('蒙版上传失败，请重试'); return; }
+        const output=createNode((node.x||0)+nodeRect(node).width+40,node.y||0,[{
+            ...file,kind:'image',role:'product-mask',natural_w:mask.width,natural_h:mask.height
+        }],{nodeType:'smart-upload',title:'保护蒙版',select:true});
+        if(!output) return;
+        output.title='保护蒙版';
+        closeImageEditor();render();updateComposer();scheduleSave();
+        toast('保护蒙版已生成，可在产品保真设置中直接选择');
+    }catch(error){ toast('蒙版保存失败：'+error.message); }
+}
+
 let imageOcrItems = [];
 let ocrModelSelection = {provider_id:'', model:''};
 let ocrRecognitionSelection = {provider_id:'', model:''};
@@ -22678,6 +22717,7 @@ async function applyImageResize(){
 function applyImageEdit(){
     if(imageEditMode === 'preview') return;
     if(imageEditMode === 'outpaint') return applyImageOutpaint();
+    if(imageEditMode === 'protection-mask') return applyImageProtectionMask();
     if(imageEditMode === 'mask') return applyImageMask();
     if(imageEditMode === 'ocr') return applyImageOcrEdit();
     if(imageEditMode === 'brush') return applyImageBrush();
@@ -28999,7 +29039,7 @@ async function recoverUnparsedImageNow(nodeId, recoveryId){
         const data = await response.json();
         const source = data.image_items?.length ? data.image_items : (data.images || []);
         if(node.runSettings?.productFidelity?.enabled && !data.product_fidelity) throw new Error('恢复图片尚未完成产品保真合成，请保留恢复编号并重新打开该任务');
-        if(data.product_fidelity) node.productFidelityResult = data.product_fidelity;
+        if(data.product_fidelity) acceptProductFidelityResult(node, data.product_fidelity);
         const additions = resultMediaUrls(source).map((item, index) => {
             const url = typeof item === 'string' ? item : item?.url || '';
             return stripImageGenerationMeta(copyMediaSizeFields(item, {
@@ -29041,7 +29081,7 @@ async function querySmartImageTaskNow(nodeId, localTaskId){
     try {
         const data = await fetchImageTaskQuery(providerIdForSmartTask(node, task), recoverTaskId, 'canvas');
         if(data.status === 'succeeded' && node.runSettings?.productFidelity?.enabled && !data.product_fidelity) throw new Error('恢复图片缺少产品保真校验，已停止将未保护图片写入节点');
-        if(data.product_fidelity) node.productFidelityResult = data.product_fidelity;
+        if(data.product_fidelity) acceptProductFidelityResult(node, data.product_fidelity);
         if(data.status === 'succeeded'){
             const taskImages = resultMediaUrls(data.image_items?.length ? data.image_items : (data.images?.length ? data.images : data));
             if(!taskImages.length){
@@ -29310,7 +29350,7 @@ async function resumeSmartPendingNode(node, logContext={}){
             });
             if(!currentTask(task.taskId)) return;
             const taskImages = resultMediaUrls(result?.image_items?.length ? result.image_items : (result?.images?.length ? result.images : result));
-            if(result?.product_fidelity) node.productFidelityResult = result.product_fidelity;
+            if(result?.product_fidelity) acceptProductFidelityResult(node, result.product_fidelity);
             const lockedTaskImages = await preserveOutpaintCenterOnResults(node, taskImages);
             if(!currentTask(task.taskId)) return;
             const taskStartedAt = Number(task.started_at || task.created_at || 0);
@@ -30757,9 +30797,10 @@ window.addEventListener('keydown', e => {
         closeImageEditor();
         return;
     }
-    if((e.ctrlKey || e.metaKey) && key === 'z' && !isEditableTarget(e.target)){
+    if((e.ctrlKey || e.metaKey) && (key === 'z' || key === 'y') && !isEditableTarget(e.target)){
         e.preventDefault();
-        performUndo();
+        if(e.shiftKey || key === 'y') performRedo();
+        else performUndo();
         return;
     }
     if((e.ctrlKey || e.metaKey) && e.shiftKey && key === 'g' && !isEditableTarget(e.target)){

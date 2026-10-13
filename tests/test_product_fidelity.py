@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -47,6 +48,61 @@ class FidelityTests(unittest.TestCase):
         prompt=pf.prompt_for('场景',second)
         self.assertIn('图片 1：产品真实',prompt)
         self.assertIn('图片 3：高反差',prompt)
+
+    def test_product_descriptions_reach_prompt(self):
+        custom = self.prepare(category='other', categoryCustom=' 入户门垫 ',
+                              geometry='custom', geometryCustom='半圆形带直边')
+        prompt = pf.prompt_for('换背景', custom)
+        self.assertIn('用户确认的产品类型：入户门垫', prompt)
+        self.assertIn('用户确认的产品形状：半圆形带直边', prompt)
+        preset = self.prepare(category='textile', geometry='oval', categoryCustom='旧类型', geometryCustom='旧形状')
+        prompt = pf.prompt_for('换背景', preset)
+        self.assertIn('用户确认的产品类型：地毯／布艺／家纺', prompt)
+        self.assertIn('用户确认的产品形状：椭圆形平面', prompt)
+        self.assertNotIn('旧类型', prompt)
+        self.assertNotIn('旧形状', prompt)
+        for value in [[], '字'*121]:
+            with self.assertRaisesRegex(ValueError, '120 字'):
+                self.prepare(category='other', categoryCustom=value)
+
+    def test_disabled_modules_do_not_apply_stored_settings(self):
+        result=self.prepare(category='other',categoryCustom='旧描述',identification={'enabled':False},
+                            structure={'enabled':False,'lockRatio':True},
+                            generation={'enabled':False,'allowedEdits':'background'},
+                            detail={'enabled':False,'restoreMode':'auto'},validation={'enabled':False},
+                            advanced={'enabled':False},maskFeatherPx=8,alignmentThreshold=.99)
+        config=result['config']
+        self.assertEqual(config['mode'],'structure')
+        self.assertFalse(config['structure']['lockRatio'])
+        self.assertEqual(config['detail']['restoreMode'],'off')
+        self.assertEqual(config['maskFeatherPx'],0)
+        self.assertEqual(config['alignmentThreshold'],.85)
+        self.assertFalse(any(a['role'] in {'highpass','detail-crop'} for a in result['generatedAssets']))
+        prompt=pf.prompt_for('场景',result)
+        self.assertNotIn('旧描述',prompt)
+        self.assertNotIn('保持产品实体长宽比例',prompt)
+        self.assertNotIn('允许改变背景和环境光',prompt)
+        view=self.prepare(mode='view',view={'enabled':False,'mode':'target','yaw':45,'proxyEnabled':True},
+                          generation={'allowedEdits':'view'})
+        self.assertEqual(view['config']['mode'],'structure')
+        self.assertEqual(view['config']['view']['yaw'],0)
+        self.assertNotIn('目标视角',pf.prompt_for('场景',view))
+
+    def test_dimensions_do_not_reenable_disabled_structure(self):
+        dims=dict(version=2,enabled=True,width=300,height=400,depth=20,unit='mm',
+                  constraintMode='prompt',aspectRatioLock=True,outlineLock=True)
+        result=self.prepare(mode='structure',structure={'enabled':False,'lockRatio':True,'lockOutline':True},dimensions=dims)
+        self.assertFalse(result['config']['structure']['lockRatio'])
+        self.assertFalse(result['config']['structure']['lockOutline'])
+        prompt=pf.prompt_for('场景',result)
+        self.assertNotIn('保持产品实体长宽比例',prompt)
+        self.assertIn('锁定产品正面宽高比',prompt)
+        protected=self.prepare(structure={'enabled':False},dimensions={**dims,'constraintMode':'protect'})
+        self.assertEqual(protected['config']['mode'],'strict')
+        self.assertFalse(protected['config']['structure']['lockRatio'])
+        self.assertFalse(protected['config']['structure']['lockOutline'])
+        hidden=self.prepare(identification={'enabled':False},dimensions=dims)
+        self.assertNotIn('用户提供的产品物理尺寸',pf.prompt_for('场景',hidden))
 
     def test_source_is_not_modified_and_cache_tracks_radius(self):
         before=hashlib.sha256((self.root/'source.png').read_bytes()).digest()
@@ -152,7 +208,7 @@ class FidelityTests(unittest.TestCase):
     def test_stale_id_and_duplicate_id_are_rejected(self):
         with self.assertRaisesRegex(ValueError,'移除或替换'):self.prepare(productReferenceId='missing')
         self.refs[0]['reference_id']='product'
-        with self.assertRaisesRegex(ValueError,'身份.*重复'):self.prepare()
+        with self.assertRaisesRegex(ValueError,'身份缺失或重复'):self.prepare()
 
     def test_strict_view_and_paid_retry_conflicts_are_rejected(self):
         for changes in [dict(view=dict(mode='target',yaw=45)),dict(generation=dict(allowedEdits='lighting')),dict(retries=dict(enabled=True))]:
@@ -201,7 +257,8 @@ class FidelityTests(unittest.TestCase):
         self.assertAlmostEqual(result['sourceRatio'],120/80)
         result=self.prepare(dimensions=dict(width=20,height=15,depth=2,unit='cm'))
         self.assertAlmostEqual(result['sourceRatio'],4/3)
-        self.assertIn('"depth": 2',pf.prompt_for('场景',result))
+        self.assertEqual(result['normalizedDimensions']['depth'],20)
+        self.assertIn('前后厚度=20.0 mm',pf.prompt_for('场景',result))
 
     def test_planar_proxy_is_real_and_does_not_change_user_order(self):
         result=self.prepare(mode='view',view=dict(mode='target',yaw=45,proxyEnabled=True))
@@ -237,6 +294,12 @@ class FidelityTests(unittest.TestCase):
         self.assertGreater(validation['alignmentConfidence'],.85)
         self.assertEqual(restored.getpixel((0,0)),target.getpixel((0,0)))
         self.assertNotEqual(restored.tobytes(),target.tobytes())
+        config['validation']['enabled']=False
+        with patch.object(pf,'planar_geometry',side_effect=AssertionError('校验关闭后不应检查外框')):
+            restored_without_check,validation=pf.align_details(source,target,mask,config)
+        self.assertNotIn('geometry',validation)
+        self.assertEqual(validation['restoration'],'applied')
+        self.assertNotEqual(restored_without_check.tobytes(),target.tobytes())
         config['detail']['enabled']=False
         unchanged,validation=pf.align_details(source,target,mask,config)
         self.assertEqual(unchanged.tobytes(),target.tobytes())

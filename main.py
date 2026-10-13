@@ -511,7 +511,7 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 GLOBAL_LOOP = None
-APP_VERSION = "1.0.5"
+APP_VERSION = "1.0.6"
 GITHUB_REPO_URL = "https://github.com/jkjk-8614/xiaomei"
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/jkjk-8614/xiaomei/main/VERSION"
 GITHUB_TREE_URL = "https://api.github.com/repos/jkjk-8614/xiaomei/git/trees/main?recursive=1"
@@ -13648,6 +13648,12 @@ def output_file_from_url(url):
         url = url.get("url", "")
     if not url:
         return None
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme in {"http", "https"}:
+        # 历史拖拽保留本机绝对 URL；按存储路径读取原图，避免将回环地址发给上游。
+        if (parsed.hostname or "").lower() not in {"localhost", "127.0.0.1", "::1"}:
+            return None
+        url = parsed.path
     clean = urllib.parse.unquote(url.split("?", 1)[0]).replace("\\", "/")
     if clean.startswith("/api/storage-files/"):
         rest = clean[len("/api/storage-files/"):].lstrip("/")
@@ -35513,7 +35519,11 @@ def save_product_fidelity_asset(image, filename, cached=False):
                 os.replace(temporary, path)
             finally:
                 temporary.unlink(missing_ok=True)
-    return output_url_for(filename, "output")
+    url = output_url_for(filename, "output")
+    if filename.startswith('geometry_') and not ASSET_REGISTRY.find_by_url(url):
+        asset_registry_register_media(url, source='product-geometry', kind='image',
+                                      metadata={'role': 'geometry_reference', 'paid_api': False})
+    return url
 
 
 def prepare_product_fidelity(payload, provider, model, refs):
@@ -35546,22 +35556,36 @@ async def preview_product_fidelity(payload: ProductFidelityPreviewRequest):
             raise ValueError("请先启用产品保真")
         return {**report(context), "reference_images": context['reference_images'],
                 "requestPrompt": prompt_for(payload.prompt, context),
-                "sourceWidth": context['source'].width, "sourceHeight": context['source'].height,
+                "sourceWidth": context['source'].width if context['source'] is not None else None,
+                "sourceHeight": context['source'].height if context['source'] is not None else None,
                 "validationStatus": "unknown", "paidApiCalled": False}
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def finish_product_fidelity(context, url):
-    from product_fidelity import load_image, composite, align_details
+    from product_fidelity import load_image, composite, composite_in_output, align_details
+    from geometry_validator import GeometryValidator
     generated = load_image(url, output_file_from_url)
     config = context['config']
     if config['mode'] == 'strict':
-        image, validation = composite(context['source'], context['mask'], generated, config.get('maskFeatherPx', 0))
+        compose = composite_in_output if config['dimensions']['enabled'] else composite
+        image, validation = compose(context['source'], context['mask'], generated, config.get('maskFeatherPx', 0))
+    elif context['source'] is None:
+        image, validation = generated, dict(status='unknown', reason='没有原产品图，无法核验产品身份或四角')
     elif config['validation'].get('enabled', True) or config['detail']['restoreMode'] == 'auto':
         image, validation = align_details(context['source'], generated, context['mask'], config)
     else:
         image, validation = generated, dict(status='unknown', reason='用户关闭校验', restoration='off')
+    dimensions = config['dimensions']
+    if dimensions['enabled']:
+        if config['view'].get('mode', 'keep') != 'keep':
+            geometry = GeometryValidator.unknown('指定斜视或视角变化，无法验证近正视物理比例')
+        elif dimensions['validationSettings']['enabled']:
+            geometry = GeometryValidator.from_images(context['source'], context['mask'], image, dimensions)
+        else:
+            geometry = GeometryValidator.unknown('用户关闭真实尺寸比例校验')
+        validation['physicalGeometry'] = geometry
     composed_url = save_product_fidelity_asset(image, generated_output_filename('fidelity_result_', '.png'))
     meta = image_output_meta(composed_url)
     meta['product_fidelity_validation'] = validation
@@ -35632,7 +35656,7 @@ async def build_online_image_result(payload: OnlineImageRequest, history_source=
             fidelity_context = await asyncio.to_thread(prepare_product_fidelity, payload, provider, model, image_refs)
             image_refs = fidelity_context['reference_images']
             request_prompt = prompt_for(payload.prompt, fidelity_context)
-            if fidelity_context['config']['mode'] == 'strict':
+            if fidelity_context['config']['mode'] == 'strict' and not fidelity_context['config']['dimensions']['enabled']:
                 source = fidelity_context['source']
                 request_size = normalize_gpt_image_2_size(f'{source.width}x{source.height}') if is_gpt_image_2_model(model) else f'{source.width}x{source.height}'
         except (ValueError, TypeError) as exc:
@@ -35668,7 +35692,7 @@ async def build_online_image_result(payload: OnlineImageRequest, history_source=
                     model,
                     image_refs,
                     provider["id"],
-                    'source' if fidelity_context and fidelity_context['config']['mode'] == 'strict' else payload.aspect_ratio,
+                    'source' if fidelity_context and fidelity_context['config']['mode'] == 'strict' and not fidelity_context['config']['dimensions']['enabled'] else payload.aspect_ratio,
                     request_background,
                 )
             upstream_task_id = extract_task_id(raw_item) if isinstance(raw_item, dict) else None
@@ -35778,7 +35802,7 @@ async def build_online_image_result(payload: OnlineImageRequest, history_source=
         result['product_fidelity']['validationStatus'] = 'failed' if 'failed' in statuses else 'passed' if statuses == {'passed'} else 'warning' if 'warning' in statuses else 'unknown'
         result['params']['product_fidelity'] = fidelity_context['config']
         result['params']['submitted_reference_images'] = image_refs
-        result['params']['submitted_aspect_ratio'] = 'source' if fidelity_context['config']['mode'] == 'strict' else payload.aspect_ratio
+        result['params']['submitted_aspect_ratio'] = 'source' if fidelity_context['config']['mode'] == 'strict' and not fidelity_context['config']['dimensions']['enabled'] else payload.aspect_ratio
     if failures:
         result["partial_failures"] = [
             {

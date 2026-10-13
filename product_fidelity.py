@@ -10,12 +10,21 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
+from physical_dimensions import (migrate_dimensions, buildNormalizedDimensions, dimension_signature,
+                                 GeometryGuideGenerator, compile_dimension_prompt)
 
 
 GOOGLE_SOURCE = 'https://ai.google.dev/gemini-api/docs/image-generation'
 OPENAI_SOURCE = 'https://developers.openai.com/api/reference/python/resources/images/methods/edit'
 RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']
 _CACHE_LOCK = threading.Lock()
+PRODUCT_CATEGORIES = dict(textile='地毯／布艺／家纺', clothing='服装／鞋帽', bag='箱包／皮具',
+                          furniture='家具／家居摆件', frame='相框／装饰画', box='包装盒',
+                          cylinder='瓶罐／杯具', beauty='美妆／个护', jewelry='珠宝／饰品',
+                          electronics='电子设备', appliance='家用电器', food='食品／饮料', toy='玩具／文具')
+PRODUCT_GEOMETRIES = dict(plane='矩形／方形平面', circle='圆形平面', oval='椭圆形平面',
+                         polygon='多边形平面', box='长方体／盒状', cylinder='圆柱形', cone='圆锥／收口形',
+                         sphere='球形', curved='弧面／曲面', soft='软质／可折叠', other='不规则')
 
 
 def capabilities(provider, model, protocol, request_mode, transport_limit=16):
@@ -54,6 +63,8 @@ def capabilities(provider, model, protocol, request_mode, transport_limit=16):
                 availableQualities=(['auto', 'low', 'medium', 'high', 'xhigh', 'max'] if '2.5' in name else ['auto', 'low', 'medium', 'high']) if gpt else [],
                 supportsNativeControlNet=False, supportsNativeDepthControl=False,
                 supportsNativeEdgeControl=False, supportsNativeCameraControl=False,
+                supportsPhysicalDimensionParameters=False,
+                supportsGeometryGuide=supported, supportsLocalProductProtection=supported,
                 verificationSource=OPENAI_SOURCE if gpt else GOOGLE_SOURCE,
                 channelVerified=False, aliasVersionVerified=not alias,
                 verifiedAt='2026-10-13', localPixelProtection=True,
@@ -67,13 +78,51 @@ def normalize(raw):
     if raw.get('version', 1) != 1:
         raise ValueError('产品保真配置版本暂不支持，请更新小美画布')
     raw.update(version=1, enabled=True)
+    for key in ('categoryCustom', 'geometryCustom'):
+        value = raw.get(key, '')
+        if not isinstance(value, str) or len(value) > 120:
+            raise ValueError('自定义产品类型和形状应为 120 字以内的文字')
+        raw[key] = value.strip()
     raw.setdefault('mode', 'strict')
     if raw['mode'] not in {'strict', 'structure', 'view'}:
         raise ValueError('产品保真模式无效')
-    for field in ('detail', 'view', 'generation', 'validation', 'retries', 'structure', 'dimensions'):
+    for field in ('identification', 'detail', 'view', 'generation', 'validation', 'retries', 'structure', 'dimensions', 'advanced'):
         if not isinstance(raw.get(field, {}), dict):
             raise ValueError('产品保真配置格式无效：' + field)
         raw.setdefault(field, {})
+    raw['dimensions'] = migrate_dimensions(raw['dimensions'], raw.get('geometry', 'plane'))
+    if raw['identification'].get('enabled', True) is False:
+        raw.update(category='auto', geometry='auto')
+        raw['dimensions']['enabled'] = False
+    if raw['structure'].get('enabled', True) is False:
+        for key in ('lockRatio', 'lockOutline', 'lockLines', 'lockSymmetry', 'lockLayout'):
+            raw['structure'][key] = False
+        if raw['mode'] == 'strict':
+            raw['mode'] = 'structure'
+            raw['generation']['allowedEdits'] = 'lighting'
+    if raw['view'].get('enabled', True) is False:
+        raw['view'].update(mode='keep', yaw=0, pitch=0, roll=0, proxyEnabled=False)
+        if raw['mode'] == 'view':
+            raw['mode'] = 'structure'
+            raw['generation']['allowedEdits'] = 'lighting'
+    if raw['generation'].get('enabled', True) is False:
+        raw['generation']['allowedEdits'] = 'background' if raw['mode']=='strict' else 'view' if raw['mode']=='view' else 'lighting'
+    if raw['advanced'].get('enabled', True) is False:
+        raw['detail'].update(highPassRadiusPx=2, highPassGain=2)
+        raw.update(maskFeatherPx=0, alignmentThreshold=.85)
+    buildNormalizedDimensions(raw['dimensions'])
+    if raw['dimensions']['enabled']:
+        dims = raw['dimensions']
+        raw['geometry'] = {'rectangle': 'plane', 'cuboid': 'box', 'circle': 'circle'}[dims['shape']]
+        if raw['structure'].get('enabled', True):
+            raw['structure']['lockRatio'] = dims['aspectRatioLock']
+            raw['structure']['lockOutline'] = dims['outlineLock']
+        if dims['constraintMode'] == 'protect':
+            raw['mode'] = 'strict'
+            raw['generation']['allowedEdits'] = 'background'
+        elif raw['mode'] == 'strict':
+            raw['mode'] = 'structure'
+            raw['generation']['allowedEdits'] = 'lighting'
     detail = raw['detail']
     detail.setdefault('enabled', True)
     detail.setdefault('inputMode', 'combined')
@@ -83,6 +132,10 @@ def normalize(raw):
     detail.setdefault('cropCount', 2)
     detail.setdefault('restoreMode', 'off')
     detail.setdefault('restoreStrength', .3)
+    if not detail['enabled']:
+        detail.update(inputMode='original', restoreMode='off')
+    if raw['validation'].get('enabled', True) is False:
+        raw['validation']['ratioTolerancePct'] = 5
     if not 0 <= float(raw.get('maskFeatherPx', 0)) <= 8 or not .7 <= float(raw.get('alignmentThreshold', .85)) <= 1:
         raise ValueError('蒙版羽化应为 0–8px，对齐门槛应为 0.7–1')
     if detail['inputMode'] not in {'original', 'highpass', 'crops', 'combined'}:
@@ -104,10 +157,6 @@ def normalize(raw):
         raise ValueError('允许变化范围无效')
     if raw['mode'] != 'view' and (scope == 'view' or raw['view'].get('mode', 'keep') != 'keep' or any(float(raw['view'].get(k, 0)) for k in ('yaw', 'pitch', 'roll'))):
         raise ValueError('改变视角请切换视角保真，结构模式仅支持同视角约束')
-    for key in ('width', 'height', 'depth'):
-        number = float(raw['dimensions'].get(key) or 0)
-        if not math.isfinite(number) or number < 0 or number > 1e6:
-            raise ValueError('真实产品尺寸应为 0–1000000，留空表示未知')
     tolerance = float(raw['validation'].get('ratioTolerancePct', 5))
     if not 1 <= tolerance <= 20:
         raise ValueError('实验比例误差阈值应为 1–20%')
@@ -267,22 +316,36 @@ def preprocess(refs, config, caps, resolve, save):
         return None
     if not caps['supported']:
         raise ValueError('当前模型或渠道尚未验证产品保真参考图链路，请选择已接入的 GPT-Image 或 Gemini 图片模型')
+    dimensions = config['dimensions']
+    physical = dimensions['enabled']
     ids = [r.get('reference_id', '') for r in refs]
     if not all(ids) or len(set(ids)) != len(ids):
         raise ValueError('参考图身份缺失或重复，请在产品保真节点重新选择主图并更新处理结果')
     if any(not (path := resolve(str(r.get('url') or ''))) or not Path(path).is_file() for r in refs):
         raise ValueError('产品保真参考图必须先保存到本地；请导入远程图片，避免渠道遗漏参考图')
     selected = config.get('productReferenceId')
-    if selected not in ids:
+    if selected not in ids and refs:
         raise ValueError('产品主参考图已移除或替换，请重新选择')
-    source = load_image(refs[ids.index(selected)]['url'], resolve)
-    mask = product_mask(source, config, resolve)
+    if not refs and (not physical or dimensions['constraintMode']=='protect'):
+        raise ValueError('产品保护需要原产品图；Prompt／Guide 可在填写真实尺寸后使用软约束')
+    source = load_image(refs[ids.index(selected)]['url'], resolve) if refs else None
+    mask = product_mask(source, config, resolve) if source is not None else None
     if config['mode'] == 'strict' and mask is None:
         raise ValueError('严格保真需要透明产品 PNG、已有黑白蒙版或手动画蒙版；不能仅靠提示词保护产品')
     budget = caps['applicationReferenceLimit']
-    if len(refs) > budget:
+    if len(refs) > budget and not physical:
         raise ValueError(f'当前渠道产品保真最多提交 {budget} 张参考图；用户原图不会被丢弃，请减少参考图')
     warnings = []
+    omitted = []
+    refs = [{**ref, 'role': 'product_reference' if ref['reference_id']==selected else 'user_reference'} for ref in refs]
+    if len(refs) > budget:
+        keep = [r for r in refs if r['reference_id']==selected]
+        keep += [r for r in refs if r['reference_id']!=selected][:max(0,budget-len(keep))]
+        retained = {r['reference_id'] for r in keep}
+        omitted += [dict(reference_id=r['reference_id'], role=r['role'], name=r.get('name','用户参考图'), reason='参考图数量限制') for r in refs if r['reference_id'] not in retained]
+        refs = [r for r in refs if r['reference_id'] in retained]
+    if not refs:
+        warnings.append('没有原产品参考图：只能约束抽象比例，不能保证产品身份、外轮廓、细节或真实厘米尺度')
     if not caps['channelVerified']:
         warnings.append('渠道能力未全部验证；参考图数量使用保守的应用限制，费用未知')
     if not caps['aliasVersionVerified']:
@@ -294,7 +357,7 @@ def preprocess(refs, config, caps, resolve, save):
     if config['mode'] == 'strict' and ids.index(selected) != 0:
         warnings.append('产品主图不是第一张：保持用户顺序，使用本地蒙版合成，不提交原生 mask')
     assets = []
-    content_hash = hashlib.sha256(source.tobytes() + str(source.size).encode()).hexdigest()
+    content_hash = hashlib.sha256(source.tobytes() + str(source.size).encode()).hexdigest() if source is not None else dimension_signature(dimensions)
     def asset(image, role, label, parameter):
         key = hashlib.sha256((content_hash + role + json.dumps(parameter, sort_keys=True)).encode()).hexdigest()
         url = save(image, 'fidelity_' + key + '.png', cached=True)
@@ -304,13 +367,27 @@ def preprocess(refs, config, caps, resolve, save):
         return item
     mask_asset = asset(mask, 'product-mask', '主体蒙版（白色保护）', config.get('maskStrokes', []) + [config.get('maskUrl', ''), hashlib.sha256(mask.tobytes()).hexdigest()]) if mask else None
     derived = []
+    geometry_asset = None
+    if physical and dimensions['constraintMode']=='guide':
+        key = dimension_signature(dimensions)
+        url = save(GeometryGuideGenerator.image(dimensions), 'geometry_'+key+'.png', cached=True)
+        geometry_asset = dict(url=url,name='尺寸驱动结构代理：正面、侧面、简化轴测；只参考几何，不参考外观',
+                              kind='image',role='geometry_reference',reference_id='geometry_'+key,
+                              source='derived',parentReferenceId=selected,width=960,height=360)
+        dimensions['guideAssetId'] = geometry_asset['reference_id']
+        assets.append(geometry_asset)
+        derived.append(geometry_asset)
+        if dimensions['depth'] is None:
+            warnings.append('厚度未知：结构代理仅提供正面轮廓，侧面和体积不能确定')
+    else:
+        dimensions['guideAssetId'] = None
     detail = config['detail']
     detected_rois = []
-    if detail['enabled'] and detail['inputMode'] in {'highpass', 'combined'}:
+    if source is not None and detail['enabled'] and detail['inputMode'] in {'highpass', 'combined'}:
         work = source.copy()
         work.thumbnail((1536, 1536), Image.Resampling.LANCZOS)
         derived.append(asset(highpass(work, float(detail['highPassRadiusPx']), float(detail['highPassGain'])), 'highpass', '高反差：灰图仅参考纹理边缘，非真实颜色', dict(radius=detail['highPassRadiusPx'], gain=detail['highPassGain'])))
-    if detail['enabled'] and detail['inputMode'] in {'crops', 'combined'}:
+    if source is not None and detail['enabled'] and detail['inputMode'] in {'crops', 'combined'}:
         manual_rois = config.get('rois', [])[:int(detail['cropCount'])]
         # Validate manual regions before using them as automatic exclusions.
         for roi in manual_rois:
@@ -328,7 +405,7 @@ def preprocess(refs, config, caps, resolve, save):
             derived.append(asset(source.crop(box), 'detail-crop', f'{"自动" if roi.get("source")=="auto" else "手动"}局部细节 {index+1}，原图归一化区域 {roi}', roi))
         if not manual_rois and not detail['autoCrops']:
             warnings.append('未框选局部区域：本次没有局部裁切参考，不进行自动猜测')
-    if config['mode'] == 'view':
+    if config['mode'] == 'view' and source is not None:
         warnings.append('目标角度由提示词表达；不可见面为 AI 推测，关闭旧视角高频回填和精确比例判定')
         if config['view'].get('proxyEnabled'):
             if config.get('geometry') != 'plane':
@@ -340,11 +417,15 @@ def preprocess(refs, config, caps, resolve, save):
                 ratio = width/height if width and height else (box[2]-box[0])/(box[3]-box[1]) if box else source.width/source.height
                 if not width or not height:
                     warnings.append('透视代理使用参考图可见比例，不能代表真实三维尺寸')
-                derived.insert(0, asset(perspective_proxy(ratio, config['view']), 'perspective-proxy', '平面目标透视示意：仅参考形状和方向，非产品真实颜色或隐藏面', dict(ratio=ratio,view=config['view'])))
+                derived.insert(1 if geometry_asset else 0, asset(perspective_proxy(ratio, config['view']), 'perspective-proxy', '平面目标透视示意：仅参考形状和方向，非产品真实颜色或隐藏面', dict(ratio=ratio,view=config['view'])))
     available = max(0, budget-len(refs))
     if len(derived) > available:
         warnings.append(f'参考图预算不足，仅附加 {available} 张辅助图；保留所有用户参考图')
+        omitted += [dict(reference_id=r['reference_id'],role=r['role'],name=r['name'],reason='参考图数量限制') for r in derived[available:]]
         derived = derived[:available]
+    warnings += [f'已省略 {r["name"]}（{r["role"]}）：{r["reason"]}' for r in omitted]
+    if geometry_asset and geometry_asset not in derived:
+        warnings.append('本次结构图未进入模型请求：Guide 已退化为 Prompt 软约束，请减少其他参考图')
     ordered = [{**r, 'fidelity_reference': True} for r in refs] + [{**r, 'fidelity_reference': True} for r in derived]
     if len(ordered) > caps['preferredReferenceImages']:
         warnings.append(f'本次 {len(ordered)} 张图超过该型号建议数量 {caps["preferredReferenceImages"]}，不保证更多辅助图更有效')
@@ -354,9 +435,11 @@ def preprocess(refs, config, caps, resolve, save):
     return dict(config=config, source=source, mask=mask, reference_images=ordered,
                 generatedAssets=assets, usedReferenceIds=[r['reference_id'] for r in ordered],
                 detectedRois=detected_rois,
-                modelCapabilities=caps, warnings=warnings,
+                modelCapabilities=caps, warnings=warnings, omittedReferences=omitted,
+                normalizedDimensions=buildNormalizedDimensions(dimensions), dimensions=dimensions,
+                geometryGuideUsed=bool(geometry_asset and geometry_asset in derived),
                 sourceRatio=physical_ratio or ((box[2]-box[0])/(box[3]-box[1]) if box else None),
-                sourceCanvasRatio=source.width/source.height,
+                sourceCanvasRatio=source.width/source.height if source is not None else None,
                 productMask=mask_asset, bbox=list(mask.getbbox()) if mask else None,
                 retryCount=0, costEstimate=None, appliedStrategy='local-pixel-composite' if config['mode']=='strict' else 'ordered-detail-references')
 
@@ -364,8 +447,14 @@ def preprocess(refs, config, caps, resolve, save):
 def prompt_for(prompt, context):
     config = context['config']
     lines = [prompt, '产品保真参考说明：']
+    category = config.get('categoryCustom') if config.get('category') == 'other' else PRODUCT_CATEGORIES.get(config.get('category'))
+    geometry = config.get('geometryCustom') if config.get('geometry') == 'custom' else PRODUCT_GEOMETRIES.get(config.get('geometry'))
+    if category:
+        lines.append('用户确认的产品类型：' + category)
+    if geometry:
+        lines.append('用户确认的产品形状：' + geometry)
     for i, ref in enumerate(context['reference_images'], 1):
-        if ref['reference_id'] == config['productReferenceId']:
+        if ref['reference_id'] == config.get('productReferenceId'):
             role = '产品真实外观、比例、颜色和标识基准'
         elif ref.get('source') == 'derived':
             role = ref['name']
@@ -376,13 +465,15 @@ def prompt_for(prompt, context):
     scope = config['generation'].get('allowedEdits', 'view' if config['mode']=='view' else 'lighting' if config['mode']=='structure' else 'background')
     if scope not in scopes:
         raise ValueError('允许变化范围无效')
-    lines += [scopes[scope], '保持真实产品身份，不增删 LOGO、文字、接口或部件。']
+    if config['generation'].get('enabled', True) or config['mode']=='strict':
+        lines.append(scopes[scope])
+    lines.append('保持真实产品身份，不增删 LOGO、文字、接口或部件。')
     if config['mode'] == 'strict':
         lines.append('本次只输出环境背景与接触阴影：原产品将由本地蒙版回贴。产品原位置留出空位，不绘制另一个产品、边框或文字；参考图用于环境布局和接触阴影位置。')
     if config.get('dimensionNotes'):
         lines.append('用户提供的真实尺寸说明：' + str(config['dimensionNotes'])[:200])
-    if any(config['dimensions'].get(k) for k in ('width','height','depth')):
-        lines.append('用户提供的真实尺寸（未填写的维度未知）：' + json.dumps(config['dimensions'],ensure_ascii=False))
+    if config['identification'].get('enabled', True):
+        lines.extend(compile_dimension_prompt(config['dimensions']))
     for flag, instruction in dict(lockRatio='保持产品实体长宽比例', lockOutline='保持产品外轮廓', lockLines='保持真实直线、四角和矩形边界', lockSymmetry='保持已有对称结构', lockLayout='保持部件相对布局').items():
         if config['structure'].get(flag):
             lines.append(instruction + '（普通参考约束，不是模型原生控制参数）。')
@@ -437,7 +528,7 @@ def planar_geometry(source_mask, target_rgb, transform, tolerance=5):
 
 
 def report(context):
-    return {k:context[k] for k in ('generatedAssets', 'usedReferenceIds', 'modelCapabilities', 'warnings', 'sourceRatio', 'sourceCanvasRatio', 'bbox', 'retryCount', 'costEstimate', 'appliedStrategy', 'detectedRois')}
+    return {k:context[k] for k in ('generatedAssets', 'usedReferenceIds', 'modelCapabilities', 'warnings', 'sourceRatio', 'sourceCanvasRatio', 'bbox', 'retryCount', 'costEstimate', 'appliedStrategy', 'detectedRois', 'normalizedDimensions', 'dimensions', 'geometryGuideUsed', 'omittedReferences')}
 
 
 def composite(source, mask, background, feather=0):
@@ -460,6 +551,18 @@ def composite(source, mask, background, feather=0):
     if error:
         raise ValueError('产品核心像素保护校验失败')
     return output, dict(status='passed', scope='本地合成核心 RGB 像素；不代表语义/OCR 或透明边缘融合已通过', protectedPixels=count, maxPixelError=error)
+
+
+def composite_in_output(source, mask, background, feather=0):
+    """Preserve original product pixels on the selected output canvas, centred."""
+    if source.width > background.width or source.height > background.height:
+        raise ValueError('Protect 输出画布小于原产品图，无法原像素合成；请选择足够大的输出尺寸或先准备较小产品副本')
+    x, y = (background.width-source.width)//2, (background.height-source.height)//2
+    patch, validation = composite(source, mask, background.crop((x,y,x+source.width,y+source.height)), feather)
+    output = background.convert('RGBA')
+    output.paste(patch,(x,y))
+    validation.update(productOffset=[x,y], outputCanvasPreserved=True)
+    return output, validation
 
 
 def align_details(source, generated, mask, config):
@@ -520,11 +623,12 @@ def align_details(source, generated, mask, config):
     if feather:
         support = np.minimum(support, cv2.GaussianBlur(support, (0,0), feather))
     validation.update(status='warning', reason='同视角平面特征对齐可靠；语义、OCR、完整轮廓和精确比例仍需人工复核', medianResidualPx=residual)
-    geometry = planar_geometry(mask,dst,transform,float(config['validation'].get('ratioTolerancePct',5)))
-    validation['geometry'] = geometry
-    if geometry['status']=='failed':
-        validation.update(status='failed',reason='实验外框检查发现边长相对变化，已跳过细节恢复；请核对原图与输出')
-        return generated,validation
+    if config['validation'].get('enabled', True):
+        geometry = planar_geometry(mask,dst,transform,float(config['validation'].get('ratioTolerancePct',5)))
+        validation['geometry'] = geometry
+        if geometry['status']=='failed':
+            validation.update(status='failed',reason='实验外框检查发现边长相对变化，已跳过细节恢复；请核对原图与输出')
+            return generated,validation
     if config['detail']['enabled'] and config['detail']['restoreMode'] == 'auto' and mask is not None:
         radius = float(config['detail']['highPassRadiusPx']) * math.hypot(transform[0,0],transform[1,0])
         high = warped-cv2.GaussianBlur(warped, (0,0), max(.5,radius))
