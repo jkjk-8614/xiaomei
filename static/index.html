@@ -1847,6 +1847,12 @@
             </nav>
 
             <div class="side-actions">
+                <button class="side-pill" id="project-update-check-btn" onclick="checkForUpdates(true)" type="button" title="检查更新">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 7v5h-5"></path><path d="M4 17v-5h5"></path><path d="M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 17.9 17"></path>
+                    </svg>
+                    <span class="side-pill-text" id="project-update-check-text">检查更新</span>
+                </button>
                 <button class="side-pill" onclick="switchUI(this, 'api-settings')" type="button" title="API 设置">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M15 7h3a5 5 0 0 1 0 10h-3"></path>
@@ -3363,6 +3369,7 @@
                 else window.StudioI18n.apply();
             }
             startSidebarDateTime();
+            void initializeAppUpdateButton();
             window.addEventListener('studio-lang-change', updateSidebarDateTime);
             broadcastLanguage();
             const sidebar = document.getElementById('studioSidebar');
@@ -4017,8 +4024,50 @@
         }
         window.rollbackProjectUpdate = rollbackProjectUpdate;
 
+        function renderAppUpdateStatus(result = {}) {
+            const button = document.getElementById('project-update-check-btn');
+            const text = document.getElementById('project-update-check-text');
+            if(!button || !text) return;
+            const current = result.currentDisplayVersion || result.currentVersion || appInfo.version;
+            const available = result.status === 'available';
+            text.textContent = available ? `更新到 ${versionLabel(result.displayVersion || result.version)}` : '检查更新';
+            button.title = available ? text.textContent : `当前版本：${versionLabel(current)} · 检查更新`;
+        }
+
+        async function initializeAppUpdateButton() {
+            try {
+                if(window.electronAPI?.getUpdateInfo) {
+                    window.electronAPI.onUpdateStatus?.(renderAppUpdateStatus);
+                    const info = await window.electronAPI.getUpdateInfo();
+                    appInfo.version = info?.displayVersion || info?.version || '';
+                    renderAppUpdateStatus(info?.result || {});
+                } else {
+                    const info = await fetch('/api/app-info', { cache:'no-store' }).then(r => r.json());
+                    appInfo = {...appInfo, ...info};
+                    renderAppUpdateStatus();
+                }
+            } catch {}
+        }
+
         async function checkForUpdates(manual = false) {
+            const button = document.getElementById('project-update-check-btn');
+            if(button?.disabled) return;
+            if(window.electronAPI?.checkForUpdates) {
+                if(!manual) return;
+                if(button) button.disabled = true;
+                try {
+                    const result = await window.electronAPI.checkForUpdates({ manual:true });
+                    renderAppUpdateStatus(result);
+                    if(result?.status === 'current') alert(`已是最新版本（${versionLabel(result.currentDisplayVersion || appInfo.version)}）。`);
+                } catch {
+                    alert('检查更新失败，请检查网络后重试。');
+                } finally {
+                    if(button) button.disabled = false;
+                }
+                return;
+            }
             const isEn = window.StudioI18n?.lang?.() === 'en';
+            if(button) button.disabled = true;
             const badge = document.getElementById('project-version-badge');
             if(manual && badge) badge.classList.add('checking');
             try {
@@ -4063,7 +4112,9 @@
                 }
                 if(manual) {
                     if(hasUpdate) {
-                        openProjectUpdateModal();
+                        if(confirm(`发现新版本 ${versionLabel(best.version)}，是否打开发布页下载？`)) {
+                            window.open('https://github.com/jkjk-8614/xiaomei/releases/latest', '_blank', 'noopener,noreferrer');
+                        }
                     } else if(reachable) {
                         alert(isEn ? `You are on the latest version (${versionLabel(current)}).` : `已是最新版本（${versionLabel(current)}）。`);
                     } else {
@@ -4074,6 +4125,7 @@
                 // 离线包里没有网络时保持安静，不影响本地使用。
                 if(manual) alert(isEn ? 'Update check failed.' : '检测更新失败。');
             } finally {
+                if(button) button.disabled = false;
                 if(badge) badge.classList.remove('checking');
             }
         }
