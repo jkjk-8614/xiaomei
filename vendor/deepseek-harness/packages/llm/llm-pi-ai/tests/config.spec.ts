@@ -116,9 +116,9 @@ describe('non-streaming completion routes', () => {
   it('rejects a catalog route and an undeclared model', () => {
     expect(() => assertServiceable({ providers: {
       route: { nonStreamingModels: ['m'] },
-    } as Options['providers'] })).toThrow(/nonStreamingModels/)
+    } as NonNullable<Options['providers']> })).toThrow(/nonStreamingModels/)
     expect(() => assertServiceable({ providers: {
       route: { api: 'openai-completions', models: [{ id: 'm' }], nonStreamingModels: ['other'] },
-    } as Options['providers'] })).toThrow(/nonStreamingModels/)
+    } as NonNullable<Options['providers']> })).toThrow(/nonStreamingModels/)
   })
 })
