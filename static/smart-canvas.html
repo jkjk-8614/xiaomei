@@ -3,23 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="/static/images/logo.png?v=2026.10.12" type="image/png">
+    <link rel="icon" href="/static/images/logo.png?v=2026.10.13" type="image/png">
     <title data-i18n="smart.title">智能画布</title>
-    <script src="/static/vendor/js/lucide.js?v=2026.10.12.1784161005"></script>
-    <script src="/static/vendor/js/perfect-freehand-1.2.3.js?v=2026.10.12.1789185308"></script>
-    <script src="/static/js/theme.js?v=2026.10.12.1791335865"></script>
-    <script src="/static/js/touch-mouse.js?v=2026.10.12.1784161005"></script>
-    <script src="/static/js/i18n.js?v=2026.10.12.1791611714"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.12.1791343786">
-    <link rel="stylesheet" href="/static/css/canvas-editor-common.css?v=2026.10.12.1786168693">
-<link rel="stylesheet" href="/static/css/smart-canvas.css?v=2026.10.12.1791784963&popover-clip=2026.10.12.1">
-    <link rel="stylesheet" href="/static/css/canvas-folder-batch.css?v=2026.10.12.1789432724">
-    <script src="/static/js/background-removal-bridge.js?v=2026.10.12.1789009721"></script>
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.12.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.12.1791346900&agent-model-picker=2026.09.28.1">
-    <link rel="stylesheet" href="/static/css/smart-canvas-agent.css?v=2026.10.12.1791784963&dark-model-picker=2026.10.12.2&dark-agent-contrast=2026.10.12.6">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.12.1790178173"></script>
-    <link rel="stylesheet" href="/static/css/image-layers.css?v=2026.10.12.1790738147">
+    <script src="/static/vendor/js/lucide.js?v=2026.10.13.1784161005"></script>
+    <script src="/static/vendor/js/perfect-freehand-1.2.3.js?v=2026.10.13.1789185308"></script>
+    <script src="/static/js/theme.js?v=2026.10.13.1791335865"></script>
+    <script src="/static/js/touch-mouse.js?v=2026.10.13.1784161005"></script>
+    <script src="/static/js/i18n.js?v=2026.10.13.1791804215"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.13.1791851171">
+    <link rel="stylesheet" href="/static/css/canvas-editor-common.css?v=2026.10.13.1786168693">
+<link rel="stylesheet" href="/static/css/smart-canvas.css?v=2026.10.13.skills.2&popover-clip=2026.10.12.1&input-hover=2026.10.12.1&agent-surfaces=2026.10.12.1&node-refs=2026.10.12.1&ocr=2026.10.13.4">
+    <link rel="stylesheet" href="/static/css/canvas-folder-batch.css?v=2026.10.13.1789432724">
+    <script src="/static/js/background-removal-bridge.js?v=2026.10.13.1789009721"></script>
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.13.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.13.skills.1&agent-model-picker=2026.09.28.1">
+    <link rel="stylesheet" href="/static/css/smart-canvas-agent.css?v=2026.10.13.1791784963&dark-model-picker=2026.10.12.2&dark-agent-contrast=2026.10.12.6">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.13.1790178173"></script>
+    <link rel="stylesheet" href="/static/css/image-layers.css?v=2026.10.13.1790738147">
 </head>
 <body>
     <div id="shell" class="shell">
@@ -121,7 +121,7 @@
                         <button type="button" data-agent-mode="skill">Skill</button>
                         <button type="button" data-agent-mode="agent" class="active">Agent</button>
                         <div class="canvas-agent-generation-skill-tools">
-                            <button id="canvasAgentSkillQuickToggle" type="button" class="canvas-agent-skill-link" title="打开 Skill 市场" aria-expanded="false" aria-controls="canvasAgentSkillQuickPopover"><i data-lucide="sparkles"></i><span>技能</span><i data-lucide="chevron-down" class="canvas-agent-skill-caret"></i></button>
+                            <button id="canvasAgentSkillQuickToggle" type="button" class="canvas-agent-skill-link" title="选择技能" aria-expanded="false" aria-controls="canvasAgentSkillQuickPopover"><i data-lucide="sparkles"></i><span>技能</span><i data-lucide="chevron-down" class="canvas-agent-skill-caret"></i></button>
                             <span id="canvasAgentSkillQuickCurrent" class="canvas-agent-skill-quick-current">通用助手</span>
                         </div>
                     </div>
@@ -373,6 +373,10 @@
                 <button class="create-card data-create-card" type="button" data-create-type="timeline">
                     <span class="create-card-icon"><i data-lucide="film"></i></span>
                     <span><div class="create-card-title">视频时间线</div><div class="create-card-sub">编排画面、配音、字幕并导出成片</div></span>
+                </button>
+                <button class="create-card" type="button" data-create-type="product-fidelity">
+                    <span class="create-card-icon"><i data-lucide="shield-check"></i></span>
+                    <span><div class="create-card-title">产品保真</div><div class="create-card-sub">保护产品像素、结构与局部细节</div></span>
                 </button>
             </div>
         </div>
@@ -648,18 +652,32 @@
                         <div class="ocr-panel-heading-icon"><i data-lucide="scan-text" class="w-4 h-4"></i></div>
                         <div class="ocr-panel-heading-copy">
                             <strong>OCR 智能改字</strong>
-                            <span id="ocrStatus" role="status" aria-live="polite">相邻文字已合并成组，只生成已修改内容</span>
+                            <span id="ocrStatus" role="status" aria-live="polite">选择平台和识字模型后，点击识别文字</span>
                         </div>
                         <button class="ocr-panel-close" type="button" onclick="closeImageEditor()" title="关闭 OCR 面板" aria-label="关闭 OCR 面板"><i data-lucide="x" class="w-4 h-4"></i></button>
                     </div>
                     <div id="ocrTextList" class="ocr-text-list"></div>
                     <div id="ocrEmptyState" class="ocr-empty-state">
                         <i data-lucide="scan-search" class="w-5 h-5"></i>
-                        <span id="ocrEmptyLabel">图片加载后自动识别文字</span>
+                        <span id="ocrEmptyLabel">选择平台和识字模型后，点击识别文字</span>
                     </div>
                     <div class="ocr-panel-footer">
                         <div class="ocr-count-row"><span id="ocrCountLabel">识别 0 组 · 已改 0 组</span><button id="ocrModelToggle" class="ocr-model-toggle" type="button" onclick="toggleOcrModelSettings()" aria-expanded="false" aria-controls="ocrModelSettings">模型<i data-lucide="chevron-down"></i></button></div>
                         <div id="ocrModelSettings" hidden>
+                            <label for="ocrRecognitionProviderSelect" class="ocr-model-hint">API 平台</label>
+                            <label class="ocr-model-select-wrap">
+                                <i data-lucide="server" class="w-3.5 h-3.5"></i>
+                                <select id="ocrRecognitionProviderSelect" aria-label="API 平台"></select>
+                                <i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>
+                            </label>
+                            <label for="ocrRecognitionModelSelect" class="ocr-model-hint">识字模型</label>
+                            <label class="ocr-model-select-wrap">
+                                <i data-lucide="scan-text" class="w-3.5 h-3.5"></i>
+                                <select id="ocrRecognitionModelSelect" aria-label="识字模型"></select>
+                                <i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>
+                            </label>
+                            <p class="ocr-model-hint">请选择支持图片输入的 API 或 CLI 模型。CLI 使用已有登录状态识字。</p>
+                            <label for="ocrModelSelect" class="ocr-model-hint">改字模型</label>
                             <label class="ocr-model-select-wrap">
                                 <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
                                 <select id="ocrModelSelect" aria-label="改字模型"></select>
@@ -668,7 +686,7 @@
                             <p id="ocrModelHint" class="ocr-model-hint">改字需要支持参考图编辑的模型</p>
                         </div>
                         <div class="ocr-panel-actions">
-                            <button id="ocrRecognizeBtn" class="image-edit-btn secondary" type="button" onclick="recognizeImageText()"><i data-lucide="scan-text" class="w-4 h-4"></i><span>重新识别</span></button>
+                            <button id="ocrRecognizeBtn" class="image-edit-btn secondary" type="button" onclick="recognizeImageText()" disabled><i data-lucide="scan-text" class="w-4 h-4"></i><span>识别文字</span></button>
                             <button id="ocrGenerateBtn" class="image-edit-btn primary" type="button" onclick="applyImageOcrEdit()" disabled><i data-lucide="wand-sparkles" class="w-4 h-4"></i><span>生成改字图</span></button>
                         </div>
                     </div>
@@ -954,31 +972,34 @@
         <div id="toast" class="toast"></div>
         <div id="mentionPreview" class="mention-preview"><img alt="preview"></div>
     </div>
-    <script src="/static/js/upstream-rerun-utils.js?v=2026.10.12.1785467783"></script>
-    <script src="/static/js/smart-camera-node.js?v=2026.10.12.1786063012"></script>
-    <script src="/static/js/smart-color-node.js?v=2026.10.12.1788945447"></script>
-    <script src="/static/js/smart-drawing-board-node.js?v=2026.10.12.1790491245&drawing-ratio=2026.09.27.2"></script>
-    <script src="/static/js/smart-canvas-data-video.js?v=2026.10.12.1791538279&connect-types=2"></script>
-<script src="/static/js/generation-notifications.js?v=2026.10.12.1787131165"></script>
-<script src="/static/js/image-task-client.js?v=2026.10.12.1791025940"></script>
-    <script src="/static/js/canvas-editor-core.js?v=2026.10.12.1786171437"></script>
-      <script src="/static/js/outpaint-geometry.js?v=2026.10.12.1790090615"></script>
-      <link rel="stylesheet" href="/static/css/workflow-save-dialog.css?v=2026.10.12.1791355337">
-      <link rel="stylesheet" href="/static/css/workflow-preview.css?v=2026.10.12.1791372473">
-      <script src="/static/js/workflow-preview.js?v=2026.10.12.1791372436"></script>
-      <script src="/static/js/workflow-save-dialog.js?v=2026.10.12.1791365029"></script>
-      <script src="/static/js/smart-canvas.js?v=2026.10.12.prompt-collapse.1"></script>
-    <script src="/static/js/smart-canvas-edit-suite.js?v=2026.10.12.1791198166"></script>
-<script src="/static/js/local-bridge-ui.js?v=2026.10.12.1789536752"></script>
-    <script src="/static/js/shared-agent-skill.js?v=2026.10.12.1791504727"></script>
-<script src="/static/js/link-analysis-client.js?v=2026.10.12.1791637062"></script>
-    <script src="/static/js/canvas-folder-batch.js?v=2026.10.12.1789432948"></script>
-<script src="/static/js/canvas-agent-orb.js?v=2026.10.12.1791679756"></script>
-<script src="/static/js/canvas-agent.js?v=2026.10.12.1791782796&agent-pref-sync=2026.10.02.1&agent-model-picker=2026.09.28.1&canvas-wide-agent=2026.10.08.1&canvas-command-tools=2026.10.10.commerce-rules.1"></script>
-<script src="/static/vendor/js/ag-psd-seethrough.bundle.js?v=2026.10.12.1790092014&layers=2026.09.22.3"></script>
-<script src="/static/js/image-layer-psd.js?v=2026.10.12.1790233758"></script>
-<script src="/static/js/smart-image-layers.js?v=2026.10.12.1790749439"></script>
+    <script src="/static/js/upstream-rerun-utils.js?v=2026.10.13.1785467783"></script>
+    <script src="/static/js/smart-camera-node.js?v=2026.10.13.1786063012"></script>
+    <script src="/static/js/smart-color-node.js?v=2026.10.13.1788945447"></script>
+    <script src="/static/js/smart-drawing-board-node.js?v=2026.10.13.1790491245&drawing-ratio=2026.09.27.2"></script>
+    <script src="/static/js/smart-canvas-data-video.js?v=2026.10.13.fidelity-node.4&connect-types=2"></script>
+<script src="/static/js/generation-notifications.js?v=2026.10.13.1787131165"></script>
+<script src="/static/js/image-task-client.js?v=2026.10.13.1791025940"></script>
+    <script src="/static/js/canvas-editor-core.js?v=2026.10.13.1786171437"></script>
+      <script src="/static/js/outpaint-geometry.js?v=2026.10.13.1790090615"></script>
+      <link rel="stylesheet" href="/static/css/workflow-save-dialog.css?v=2026.10.13.1791355337">
+      <link rel="stylesheet" href="/static/css/workflow-preview.css?v=2026.10.13.1791372473">
+      <script src="/static/js/workflow-preview.js?v=2026.10.13.1791372436"></script>
+      <script src="/static/js/workflow-save-dialog.js?v=2026.10.13.1791365029"></script>
+      <script src="/static/js/smart-canvas.js?v=2026.10.13.fidelity-node.4&batch-default=2026.10.12.2&input-hover=2026.10.12.1&upstream-run=2026.10.13.2&node-refs=2026.10.12.1&vector=2026.10.12.1&product-fidelity=2026.10.13.3&ocr=2026.10.13.4&agent-height=2026.10.13.1"></script>
+    <link rel="stylesheet" href="/static/css/smart-image-vectorizer.css?v=2026.10.13.1791852537">
+    <script src="/static/js/smart-image-vectorizer.js?v=2026.10.13.1791852537"></script>
+    <link rel="stylesheet" href="/static/css/product-fidelity.css?v=2026.10.13.fidelity-node.4">
+    <script src="/static/js/product-fidelity.js?v=2026.10.13.fidelity-node.4"></script>
+    <script src="/static/js/smart-canvas-edit-suite.js?v=2026.10.13.1791198166"></script>
+<script src="/static/js/local-bridge-ui.js?v=2026.10.13.1789536752"></script>
+    <script src="/static/js/shared-agent-skill.js?v=2026.10.13.1791504727"></script>
+<script src="/static/js/link-analysis-client.js?v=2026.10.13.1791637062"></script>
+    <script src="/static/js/canvas-folder-batch.js?v=2026.10.13.1789432948"></script>
+<script src="/static/js/canvas-agent-orb.js?v=2026.10.13.1791679756"></script>
+<script src="/static/js/canvas-agent.js?v=2026.10.13.skills.1&agent-pref-sync=2026.10.02.1&agent-model-picker=2026.09.28.1&canvas-wide-agent=2026.10.08.1&canvas-command-tools=2026.10.10.commerce-rules.1"></script>
+<script src="/static/vendor/js/ag-psd-seethrough.bundle.js?v=2026.10.13.1790092014&layers=2026.09.22.3"></script>
+<script src="/static/js/image-layer-psd.js?v=2026.10.13.1790233758"></script>
+<script src="/static/js/smart-image-layers.js?v=2026.10.13.1790749439"></script>
 </body>
 </html>
 \n
-

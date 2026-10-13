@@ -970,7 +970,10 @@
         skillCurrentEl?.classList.toggle('is-selected',Boolean(selected));
         if(clearButton){clearButton.disabled=!selected;clearButton.textContent=selected?'清除':'默认';}
         const currentName=selected?.name||selected?.display_name||'通用助手';
-        if(skillQuickCurrentEl)skillQuickCurrentEl.textContent=currentName;
+        if(skillQuickCurrentEl){
+            skillQuickCurrentEl.textContent=currentName;
+            skillQuickCurrentEl.title=currentName;
+        }
     }
     function renderSkillList(){
         if(!skillList)return;
@@ -1063,6 +1066,8 @@
         });
         const quickPriority=new Map([['buyer-show-generation',0],[BROWSER_SKILL_ID,1]]);
         visibleSkills.sort((a,b)=>{
+            const selectedFirst=Number(b.id===skillEl.value)-Number(a.id===skillEl.value);
+            if(selectedFirst)return selectedFirst;
             const rankA=quickPriority.has(a.id)?quickPriority.get(a.id):100;
             const rankB=quickPriority.has(b.id)?quickPriority.get(b.id):100;
             return rankA-rankB;
@@ -1080,7 +1085,7 @@
             return `<button type="button" role="option" aria-selected="${active?'true':'false'}" class="canvas-agent-skill-quick-item ${active?'active':''}" data-agent-quick-skill-id="${esc(skill.id)}" title="${esc(description)}">
                 <span class="canvas-agent-skill-quick-icon"><i data-lucide="sparkles"></i></span>
                 <span class="canvas-agent-skill-quick-copy"><strong>${esc(name)}</strong><small>${esc(description)}</small></span>
-                <span class="canvas-agent-skill-quick-action">${active?'当前':'使用'}</span>
+                <span class="canvas-agent-skill-quick-action">${active?'使用中':'使用'}</span>
             </button>`;
         }).join('');
         if(typeof refreshIcons==='function')refreshIcons();
@@ -4150,6 +4155,7 @@
             [settingsEl,generationSettingsEl,skillPopover,historyEl].forEach(item=>item?.classList.remove('open'));
             [$('canvasAgentSettingsToggle'),...generationToggleControls(),$('canvasAgentSkillsToggle'),$('canvasAgentHistoryToggle')].forEach(button=>button?.classList.remove('active'));
             generationToggleControls().forEach(button=>button.setAttribute('aria-expanded','false'));
+            if(skillQuickSearchEl)skillQuickSearchEl.value='';
             renderQuickSkillList();
         }
         skillQuickPopover.classList.toggle('open',opening);
@@ -4157,7 +4163,10 @@
         skillQuickToggle?.classList.toggle('active',opening);
         skillQuickToggle?.setAttribute('aria-expanded',opening?'true':'false');
         panel?.classList.toggle('generation-preferences-open',generationSettingsEl?.classList.contains('open'));
-        if(opening)requestAnimationFrame(()=>skillQuickSearchEl?.focus());
+        if(opening)requestAnimationFrame(()=>{
+            if(skillQuickList)skillQuickList.scrollTop=0;
+            skillQuickSearchEl?.focus({preventScroll:true});
+        });
         refreshIcons();
     }
     function addSkill(){

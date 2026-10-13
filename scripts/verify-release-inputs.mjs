@@ -7,6 +7,13 @@ import path from 'node:path';
 const root = process.cwd();
 const ignored = new Set(['.git', 'node_modules', 'dist', 'dist-package', 'build', 'python', '__pycache__']);
 const forbidden = [
+  /^(?:data|assets|output|user_data|logs|\.xiaomei-data|\.ui-patch-backup)(?:[\\/]|$)/i,
+  /(?:^|[\\/])global_config\.json$/i,
+  /(?:^|[\\/])(?:\.cache|\.pytest_cache|\.venv|\.idea|\.vscode)(?:[\\/]|$)/i,
+  /^ComfyUI[\\/]comfy_model_preferences\.json$/i,
+  /^desktop[\\/]update-config\.local\.json$/i,
+  /^packages[\\/].*\.whl$/i,
+  /(?:^|[\\/])__pycache__(?:[\\/]|$)|\.(?:pyc|pyo|bak|tmp)$/i,
   /(^|[\\/])\.env$/i,
   /(^|[\\/])\.xiaomei-data([\\/]|$)/i,
   /(^|[\\/])history\.json$/i,
@@ -21,8 +28,8 @@ function isPrivateEnv(file) {
 }
 
 const found = [];
-const tracked = execFileSync('git', ['ls-files'], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 }).split(/\r?\n/).filter(Boolean);
-const trackedForbidden = tracked.filter((file) => /^(?:data|output|assets|user_data|logs|node_modules|python|\.xiaomei-data)(?:[\\/]|$)|(?:^|[\\/])history\.json$/i.test(file) || isPrivateEnv(file));
+const tracked = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 }).split('\0').filter(Boolean);
+const trackedForbidden = tracked.filter((file) => /^(?:node_modules|python)(?:[\\/]|$)/i.test(file) || forbidden.some(pattern => pattern.test(file)) || isPrivateEnv(file));
 if (trackedForbidden.length) {
   console.error('Git 跟踪列表包含运行数据或本地安装文件：');
   for (const file of trackedForbidden.slice(0, 30)) console.error(`- ${file}`);

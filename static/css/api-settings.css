@@ -1,5 +1,7 @@
 :root { --bg:#f7f8fa; --panel:#fff; --soft:#f1f4f8; --line:#e8ecf2; --line-strong:#dbe1ea; --text:#0f172a; --muted:#64748b; --faint:#94a3b8; --accent:#0f172a; }
-body.studio-theme-dark, html.studio-theme-dark body { --bg:#0e1014; --panel:#1c1e26; --soft:#272a33; --line:#323540; --line-strong:#3f424d; --text:#e8e8ea; --muted:#a4adbf; --faint:#7a8497; --accent:#f5f6f8; }
+/* --line 用于分隔线、--line-strong 用于控件轮廓：原 #323540 / #3f424d 对面板底 #1c1e26
+   只有 1.36:1 / 1.66:1，控件边界不可辨。提到 #545a6b / #6b7285 后分别为 2.42:1 / 3.46:1。 */
+body.studio-theme-dark, html.studio-theme-dark body { --bg:#0e1014; --panel:#1c1e26; --soft:#272a33; --line:#545a6b; --line-strong:#6b7285; --text:#e8e8ea; --muted:#a4adbf; --faint:#7a8497; --accent:#f5f6f8; }
 * { box-sizing:border-box; }
 html { min-height:100%; overflow-y:auto; overscroll-behavior:auto; }
 body { margin:0; min-height:100vh; overflow-y:auto; background:var(--bg); color:var(--text); font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; -webkit-font-smoothing:antialiased; -webkit-overflow-scrolling:touch; overscroll-behavior:auto; }
@@ -846,6 +848,8 @@ html.studio-theme-dark body .page-head .status {
 body.studio-theme-dark .provider-card,
 html.studio-theme-dark body .provider-card {
     background:rgba(255,255,255,.035);
+    /* 平台卡是可点选的列表项，补上 3.46:1 的轮廓。 */
+    border-color:var(--line-strong);
     box-shadow:none;
 }
 
@@ -7742,7 +7746,9 @@ html.studio-theme-dark body .sidebar .api-link-btn {
     html.studio-theme-dark body .sidebar .cli-quick-btn,
     body.studio-theme-dark .sidebar .cli-quick-btn {
         background:#1b2a38 !important;
-        border-color:#30485c !important;
+        /* 原 #30485c 对比卡片底 #1b2a38 只有 1.54:1，作为可点选列表项的轮廓不可辨。
+           #547798 为 3.11:1。 */
+        border-color:#547798 !important;
         color:#e9f0f8 !important;
     }
 

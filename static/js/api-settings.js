@@ -5289,7 +5289,8 @@ window.addEventListener('studio-lang-change', () => {
     else renderEditor();
 });
 window.onload = () => {
-    if(window.StudioTheme) window.StudioTheme.apply();
+    // 必须把当前主题传进去：无参调用会被当成 light，摘掉 studio-theme-dark/theme-dark。
+    if(window.StudioTheme) window.StudioTheme.apply(window.StudioTheme.get());
     if(window.StudioI18n) window.StudioI18n.apply();
     syncRecommendView();
     loadProviders();

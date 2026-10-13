@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import tempfile
 import unittest
@@ -21,6 +22,7 @@ class ApiKeyProfileTests(unittest.TestCase):
         self.env_file.write_text("API_PROVIDER_API_6789_KEY=old-secret-key\n", encoding="utf-8")
         self.profile_file = self.data_dir / "api_key_profiles.json"
         self.provider_file = self.data_dir / "api_providers.json"
+        self.provider_file.write_text(json.dumps([self.provider()]), encoding="utf-8")
         self.base_env_key = "API_PROVIDER_API_6789_KEY"
         self.patches = ExitStack()
         self.patches.enter_context(patch.object(main, "DATA_DIR", str(self.data_dir)))

@@ -2793,7 +2793,6 @@ function renderWorkflowDetail(item){
             <div class="panel-actions">
                 <button class="asset-btn primary" type="button" data-workflow-insert="${escapeAttr(item.id)}" title="插入小美画布"><i data-lucide="corner-down-left"></i><span>插入画布</span></button>
                 <button class="asset-btn" type="button" data-workflow-export-desktop="${escapeAttr(item.id)}" title="保存到系统桌面"><i data-lucide="folder-down"></i><span>导出桌面</span></button>
-                <button class="asset-icon-btn" type="button" data-workflow-download="${escapeAttr(item.id)}" title="下载工作流"><i data-lucide="download"></i></button>
                 <button class="asset-icon-btn danger ${pendingDeleteAssetId === item.id ? 'detail-confirm' : ''}" type="button" data-workflow-delete="${escapeAttr(item.id)}" title="${pendingDeleteAssetId === item.id ? '再次点击确认移入回收站' : '移入回收站'}"><i data-lucide="trash-2"></i></button>
             </div>
         </div>
@@ -4273,7 +4272,7 @@ async function exportWorkflowItems(ids, options = {}){
     const filename = items.length === 1 ? `${String(item.name || 'workflow').replace(/\.(json|zip)$/i, '')}${ext}` : 'workflows.zip';
     const desktopApi = options.desktop ? workflowDesktopApi() : null;
     if(options.desktop && !desktopApi?.saveWorkflowToDesktop){
-        setStatus('请重启小美画布桌面端后导出到桌面；浏览器中可使用下载按钮');
+        setStatus('请重启小美画布桌面端后导出到桌面；浏览器中可通过批量管理的“导出所选”下载');
         return;
     }
     if(items.length === 1 && !options.desktop){
@@ -5513,8 +5512,6 @@ async function handleClick(event){
     }
     const workflowInsert = target.closest?.('[data-workflow-insert]');
     if(workflowInsert){ sendWorkflowToCanvas(workflowInsert.dataset.workflowInsert || ''); return; }
-    const workflowDownload = target.closest?.('[data-workflow-download]');
-    if(workflowDownload){ await exportWorkflowItems([workflowDownload.dataset.workflowDownload || '']); return; }
     const workflowDesktopExport = target.closest?.('[data-workflow-export-desktop]');
     if(workflowDesktopExport){ await exportWorkflowItems([workflowDesktopExport.dataset.workflowExportDesktop || ''], {desktop:true}); return; }
     const workflowRename = target.closest?.('[data-workflow-rename]');

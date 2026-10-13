@@ -262,6 +262,7 @@
         "smart.loopParallel": { zh: "同时生成", en: "At once" },
         "smart.loopSerialHint": { zh: "一张完成后，再处理下一张", en: "Finish one before starting the next" },
         "smart.loopParallelHint": { zh: "最多同时处理 2 轮，完成顺序可能不同", en: "Process up to 2 runs at once; completion order may vary" },
+        "smart.loopDetailParallelHint": { zh: "按目标屏数同时生成，结果按屏幕顺序归位", en: "Generate all target screens at once; results stay in screen order" },
         "smart.loopRepeatLabel": { zh: "每轮要换什么？可同时打开", en: "What changes each run? You can enable both" },
         "smart.loopImageToggle": { zh: "逐张换图片", en: "Rotate images" },
         "smart.loopPromptToggle": { zh: "轮换提示词", en: "Rotate prompts" },

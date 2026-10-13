@@ -16,7 +16,7 @@ test('workflow library exposes desktop export and reports save, cancellation and
     let packed = null;
     await page.addInitScript(() => {
         window.savedWorkflows = [];
-        window.nextSaveResult = {ok:true, path:'C:\\Desktop\\详情页.zip'};
+        window.nextSaveResult = {ok:true, path:'C:\\Users\\小美\\Desktop\\详情页.zip'};
         window.electronAPI = {saveWorkflowToDesktop:async payload => {
             window.savedWorkflows.push({filename:payload.filename, bytes:Array.from(new Uint8Array(payload.bytes))});
             return window.nextSaveResult;

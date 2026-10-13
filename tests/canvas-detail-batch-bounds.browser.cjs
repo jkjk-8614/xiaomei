@@ -83,9 +83,9 @@ test('detail batch outer frame follows all sections and resized copy fields', { 
     const firstSplit = await splitState();
     assert.equal(firstSplit.error, '');
     assert.equal(firstSplit.ids.length, 10, 'source recovery creates one paint node for each screen');
-    assert.equal(firstSplit.guide, '统一视觉规则');
+    assert.equal(firstSplit.guide, '', 'a split without a visual guide clears the previous guide');
     firstSplit.drafts.forEach((prompt, index) => {
-        assert.ok(prompt.includes('统一视觉规则'));
+        assert.ok(!prompt.includes('统一视觉规则'));
         assert.ok(prompt.includes(`该屏文案与布局${index + 1}`));
     });
     const grid = await page.evaluate(() => {

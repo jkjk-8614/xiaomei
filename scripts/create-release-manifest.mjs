@@ -19,7 +19,10 @@ const displayVersion = String(args.get('display-version') || version).trim();
 const buildRevision = Number(args.get('build-revision') || 0);
 const tag = String(args.get('tag') || `v${version}`).trim();
 const repository = String(args.get('repository') || process.env.GITHUB_REPOSITORY || 'jkjk-8614/xiaomei').trim();
-const notes = String(args.get('notes') || '').split(/\r?\n/).map((item) => item.trim()).filter(Boolean).slice(0, 30);
+const updateNotes = JSON.parse(await readFile(new URL('../static/update-notes.json', import.meta.url), 'utf8'));
+const notes = args.has('notes')
+  ? String(args.get('notes')).split(/\r?\n/).map((item) => item.trim()).filter(Boolean).slice(0, 30)
+  : (updateNotes.items || []).map(item => String(item.text || '').trim()).filter(Boolean).slice(0, 30);
 
 if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) {
   throw new Error(`无效版本号：${version || '(空)'}`);

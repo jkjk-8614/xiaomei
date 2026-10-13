@@ -130,6 +130,8 @@ API_PROVIDER_API_6789_KEY=填写自己的Key
 
 相关后端入口：`/api/online-image`、`/api/image-task-query`、`/api/canvas-image-tasks`、`/api/canvas-video`。
 
+产品保真在 `build_online_image_result` 的现有适配器前后执行本地处理；能力查询、预览、参数隔离及结果恢复见 [产品保真设置](产品保真设置.md#模型与请求)。
+
 ### CainFlow 风格视角控制
 
 - `smart-camera` 是相机提示词与参考图透传节点，不是独立生图模型，不新增 API Key，也不自动切换平台。
@@ -152,10 +154,10 @@ API_PROVIDER_API_6789_KEY=填写自己的Key
 - 默认优先异步：提交快、长任务更稳定、可轮询进度。
 - 同步：连接保持到平台直接返回结果，平台或代理容易超时。
 - 小美画布图片生成固定使用异步任务提交和轮询；旧画布或浏览器偏好中保存的同步值也会按异步处理。
-- 画布后台生图默认同时执行最多 2 个任务，其余保持 `queued`，避免兼容网关在批量请求时断连；可用 `CANVAS_IMAGE_TASK_CONCURRENCY` 在 1–8 间调整。上游未返回真实百分比时，界面只显示排队/生成状态和耗时，不显示估算百分比。
+- 普通画布后台生图的并发限制由 `main.py` 的 `canvas_image_task_semaphore()` 读取 `CANVAS_IMAGE_TASK_CONCURRENCY`，其余任务保持 `queued`。详情页批量选择“同时生成”时，每屏任务携带 `canvas_batch_concurrency`（1–100），后端按本次目标屏数分配并发槽；该字段只控制本地调度，不发送给上游模型。上游未返回真实百分比时，界面只显示排队/生成状态和耗时，不显示估算百分比。
 - 本地 ComfyUI 画布任务在提交 `/prompt` 后订阅对应后端的 `/ws?clientId=...`，把 `execution_cached`、`executing`、`progress` 和 `progress_state` 转成当前节点、步数和工作流完成度；WebSocket 不可用时保持等待状态，不把耗时换算成百分比。
 - 画布 Agent/策划的聊天请求遇到 502、503、429 或 `Service temporarily unavailable` 时，后端默认在同一模型上有限重试 2 次。GPT Image 2/2.5 编辑是可能计费的 multipart POST；遇到 500、503、远端断连或 `bad_response_status_code` 时默认不自动重提，任务标记为状态未知并保留本地请求编号，避免客户端在无法确认扣费时产生重复请求。只有平台明确确认端到端幂等去重后，才可在 `API/.env` 设置 `GPT_IMAGE2_EDIT_IDEMPOTENCY_SUPPORTED=1` 并按需开启重试。
-- GPT Image 2/2.5 的 `/images/edits` multipart 提交默认按“平台 + 模型”最多 2 路并发，避免 4 张批量图被迫串行等待；可通过 `GPT_IMAGE2_EDIT_CONCURRENCY` 调整（范围 1–8）。如果某个兼容网关返回断连或“系统繁忙”，可在 `API/.env` 中设为 `1`。
+- GPT Image 2/2.5 的普通 `/images/edits` multipart 提交由 `gpt_image_2_edit_semaphore()` 按“平台 + 模型”限制并发，可通过 `GPT_IMAGE2_EDIT_CONCURRENCY` 调整（范围 1–8）。详情页“同时生成”沿用本次 `canvas_batch_concurrency`，与普通请求的槽位隔离；请求失败时仍保留错误和任务编号，不自动重复生图。如果某个兼容网关返回断连或“系统繁忙”，可改用详情页“按顺序生成”。
 - 编辑连接默认使用 15 秒连接超时、300 秒读取超时和 120 秒上传超时；`GPT_IMAGE2_EDIT_HTTP2=1` 可打开 HTTP/2 对照诊断，默认关闭。诊断日志写入 `logs/gpt-image-edits.jsonl`，只记录域名、路径、模型、尺寸、上传大小、状态和脱敏错误，不记录 Key、提示词或图片内容。编辑传输重试次数和等待间隔可通过 `GPT_IMAGE2_EDIT_TRANSPORT_RETRIES`（默认 0，范围 0–2）与 `GPT_IMAGE2_EDIT_RETRY_DELAY`（默认 1.5 秒）调整；启用重试前需先确认平台账单和幂等能力。
 - 异步失败时必须保留失败卡片、错误消息、模型、耗时和重试入口。
 

@@ -39,6 +39,8 @@ Harness 的 Skill 搜索目录指向小美画布的 `data/agent_skills`，会话
 
 如果本地修改与上游发生冲突，更新会停止并恢复旧版本，提示手动处理；不会覆盖 `API/.env`、历史、素材、
 画布或 Harness 会话。更新状态也可由桌面端 `electronAPI.checkDeepSeekHarnessUpdate()` 查询。
+更新失败时会显示具体原因，并将失败的上游提交记录到 `.xiaomei-data/deepseek-harness-update.json`。
+后续启动不再重复提醒同一失败版本；手动检查更新仍可重试，上游有新提交时会重新提醒。
 
 ## 官方功能
 

@@ -49,6 +49,20 @@
             .hbm-btn.hbm-danger { background: #dc2626; color: #fff; border-color: #dc2626; }
             .hbm-btn.hbm-danger:hover { background: #b91c1c; border-color: #b91c1c; }
             .hbm-hide { display: none !important; }
+            /* 暗色：原样式表只有亮色一套，#111827 底落在 #141414 上对比仅 1.03:1。 */
+            html.studio-theme-dark .hbm-btn {
+                background: #262626 !important; color: #f0f0f2 !important;
+                border-color: #7d7d7d !important;
+            }
+            html.studio-theme-dark .hbm-btn:hover { border-color: #a3a3ab !important; }
+            html.studio-theme-dark .hbm-btn.hbm-primary {
+                background: var(--colorBrandBackground, #0e7490) !important;
+                color: #ffffff !important;
+                border-color: var(--colorBrandBackground, #0e7490) !important;
+            }
+            html.studio-theme-dark .hbm-btn.hbm-danger {
+                background: #b91c1c !important; color: #ffffff !important; border-color: #b91c1c !important;
+            }
 
             /* 选择模式下的卡片浮层 */
             body.history-bulk-selecting [data-history-ts] {

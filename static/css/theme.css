@@ -334,9 +334,9 @@ body.studio-theme-dark .ratio-option,
 body.studio-theme-dark .resolution-option,
 body.studio-theme-dark .mini-ratio button,
 body.studio-theme-dark .mode-switch button {
-    background: #141417 !important;
-    border-color: #2f2f34 !important;
-    color: #9aa6b8 !important;
+    background: #232326 !important;
+    border-color: var(--colorNeutralStroke1) !important;
+    color: #c9c9cf !important;
 }
 
 html.studio-theme-dark body .size-btn:hover,
@@ -347,8 +347,8 @@ body.studio-theme-dark .size-btn:hover,
 body.studio-theme-dark .model-option:hover,
 body.studio-theme-dark .ratio-option:hover,
 body.studio-theme-dark .resolution-option:hover {
-    border-color: #58585d !important;
-    color: #d8dee9 !important;
+    border-color: var(--colorBrandStroke1) !important;
+    color: #f0f0f2 !important;
 }
 
 html.studio-theme-dark body .size-btn.active,
@@ -363,10 +363,10 @@ body.studio-theme-dark .ratio-option.active,
 body.studio-theme-dark .resolution-option.active,
 body.studio-theme-dark .mini-ratio button.active,
 body.studio-theme-dark .mode-switch button.active {
-    background: #2e2e33 !important;
-    border-color: #3a3a3f !important;
-    color: #f0f0f2 !important;
-    box-shadow: 0 10px 24px rgba(0,0,0,.2) !important;
+    background: var(--colorBrandBackground) !important;
+    border-color: var(--colorBrandBackground) !important;
+    color: var(--colorNeutralForegroundOnBrand) !important;
+    box-shadow: 0 10px 24px rgba(0,0,0,.28) !important;
 }
 
 html.studio-theme-dark body .ios-slider,
@@ -663,7 +663,7 @@ body.studio-theme-dark .shell .seg button,
 body.studio-theme-dark .shell .mode-tabs button {
     background: transparent !important;
     border-color: transparent !important;
-    color: #9aa6b8 !important;
+    color: #c9c9cf !important;
     box-shadow: none !important;
 }
 
@@ -673,9 +673,9 @@ html.studio-theme-dark body .shell .mode-tabs button.active,
 body.studio-theme-dark .shell .llm-mode button.active,
 body.studio-theme-dark .shell .seg button.active,
 body.studio-theme-dark .shell .mode-tabs button.active {
-    background: #2e2e33 !important;
-    border-color: #3a3a3f !important;
-    color: #f0f0f2 !important;
+    background: var(--colorBrandBackground) !important;
+    border-color: var(--colorBrandBackground) !important;
+    color: var(--colorNeutralForegroundOnBrand) !important;
 }
 
 html.studio-theme-dark body .shell .llm-system,
@@ -862,9 +862,13 @@ body.studio-theme-dark #lightboxImg {
 
 html.studio-theme-dark body .mode-glider,
 html.studio-theme-dark body .engine-btn.active,
-html.studio-theme-dark body .ios-slider:before,
 body.studio-theme-dark .mode-glider,
-body.studio-theme-dark .engine-btn.active,
+body.studio-theme-dark .engine-btn.active {
+    background: var(--colorBrandBackground) !important;
+    color: var(--colorNeutralForegroundOnBrand) !important;
+}
+
+html.studio-theme-dark body .ios-slider:before,
 body.studio-theme-dark .ios-slider:before {
     background: #2e2e33 !important;
     color: #f0f0f2 !important;
@@ -908,9 +912,9 @@ body.studio-theme-dark .glass-btn,
 body.studio-theme-dark .btn-render,
 body.studio-theme-dark #downloadBtn,
 body.studio-theme-dark #lightboxDownload {
-    background: #2e2e33 !important;
-    color: #f0f0f2 !important;
-    border-color: #3a3a3f !important;
+    background: var(--colorBrandBackground) !important;
+    color: var(--colorNeutralForegroundOnBrand) !important;
+    border-color: var(--colorBrandBackground) !important;
 }
 
 html.studio-theme-dark body .glass-btn:hover,
@@ -1772,9 +1776,27 @@ html.studio-theme-dark[data-studio-skin] {
     /* liblib 暗色画布规格：页面 #141414，卡片/菜单/工具栏 #262626，软表面/悬停 #333 */
     --colorNeutralBackground1:#262626; --colorNeutralBackground2:#333333; --colorNeutralBackground3:#141414;
     --colorNeutralForeground1:#f0f0f2; --colorNeutralForeground2:#a8a8ae; --colorNeutralForeground3:#8f8f96;
-    --colorNeutralStroke1:#3d3d3d; --colorNeutralStroke2:#2b2b2b;
-    --colorBrandBackground:#2e2e33; --colorBrandBackground2:#1f1f1f; --colorBrandForeground1:#c9c9cf;
-    --colorNeutralForegroundOnBrand:#f0f0f2;
+    /* 描边：原 #3d3d3d / #2b2b2b 对比底色只有 1.39:1 / 1.07:1，控件轮廓几乎不可见。
+       提到 #7d7d7d / #575757 后，对比各层底面的最差值为：
+       #7d7d7d → 卡片 #262626 3.68:1 / 侧栏 #333333 3.07:1 / 页面 #141414 4.48:1
+       #575757 → 卡片 #262626 2.09:1（仅用于容器与卡片分隔，不承担控件边界）
+       控件边界取 Stroke1，满足 WCAG 2.1 SC 1.4.11「非文本对比 ≥3:1」。 */
+    --colorNeutralStroke1:#7d7d7d; --colorNeutralStroke2:#575757;
+    /* 选中/强调底：原 #2e2e33 与未选中底 #262626 只差 1.12:1，选中态根本看不出来。
+       改回与亮色皮肤同源的强调色（外观设置里的 --studio-accent-color），并提亮 5%：
+       #0e7490 直接铺底时对比卡片 #262626 只有 2.82:1，提亮后为 3.11:1，
+       同时白字在其上仍有 4.86:1，两头都达标。 */
+    --ui-accent:var(--studio-accent-color, #0e7490);
+    --ui-accent-fill:color-mix(in srgb, var(--ui-accent) 95%, #ffffff);
+    --colorBrandBackground:var(--ui-accent-fill);
+    --colorBrandBackgroundHover:color-mix(in srgb, var(--ui-accent) 84%, #ffffff);
+    --colorBrandBackgroundPressed:color-mix(in srgb, var(--ui-accent) 78%, #000000);
+    --colorBrandBackground2:color-mix(in srgb, var(--ui-accent) 24%, #262626);
+    --colorBrandForeground1:color-mix(in srgb, var(--ui-accent) 40%, #ffffff);
+    --colorBrandStroke1:color-mix(in srgb, var(--ui-accent) 55%, #ffffff);
+    --colorCompoundBrandBackground:color-mix(in srgb, var(--ui-accent) 42%, #ffffff);
+    --colorNeutralForegroundOnBrand:#ffffff;
+    --colorNeutralBackground1Selected:#3a3a3a;
 }
 html[data-studio-skin="soft"] body,
 html[data-studio-skin="warm"] body,
@@ -1982,4 +2004,21 @@ html.studio-theme-dark[data-studio-skin] body .paint-node-main {
     background: #333333 !important;
     border-color: var(--line, #2b2b2b) !important;
     color: #f0f0f2 !important;
+}
+
+/* ===== 暗色「选项类」控件轮廓兜底 =====
+   这些控件原先取 --colorNeutralStroke2（软描边，对比卡片底只有 1.8~2.2:1），
+   作为可点击选项时轮廓不可辨。统一提到 --colorNeutralStroke1：
+   对比 #262626 为 3.19:1、对比 #141414 为 3.89:1，满足 WCAG 2.1 SC 1.4.11。
+   选中态（.active）不在此列，走品牌色底 + 品牌色描边。 */
+html.studio-theme-dark :is(
+    .filter,
+    .manage-open-button,
+    .history-refresh-button,
+    .asset-tabs,
+    .image-space-subtabs,
+    .kind-toggle,
+    .canvas-nav-tool
+):not(.active) {
+    border-color: var(--colorNeutralStroke1) !important;
 }

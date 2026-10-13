@@ -55,6 +55,7 @@ __pycache__/
 **/__pycache__/
 *.pyc
 *.pyo
+packages/*.whl
 
 # Local update state and temporary manifests
 data/desktop-update-state.json
@@ -81,4 +82,40 @@ ComfyUI/comfy_apps_runtime/
 ComfyUI/comfy_apps_test_archive/
 
 ComfyUI/
+
+# Private environment variants, local preferences and editor backups
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+global_config.json
+.ui-patch-backup/
+.venv/
+.vscode/
+.idea/
+.pytest_cache/
+.cache/
+*.sqlite
+*.sqlite3
+*.db
+*.tmp
+*.bak
+
+# Application integration sources; runtime files above remain excluded
+!ComfyUI/
+!ComfyUI/integration/
+!ComfyUI/integration/**
+!ComfyUI/web/
+!ComfyUI/web/**
+!ComfyUI/tools/
+ComfyUI/tools/*
+!ComfyUI/tools/comfy-app-bridge/
+!ComfyUI/tools/comfy-app-bridge/**
+ComfyUI/comfy_model_preferences.json
+ComfyUI/workflows/custom/
+**/__pycache__/
+*.pyc
+*.pyo
 

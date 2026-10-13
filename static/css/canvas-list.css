@@ -355,11 +355,12 @@ html[data-studio-scale="off"].studio-scale-managed .workspace {
 .theme-dark .ws-project-row.active .ws-project-name,
 .theme-dark .ws-project-row.active .ws-project-icon,
 .theme-dark .ws-project-row.active .ws-project-count { color:#0f172a; }
-.theme-dark .ws-project-row.active .ws-project-count { background:rgba(15,23,42,.12); }
-.theme-dark .ws-project-row.active .ws-proj-act { color:#1f2937; background:rgba(15,23,42,.08); }
-.theme-dark .ws-project-row.active .ws-proj-act:hover { color:#0f172a; background:rgba(15,23,42,.16); }
-.theme-dark .ws-project-row.active .ws-proj-act.del:hover { color:#991b1b; background:rgba(220,38,38,.14); }
-.theme-dark .ws-project-row.active .ws-project-default-badge { background:rgba(15,23,42,.12); color:#0f172a; }
+/* 选中行底色是强调色（--apple-accent），此处必须用浅色前景，否则深色文字落在蓝底上对比只有约 1.3:1。 */
+.theme-dark .ws-project-row.active .ws-project-count { background:rgba(255,255,255,.22); color:#fff; }
+.theme-dark .ws-project-row.active .ws-proj-act { color:#fff; background:rgba(255,255,255,.16); }
+.theme-dark .ws-project-row.active .ws-proj-act:hover { color:#fff; background:rgba(255,255,255,.30); }
+.theme-dark .ws-project-row.active .ws-proj-act.del:hover { color:#fff; background:rgba(0,0,0,.34); }
+.theme-dark .ws-project-row.active .ws-project-default-badge { background:rgba(255,255,255,.22); color:#fff; }
 .theme-dark .ws-project-row .ws-proj-act:disabled { color:var(--faint); background:transparent; }
 .theme-dark .ws-project-row .ws-proj-act.del:disabled:hover { color:var(--faint); background:transparent; }
 .theme-dark .ws-mini-btn.primary { background:#d8dee9; color:#0f172a; border-color:#d8dee9; }

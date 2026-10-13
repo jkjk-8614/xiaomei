@@ -1787,15 +1787,15 @@ html[data-studio-skin] body .canvas-agent-generation-skill-tools {
 html[data-studio-skin] body .canvas-agent-generation-skill-tools .canvas-agent-skill-link {
     width: auto;
     height: 32px;
-    min-width: 0;
+    min-width: max-content;
     margin-left: 0;
     padding: 0 8px;
     border: 1px solid var(--apple-border-soft);
     border-radius: var(--apple-radius-sm);
     background: var(--apple-surface-soft);
-    color: var(--apple-muted);
-    font-size: 10px;
-    font-weight: 750;
+    color: var(--apple-text);
+    font-size: 12px;
+    font-weight: 600;
 }
 
 html[data-studio-skin] body .canvas-agent-generation-skill-tools .canvas-agent-skill-link:hover,
@@ -1812,6 +1812,11 @@ html[data-studio-skin] body .canvas-agent-generation-skill-tools .canvas-agent-s
     white-space: nowrap;
     color: var(--apple-muted);
     font-size: 10px;
+}
+
+html[data-studio-skin] body .canvas-agent-skill-quick-search input:focus {
+    outline: none !important;
+    box-shadow: none !important;
 }
 
 html[data-studio-skin] body .canvas-agent-generation-body .canvas-agent-plan-row {
@@ -2748,6 +2753,9 @@ html[data-studio-skin] body .shell .composer.comfy-run-only > .composer-card > .
         outline: 2px solid var(--colorStrokeFocus2) !important;
         outline-offset: 2px !important;
     }
+    .canvas-agent-skill-quick-search input:focus-visible {
+        outline: none !important;
+    }
     input:not([type="range"]):not([type="color"]):not([type="checkbox"]):not([type="radio"]), select, textarea {
         background-color: var(--colorNeutralBackground1) !important;
         color: var(--colorNeutralForeground1) !important;
@@ -2921,15 +2929,19 @@ html[data-studio-skin] .composer .input-thumb-actions { margin-left: auto; }
 html[data-studio-skin] .composer .prompt-input { min-height: 88px; border-radius: 8px; }
 html[data-studio-skin] .composer .kind-toggle {
     border-radius: 8px;
-    background: var(--colorNeutralBackground2);
-    border-color: var(--colorNeutralStroke2);
+    /* 轨道原取 NeutralBackground2(#333333)，比选中段的混色底还亮，选中段反而更暗（1.19:1）。
+       改用 NeutralBackground1(#262626)，选中段对轨道为 3.11:1。 */
+    background: var(--colorNeutralBackground1);
+    border-color: var(--colorNeutralStroke1);
     gap: 3px;
 }
 html[data-studio-skin] .composer .kind-toggle button { height: 24px; padding: 0 10px; color: var(--colorNeutralForeground2); }
 html[data-studio-skin] .composer .kind-toggle button.active {
-    background: color-mix(in srgb, var(--colorBrandBackground) 15%, var(--colorNeutralBackground1)) !important;
-    color: var(--colorBrandForeground1) !important;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--colorBrandStroke1) 35%, transparent);
+    /* 原为 15% 混色，只比未选中亮约 1.1:1；混色提到 34% 后对比轨道仍只有 1.42:1。
+       改用强调色实底 + 白字：对比轨道 3.11:1，白字在其上 4.86:1。 */
+    background: var(--colorBrandBackground) !important;
+    color: #ffffff !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--colorBrandStroke1) 70%, transparent);
     font-weight: 600 !important;
 }
 html[data-studio-skin] .composer :is(.input-thumb-add, .composer-template-btn, .prompt-optimize-btn) {

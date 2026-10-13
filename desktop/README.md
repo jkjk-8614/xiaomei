@@ -8,7 +8,10 @@
 2. 双击项目根目录 `run.bat`；它会在后台启动服务并进入完整的小美画布，商品分析是画布内的工作区。开发时也可运行 `desktop\start.bat`，两者都会优先调用带中文名称和图标的 `desktop\node_modules\electron\dist\小美画布.exe`，不会留下控制台窗口。
 3. Electron 会尝试启动本地 FastAPI（默认 `http://127.0.0.1:3000`）。若该端口已有服务，会直接复用。
 
-启动后进入完整的小美画布，默认聚焦商品分析工作区；左侧导航仍可切换在线生图、GPT 对话、小美画布、电商工作台等原有入口。
+启动后进入完整的小美画布，默认聚焦商品分析工作区；左侧导航仍可切换在线生图、DeepSeek 对话、小美画布、电商工作台等原有入口。
+DeepSeek 对话内嵌的 DeepSeek Harness 使用小美画布 API 设置中的平台、模型和密钥，API 设置是唯一配置源；
+DeepSeek 自带的 Models/Account 编辑入口已关闭。保存 API 设置后，已打开的 DeepSeek 对话页面会自动同步并在需要时
+重启 Harness Host，不需要在 DeepSeek 页面再次填写密钥。
 
 ### 在桌面端加入协同画布
 

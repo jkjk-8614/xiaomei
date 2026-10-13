@@ -27,7 +27,6 @@ files:
   - python/**
   - "!**/data/agent_skills{,/**}"
   - API/.env.example
-  - assets/**
   - ComfyUI/integration/**
   - ComfyUI/web/**
   - ComfyUI/tools/comfy-app-bridge/**
@@ -69,6 +68,15 @@ files:
   - "!**/assets/library{,/**}"
   - "!**/assets/prompt_cases{,/**}"
   - "!**/API/.env"
+  - "!**/.env{,.*}"
+  - "!**/global_config.json"
+  - "!**/.xiaomei-data{,/**}"
+  - "!**/.ui-patch-backup{,/**}"
+  - "!**/data{,/**}"
+  - "!**/assets{,/**}"
+  - "!**/*.log"
+  - "!packages/*.whl"
+  - API/.env.example
   - "!dist{,/**}"
 win:
   icon: static/images/app-icon.ico

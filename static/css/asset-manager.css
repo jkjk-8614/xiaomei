@@ -714,3 +714,11 @@ html.studio-theme-dark body .image-space-dialog textarea { background: #292c32 !
 .theme-dark .case-card, .theme-dark .case-detail-section { background:var(--card); }
 .theme-dark .case-drawer-panel { background:var(--panel); }
 .theme-dark .asset-modal { background:var(--panel); }
+
+/* 目录树选中行：原用 --strong(#2e2e33) 混 10% 到 --card，与未选中行只差约 1.0:1，选中看不出来。
+   改用强调色实底 + 白字：对比卡片底 3.11:1，白字在其上 4.86:1。 */
+.theme-dark .tree-row.active {
+    background: var(--colorBrandBackground, #0e7490) !important;
+    border-color: var(--colorBrandBackground, #0e7490) !important;
+    color: #ffffff !important;
+}

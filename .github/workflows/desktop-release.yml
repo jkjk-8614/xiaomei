@@ -239,10 +239,7 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           name: 小美画布v${{ steps.manifest.outputs.display_version }}
-          body: |
-            小美画布正式版。
-
-            下载对应平台的安装包：Windows 或 macOS（Intel / Apple 芯片）。
+          body_path: RELEASE_NOTES.md
           generate_release_notes: false
           files: |
             release-assets/小美画布-v${{ steps.manifest.outputs.display_version }}-Windows-x64.exe
@@ -263,15 +260,3 @@ jobs:
             gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
               -f label="小美画布-v${DISPLAY_VERSION}-${suffix}" > /dev/null
           done
-      - name: Keep only the newly published release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-        run: |
-          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | grep -Fxq update.json
-          while IFS= read -r tag; do
-            if [ "$tag" != "$RELEASE_TAG" ]; then
-              gh release delete "$tag" --cleanup-tag --yes
-            fi
-          done < <(gh release list --limit 100 --json tagName --jq '.[].tagName')
