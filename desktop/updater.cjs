@@ -10,8 +10,10 @@ const MAX_MANIFEST_BYTES = 1024 * 1024;
 const MAX_UPDATE_BYTES = 8 * 1024 * 1024 * 1024;
 const DEFAULT_GITHUB_OWNER = 'jkjk-8614';
 const DEFAULT_GITHUB_REPO = 'xiaomei';
-const UPDATE_REQUEST_TIMEOUT_MS = 30000;
-const UPDATE_FETCH_ATTEMPTS = 3;
+const UPDATE_REQUEST_TIMEOUT_MS = 6000;
+const UPDATE_CHECK_TIMEOUT_MS = 20000;
+const DOWNLOAD_IDLE_TIMEOUT_MS = 30000;
+const RELEASES_URL = 'https://github.com/jkjk-8614/xiaomei/releases/latest';
 
 function normalizeVersion(value) {
   const text = String(value || '').trim().replace(/^v/i, '');
@@ -172,67 +174,70 @@ function withCacheBust(value) {
   return parsed.toString();
 }
 
-async function fetchText(url, { timeoutMs = UPDATE_REQUEST_TIMEOUT_MS, maxBytes = MAX_MANIFEST_BYTES, allowInsecure = false } = {}) {
-  if (!isAllowedUpdateUrl(url, { allowInsecure })) {
-    const error = new Error('更新地址必须使用 HTTPS');
-    error.code = 'invalid_update_url';
-    throw error;
+function networkError(error) {
+  if (error?.name === 'AbortError') return updateError('连接更新服务器超时，请检查网络或系统代理后重试。', 'timeout');
+  const detail = `${error?.cause?.code || ''} ${error?.code || ''} ${error?.message || ''}`;
+  if (/PROXY|TUNNEL/i.test(detail)) return updateError('无法通过系统代理连接更新服务器，请检查代理是否正在运行后重试。', 'proxy_unavailable');
+  if (/CERT|SSL|TLS/i.test(detail)) return updateError('更新服务器的安全连接验证失败，请检查系统时间或网络代理后重试。', 'tls_error');
+  if (/ENOTFOUND|EAI_AGAIN|NAME_NOT_RESOLVED/i.test(detail)) return updateError('无法解析更新服务器地址，请检查网络或系统代理后重试。', 'dns_error');
+  if (/ERR_BLOCKED_BY_CLIENT/i.test(detail)) return updateError('更新连接被阻止，请检查网络设置或打开官方下载页面。', 'network_blocked');
+  if (/fetch failed|net::ERR_|ECONN|ETIMEDOUT|UND_ERR/i.test(detail)) return updateError('无法连接更新服务器，请检查网络或系统代理后重试。', 'network_unavailable');
+  return error;
+}
+
+async function fetchUpdate(url, { fetchImpl = fetch, allowInsecure = false, ...options } = {}) {
+  // Chromium fetch does not reliably expose response.url; validate each redirect before following it.
+  for (let redirects = 0; redirects <= 10; redirects += 1) {
+    if (!isAllowedUpdateUrl(url, { allowInsecure })) throw updateError('更新服务器重定向到了不安全地址', 'unsafe_redirect');
+    const response = await fetchImpl(url, { ...options, redirect: 'manual', credentials: 'omit', cache: 'no-store' });
+    if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+    const location = response.headers.get('location');
+    await response.body?.cancel();
+    if (!location) throw updateError('更新服务器返回了无效的跳转地址，请稍后重试。', 'invalid_redirect');
+    url = new URL(location, url).toString();
   }
-  const attempts = Math.max(1, Number(UPDATE_FETCH_ATTEMPTS) || 1);
-  let lastError;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), Math.max(1000, Number(timeoutMs) || UPDATE_REQUEST_TIMEOUT_MS));
-    try {
-      const response = await fetch(withCacheBust(url), {
-        signal: controller.signal,
-        redirect: 'follow',
-        headers: { accept: 'application/json, text/plain;q=0.9, */*;q=0.1', 'user-agent': 'XiaomeiCanvas-Updater' },
-      });
-      if (!response.ok) {
-        const error = new Error(`更新服务器返回 HTTP ${response.status}`);
-        error.code = 'http_error';
-        throw error;
-      }
-      if (response.url && !isAllowedUpdateUrl(response.url, { allowInsecure })) {
-        const error = new Error('更新服务器重定向到了不安全地址');
-        error.code = 'unsafe_redirect';
-        throw error;
-      }
-      const contentLength = Number(response.headers.get('content-length') || 0);
-      if (contentLength > maxBytes) {
-        const error = new Error('更新清单超过允许大小');
-        error.code = 'manifest_too_large';
-        throw error;
-      }
-      const text = await response.text();
-      if (Buffer.byteLength(text, 'utf8') > maxBytes) {
-        const error = new Error('更新清单超过允许大小');
-        error.code = 'manifest_too_large';
-        throw error;
-      }
-      return text.replace(/^\uFEFF/, '');
-    } catch (error) {
-      if (error?.name === 'AbortError') {
-        const timeoutError = new Error('连接更新服务器超时');
-        timeoutError.code = 'timeout';
-        lastError = timeoutError;
-      } else {
-        lastError = error;
-      }
-      const retryable = !lastError?.code
-        || lastError.code === 'timeout'
-        || (lastError.code === 'http_error' && /HTTP (408|429|5\d\d)/.test(String(lastError.message || '')));
-      if (!retryable || attempt >= attempts) break;
-      await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
-    } finally {
-      clearTimeout(timer);
+  throw updateError('更新服务器跳转次数过多，请稍后重试。', 'invalid_redirect');
+}
+
+function checkResponse(response) {
+  if (response.ok) return;
+  if (response.status === 429 || (response.status === 403 && response.headers.get('x-ratelimit-remaining') === '0')) {
+    throw updateError('GitHub 暂时限制了检查更新的频率，请稍后重试或打开下载页面。', 'rate_limited');
+  }
+  throw updateError(`更新服务器返回 HTTP ${response.status}，请稍后重试或打开下载页面。`, 'http_error');
+}
+
+async function fetchText(url, { timeoutMs = UPDATE_REQUEST_TIMEOUT_MS, deadline = Infinity, maxBytes = MAX_MANIFEST_BYTES, allowInsecure = false, fetchImpl = fetch, accept = 'application/json' } = {}) {
+  const remaining = Math.min(timeoutMs, deadline - Date.now());
+  if (remaining <= 0) throw networkError({ name: 'AbortError' });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), remaining);
+  let reader;
+  try {
+    const response = await fetchUpdate(withCacheBust(url), {
+      fetchImpl, allowInsecure, signal: controller.signal,
+      headers: { accept, 'user-agent': 'XiaomeiCanvas-Updater' },
+    });
+    checkResponse(response);
+    if (Number(response.headers.get('content-length') || 0) > maxBytes) throw updateError('更新清单超过允许大小', 'manifest_too_large');
+    reader = response.body.getReader();
+    const chunks = [];
+    let size = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > maxBytes) throw updateError('更新清单超过允许大小', 'manifest_too_large');
+      chunks.push(Buffer.from(value));
     }
+    return Buffer.concat(chunks).toString('utf8').replace(/^\uFEFF/, '');
+  } catch (error) {
+    throw controller.signal.aborted ? networkError({ name: 'AbortError' }) : networkError(error);
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+    try { await reader?.cancel(); } catch {}
   }
-  if (lastError?.name === 'TypeError' && /fetch failed/i.test(String(lastError.message || ''))) {
-    lastError = updateError('无法连接 GitHub 更新服务器，请检查网络后重试', 'network_unavailable');
-  }
-  throw lastError || updateError('无法连接更新服务器', 'network_unavailable');
 }
 
 async function sha256File(filePath) {
@@ -249,12 +254,13 @@ function updateError(message, code = 'update_failed') {
 }
 
 class DesktopUpdater {
-  constructor({ app, runtimeRoot, configPath, allowInsecure = false, buildRevision = 0 } = {}) {
+  constructor({ app, runtimeRoot, configPath, allowInsecure = false, buildRevision = 0, fetchImpl = fetch } = {}) {
     this.app = app;
     this.runtimeRoot = runtimeRoot || process.cwd();
     this.configPath = configPath || path.join(__dirname, 'update-config.json');
     this.allowInsecure = Boolean(allowInsecure);
     this.buildRevision = Number.isSafeInteger(buildRevision) && buildRevision >= 0 ? buildRevision : 0;
+    this.fetchImpl = fetchImpl;
   }
 
   readConfig() {
@@ -296,7 +302,7 @@ class DesktopUpdater {
     return normalizeVersion(this.app?.getVersion?.() || '');
   }
 
-  async fetchGitHubManifest(config) {
+  async fetchGitHubManifest(config, requestOptions) {
     const owner = String(config.github?.owner || DEFAULT_GITHUB_OWNER).trim();
     const repo = String(config.github?.repo || DEFAULT_GITHUB_REPO).trim();
     if (!/^[A-Za-z0-9_.-]+$/.test(owner) || !/^[A-Za-z0-9_.-]+$/.test(repo)) {
@@ -306,7 +312,7 @@ class DesktopUpdater {
     const endpoint = tag
       ? `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/tags/${encodeURIComponent(tag)}`
       : `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases?per_page=20`;
-    const releases = JSON.parse(await fetchText(endpoint, { maxBytes: 4 * MAX_MANIFEST_BYTES }));
+    const releases = JSON.parse(await fetchText(endpoint, { ...requestOptions, maxBytes: 4 * MAX_MANIFEST_BYTES }));
     const candidates = Array.isArray(releases) ? releases : [releases];
     const release = candidates.find((item) => {
       if (!item || item.draft) return false;
@@ -319,7 +325,16 @@ class DesktopUpdater {
     if (!manifestAsset?.browser_download_url) {
       throw updateError('GitHub Release 缺少 update.json 清单资产', 'github_manifest_not_found');
     }
-    const manifest = JSON.parse(await fetchText(manifestAsset.browser_download_url, { maxBytes: MAX_MANIFEST_BYTES }));
+    let manifest;
+    try {
+      // The asset API gives networks that block github.com a separate entry point.
+      if (!Number.isSafeInteger(manifestAsset.id)) throw updateError('清单资产编号无效');
+      const assetUrl = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/assets/${manifestAsset.id}`;
+      manifest = JSON.parse(await fetchText(assetUrl, { ...requestOptions, accept: 'application/octet-stream' }));
+      if (!manifest.version && !manifest.releases) throw updateError('清单资产响应无效');
+    } catch {
+      manifest = JSON.parse(await fetchText(manifestAsset.browser_download_url, requestOptions));
+    }
     if (manifest && typeof manifest === 'object' && !Array.isArray(manifest)) {
       if (!manifest.version) manifest.version = normalizeVersion(release.tag_name || release.name);
       if (!manifest.notes && release.body) manifest.notes = cleanNotes(String(release.body).split(/\r?\n/));
@@ -339,22 +354,23 @@ class DesktopUpdater {
     const current = this.currentVersion();
     if (!current) return { status: 'error', message: '当前桌面版本号无效，无法检查更新' };
     let payload;
+    const requestOptions = { fetchImpl: this.fetchImpl, allowInsecure: this.allowInsecure, deadline: Date.now() + UPDATE_CHECK_TIMEOUT_MS };
     try {
       if (config.manifestUrl) {
         try {
-          payload = JSON.parse(await fetchText(config.manifestUrl, { allowInsecure: this.allowInsecure }));
+          payload = JSON.parse(await fetchText(config.manifestUrl, requestOptions));
         } catch (directError) {
           if (config.provider !== 'github') throw directError;
           // GitHub 的下载地址偶尔会被网络策略拦截，保留 API 路径作为备用来源。
-          payload = await this.fetchGitHubManifest(config);
+          payload = await this.fetchGitHubManifest(config, requestOptions);
         }
       } else {
         payload = config.provider === 'github'
-          ? await this.fetchGitHubManifest(config)
-          : JSON.parse(await fetchText(config.manifestUrl, { allowInsecure: this.allowInsecure }));
+          ? await this.fetchGitHubManifest(config, requestOptions)
+          : JSON.parse(await fetchText(config.manifestUrl, requestOptions));
       }
     } catch (error) {
-      return { status: 'unavailable', version: current, code: error?.code || 'network_unavailable', message: error?.message || '无法连接更新服务器，请检查网络后重试' };
+      return { status: 'unavailable', version: current, code: error instanceof SyntaxError ? 'invalid_json' : error?.code || 'network_unavailable', message: error instanceof SyntaxError ? '更新服务器返回的版本信息无法读取，请稍后重试或打开下载页面。' : error?.message || '无法连接更新服务器，请检查网络或系统代理后重试。' };
     }
     const manifest = normalizeManifest(payload, {
       platform: process.platform,
@@ -394,10 +410,21 @@ class DesktopUpdater {
     const report = (payload) => {
       try { onProgress?.(payload); } catch {}
     };
+    const controller = new AbortController();
+    let idleTimer;
+    let timedOut = false;
+    const resetIdleTimer = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => { timedOut = true; controller.abort(); }, DOWNLOAD_IDLE_TIMEOUT_MS);
+    };
+    const cancel = () => controller.abort();
+    signal?.addEventListener('abort', cancel, { once: true });
     try {
+      if (signal?.aborted) throw updateError('已取消更新', 'cancelled');
       if (fs.existsSync(destination)) {
         const existingHash = await sha256File(destination);
-        if (existingHash === normalized.sha256) {
+        if (signal?.aborted) throw updateError('已取消更新', 'cancelled');
+        if (existingHash === normalized.sha256 && (await fsp.stat(destination)).size === normalized.size) {
           const existingSize = (await fsp.stat(destination)).size;
           report({ downloadedBytes: existingSize, totalBytes: normalized.size || existingSize, percent: 100, reused: true });
           return { path: destination, size: existingSize, sha256: existingHash, reused: true };
@@ -405,11 +432,12 @@ class DesktopUpdater {
         await fsp.rm(destination, { force: true });
       }
       if (signal?.aborted) throw updateError('已取消更新', 'cancelled');
-      const response = await fetch(normalized.installerUrl, { signal, redirect: 'follow', headers: { 'user-agent': 'XiaomeiCanvas-Updater' } });
-      if (!response.ok) throw updateError(`下载安装包失败：HTTP ${response.status}`, 'http_error');
-      if (response.url && !isAllowedUpdateUrl(response.url, { allowInsecure: this.allowInsecure })) {
-        throw updateError('下载安装包重定向到了不安全地址', 'unsafe_redirect');
-      }
+      resetIdleTimer();
+      const response = await fetchUpdate(normalized.installerUrl, {
+        fetchImpl: this.fetchImpl, allowInsecure: this.allowInsecure,
+        signal: controller.signal, headers: { 'user-agent': 'XiaomeiCanvas-Updater' },
+      });
+      checkResponse(response);
       const contentLength = Number(response.headers.get('content-length') || 0);
       const totalBytes = normalized.size || (Number.isSafeInteger(contentLength) ? contentLength : 0);
       if (totalBytes > MAX_UPDATE_BYTES) throw updateError('安装包超过允许大小', 'update_too_large');
@@ -425,8 +453,9 @@ class DesktopUpdater {
           const { done, value } = await reader.read();
           if (done) break;
           if (!value?.length) continue;
+          resetIdleTimer();
           downloadedBytes += value.length;
-          if (downloadedBytes > MAX_UPDATE_BYTES) throw updateError('安装包超过允许大小', 'update_too_large');
+          if (downloadedBytes > normalized.size) throw updateError('安装包大小与更新清单不一致，请重试下载。', 'size_mismatch');
           await handle.write(Buffer.from(value));
           report({ downloadedBytes, totalBytes, percent: totalBytes ? Math.min(100, Math.round(downloadedBytes / totalBytes * 100)) : null });
         }
@@ -434,18 +463,26 @@ class DesktopUpdater {
         try { await reader.cancel(); } catch {}
         try { await handle?.close(); } catch {}
       }
+      clearTimeout(idleTimer);
+      if (signal?.aborted) throw updateError('已取消更新', 'cancelled');
       const actualSize = (await fsp.stat(destination)).size;
       if (normalized.size && actualSize !== normalized.size) {
         throw updateError(`安装包大小校验失败（收到 ${actualSize} 字节，应为 ${normalized.size} 字节）`, 'size_mismatch');
       }
       const actualHash = await sha256File(destination);
+      if (signal?.aborted) throw updateError('已取消更新', 'cancelled');
       if (actualHash !== normalized.sha256) throw updateError('安装包校验失败，文件可能已损坏', 'sha256_mismatch');
       report({ downloadedBytes: actualSize, totalBytes: normalized.size || actualSize, percent: 100, verified: true });
       return { path: destination, size: actualSize, sha256: actualHash, reused: false };
     } catch (error) {
       try { await fsp.rm(destination, { force: true }); } catch {}
-      if (error?.name === 'AbortError') throw updateError('已取消更新', 'cancelled');
-      throw error;
+      if (signal?.aborted) throw updateError('已取消更新', 'cancelled');
+      if (timedOut) throw updateError('下载更新长时间没有收到数据，请检查网络或系统代理后重试。', 'timeout');
+      throw networkError(error);
+    } finally {
+      clearTimeout(idleTimer);
+      signal?.removeEventListener('abort', cancel);
+      controller.abort();
     }
   }
 }
@@ -457,4 +494,5 @@ module.exports = {
   normalizeManifest,
   isAllowedUpdateUrl,
   sha256File,
+  RELEASES_URL,
 };

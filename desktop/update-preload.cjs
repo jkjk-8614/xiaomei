@@ -14,4 +14,6 @@ contextBridge.exposeInMainWorld('updateAPI', {
     return () => ipcRenderer.removeListener('app:update-progress', listener);
   },
   cancel: () => ipcRenderer.invoke('app:update-cancel'),
+  retry: () => ipcRenderer.invoke('app:update-retry'),
+  openDownloadPage: () => ipcRenderer.invoke('app:update-open-download'),
 });

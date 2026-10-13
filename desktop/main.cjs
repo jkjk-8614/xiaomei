@@ -7,7 +7,8 @@ const net = require('node:net');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
-const { DesktopUpdater } = require('./updater.cjs');
+const { DesktopUpdater, RELEASES_URL } = require('./updater.cjs');
+const { createDesktopUpdateFetch } = require('./update-network.cjs');
 const { DeepSeekHarnessUpdater } = require('./deepseek-updater.cjs');
 const { installWindowLifecycle } = require('./window-lifecycle.cjs');
 const { installDesktopTray } = require('./tray.cjs');
@@ -1787,7 +1788,10 @@ const desktopUpdater = new DesktopUpdater({
   runtimeRoot: TEST_RUNTIME_DATA_ROOT,
   configPath: path.join(__dirname, 'update-config.json'),
   allowInsecure: !app.isPackaged && process.env.XIAOMEI_UPDATE_ALLOW_HTTP === '1',
+  // A separate in-memory Chromium session follows the system proxy without sharing browsing cookies.
+  fetchImpl: createDesktopUpdateFetch(session, { allowInsecure: !app.isPackaged && process.env.XIAOMEI_UPDATE_ALLOW_HTTP === '1' }),
 });
+let desktopUpdateRetryManifest = null;
 
 const generationNotifications = new Set();
 function showGenerationNotification(sender, payload = {}) {
@@ -1869,11 +1873,12 @@ function showDesktopUpdateWindow(version) {
   }
   updateWindow = new BrowserWindow({
     width: 500,
-    height: 310,
+    height: 390,
+    useContentSize: true,
     minWidth: 500,
-    minHeight: 310,
+    minHeight: 390,
     maxWidth: 500,
-    maxHeight: 310,
+    maxHeight: 390,
     title: `${APP_NAME} · 更新`,
     icon: APP_ICON_PATH,
     parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
@@ -1919,6 +1924,7 @@ function desktopUpdateOwnerWindow() {
 
 async function showDesktopUpdateResult(result) {
   const status = String(result?.status || 'error');
+  const failed = ['unavailable', 'invalid', 'error'].includes(status);
   const title = status === 'current' ? '检查更新' : status === 'disabled' ? '桌面版更新' : '更新检查失败';
   const message = status === 'current'
     ? `当前已经是最新版本（v${APP_DISPLAY_VERSION}）`
@@ -1929,13 +1935,29 @@ async function showDesktopUpdateResult(result) {
     message,
     detail: status === 'disabled'
       ? '请在发布前配置 desktop/update-config.json 中的 GitHub 仓库或 manifestUrl。'
-      : '',
-    buttons: ['知道了'],
+      : failed ? '可检查网络或系统代理后重试，也可打开官方下载页面获取安装包。' : '',
+    buttons: failed ? ['重试', '打开下载页面', '稍后'] : ['知道了'],
+    defaultId: 0,
+    cancelId: failed ? 2 : 0,
     noLink: true,
   };
   const owner = desktopUpdateOwnerWindow();
-  if (owner) return dialog.showMessageBox(owner, options);
-  return dialog.showMessageBox(options);
+  const answer = owner ? await dialog.showMessageBox(owner, options) : await dialog.showMessageBox(options);
+  if (failed && answer.response === 0) return 'retry';
+  if (failed && answer.response === 1) await openDesktopUpdatePage();
+  return 'dismissed';
+}
+
+async function openDesktopUpdatePage() {
+  try {
+    await shell.openExternal(RELEASES_URL);
+    return { ok: true };
+  } catch {
+    const options = { type: 'error', title: '无法打开下载页面', message: '请复制以下地址到浏览器打开。', detail: RELEASES_URL, buttons: ['知道了'] };
+    const owner = desktopUpdateOwnerWindow();
+    if (owner) await dialog.showMessageBox(owner, options); else await dialog.showMessageBox(options);
+    return { ok: false };
+  }
 }
 
 function desktopUpdatePromptOptions(result) {
@@ -1967,6 +1989,7 @@ async function promptDesktopUpdate(result) {
 
 function startDesktopUpdate(result) {
   if (desktopUpdateOperationPromise) return desktopUpdateOperationPromise;
+  desktopUpdateRetryManifest = result;
   desktopUpdateAbortController = new AbortController();
   desktopUpdateLaunchInProgress = false;
   desktopUpdateWindowState = { state: 'downloading', version: result.version };
@@ -2040,7 +2063,9 @@ async function checkDesktopUpdate({ manual = false } = {}) {
     }
     return desktopUpdatePromptPromise;
   }
-  if (manual && result.status !== 'current') await showDesktopUpdateResult(result);
+  if (manual && result.status !== 'current') {
+    if (await showDesktopUpdateResult(result) === 'retry') return checkDesktopUpdate({ manual: true });
+  }
   return result;
 }
 
@@ -6606,6 +6631,18 @@ ipcMain.handle('app:update-cancel', (event) => {
   if (!owner || owner !== updateWindow) return { ok: false, message: '更新窗口不可用' };
   try { desktopUpdateAbortController?.abort(); } catch {}
   return { ok: true };
+});
+ipcMain.handle('app:update-retry', (event) => {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  if (!owner || owner !== updateWindow || event.senderFrame !== event.sender.mainFrame) return { ok: false };
+  if (desktopUpdateOperationPromise || desktopUpdateWindowState?.state !== 'error' || !desktopUpdateRetryManifest) return { ok: false };
+  void startDesktopUpdate(desktopUpdateRetryManifest);
+  return { ok: true };
+});
+ipcMain.handle('app:update-open-download', (event) => {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  if (!owner || owner !== updateWindow || event.senderFrame !== event.sender.mainFrame) return { ok: false };
+  return openDesktopUpdatePage();
 });
 ipcMain.handle('deepseek-harness:visible', (event, visible, bounds) => {
   const owner = BrowserWindow.fromWebContents(event.sender);

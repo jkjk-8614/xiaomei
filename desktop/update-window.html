@@ -11,12 +11,12 @@
         .card { width: min(460px, calc(100vw - 36px)); padding: 30px 32px 26px; border: 1px solid #e4e9f1; border-radius: 18px; background: rgba(255,255,255,.96); box-shadow: 0 18px 50px rgba(27, 48, 82, .12); }
         .mark { width: 42px; height: 42px; display: grid; place-items: center; margin-bottom: 17px; border-radius: 13px; background: #2563eb; color: #fff; font-size: 21px; font-weight: 800; }
         h1 { margin: 0; font-size: 20px; letter-spacing: .01em; }
-        p { min-height: 42px; margin: 10px 0 20px; color: #65738a; font-size: 13px; line-height: 1.65; }
+        p { min-height: 42px; max-height: 64px; overflow: auto; margin: 10px 0 20px; color: #65738a; font-size: 13px; line-height: 1.65; }
         .track { height: 9px; overflow: hidden; border-radius: 999px; background: #e7edf5; }
         .bar { width: 0%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #2563eb, #58a6ff); transition: width .18s ease; }
         .meta { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; color: #7b8798; font-size: 12px; }
         .meta strong { color: #2563eb; font-size: 13px; }
-        .actions { display: flex; justify-content: flex-end; margin-top: 22px; }
+        .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
         button { min-width: 86px; padding: 8px 16px; border: 1px solid #d8e0eb; border-radius: 9px; background: #fff; color: #526174; cursor: pointer; font: inherit; }
         button:hover { border-color: #9fb5d3; background: #f8fbff; }
         button[hidden] { display: none; }
@@ -30,7 +30,7 @@
         <p id="message">正在准备更新，请稍候…</p>
         <div class="track" aria-label="下载进度"><div id="bar" class="bar"></div></div>
         <div class="meta"><span id="size">等待下载</span><strong id="percent">0%</strong></div>
-        <div class="actions"><button id="cancel" type="button">取消</button></div>
+        <div class="actions"><button id="retry" type="button" hidden>重试下载</button><button id="manual" type="button" hidden>打开下载页面</button><button id="cancel" type="button">取消</button></div>
     </main>
     <script>
         (() => {
@@ -41,6 +41,8 @@
             const size = document.getElementById('size');
             const percent = document.getElementById('percent');
             const cancel = document.getElementById('cancel');
+            const retry = document.getElementById('retry');
+            const manual = document.getElementById('manual');
             const formatBytes = (value) => {
                 const bytes = Number(value) || 0;
                 if(bytes < 1024) return `${bytes} B`;
@@ -52,6 +54,12 @@
             };
             const setState = (payload = {}) => {
                 const state = String(payload.state || 'downloading');
+                message.classList.toggle('error', state === 'error');
+                retry.hidden = manual.hidden = state !== 'error';
+                retry.disabled = false;
+                cancel.disabled = false;
+                cancel.textContent = '取消';
+                if(state === 'downloading') { bar.style.width = '0%'; percent.textContent = '0%'; size.textContent = '等待下载'; }
                 if(state === 'verifying') message.textContent = '下载完成，正在校验安装包…';
                 else if(state === 'ready') message.textContent = `版本 ${version} 已准备好，正在启动安装程序…`;
                 else if(state === 'downloaded') message.textContent = '更新包已下载并打开，请将新的小美画布拖到“应用程序”文件夹。';
@@ -60,7 +68,7 @@
                 else if(state === 'error') { message.textContent = payload.message || '更新失败，请稍后重试。'; message.classList.add('error'); }
                 else message.textContent = `正在下载版本 ${version}，请稍候…`;
                 if(['ready', 'downloaded', 'installing', 'cancelled', 'error'].includes(state)) cancel.textContent = '关闭';
-                if(state === 'error') cancel.focus();
+                if(state === 'error') retry.focus();
             };
             const setProgress = (payload = {}) => {
                 const downloaded = Number(payload.downloadedBytes) || 0;
@@ -76,6 +84,11 @@
                 cancel.textContent = '正在取消…';
                 try { await window.updateAPI?.cancel?.(); } catch {}
             });
+            retry.addEventListener('click', async () => {
+                retry.disabled = true;
+                try { await window.updateAPI?.retry?.(); } finally { retry.disabled = false; }
+            });
+            manual.addEventListener('click', () => window.updateAPI?.openDownloadPage?.());
             window.updateAPI?.onState?.(setState);
             window.updateAPI?.onProgress?.(setProgress);
             setState({ state: 'downloading' });
