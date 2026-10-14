@@ -177,4 +177,21 @@ https://github.com/hero8152/Infinite-Canvas/blob/main/LICENSE
 - 改进设置与管理功能
 - 完善文档与发布版本
 
-如果你有功能建议或发现 Bug，欢迎通过 GitHub Issues 反馈。
+如果你有功能建议或发现 Bug，欢迎通过 [GitHub Issues](https://github.com/jkjk-8614/xiaomei/issues) 反馈。
+
+---
+
+## 问题反馈与交流群
+
+如果在使用小美画布时遇到问题、发现 Bug，或者有功能建议，欢迎加入微信交流群反馈。
+
+也欢迎大家在群里交流 AI 生图、视频创作、电商设计以及软件使用经验。
+
+**微信交流群：AI电商-小美画布**
+
+![小美画布微信交流群二维码](./docs/images/wechat-group.svg)
+
+[点击加入微信交流群](https://weixin.qq.com/g/AQYAAMJb1-fS9afxmeW7jknC2eTQ_QCaaERDf98JS7KtRljUjoVh8wpRFxX_htHa)
+
+> 当前微信群二维码有效期至 **2026 年 10 月 22 日**。如果二维码或邀请链接已过期，可通过 [GitHub Issues](https://github.com/jkjk-8614/xiaomei/issues) 反馈问题。
+
