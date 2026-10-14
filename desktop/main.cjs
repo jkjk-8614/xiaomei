@@ -2014,7 +2014,7 @@ function startDesktopUpdate(result) {
         return { ...result, status: 'downloaded', installerPath: downloaded.path };
       }
       const installDirectory = path.dirname(app.getPath('exe'));
-      const installer = spawn(downloaded.path, ['/S', `/D=${installDirectory}`], {
+      const installer = spawn(downloaded.path, ['--updated', '--force-run', '/S', `/D=${installDirectory}`], {
         detached: true,
         stdio: 'ignore',
         windowsHide: false,
