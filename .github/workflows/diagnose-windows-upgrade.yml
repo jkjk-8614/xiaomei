@@ -1,0 +1,52 @@
+name: Diagnose Windows installer upgrade
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [fresh-v107, repeat-v106]
+    runs-on: windows-latest
+    steps:
+      - name: Download and test isolated installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCENARIO: ${{ matrix.scenario }}
+        run: |
+          $tag = if ($env:SCENARIO -eq 'fresh-v107') { 'v1.07' } else { 'v1.06' }
+          $downloadDir = Join-Path $env:RUNNER_TEMP "xiaomei-diagnose-$env:SCENARIO"
+          New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
+          gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern '*Windows-x64.exe' --dir $downloadDir
+          if ($LASTEXITCODE -ne 0) { throw "Cannot download $tag installer" }
+          $installer = Get-ChildItem -LiteralPath $downloadDir -Filter '*Windows-x64.exe' -File | Select-Object -First 1
+          if (-not $installer) { throw "Missing $tag installer" }
+          $installDir = Join-Path $env:RUNNER_TEMP 'xiaomei-diagnose-install'
+          for ($attempt = 1; $attempt -le 2; $attempt++) {
+            if ($env:SCENARIO -eq 'fresh-v107' -and $attempt -eq 2) { break }
+            Write-Output "Starting $env:SCENARIO attempt $attempt"
+            $process = Start-Process -FilePath $installer.FullName -ArgumentList @('--updated', '/S', "/D=$installDir") -PassThru
+            if (-not $process.WaitForExit(180000)) {
+              Write-Output "Installer timed out: PID $($process.Id)"
+              $packageFile = Join-Path $installDir 'resources/app/package.json'
+              if (Test-Path -LiteralPath $packageFile) {
+                $package = Get-Content -LiteralPath $packageFile -Raw | ConvertFrom-Json
+                Write-Output "Installed version: $($package.version), build $($package.buildRevision)"
+              }
+              Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -eq $process.Id -or $_.ParentProcessId -eq $process.Id -or $_.Name -match 'uninstall|7za|powershell' } |
+                Select-Object ProcessId, ParentProcessId, Name, ExecutablePath |
+                Format-Table -AutoSize | Out-String | Write-Output
+              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+              throw "Installer timed out on attempt $attempt"
+            }
+            Write-Output "Installer exit code: $($process.ExitCode)"
+            if ($process.ExitCode -ne 0) { throw "Installer failed on attempt $attempt" }
+            $package = Get-Content -LiteralPath (Join-Path $installDir 'resources/app/package.json') -Raw | ConvertFrom-Json
+            Write-Output "Installed version: $($package.version), build $($package.buildRevision)"
+          }
