@@ -287,7 +287,7 @@ jobs:
           DISPLAY_VERSION: ${{ steps.manifest.outputs.display_version }}
         run: |
           release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | .id")
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -f name="小美画布 v${DISPLAY_VERSION}" -f body='' > /dev/null
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -f tag_name="$RELEASE_TAG" -f name="小美画布 v${DISPLAY_VERSION}" -f body='' > /dev/null
       - name: Verify draft release and attachments
         shell: bash
         env:
@@ -301,7 +301,7 @@ jobs:
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
           release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | .id")
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -F draft=false -F prerelease=false > /dev/null
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -f tag_name="$RELEASE_TAG" -F draft=false -F prerelease=false > /dev/null
       - name: Verify published release and update manifest
         id: public_verify
         shell: bash
@@ -317,7 +317,7 @@ jobs:
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
           release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | .id")
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -F draft=true > /dev/null
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -f tag_name="$RELEASE_TAG" -F draft=true > /dev/null
 
   verify-upgrade-windows:
     needs: publish
@@ -371,7 +371,7 @@ jobs:
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
           $release = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" | ConvertFrom-Json | Where-Object { $_.tag_name -eq $env:RELEASE_TAG } | Select-Object -First 1
-          if ($release.id) { gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/releases/$($release.id)" -F draft=true | Out-Null }
+          if ($release.id) { gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/releases/$($release.id)" -f tag_name="$env:RELEASE_TAG" -F draft=true | Out-Null }
 
   cleanup-old-releases:
     needs: [publish, verify-upgrade-windows]
