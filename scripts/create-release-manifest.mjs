@@ -42,7 +42,7 @@ function releaseAssetName(fileName) {
 
 function classify(fileName) {
   if (/(?:Setup-x64|Windows-x64)\.exe$/i.test(fileName)) return { platform: 'win32', arch: 'x64', artifact: 'nsis' };
-  const mac = fileName.match(/macOS-(x64|arm64|universal)\.zip$/i);
+  const mac = fileName.match(/macOS-(arm64)\.zip$/i);
   if (mac) return { platform: 'darwin', arch: mac[1].toLowerCase(), artifact: 'zip' };
   return null;
 }
@@ -65,8 +65,9 @@ for (const fileName of await readdir(directory)) {
   });
 }
 
-if (!entries.some((item) => item.platform === 'win32')) throw new Error('没有找到 Windows 安装包');
-if (!entries.some((item) => item.platform === 'darwin')) throw new Error('没有找到 macOS ZIP');
+if (entries.length !== 2 || !entries.some((item) => item.platform === 'win32' && item.arch === 'x64') || !entries.some((item) => item.platform === 'darwin' && item.arch === 'arm64')) {
+  throw new Error('发布附件必须且只能包含 Windows x64 和 macOS arm64 安装包');
+}
 
 const manifest = {
   schemaVersion: 2,

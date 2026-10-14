@@ -91,7 +91,6 @@ mac:
   target:
     - target: zip
       arch:
-        - x64
         - arm64
   artifactName: xiaomei-canvas-${version}-macOS-${arch}.${ext}
 nsis:

@@ -4,7 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 
 const repository = 'jkjk-8614/xiaomei';
 const releasePattern = /^v1\.(\d{2})$/;
-const requiredAssets = [/Windows-x64\.exe$/, /macOS-x64\.zip$/, /macOS-arm64\.zip$/, /^update\.json$/];
+const requiredAssets = [/Windows-x64\.exe$/, /macOS-arm64\.zip$/, /^update\.json$/];
 
 async function githubReleases() {
   const releases = [];

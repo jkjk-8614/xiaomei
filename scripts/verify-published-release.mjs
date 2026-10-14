@@ -27,8 +27,8 @@ const manifest = JSON.parse(localManifestText);
 if (tag !== `v${pkg.displayVersion}` || manifest.version !== pkg.version || manifest.displayVersion !== pkg.displayVersion || manifest.buildRevision !== Number(process.env.GITHUB_RUN_NUMBER)) {
   throw new Error('标签、显示版本、内部版本、构建编号与更新清单不一致');
 }
-if (manifest.releases?.length !== 3 || compareVersions(pkg.version, `1.0.${Number(pkg.version.split('.')[2]) - 1}`) <= 0) throw new Error('更新清单的版本或附件数量无效');
-for (const [platform, arch] of [['win32', 'x64'], ['darwin', 'x64'], ['darwin', 'arm64']]) {
+if (manifest.releases?.length !== 2 || compareVersions(pkg.version, `1.0.${Number(pkg.version.split('.')[2]) - 1}`) <= 0) throw new Error('更新清单的版本或附件数量无效');
+for (const [platform, arch] of [['win32', 'x64'], ['darwin', 'arm64']]) {
   const normalized = normalizeManifest(manifest, { platform, arch });
   if (!normalized.ok || normalized.version !== pkg.version || normalized.buildRevision !== manifest.buildRevision) throw new Error(`${platform}/${arch} 不能识别新版`);
 }
@@ -62,7 +62,7 @@ for (const asset of uploaded) {
 }
 
 if (draftMode) {
-  console.log(`已核对 ${tag} 草稿：空正文、4 个附件、3 个平台和构建编号 ${manifest.buildRevision}`);
+  console.log(`已核对 ${tag} 草稿：空正文、3 个附件、2 个平台和构建编号 ${manifest.buildRevision}`);
   process.exit(0);
 }
 
@@ -83,4 +83,4 @@ for (let attempt = 0; attempt < 6; attempt += 1) {
 if (latest?.tag_name !== tag || remoteManifest?.version !== manifest.version || remoteManifest?.buildRevision !== manifest.buildRevision) {
   throw new Error('最新版下载入口仍未指向本次更新');
 }
-console.log(`已核对 ${tag}：空正文、4 个附件、3 个平台、构建编号 ${manifest.buildRevision} 和最新版更新入口`);
+console.log(`已核对 ${tag}：空正文、3 个附件、2 个平台、构建编号 ${manifest.buildRevision} 和最新版更新入口`);
