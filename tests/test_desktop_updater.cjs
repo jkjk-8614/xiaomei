@@ -54,16 +54,17 @@ test('keeps a network failure actionable instead of exposing raw fetch errors', 
 });
 
 test('accepts a complete HTTPS NSIS manifest', () => {
-  const result = normalizeManifest(VALID_MANIFEST);
+  const result = normalizeManifest(VALID_MANIFEST, { platform: 'win32', arch: 'x64' });
   assert.equal(result.ok, true);
   assert.equal(result.version, '0.1.0-test.3');
   assert.equal(result.sha256, 'a'.repeat(64));
 });
 
 test('rejects unsafe or incomplete manifests', () => {
-  assert.equal(normalizeManifest({ ...VALID_MANIFEST, installerUrl: 'http://downloads.example.com/app.exe' }).ok, false);
-  assert.equal(normalizeManifest({ ...VALID_MANIFEST, sha256: 'bad' }).ok, false);
-  assert.equal(normalizeManifest({ ...VALID_MANIFEST, artifact: 'portable' }).code, 'unsupported_artifact');
+  const target = { platform: 'win32', arch: 'x64' };
+  assert.equal(normalizeManifest({ ...VALID_MANIFEST, installerUrl: 'http://downloads.example.com/app.exe' }, target).ok, false);
+  assert.equal(normalizeManifest({ ...VALID_MANIFEST, sha256: 'bad' }, target).ok, false);
+  assert.equal(normalizeManifest({ ...VALID_MANIFEST, artifact: 'portable' }, target).code, 'unsupported_artifact');
   assert.equal(isAllowedUpdateUrl('file:///C:/app.exe'), false);
   assert.equal(isAllowedUpdateUrl('http://127.0.0.1:8080/update.json'), true);
 });
