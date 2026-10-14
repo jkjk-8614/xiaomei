@@ -33,7 +33,8 @@ for (const [platform, arch] of [['win32', 'x64'], ['darwin', 'x64'], ['darwin', 
   if (!normalized.ok || normalized.version !== pkg.version || normalized.buildRevision !== manifest.buildRevision) throw new Error(`${platform}/${arch} 不能识别新版`);
 }
 
-const release = await api(`releases/tags/${encodeURIComponent(tag)}`);
+const release = (await api('releases?per_page=100')).find((item) => item.tag_name === tag);
+if (!release) throw new Error(`GitHub 上没有找到 ${tag} Release`);
 if (Boolean(release.draft) !== draftMode || release.prerelease || release.name !== `小美画布 v${pkg.displayVersion}` || String(release.body || '') !== '') {
   throw new Error('发布标题、正式状态或空正文不符合规则');
 }

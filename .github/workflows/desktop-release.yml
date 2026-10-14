@@ -241,18 +241,15 @@ jobs:
             --build-revision "$GITHUB_RUN_NUMBER" \
             --tag "$RELEASE_TAG" \
             --repository "$GITHUB_REPOSITORY"
-      - name: Remove assets from an earlier build of this tag
+      - name: Replace an earlier failed draft of this tag
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
-          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
-            asset_ids=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.assets[].id')
-            while IFS= read -r asset_id; do
-              [ -n "$asset_id" ] || continue
-              gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
-            done <<< "$asset_ids"
+          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name == \"$RELEASE_TAG\" and .draft) | .id")
+          if [ -n "$release_id" ]; then
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$release_id"
           fi
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
@@ -273,8 +270,10 @@ jobs:
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           DISPLAY_VERSION: ${{ steps.manifest.outputs.display_version }}
         run: |
+          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | .id")
+          [ -n "$release_id" ] || { echo 'Draft Release is missing'; exit 1; }
           for suffix in Windows-x64.exe macOS-x64.zip macOS-arm64.zip; do
-            asset_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
+            asset_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" \
               --jq ".assets[] | select(.name | endswith(\"-$suffix\")) | .id")
             [ -n "$asset_id" ] || { echo "Missing release asset: $suffix"; exit 1; }
             gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
@@ -287,7 +286,7 @@ jobs:
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           DISPLAY_VERSION: ${{ steps.manifest.outputs.display_version }}
         run: |
-          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.id')
+          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | .id")
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -f name="小美画布 v${DISPLAY_VERSION}" -f body='' > /dev/null
       - name: Verify draft release and attachments
         shell: bash
@@ -301,7 +300,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
-          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.id')
+          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | .id")
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -F draft=false -F prerelease=false > /dev/null
       - name: Verify published release and update manifest
         id: public_verify
@@ -317,7 +316,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
-          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.id')
+          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | .id")
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -F draft=true > /dev/null
 
   verify-upgrade-windows:
@@ -350,7 +349,7 @@ jobs:
           if ($oldInstall.ExitCode -ne 0) { throw "Previous installer failed: $($oldInstall.ExitCode)" }
           $oldAppRoot = Join-Path $installDir 'resources/app'
           if (-not (Test-Path -LiteralPath (Join-Path $oldAppRoot 'desktop/updater.cjs') -PathType Leaf)) { throw 'Previous app did not install' }
-          $sentinel = Join-Path $installDir 'user_data/preserve.txt'
+          $sentinel = Join-Path $env:LOCALAPPDATA '小美画布/data/preserve.txt'
           New-Item -ItemType Directory -Force -Path (Split-Path $sentinel) | Out-Null
           Set-Content -LiteralPath $sentinel -Value 'preserve local data' -Encoding utf8
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
@@ -371,7 +370,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
-          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" | ConvertFrom-Json
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" | ConvertFrom-Json | Where-Object { $_.tag_name -eq $env:RELEASE_TAG } | Select-Object -First 1
           if ($release.id) { gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/releases/$($release.id)" -F draft=true | Out-Null }
 
   cleanup-old-releases:
