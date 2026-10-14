@@ -319,7 +319,66 @@ jobs:
         run: |
           release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.id')
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -F draft=true > /dev/null
-      - name: Remove older Releases after verification
+
+  verify-upgrade-windows:
+    needs: publish
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install previous version and upgrade through its updater
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          $releases = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" | ConvertFrom-Json
+          $previous = $releases | Where-Object { -not $_.draft -and -not $_.prerelease -and $_.tag_name -ne $env:RELEASE_TAG } | Sort-Object published_at -Descending | Select-Object -First 1
+          if (-not $previous) { throw 'Previous formal Release is missing' }
+          $downloadDir = Join-Path $env:RUNNER_TEMP 'xiaomei-upgrade-previous'
+          New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
+          gh release download $previous.tag_name --pattern '*Windows-x64.exe' --dir $downloadDir
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot download previous Windows installer' }
+          $oldInstaller = Get-ChildItem -LiteralPath $downloadDir -Filter '*Windows-x64.exe' -File | Select-Object -First 1
+          if (-not $oldInstaller) { throw 'Previous Windows installer is missing' }
+          $installDir = Join-Path $env:RUNNER_TEMP 'xiaomei-upgrade-install'
+          $oldInstall = Start-Process -FilePath $oldInstaller.FullName -ArgumentList @('/S', "/D=$installDir") -WindowStyle Hidden -Wait -PassThru
+          if ($oldInstall.ExitCode -ne 0) { throw "Previous installer failed: $($oldInstall.ExitCode)" }
+          $oldAppRoot = Join-Path $installDir 'resources/app'
+          if (-not (Test-Path -LiteralPath (Join-Path $oldAppRoot 'desktop/updater.cjs') -PathType Leaf)) { throw 'Previous app did not install' }
+          $sentinel = Join-Path $installDir 'user_data/preserve.txt'
+          New-Item -ItemType Directory -Force -Path (Split-Path $sentinel) | Out-Null
+          Set-Content -LiteralPath $sentinel -Value 'preserve local data' -Encoding utf8
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $report = Join-Path $env:RUNNER_TEMP 'xiaomei-upgrade-report.json'
+          node scripts/verify-upgrade-from-previous.cjs $oldAppRoot $version $report
+          if ($LASTEXITCODE -ne 0) { throw 'Previous app did not check or download the new version' }
+          $result = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
+          $newInstall = Start-Process -FilePath $result.installerPath -ArgumentList @('/S', "/D=$installDir") -WindowStyle Hidden -Wait -PassThru
+          if ($newInstall.ExitCode -ne 0) { throw "New installer failed: $($newInstall.ExitCode)" }
+          $newPackage = Get-Content -LiteralPath (Join-Path $installDir 'resources/app/package.json') -Raw | ConvertFrom-Json
+          if ($newPackage.version -ne $version -or $newPackage.buildRevision -ne $result.buildRevision) { throw 'Installed version or build revision is wrong after upgrade' }
+          if (-not (Test-Path -LiteralPath $sentinel -PathType Leaf)) { throw 'Upgrade removed local user data' }
+          Write-Output "Upgraded $($result.oldVersion) to $version (build $($result.buildRevision)); local data preserved"
+      - name: Restore draft when upgrade verification fails
+        if: ${{ failure() }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" | ConvertFrom-Json
+          if ($release.id) { gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/releases/$($release.id)" -F draft=true | Out-Null }
+
+  cleanup-old-releases:
+    needs: [publish, verify-upgrade-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove older Releases after upgrade verification
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
