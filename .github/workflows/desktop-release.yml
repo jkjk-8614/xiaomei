@@ -259,6 +259,7 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           name: 小美画布 v${{ steps.manifest.outputs.display_version }}
+          draft: true
           generate_release_notes: false
           files: |
             release-assets/小美画布-v${{ steps.manifest.outputs.display_version }}-Windows-x64.exe
@@ -288,12 +289,36 @@ jobs:
         run: |
           release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.id')
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -f name="小美画布 v${DISPLAY_VERSION}" -f body='' > /dev/null
+      - name: Verify draft release and attachments
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: node scripts/verify-published-release.mjs release-assets --draft
+      - name: Publish verified release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.id')
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -F draft=false -F prerelease=false > /dev/null
       - name: Verify published release and update manifest
+        id: public_verify
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: node scripts/verify-published-release.mjs release-assets
+      - name: Restore draft when public verification fails
+        if: ${{ failure() && steps.public_verify.outcome == 'failure' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.id')
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -F draft=true > /dev/null
       - name: Remove older Releases after verification
         shell: bash
         env:

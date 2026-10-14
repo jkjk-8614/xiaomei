@@ -12,6 +12,7 @@ const repository = process.env.GITHUB_REPOSITORY || 'jkjk-8614/xiaomei';
 const tag = process.env.RELEASE_TAG;
 const token = process.env.GH_TOKEN;
 const directory = path.resolve(process.argv[2] || 'release-assets');
+const draftMode = process.argv.includes('--draft');
 if (!tag || !token) throw new Error('缺少发布标签或 GitHub 凭据');
 
 const headers = { accept: 'application/vnd.github+json', authorization: `Bearer ${token}`, 'user-agent': 'Xiaomei-release-verification' };
@@ -33,7 +34,7 @@ for (const [platform, arch] of [['win32', 'x64'], ['darwin', 'x64'], ['darwin', 
 }
 
 const release = await api(`releases/tags/${encodeURIComponent(tag)}`);
-if (release.draft || release.prerelease || release.name !== `小美画布 v${pkg.displayVersion}` || String(release.body || '') !== '') {
+if (Boolean(release.draft) !== draftMode || release.prerelease || release.name !== `小美画布 v${pkg.displayVersion}` || String(release.body || '') !== '') {
   throw new Error('发布标题、正式状态或空正文不符合规则');
 }
 const expected = new Map([['update.json', { size: Buffer.byteLength(localManifestText) }]]);
@@ -57,6 +58,11 @@ const uploaded = (release.assets || []).filter((asset) => asset.state === 'uploa
 if (uploaded.length !== expected.size) throw new Error('发布附件数量不一致');
 for (const asset of uploaded) {
   if (!expected.has(asset.name) || expected.get(asset.name).size !== asset.size) throw new Error(`发布附件不一致：${asset.name}`);
+}
+
+if (draftMode) {
+  console.log(`已核对 ${tag} 草稿：空正文、4 个附件、3 个平台和构建编号 ${manifest.buildRevision}`);
+  process.exit(0);
 }
 
 let remoteManifest;
