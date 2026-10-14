@@ -44,7 +44,7 @@ jobs:
             if ($env:SCENARIO -eq 'fresh-v107' -and $attempt -eq 2) { break }
             Write-Output "Starting $env:SCENARIO attempt $attempt"
             $process = Start-Process -FilePath $installer.FullName -ArgumentList @('--updated', '/S', "/D=$installDir") -PassThru
-            if (-not $process.WaitForExit(180000)) {
+            if (-not $process.WaitForExit(60000)) {
               Write-Output "Installer timed out: PID $($process.Id)"
               $packageFile = Join-Path $installDir 'resources/app/package.json'
               if (Test-Path -LiteralPath $packageFile) {
@@ -55,6 +55,16 @@ jobs:
                 Select-Object ProcessId, ParentProcessId, Name, ExecutablePath |
                 Format-Table -AutoSize | Out-String | Write-Output
               Get-Process -Id $process.Id | Select-Object Id, ProcessName, Responding, MainWindowTitle, CPU, Threads | Format-List | Out-String | Write-Output
+              Add-Type -AssemblyName UIAutomationClient
+              $window = [System.Windows.Automation.AutomationElement]::FromHandle($process.MainWindowHandle)
+              if ($window) {
+                Write-Output "Window: $($window.Current.Name)"
+                $controls = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+                for ($index = 0; $index -lt [Math]::Min($controls.Count, 60); $index++) {
+                  $control = $controls.Item($index).Current
+                  if ($control.Name) { Write-Output "Control: $($control.ControlType.ProgrammaticName) [$($control.Name)]" }
+                }
+              }
               Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'consent|cmd|conhost' } | Select-Object ProcessId, ParentProcessId, Name | Format-Table -AutoSize | Out-String | Write-Output
               Get-ItemProperty 'HKCU:\Software\com.xiaomei.canvas.desktop' -ErrorAction SilentlyContinue | Select-Object InstallLocation | Format-List | Out-String | Write-Output
               Get-ItemProperty 'HKLM:\Software\com.xiaomei.canvas.desktop' -ErrorAction SilentlyContinue | Select-Object InstallLocation | Format-List | Out-String | Write-Output
