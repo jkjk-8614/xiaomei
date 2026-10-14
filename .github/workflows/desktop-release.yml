@@ -350,9 +350,19 @@ jobs:
           $result = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
           Write-Output "Installing downloaded version $version (build $($result.buildRevision)) over $($result.oldVersion)"
           $newInstall = Start-Process -FilePath $result.installerPath -ArgumentList @('--updated', '/S', "/D=$installDir") -WindowStyle Hidden -PassThru
-          if (-not $newInstall.WaitForExit(600000)) {
+          if (-not $newInstall.WaitForExit(300000)) {
+            $installedPackage = Join-Path $installDir 'resources/app/package.json'
+            if (Test-Path -LiteralPath $installedPackage -PathType Leaf) {
+              $installed = Get-Content -LiteralPath $installedPackage -Raw | ConvertFrom-Json
+              Write-Output "Installer timeout: installed version $($installed.version), build $($installed.buildRevision)"
+            } else {
+              Write-Output 'Installer timeout: installed package.json is absent'
+            }
+            Get-CimInstance Win32_Process | Where-Object { $_.Name -match '小美画布|uninstall|powershell|7za|xiaomei' } |
+              Select-Object ProcessId, ParentProcessId, Name, ExecutablePath |
+              Format-Table -AutoSize | Out-String | Write-Output
             Stop-Process -Id $newInstall.Id -Force -ErrorAction SilentlyContinue
-            throw 'New installer did not finish within ten minutes'
+            throw 'New installer did not finish within five minutes'
           }
           if ($newInstall.ExitCode -ne 0) { throw "New installer failed: $($newInstall.ExitCode)" }
           $newPackage = Get-Content -LiteralPath (Join-Path $installDir 'resources/app/package.json') -Raw | ConvertFrom-Json
