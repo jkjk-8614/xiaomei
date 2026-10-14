@@ -348,7 +348,12 @@ jobs:
           node scripts/verify-upgrade-from-previous.cjs $oldAppRoot $version $report
           if ($LASTEXITCODE -ne 0) { throw 'Previous app did not check or download the new version' }
           $result = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
-          $newInstall = Start-Process -FilePath $result.installerPath -ArgumentList @('/S', "/D=$installDir") -WindowStyle Hidden -Wait -PassThru
+          Write-Output "Installing downloaded version $version (build $($result.buildRevision)) over $($result.oldVersion)"
+          $newInstall = Start-Process -FilePath $result.installerPath -ArgumentList @('--updated', '/S', "/D=$installDir") -WindowStyle Hidden -PassThru
+          if (-not $newInstall.WaitForExit(600000)) {
+            Stop-Process -Id $newInstall.Id -Force -ErrorAction SilentlyContinue
+            throw 'New installer did not finish within ten minutes'
+          }
           if ($newInstall.ExitCode -ne 0) { throw "New installer failed: $($newInstall.ExitCode)" }
           $newPackage = Get-Content -LiteralPath (Join-Path $installDir 'resources/app/package.json') -Raw | ConvertFrom-Json
           if ($newPackage.version -ne $version -or $newPackage.buildRevision -ne $result.buildRevision) { throw 'Installed version or build revision is wrong after upgrade' }
