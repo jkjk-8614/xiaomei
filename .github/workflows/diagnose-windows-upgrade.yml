@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scenario: [fresh-v107, repeat-v106]
+        scenario: [direct-uninstall-v106]
     runs-on: windows-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -42,8 +42,16 @@ jobs:
           $installDir = Join-Path $env:RUNNER_TEMP 'xiaomei-diagnose-install'
           for ($attempt = 1; $attempt -le 2; $attempt++) {
             if ($env:SCENARIO -eq 'fresh-v107' -and $attempt -eq 2) { break }
+            if ($env:SCENARIO -eq 'direct-uninstall-v106' -and $attempt -eq 2) {
+              $uninstaller = Get-ChildItem -LiteralPath $installDir -Filter '*Uninstall*.exe' -File | Select-Object -First 1
+              if (-not $uninstaller) { throw 'Installed uninstaller is missing' }
+              Write-Output "Starting direct uninstall: $($uninstaller.Name)"
+              Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' | Get-ItemProperty | Where-Object { $_.DisplayName -eq '小美画布' } | Select-Object DisplayName, UninstallString, InstallLocation | Format-List | Out-String | Write-Output
+              $installer = $uninstaller
+            }
             Write-Output "Starting $env:SCENARIO attempt $attempt"
-            $process = Start-Process -FilePath $installer.FullName -ArgumentList @('--updated', '/S', "/D=$installDir") -PassThru
+            $arguments = if ($env:SCENARIO -eq 'direct-uninstall-v106' -and $attempt -eq 2) { @('/S', '/KEEP_APP_DATA', '--updated', "_?=$installDir") } else { @('--updated', '/S', "/D=$installDir") }
+            $process = Start-Process -FilePath $installer.FullName -ArgumentList $arguments -PassThru
             if (-not $process.WaitForExit(180000)) {
               Write-Output "Installer timed out: PID $($process.Id)"
               $packageFile = Join-Path $installDir 'resources/app/package.json'
@@ -73,7 +81,10 @@ jobs:
             }
             Write-Output "Installer exit code: $($process.ExitCode)"
             if ($process.ExitCode -ne 0) { throw "Installer failed on attempt $attempt" }
-            $package = Get-Content -LiteralPath (Join-Path $installDir 'resources/app/package.json') -Raw | ConvertFrom-Json
-            Write-Output "Installed version: $($package.version), build $($package.buildRevision)"
+            $packageFile = Join-Path $installDir 'resources/app/package.json'
+            if (Test-Path -LiteralPath $packageFile) {
+              $package = Get-Content -LiteralPath $packageFile -Raw | ConvertFrom-Json
+              Write-Output "Installed version: $($package.version), build $($package.buildRevision)"
+            }
           }
 
