@@ -58,7 +58,7 @@ for (const fileName of await readdir(directory)) {
   entries.push({
     ...classification,
     version,
-    fileName,
+    fileName: releaseAssetName(fileName),
     downloadUrl: `https://github.com/${repository}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(releaseAssetName(fileName))}`,
     size: info.size,
     sha256: sha256(content),

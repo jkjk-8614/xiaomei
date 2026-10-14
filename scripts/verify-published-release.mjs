@@ -45,8 +45,11 @@ async function sha256(file) {
   return hash.digest('hex');
 }
 for (const entry of manifest.releases) {
-  const normalizedName = entry.fileName.replace(/^小美画布(?=-v\d)/, '');
-  const file = path.join(directory, entry.fileName);
+  const normalizedName = entry.fileName;
+  const file = path.join(directory, `小美画布${entry.fileName}`);
+  if (!/^-v\d+\.\d+-(?:Windows-x64\.exe|macOS-arm64\.zip)$/.test(entry.fileName)) {
+    throw new Error(`更新清单中的缓存文件名无效：${entry.fileName}`);
+  }
   const info = await stat(file);
   const digest = await sha256(file);
   if (info.size !== entry.size || digest !== entry.sha256) throw new Error(`${entry.fileName} 与更新清单不一致`);
