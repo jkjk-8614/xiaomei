@@ -14,6 +14,14 @@ jobs:
         scenario: [fresh-v107, repeat-v106]
     runs-on: windows-latest
     steps:
+      - uses: actions/download-artifact@v4
+        if: matrix.scenario == 'fresh-v107'
+        with:
+          name: desktop-windows
+          repository: ${{ github.repository }}
+          run-id: 38533780269
+          github-token: ${{ github.token }}
+          path: downloaded-v107
       - name: Download and test isolated installer
         shell: pwsh
         env:
@@ -23,8 +31,12 @@ jobs:
           $tag = if ($env:SCENARIO -eq 'fresh-v107') { 'v1.07' } else { 'v1.06' }
           $downloadDir = Join-Path $env:RUNNER_TEMP "xiaomei-diagnose-$env:SCENARIO"
           New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
-          gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern '*Windows-x64.exe' --dir $downloadDir
-          if ($LASTEXITCODE -ne 0) { throw "Cannot download $tag installer" }
+          if ($env:SCENARIO -eq 'fresh-v107') {
+            Copy-Item -Path 'downloaded-v107/*Windows-x64.exe' -Destination $downloadDir
+          } else {
+            gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern '*Windows-x64.exe' --dir $downloadDir
+            if ($LASTEXITCODE -ne 0) { throw "Cannot download $tag installer" }
+          }
           $installer = Get-ChildItem -LiteralPath $downloadDir -Filter '*Windows-x64.exe' -File | Select-Object -First 1
           if (-not $installer) { throw "Missing $tag installer" }
           $installDir = Join-Path $env:RUNNER_TEMP 'xiaomei-diagnose-install'
@@ -42,6 +54,10 @@ jobs:
               Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -eq $process.Id -or $_.ParentProcessId -eq $process.Id -or $_.Name -match 'uninstall|7za|powershell' } |
                 Select-Object ProcessId, ParentProcessId, Name, ExecutablePath |
                 Format-Table -AutoSize | Out-String | Write-Output
+              Get-Process -Id $process.Id | Select-Object Id, ProcessName, Responding, MainWindowTitle, CPU, Threads | Format-List | Out-String | Write-Output
+              Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'consent|cmd|conhost' } | Select-Object ProcessId, ParentProcessId, Name | Format-Table -AutoSize | Out-String | Write-Output
+              Get-ItemProperty 'HKCU:\Software\com.xiaomei.canvas.desktop' -ErrorAction SilentlyContinue | Select-Object InstallLocation | Format-List | Out-String | Write-Output
+              Get-ItemProperty 'HKLM:\Software\com.xiaomei.canvas.desktop' -ErrorAction SilentlyContinue | Select-Object InstallLocation | Format-List | Out-String | Write-Output
               Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
               throw "Installer timed out on attempt $attempt"
             }
