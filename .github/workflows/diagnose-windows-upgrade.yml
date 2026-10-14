@@ -44,7 +44,7 @@ jobs:
             if ($env:SCENARIO -eq 'fresh-v107' -and $attempt -eq 2) { break }
             Write-Output "Starting $env:SCENARIO attempt $attempt"
             $process = Start-Process -FilePath $installer.FullName -ArgumentList @('--updated', '/S', "/D=$installDir") -PassThru
-            if (-not $process.WaitForExit(60000)) {
+            if (-not $process.WaitForExit(180000)) {
               Write-Output "Installer timed out: PID $($process.Id)"
               $packageFile = Join-Path $installDir 'resources/app/package.json'
               if (Test-Path -LiteralPath $packageFile) {
@@ -76,3 +76,4 @@ jobs:
             $package = Get-Content -LiteralPath (Join-Path $installDir 'resources/app/package.json') -Raw | ConvertFrom-Json
             Write-Output "Installed version: $($package.version), build $($package.buildRevision)"
           }
+
