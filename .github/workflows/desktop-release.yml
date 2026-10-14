@@ -19,6 +19,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -27,7 +29,12 @@ jobs:
           python-version: '3.13.16'
       - name: Verify release inputs
         shell: pwsh
+        env:
+          INPUT_RELEASE_TAG: ${{ inputs.tag }}
         run: node scripts/verify-release-inputs.mjs
+      - name: Test desktop update checks and downloads
+        shell: pwsh
+        run: node --test tests/test_desktop_updater.cjs tests/test_desktop_update_network.cjs tests/test_desktop_update_actions.cjs
       - name: Set desktop build revision
         run: node -e "const fs=require('node:fs'); const pkg=require('./package.json'); pkg.buildRevision=Number(process.env.GITHUB_RUN_NUMBER); fs.writeFileSync('package.json', JSON.stringify(pkg,null,2)+'\n');"
       - name: Build bundled Windows API runtime
@@ -53,6 +60,8 @@ jobs:
         shell: pwsh
         run: |
           $appRoot = (Resolve-Path 'dist-package/win-unpacked/resources/app').Path
+          node scripts/audit-release-tree.mjs $appRoot
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged Windows app failed privacy audit' }
           $runtime = Join-Path $appRoot 'bundled/win-api/python.exe'
           $entry = Join-Path $appRoot 'windows_api_entry.py'
           $oldBackend = Join-Path $appRoot 'bundled/win-api/xiaomei-api.exe'
@@ -130,6 +139,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -137,7 +148,11 @@ jobs:
         with:
           python-version: '3.12'
       - name: Verify release inputs
+        env:
+          INPUT_RELEASE_TAG: ${{ inputs.tag }}
         run: node scripts/verify-release-inputs.mjs
+      - name: Test desktop update checks and downloads
+        run: node --test tests/test_desktop_updater.cjs tests/test_desktop_update_network.cjs tests/test_desktop_update_actions.cjs
       - name: Set desktop build revision
         run: node -e "const fs=require('node:fs'); const pkg=require('./package.json'); pkg.buildRevision=Number(process.env.GITHUB_RUN_NUMBER); fs.writeFileSync('package.json', JSON.stringify(pkg,null,2)+'\n');"
       - name: Build bundled macOS API runtime
@@ -175,6 +190,9 @@ jobs:
           PY
           mkdir -p "$RUNNER_TEMP/xiaomei-harness-package-smoke"
           unzip -q dist-package/*-macOS-${{ matrix.arch }}.zip -d "$RUNNER_TEMP/xiaomei-harness-package-smoke"
+          APP_ROOT=$(find "$RUNNER_TEMP/xiaomei-harness-package-smoke" -path '*/Contents/Resources/app' -type d -print -quit)
+          [ -n "$APP_ROOT" ] || { echo 'Packaged app directory is missing'; exit 1; }
+          node scripts/audit-release-tree.mjs "$APP_ROOT"
           NODE=$(find "$RUNNER_TEMP/xiaomei-harness-package-smoke" -path '*/Contents/Resources/app/bundled/node/bin/node' -type f -print -quit)
           [ -n "$NODE" ] || { echo 'Packaged Harness Node is missing'; exit 1; }
           RUNTIME="${NODE%/bundled/node/bin/node}/bundled/deepseek-harness"
@@ -194,6 +212,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -238,8 +258,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          name: 小美画布v${{ steps.manifest.outputs.display_version }}
-          body_path: RELEASE_NOTES.md
+          name: 小美画布 v${{ steps.manifest.outputs.display_version }}
           generate_release_notes: false
           files: |
             release-assets/小美画布-v${{ steps.manifest.outputs.display_version }}-Windows-x64.exe
@@ -260,3 +279,30 @@ jobs:
             gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
               -f label="小美画布-v${DISPLAY_VERSION}-${suffix}" > /dev/null
           done
+      - name: Keep release body empty
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          DISPLAY_VERSION: ${{ steps.manifest.outputs.display_version }}
+        run: |
+          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.id')
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -f name="小美画布 v${DISPLAY_VERSION}" -f body='' > /dev/null
+      - name: Verify published release and update manifest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: node scripts/verify-published-release.mjs release-assets
+      - name: Remove older Releases after verification
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name != \"$RELEASE_TAG\") | .id" | while IFS= read -r release_id; do
+            [ -n "$release_id" ] || continue
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$release_id"
+          done
+          remaining=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq 'length')
+          [ "$remaining" = 1 ] || { echo "Expected one Release, found $remaining"; exit 1; }

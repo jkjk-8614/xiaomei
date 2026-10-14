@@ -4082,7 +4082,9 @@
                     renderAppUpdateStatus(result);
                     if(result?.status === 'current') alert(`已是最新版本（${versionLabel(result.currentDisplayVersion || appInfo.version)}）。`);
                 } catch {
-                    alert('检查更新失败，请检查网络后重试。');
+                    if(confirm('检查更新失败，请检查网络或系统代理后重试。是否打开官方下载页面？')) {
+                        window.open('https://github.com/jkjk-8614/xiaomei/releases/latest', '_blank', 'noopener,noreferrer');
+                    }
                 } finally {
                     if(button) button.disabled = false;
                 }
@@ -4140,7 +4142,9 @@
                     } else if(reachable) {
                         alert(isEn ? `You are on the latest version (${versionLabel(current)}).` : `已是最新版本（${versionLabel(current)}）。`);
                     } else {
-                        alert(isEn ? 'Could not reach GitHub or ModelScope. Check your network/proxy and try again.' : '无法连接 GitHub 或 ModelScope 更新源，请检查网络或代理后重试。');
+                        if(confirm(isEn ? 'Could not reach GitHub or ModelScope. Check your network or proxy and retry. Open the official download page?' : '无法连接 GitHub 或 ModelScope 更新源，请检查网络或代理后重试。是否打开官方下载页面？')) {
+                            window.open('https://github.com/jkjk-8614/xiaomei/releases/latest', '_blank', 'noopener,noreferrer');
+                        }
                     }
                 }
             } catch(e) {
