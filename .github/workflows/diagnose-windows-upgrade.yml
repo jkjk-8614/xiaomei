@@ -49,11 +49,13 @@ jobs:
               $copiedUninstaller = Join-Path $env:RUNNER_TEMP 'xiaomei-old-uninstaller.exe'
               Copy-Item -LiteralPath $uninstaller.FullName -Destination $copiedUninstaller
               Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like "$installDir*" } | Select-Object ProcessId, Name, ExecutablePath | Format-Table -AutoSize | Out-String | Write-Output
+              $longFiles = Get-ChildItem -LiteralPath $installDir -Recurse -File -Force | Sort-Object { $_.FullName.Length } -Descending | Select-Object -First 5
+              $longFiles | ForEach-Object { Write-Output "Path length $($_.FullName.Length): $($_.FullName)" }
               Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' | Get-ItemProperty | Where-Object { $_.DisplayName -eq '小美画布' } | Select-Object DisplayName, UninstallString, InstallLocation | Format-List | Out-String | Write-Output
               $installer = Get-Item -LiteralPath $copiedUninstaller
             }
             Write-Output "Starting $env:SCENARIO attempt $attempt"
-            $arguments = if ($env:SCENARIO -eq 'direct-uninstall-v106' -and $attempt -eq 2) { @('/S', '/KEEP_APP_DATA', '--updated', "_?=$installDir") } else { @('--updated', '/S', "/D=$installDir") }
+            $arguments = if ($env:SCENARIO -eq 'direct-uninstall-v106' -and $attempt -eq 2) { @('/S', '/KEEP_APP_DATA', "_?=$installDir") } else { @('--updated', '/S', "/D=$installDir") }
             $process = Start-Process -FilePath $installer.FullName -ArgumentList $arguments -PassThru
             if (-not $process.WaitForExit(180000)) {
               Write-Output "Installer timed out: PID $($process.Id)"
