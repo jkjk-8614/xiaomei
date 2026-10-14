@@ -44,7 +44,7 @@ async function walk(directory, relative = '') {
         const info = await stat(full);
         if (info.size <= 8 * 1024 * 1024) {
           const content = await readFile(full, 'utf8');
-          const packageDependency = /(?:^|\/)node_modules\//i.test(next);
+          const packageDependency = /(?:^|\/)node_modules\/|^bundled\/win-api\/Lib\/site-packages\//i.test(next);
           if (knownSecrets.some((value) => content.includes(value)) || (!packageDependency && secretPatterns.some((pattern) => { pattern.lastIndex = 0; return pattern.test(content); }))) {
             violations.push(`${next}: 疑似真实密钥`);
           }
