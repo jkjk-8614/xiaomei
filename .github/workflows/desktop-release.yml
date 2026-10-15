@@ -12,6 +12,7 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: write
 
 jobs:
@@ -320,19 +321,58 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
       - name: Install previous version and upgrade through its updater
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
-          $releases = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" | ConvertFrom-Json
-          $previous = $releases | Where-Object { -not $_.draft -and -not $_.prerelease -and $_.tag_name -ne $env:RELEASE_TAG } | Sort-Object published_at -Descending | Select-Object -First 1
-          if (-not $previous) { throw 'Previous formal Release is missing' }
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $previousPatch = [int]($version.Split('.')[-1]) - 1
+          if ($previousPatch -lt 0) { throw 'Previous version number is invalid' }
+          $previousTag = 'v1.{0:D2}' -f $previousPatch
           $downloadDir = Join-Path $env:RUNNER_TEMP 'xiaomei-upgrade-previous'
           New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
-          gh release download $previous.tag_name --pattern '*Windows-x64.exe' --dir $downloadDir
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot download previous Windows installer' }
+          $releases = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" | ConvertFrom-Json
+          $previous = $releases | Where-Object { -not $_.draft -and -not $_.prerelease -and $_.tag_name -eq $previousTag } | Select-Object -First 1
+          if ($previous) {
+            gh release download $previousTag --pattern '*Windows-x64.exe' --dir $downloadDir
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot download previous Windows installer' }
+          } else {
+            $runs = gh api "repos/$env:GITHUB_REPOSITORY/actions/workflows/desktop-release.yml/runs?branch=$previousTag&per_page=100" | ConvertFrom-Json
+            $run = $runs.workflow_runs | Where-Object { $_.status -eq 'completed' -and $_.conclusion -eq 'success' } | Sort-Object run_number -Descending | Select-Object -First 1
+            $artifact = if ($run) { (gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$($run.id)/artifacts" | ConvertFrom-Json).artifacts | Where-Object { $_.name -eq 'desktop-windows' -and -not $_.expired } | Select-Object -First 1 }
+            if ($artifact) {
+              gh run download $run.id --name desktop-windows --dir $downloadDir
+              if ($LASTEXITCODE -ne 0) { throw 'Cannot download previous Windows build artifact' }
+            } else {
+              Write-Output "Previous installer artifact is unavailable; rebuilding $previousTag from its retained Git tag"
+              git fetch origin "refs/tags/${previousTag}:refs/tags/${previousTag}"
+              if ($LASTEXITCODE -ne 0) { throw "Cannot fetch previous source tag $previousTag" }
+              $previousSource = Join-Path $env:RUNNER_TEMP 'xiaomei-previous-source'
+              git worktree add --detach $previousSource $previousTag
+              if ($LASTEXITCODE -ne 0) { throw "Cannot check out previous source tag $previousTag" }
+              Push-Location $previousSource
+              try {
+                ./scripts/prepare-windows-api-runtime.ps1 -BuildPython python
+                if ($LASTEXITCODE -ne 0) { throw 'Cannot prepare previous Windows API runtime' }
+                npm install --no-audit --no-fund --ignore-scripts
+                if ($LASTEXITCODE -ne 0) { throw 'Cannot install previous desktop build tools' }
+                npm install --global pnpm@11.7.0
+                if ($LASTEXITCODE -ne 0) { throw 'Cannot install previous pnpm build tool' }
+                node scripts/prepare-harness-runtime.mjs
+                if ($LASTEXITCODE -ne 0) { throw 'Cannot prepare previous Harness runtime' }
+                npx electron-builder --win nsis --x64 --publish never
+                if ($LASTEXITCODE -ne 0) { throw 'Cannot build previous Windows installer' }
+                $rebuilt = Get-ChildItem -LiteralPath 'dist-package' -Filter '*-Setup-x64.exe' -File | Select-Object -First 1
+                if (-not $rebuilt) { throw 'Rebuilt previous Windows installer is missing' }
+                Copy-Item -LiteralPath $rebuilt.FullName -Destination (Join-Path $downloadDir "xiaomei-$previousTag-Windows-x64.exe")
+              } finally { Pop-Location }
+            }
+          }
           $oldInstaller = Get-ChildItem -LiteralPath $downloadDir -Filter '*Windows-x64.exe' -File | Select-Object -First 1
           if (-not $oldInstaller) { throw 'Previous Windows installer is missing' }
           $installDir = Join-Path $env:RUNNER_TEMP 'xiaomei-upgrade-install'
@@ -343,7 +383,6 @@ jobs:
           $sentinel = Join-Path $env:LOCALAPPDATA '小美画布/data/preserve.txt'
           New-Item -ItemType Directory -Force -Path (Split-Path $sentinel) | Out-Null
           Set-Content -LiteralPath $sentinel -Value 'preserve local data' -Encoding utf8
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $report = Join-Path $env:RUNNER_TEMP 'xiaomei-upgrade-report.json'
           node scripts/verify-upgrade-from-previous.cjs $oldAppRoot $version $report
           if ($LASTEXITCODE -ne 0) { throw 'Previous app did not check or download the new version' }
