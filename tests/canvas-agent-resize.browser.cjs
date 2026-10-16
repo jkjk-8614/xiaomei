@@ -28,7 +28,9 @@ test('Agent content follows the resize handle during generation and keeps its si
             return fs.existsSync(file) ? route.fulfill({ path: file }) : route.fulfill({ status: 404, body: '' });
         }
         if (url.pathname === '/api/canvas-llm') { pendingRequest = route; return; }
-        if (url.pathname === '/api/config') return route.fulfill({ json: { api_providers: [], comfy_instances: [] } });
+        if (url.pathname === '/api/config') return route.fulfill({ json: { api_providers: [
+            { id: 'fixture', name: 'Fixture', enabled: true, chat_models: ['fixture-chat'], image_models: [] }
+        ], comfy_instances: [] } });
         if (url.pathname === '/api/canvases/agent-resize') {
             if (route.request().method() === 'PUT') savedCanvas = { ...savedCanvas, ...route.request().postDataJSON() };
             return route.fulfill({ json: { canvas: savedCanvas } });

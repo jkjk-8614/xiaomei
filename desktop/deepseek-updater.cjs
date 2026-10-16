@@ -11,6 +11,12 @@ function short(value, limit = 240) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
 }
 
+function pnpmCommand(root) {
+  const localPnpm = path.join(root, 'node_modules', 'pnpm', 'bin', 'pnpm.mjs');
+  if (fs.existsSync(localPnpm)) return { command: 'node', prefix: [localPnpm] };
+  return { command: process.platform === 'win32' ? 'corepack.cmd' : 'corepack', prefix: ['pnpm'] };
+}
+
 function run(command, args, options = {}) {
   const timeout = Number(options.timeout || 30_000);
   return new Promise((resolve, reject) => {
@@ -119,8 +125,13 @@ class DeepSeekHarnessUpdater {
         // the final safety decision instead of hiding a valid update here.
         if (!shallow) {
           try {
-            await run('git', ['merge-base', '--is-ancestor', local.commit, remoteCommit], { cwd: this.root, timeout: 10_000 });
-          } catch { fastForward = false; }
+            await run('git', ['cat-file', '-e', `${remoteCommit}^{commit}`], { cwd: this.root, timeout: 10_000 });
+            try {
+              await run('git', ['merge-base', '--is-ancestor', local.commit, remoteCommit], { cwd: this.root, timeout: 10_000 });
+            } catch { fastForward = false; }
+          } catch {
+            // ls-remote can report a commit we have not fetched yet.
+          }
         }
       }
       return {
@@ -153,6 +164,7 @@ class DeepSeekHarnessUpdater {
     const previousCommit = check.commit;
     fs.mkdirSync(backupDir, { recursive: true });
     let patchSaved = false;
+    let worktreeChanged = false;
     const movedUntracked = [];
     try {
       report('backup', '正在保存小美画布适配补丁');
@@ -161,6 +173,41 @@ class DeepSeekHarnessUpdater {
         fs.writeFileSync(patchFile, diff.stdout, 'utf8');
         patchSaved = true;
       }
+      report('download', '正在获取 DeepSeek Harness 上游更新');
+      const shallow = short((await run('git', ['rev-parse', '--is-shallow-repository'], { cwd: this.root, timeout: 10_000 })).stdout) === 'true';
+      await run('git', shallow ? ['fetch', '--unshallow', this.remote, this.branch] : ['fetch', this.remote, this.branch], { cwd: this.root, timeout: 15 * 60_000 });
+      const fetchedCommit = short((await run('git', ['rev-parse', 'FETCH_HEAD'], { cwd: this.root, timeout: 10_000 })).stdout, 80);
+      if (fetchedCommit !== check.remote_commit) throw new Error('检查更新期间上游版本发生变化，请重新检查');
+      try {
+        await run('git', ['merge-base', '--is-ancestor', previousCommit, fetchedCommit], { cwd: this.root, timeout: 10_000 });
+      } catch {
+        throw new Error('本地 DeepSeek Harness 与上游分叉，请先手动处理本地提交');
+      }
+      // Verify the adapter against the fetched tree before changing the live
+      // checkout. A conflict must leave its index, source and build intact.
+      const probeDir = path.join(backupDir, 'merge-probe');
+      try {
+        report('patch', '正在预检小美画布适配补丁');
+        await run('git', ['clone', '--local', '--no-checkout', this.root, probeDir], { cwd: backupDir, timeout: 5 * 60_000 });
+        await run('git', ['checkout', '--detach', fetchedCommit], { cwd: probeDir, timeout: 60_000 });
+        if (patchSaved) {
+          try {
+            await run('git', ['apply', '--3way', patchFile], { cwd: probeDir, timeout: 60_000 });
+          } catch (error) {
+            const conflicts = await run('git', ['diff', '--name-only', '--diff-filter=U'], { cwd: probeDir, timeout: 10_000 });
+            throw new Error(`适配补丁与上游冲突：${conflicts.stdout.trim() || short(error?.message || error)}`);
+          }
+        }
+        for (const rel of check.untracked_files || []) {
+          const source = path.resolve(this.root, rel);
+          const target = path.resolve(probeDir, rel);
+          if (!source.startsWith(`${this.root}${path.sep}`) || !fs.existsSync(source) || !fs.existsSync(target)) continue;
+          if (!fs.readFileSync(source).equals(fs.readFileSync(target))) throw new Error(`未跟踪适配文件与上游冲突：${rel}`);
+        }
+      } finally {
+        fs.rmSync(probeDir, { recursive: true, force: true });
+      }
+      worktreeChanged = true;
       for (const rel of check.untracked_files || []) {
         const source = path.resolve(this.root, rel);
         const target = path.resolve(untrackedBackupRoot, rel);
@@ -172,9 +219,6 @@ class DeepSeekHarnessUpdater {
       // Only tracked source changes are part of the adapter patch. Ignored
       // node_modules and generated lib/ output stay in place until the build.
       await run('git', ['reset', '--hard', 'HEAD'], { cwd: this.root, timeout: 30_000 });
-      report('download', '正在获取 DeepSeek Harness 上游更新');
-      const shallow = short((await run('git', ['rev-parse', '--is-shallow-repository'], { cwd: this.root, timeout: 10_000 })).stdout) === 'true';
-      await run('git', shallow ? ['fetch', '--unshallow', this.remote, this.branch] : ['fetch', '--depth=1', this.remote, this.branch], { cwd: this.root, timeout: 15 * 60_000 });
       await run('git', ['merge', '--ff-only', 'FETCH_HEAD'], { cwd: this.root, timeout: 60_000 });
       if (patchSaved) {
         report('patch', '正在重新应用小美画布适配补丁');
@@ -198,15 +242,17 @@ class DeepSeekHarnessUpdater {
         }
       }
       report('build', '正在重新构建 DeepSeek Harness');
-      const packageManager = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-      await run(packageManager, ['install', '--frozen-lockfile'], { cwd: this.root, timeout: 15 * 60_000 });
-      await run(packageManager, ['run', 'build:lib:host'], { cwd: this.root, timeout: 15 * 60_000 });
-      await run(packageManager, ['run', 'build:lib:client'], { cwd: this.root, timeout: 15 * 60_000 });
-      await run(packageManager, ['run', 'build:web'], { cwd: this.root, timeout: 15 * 60_000 });
+      const packageManager = pnpmCommand(this.root);
+      const runPnpm = (args) => run(packageManager.command, [...packageManager.prefix, ...args], { cwd: this.root, timeout: 15 * 60_000 });
+      await runPnpm(['install', '--frozen-lockfile']);
+      await runPnpm(['run', 'build:lib:host']);
+      await runPnpm(['run', 'build:lib:client']);
+      await runPnpm(['run', 'build:web']);
       report('done', 'DeepSeek Harness 已更新并完成构建');
       const result = await this.localState();
       return { ...result, updated: true, previous_commit: previousCommit, backup_dir: backupDir };
     } catch (error) {
+      if (!worktreeChanged) throw new Error(`DeepSeek Harness 更新失败：${short(error?.message || error)}`);
       report('rollback', '更新失败，正在恢复原版本');
       try {
         await run('git', ['reset', '--hard', previousCommit], { cwd: this.root, timeout: 30_000 });
@@ -226,4 +272,4 @@ class DeepSeekHarnessUpdater {
   }
 }
 
-module.exports = { DeepSeekHarnessUpdater, DEFAULT_REMOTE, DEFAULT_BRANCH };
+module.exports = { DeepSeekHarnessUpdater, DEFAULT_REMOTE, DEFAULT_BRANCH, pnpmCommand };

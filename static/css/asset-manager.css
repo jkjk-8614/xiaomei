@@ -162,6 +162,15 @@ button { border:0; cursor:pointer; }
 .tree-action:hover { background:rgba(220,38,38,.08); color:var(--danger); }
 .tree-action svg { width:12px; height:12px; }
 .tree-children { margin-left:11px; padding-left:9px; border-left:1px solid var(--line); display:flex; flex-direction:column; gap:3px; }
+.tree-row[data-localup-folder][draggable="true"] { cursor:grab; }
+.tree-row.local-folder-dragging { opacity:.55; cursor:grabbing; }
+.tree-row.local-folder-drop-before { box-shadow:inset 0 3px 0 var(--strong); }
+.tree-row.local-folder-drop-after { box-shadow:inset 0 -3px 0 var(--strong); }
+.tree-row.local-asset-drop-target { background:color-mix(in srgb, var(--strong) 14%, var(--card)); box-shadow:inset 0 0 0 2px var(--strong); }
+.asset-card.local-asset-dragging { opacity:.5; }
+.local-asset-move-button { align-self:flex-end; display:inline-flex; align-items:center; gap:4px; padding:3px 5px; border:0; border-radius:5px; background:transparent; color:var(--muted); font-size:10px; cursor:pointer; }
+.local-asset-move-button:hover,.local-asset-move-button:focus-visible { background:var(--soft); color:var(--text); }
+.local-asset-move-button svg { width:12px; height:12px; }
 .tree-elbow { width:12px; height:1px; background:var(--line-2); opacity:.8; }
 .tree-empty { margin:2px 0 2px 21px; min-height:28px; border-radius:8px; color:var(--faint); display:flex; align-items:center; font-size:10.5px; font-weight:750; }
 .tree-smart-class { margin-top:8px; padding-top:8px; border-top:1px solid rgba(148,163,184,.16); display:flex; flex-direction:column; gap:3px; }
@@ -569,7 +578,7 @@ body.theme-dark .asset-context-menu button:hover,body.theme-dark .asset-context-
 .image-space-filter-bar { padding: 12px 16px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
 .image-space-filter-bar > .asset-tools { flex-wrap: wrap; }
 .image-space-scope { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
-.image-space-filter-form { display: grid; gap: 14px; margin-top: 14px; max-height: 38vh; overflow: auto; }
+.image-space-filter-form { display: grid; gap: 14px; margin-top: 14px; max-height: min(50vh, 420px); overflow: auto; }
 .image-space-filter-form label, .image-space-dialog label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
 .image-space-filter-form input, .image-space-filter-form select, .image-space-dialog input, .image-space-dialog textarea { width: 100%; min-width: 0; box-sizing: border-box; padding: 7px 9px; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 6px; font: inherit; }
 .image-space-filter-help { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
@@ -587,12 +596,14 @@ body.theme-dark .asset-context-menu button:hover,body.theme-dark .asset-context-
 .image-space-editor-error { color: #bb3322; }
 .space-toolbar-spacer { flex: 1; }
 .space-quiet { background: transparent; border-color: transparent; color: var(--muted); box-shadow: none; }
-.space-filter-fields { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
+.space-filter-fields { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; }
 .space-more > summary { cursor: pointer; padding: 8px 0; font-size: 12px; color: var(--muted); }
 .space-more[open] > summary { margin-bottom: 8px; }
 .space-filter-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .space-filter-footer .image-space-scope { flex-direction: row; align-items: center; }
 .space-filter-footer input[type=checkbox] { width: auto; }
+@media (max-width: 1100px) { .space-filter-fields { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media (max-width: 650px) { .space-filter-fields { grid-template-columns: 1fr; } }
 .image-space-collections .tree-row { grid-template-columns: 18px minmax(0,1fr); padding: 8px 12px; }
 .space-collection-menu { position: relative; }
 .space-collection-menu > summary { list-style: none; cursor: pointer; padding: 4px 10px; font-size: 20px; line-height: 20px; color: var(--muted); }
@@ -714,6 +725,13 @@ html.studio-theme-dark body .image-space-dialog textarea { background: #292c32 !
 .theme-dark .case-card, .theme-dark .case-detail-section { background:var(--card); }
 .theme-dark .case-drawer-panel { background:var(--panel); }
 .theme-dark .asset-modal { background:var(--panel); }
+.local-upload-move-folders { flex:1; min-height:0; overflow:auto; padding:12px 16px 16px; display:flex; flex-direction:column; gap:5px; }
+.local-upload-move-folder { width:100%; min-height:36px; padding:7px 10px 7px calc(10px + var(--folder-depth) * 15px); display:flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:9px; background:var(--card); color:var(--text); text-align:left; font-size:12px; cursor:pointer; }
+.local-upload-move-folder:hover:not(:disabled),.local-upload-move-folder:focus-visible { border-color:var(--strong); background:color-mix(in srgb, var(--strong) 10%, var(--card)); }
+.local-upload-move-folder:disabled { opacity:.5; cursor:default; }
+.local-upload-move-folder svg { width:15px; height:15px; flex:none; }
+.local-upload-move-folder span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.local-upload-move-folder small { color:var(--muted); white-space:nowrap; }
 
 /* 目录树选中行：原用 --strong(#2e2e33) 混 10% 到 --card，与未选中行只差约 1.0:1，选中看不出来。
    改用强调色实底 + 白字：对比卡片底 3.11:1，白字在其上 4.86:1。 */

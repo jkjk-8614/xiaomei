@@ -38,10 +38,28 @@ class CanvasAgentReferenceTests(unittest.TestCase):
         async def prepare(value, client):
             return "" if value == self.images[2] else value
 
-        with mock.patch.object(main, "canvas_vision_image_url", new=prepare):
+        client = mock.AsyncMock()
+        client.__aenter__.return_value = client
+        with mock.patch.object(main, "canvas_vision_image_url", new=prepare), \
+                mock.patch.object(main.httpx, "AsyncClient", return_value=client):
             refs, counts = asyncio.run(main.prepare_canvas_vision_images(self.images))
         self.assertEqual(refs, self.images[:2] + self.images[3:])
-        self.assertEqual(counts, {"requested": 25, "submitted": 24, "normalized": 0, "skipped": 1})
+        self.assertEqual(counts, {"requested": 25, "submitted": 24, "normalized": 0, "skipped": 1, "skipped_indices": [3]})
+
+    def test_action_rejects_missing_numbered_reference_before_model_call(self):
+        payload = main.CanvasAgentActionRequest(
+            message="把图1的产品放到图2的场景", images=self.images[:2],
+            provider="fixture", model="vision-test",
+        )
+        with mock.patch.object(main, "prepare_canvas_vision_images", new=mock.AsyncMock(return_value=(
+            self.images[:1], {"requested": 2, "submitted": 1, "normalized": 0, "skipped": 1, "skipped_indices": [2]},
+        ))), mock.patch.object(main, "resolve_canvas_skill_request", return_value=(None, "")), \
+                mock.patch.object(main, "resolve_chat_provider") as provider:
+            with self.assertRaises(main.HTTPException) as caught:
+                asyncio.run(main.canvas_agent_action(payload))
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertIn("图2", caught.exception.detail)
+        provider.assert_not_called()
 
     def test_link_context_preserves_all_explicit_references_before_link_images(self):
         context = {"images": self.images[:8] + ["https://images.invalid/link.png"], "link_count": 1}

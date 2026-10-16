@@ -96,6 +96,46 @@ class Api6789VideoAdapterTests(unittest.TestCase):
             ["https://cdn.example/file.mp4"],
         )
 
+    def test_reference_video_is_sent_to_seedance(self):
+        payload = main.CanvasVideoRequest(
+            prompt="Keep the scene and change only the third line of text",
+            provider_id="api-6789",
+            model="seedance2.0fast",
+            duration=5,
+            videos=["/assets/reference.mp4"],
+        )
+        client = FakeVideoClient({"id": "task_123", "status": "succeeded"})
+
+        async def no_sleep(_):
+            return None
+
+        async def run():
+            with patch.object(main, "local_video_path_for_cloud_upload", return_value="reference.mp4"), \
+                    patch.object(main, "upload_local_video_to_cloud", return_value={"url": "https://cdn.example/reference.mp4"}), \
+                    patch.object(main, "provider_env_key_value", return_value="test-key"), \
+                    patch.object(main, "save_video_bytes_to_output", return_value="/assets/generated/test.mp4"), \
+                    patch.object(main.asyncio, "sleep", no_sleep):
+                return await main.generate_6789_video(client, payload, self.provider)
+
+        asyncio.run(run())
+        self.assertEqual(client.posts[0][1]["json"]["video_urls"], ["https://cdn.example/reference.mp4"])
+
+    def test_reference_video_requires_https_or_local_file(self):
+        with self.assertRaises(main.HTTPException) as error:
+            asyncio.run(main.ensure_6789_video_url("http://example.com/reference.mp4"))
+        self.assertEqual(error.exception.status_code, 400)
+
+    def test_too_many_reference_videos_do_not_submit(self):
+        payload = main.CanvasVideoRequest(
+            prompt="test", provider_id="api-6789", model="seedance2.0fast", duration=5,
+            videos=[f"https://cdn.example/ref-{index}.mp4" for index in range(4)],
+        )
+        client = FakeVideoClient({"id": "task_123", "status": "succeeded"})
+        with self.assertRaises(main.HTTPException) as error:
+            asyncio.run(main.generate_6789_video(client, payload, self.provider))
+        self.assertEqual(error.exception.status_code, 400)
+        self.assertEqual(client.posts, [])
+
     def test_model_and_duration_are_checked_against_documented_values(self):
         with self.assertRaises(main.HTTPException):
             main.normalize_6789_video_model("kling-o3")

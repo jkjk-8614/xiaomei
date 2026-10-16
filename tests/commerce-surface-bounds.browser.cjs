@@ -20,7 +20,7 @@ const { chromium } = require(path.join(root, 'tools/commerce-analysis/node_modul
   await page.goto('http://commerce-bounds.test/host');
   const frame=page.frames().find(f=>f.url().includes('/static/commerce-analysis.html'));
   await frame.waitForFunction(()=>typeof window.xiaomeiCommerceSurfaceBounds==='function');
-  assert.equal(await frame.locator('[data-desktop-app]').count(),19);
+  assert.equal(await frame.locator('[data-desktop-app]').count(),18);
   await page.screenshot({path:path.join(require('os').tmpdir(),'xiaomei-workspace-compact.png')});
   for(const scale of [0.85,0.95,1,1.15]) {
    await frame.evaluate(scale=>window.postMessage({type:'studio-ui-scale',mode:'auto',scale},'*'),scale);
@@ -47,6 +47,6 @@ const { chromium } = require(path.join(root, 'tools/commerce-analysis/node_modul
    await page.setViewportSize({width,height:900});await frame.evaluate(()=>{document.getElementById('analysisDesktop').hidden=false;window.postMessage({type:'studio-ui-scale',mode:'auto',scale:1},'*')});await frame.waitForTimeout(150);
    const overflow=await frame.evaluate(()=>{const r=document.getElementById('commerceWorkbench').getBoundingClientRect();return [...document.querySelectorAll('[data-desktop-app]')].some(n=>n.getBoundingClientRect().right>r.right+1)});assert(!overflow,`launcher overflow at ${width}`);
   }
-  assert.deepEqual(errors,[]);console.log('PASS: 19 launchers, full width at 85/95/100/115%, native sidebar boundary, single iframe offset, desktop resync and narrow layouts.');
+  assert.deepEqual(errors,[]);console.log('PASS: workspace launchers, full width at 85/95/100/115%, native sidebar boundary, single iframe offset, desktop resync and narrow layouts.');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

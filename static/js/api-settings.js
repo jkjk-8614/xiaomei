@@ -67,6 +67,8 @@ const geminiCliPanel = document.getElementById('geminiCliPanel');
 const geminiCliStatus = document.getElementById('geminiCliStatus');
 const geminiCliUpdate = document.getElementById('geminiCliUpdate');
 const geminiCliUpdateBtn = document.getElementById('geminiCliUpdateBtn');
+const geminiCliTerminalBtn = document.getElementById('geminiCliTerminalBtn');
+const geminiCliTerminalStatus = document.getElementById('geminiCliTerminalStatus');
 const geminiCliInfo = document.getElementById('geminiCliInfo');
 const geminiCliHelpOverlay = document.getElementById('geminiCliHelpOverlay');
 const geminiCliHelpCommand = document.getElementById('geminiCliHelpCommand');
@@ -3043,7 +3045,7 @@ function renderEditor(){
     if(isGeminiCli){
         applyCliProtocolDefaults(item, 'gemini-cli');
         keyInput.placeholder = 'Antigravity CLI 使用本机 agy 登录态，无需 API Key';
-        keyHint.textContent = '请先安装 Antigravity CLI，并在终端执行 agy 完成登录';
+        keyHint.textContent = '安装或更新后会打开 agy 终端，请在终端完成登录';
     }
     document.body.classList.toggle('show-ms', isModelScope);
     document.body.classList.toggle('show-runninghub', isRunningHub);
@@ -3466,6 +3468,32 @@ function handleCliStatusAction(kind){
 }
 function installJimengCli(){ return installCli('jimeng'); }
 function installGeminiCli(){ return installCli('gemini-cli'); }
+async function openGeminiCliTerminal(){
+    if(!geminiCliTerminalBtn) return;
+    geminiCliTerminalBtn.disabled = true;
+    if(geminiCliTerminalStatus){
+        geminiCliTerminalStatus.hidden = false;
+        geminiCliTerminalStatus.textContent = '正在打开 agy 终端…';
+        geminiCliTerminalStatus.classList.remove('ok', 'bad');
+        geminiCliTerminalStatus.classList.add('loading');
+    }
+    try {
+        const response = await fetch('/api/gemini-cli/terminal', {method:'POST'});
+        const data = await response.json();
+        if(!response.ok) throw new Error(data.detail || '无法打开 agy 终端。');
+        if(geminiCliTerminalStatus){
+            geminiCliTerminalStatus.textContent = data.message || '已打开 agy 终端。';
+            geminiCliTerminalStatus.classList.replace('loading', 'ok');
+        }
+    } catch(e){
+        if(geminiCliTerminalStatus){
+            geminiCliTerminalStatus.textContent = cliErrorMessage(e, 'local');
+            geminiCliTerminalStatus.classList.replace('loading', 'bad');
+        }
+    } finally {
+        geminiCliTerminalBtn.disabled = false;
+    }
+}
 function jimengLoginTextField(text, key){
     const escaped = String(key || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const match = String(text || '').match(new RegExp(`^\\s*${escaped}\\s*:\\s*(\\S+)\\s*$`, 'im'));

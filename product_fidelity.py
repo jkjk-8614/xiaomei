@@ -101,10 +101,32 @@ def normalize(raw):
             raw['mode'] = 'structure'
             raw['generation']['allowedEdits'] = 'lighting'
     if raw['view'].get('enabled', True) is False:
-        raw['view'].update(mode='keep', yaw=0, pitch=0, roll=0, proxyEnabled=False)
+        raw['view'].update(mode='keep', yaw=0, pitch=0, roll=0, framing='medium', fov=50, proxyEnabled=False)
         if raw['mode'] == 'view':
             raw['mode'] = 'structure'
             raw['generation']['allowedEdits'] = 'lighting'
+    view = raw['view']
+    view.setdefault('mode', 'keep')
+    view.setdefault('yaw', 0)
+    view.setdefault('pitch', 0)
+    view.setdefault('roll', 0)
+    view.setdefault('framing', 'medium')
+    view.setdefault('fov', 50)
+    if view['mode'] not in {'keep', 'minor', 'target'}:
+        raise ValueError('产品视角模式无效')
+    if view['framing'] not in {'closeup', 'close', 'medium', 'full', 'wide'}:
+        raise ValueError('产品景别无效')
+    try:
+        view['fov'] = float(view['fov'])
+        angles = {key: float(view[key]) for key in ('yaw', 'pitch', 'roll')}
+    except (TypeError, ValueError) as exc:
+        raise ValueError('产品视角角度和镜头参数需要填写数字') from exc
+    if not math.isfinite(view['fov']) or not 18 <= view['fov'] <= 120:
+        raise ValueError('镜头视野角应在 18° 到 120° 之间')
+    if any(not math.isfinite(value) for value in angles.values()):
+        raise ValueError('产品视角角度需要填写有限数字')
+    if not -180 <= angles['yaw'] <= 180 or any(not -90 <= angles[key] <= 90 for key in ('pitch', 'roll')):
+        raise ValueError('水平环绕应在 -180° 到 180°，俯仰与旋转应在 -90° 到 90°')
     if raw['generation'].get('enabled', True) is False:
         raw['generation']['allowedEdits'] = 'background' if raw['mode']=='strict' else 'view' if raw['mode']=='view' else 'lighting'
     if raw['advanced'].get('enabled', True) is False:
@@ -146,7 +168,8 @@ def normalize(raw):
         raise ValueError('高反差增益应为 0.5–4，自动裁切必须为开关值')
     if detail['restoreMode'] not in {'off', 'auto'} or not 0 <= float(detail['restoreStrength']) <= 1:
         raise ValueError('细节恢复仅支持关闭或可靠对齐后自动恢复，强度应为 0–1')
-    if raw['mode'] == 'strict' and (raw['view'].get('mode', 'keep') != 'keep' or any(float(raw['view'].get(k, 0)) for k in ('yaw', 'pitch', 'roll'))):
+    view_changed = view['mode'] != 'keep' or any(angles.values()) or view['framing'] != 'medium' or view['fov'] != 50
+    if raw['mode'] == 'strict' and view_changed:
         raise ValueError('严格保真需要保持原视角；请保留原角度或切换视角保真并补充多视角参考')
     if raw['mode'] == 'strict' and raw['generation'].get('allowedEdits', 'background') != 'background':
         raise ValueError('严格保真只改变背景；修改产品光照或材质请使用结构保真')
@@ -155,14 +178,11 @@ def normalize(raw):
     scope = raw['generation'].get('allowedEdits', 'view' if raw['mode']=='view' else 'lighting' if raw['mode']=='structure' else 'background')
     if scope not in {'background', 'lighting', 'material', 'view'}:
         raise ValueError('允许变化范围无效')
-    if raw['mode'] != 'view' and (scope == 'view' or raw['view'].get('mode', 'keep') != 'keep' or any(float(raw['view'].get(k, 0)) for k in ('yaw', 'pitch', 'roll'))):
+    if raw['mode'] != 'view' and (scope == 'view' or view_changed):
         raise ValueError('改变视角请切换视角保真，结构模式仅支持同视角约束')
     tolerance = float(raw['validation'].get('ratioTolerancePct', 5))
     if not 1 <= tolerance <= 20:
         raise ValueError('实验比例误差阈值应为 1–20%')
-    for k in ('yaw', 'pitch', 'roll'):
-        if not -90 <= float(raw['view'].get(k, 0)) <= 90:
-            raise ValueError('目标角度应在 -90° 到 90° 之间')
     return raw
 
 
@@ -190,6 +210,16 @@ def product_mask(source, config, resolve):
         if len(strokes) > 500:
             raise ValueError('蒙版笔画过多，请上传蒙版图片')
         for stroke in strokes:
+            if 'rect' in stroke:
+                rect = stroke['rect']
+                if not isinstance(rect, (list, tuple)) or len(rect) != 4:
+                    raise ValueError('商品保护框无效，请重新框选')
+                x, y, w, h = (float(value) for value in rect)
+                if not all(math.isfinite(value) for value in (x, y, w, h)) or min(x, y) < 0 or min(w, h) <= 0 or x+w > 1.00001 or y+h > 1.00001:
+                    raise ValueError('商品保护框超出原图，请重新框选')
+                box = (round(x*source.width), round(y*source.height), round((x+w)*source.width), round((y+h)*source.height))
+                draw.rectangle(box, fill=0 if stroke.get('erase') else 255)
+                continue
             points = stroke.get('points', [])
             if len(points) > 2000:
                 raise ValueError('单条蒙版笔画过长')
@@ -410,6 +440,8 @@ def preprocess(refs, config, caps, resolve, save):
         if config['view'].get('proxyEnabled'):
             if config.get('geometry') != 'plane':
                 warnings.append('当前几何不适用平面透视代理，已跳过；请提供真实多视角图')
+            elif max(abs(float(config['view']['yaw'])), abs(float(config['view']['pitch']))) > 60:
+                warnings.append('当前机位超过平面透视示意的 ±60° 范围，已跳过；侧面或背面请提供真实视角图')
             else:
                 dimensions = config['dimensions']
                 width,height = float(dimensions.get('width') or 0),float(dimensions.get('height') or 0)
@@ -478,7 +510,20 @@ def prompt_for(prompt, context):
         if config['structure'].get(flag):
             lines.append(instruction + '（普通参考约束，不是模型原生控制参数）。')
     if config['mode'] == 'view':
-        lines.append(f'目标视角 yaw={config["view"].get("yaw",0)}°、pitch={config["view"].get("pitch",0)}°、roll={config["view"].get("roll",0)}°；优先依据已有真实多视角图。')
+        view = config['view']
+        yaw, pitch, roll = (float(view[key]) for key in ('yaw', 'pitch', 'roll'))
+        framing = dict(closeup='特写', close='近景', medium='中景', full='全景', wide='远景')[view['framing']]
+        if abs(yaw) == 180:
+            orbit = '相机绕到原图机位的反向 180°'
+        elif abs(yaw) < 1:
+            orbit = '相机保持原图拍摄方向'
+        else:
+            orbit = f'相机从原图机位向{"左" if yaw < 0 else "右"}环绕 {abs(yaw):g}°'
+        height = '保持原图俯仰角度' if abs(pitch) < 1 else f'{"俯拍" if pitch > 0 else "仰拍"} {abs(pitch):g}°'
+        lines.append(f'产品目标机位：以原图当前机位为 0°，{orbit}，{height}，采用{framing}。' +
+                     (f'画面旋转 {roll:g}°。' if roll else '') +
+                     ('使用鱼眼广角效果；边缘透视可能变形。' if view['fov'] >= 100 else '保持自然镜头透视。'))
+        lines.append('相机围绕同一产品移动；不要镜像产品、平面拉斜原图或交换左右部件。优先依据已有真实多视角图；没有实拍的侧面与背面只能推测，保持已知结构、材质、颜色和标识一致。')
     return '\n'.join(lines)
 
 

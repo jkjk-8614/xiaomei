@@ -1,4 +1,4 @@
-"""Exercise production outpaint helpers in temporary storage, without user config."""
+"""Exercise outpaint result checks in temporary storage, without user config."""
 import ast
 import asyncio
 import math
@@ -20,61 +20,56 @@ class OutpaintTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         source = Path(__file__).resolve().parents[1] / 'main.py'
-        names = {'_outpaint_preserve_number', '_outpaint_output_crop_box',
-                 '_outpaint_source_draw_geometry', '_compose_outpaint_center_local',
-                 'preserve_outpaint_centers'}
+        names = {'_outpaint_preserve_number', '_validate_outpaint_frame',
+                 '_outpaint_center_matches', '_outpaint_original_redrawn'}
         tree = ast.parse(source.read_text(encoding='utf-8'))
         body = [n for n in tree.body if getattr(n, 'name', None) in names]
         self.assertEqual(len(body), len(names))
-        self.ns = dict(globals(), uuid=uuid, output_file_from_url=lambda url: str(self.root / url.lstrip('/')),
-                       generated_output_filename=lambda *args, **kwargs: 'locked.png',
-                       output_path_for=lambda name, kind: str(self.root / name),
-                       output_url_for=lambda name, kind: '/' + name,
-                       image_output_meta=lambda url: {'url': url})
+        self.ns = dict(globals(), output_file_from_url=lambda url: str(self.root / url.lstrip('/')))
         exec(compile(ast.Module(body=body, type_ignores=[]), str(source), 'exec'), self.ns)
         self.preserve = dict(sourceUrl='/source.png', canvasW=200, canvasH=120,
                              sourceW=80, sourceH=80, x=100, y=20)
         original = Image.new('RGBA', (80, 80), (230, 20, 40, 255))
         original.putpixel((0, 0), (0, 0, 0, 0))
-        original.putpixel((79, 79), (20, 220, 40, 255))
         original.save(self.root / 'source.png')
 
-    def compose(self, size):
-        Image.new('RGBA', size, 'blue').save(self.root / 'generated.png')
-        return self.ns['_compose_outpaint_center_local']('/generated.png', '/source.png', self.preserve)
+    def save_result(self, size=(200, 120), include_source=True):
+        generated = Image.new('RGBA', (200, 120), 'blue')
+        if include_source:
+            with Image.open(self.root / 'source.png') as source:
+                generated.paste(source, (100, 20))
+        generated.resize(size, Image.Resampling.LANCZOS).save(self.root / 'generated.png')
+        return (self.root / 'generated.png').read_bytes()
 
-    def test_complete_original_including_edges_and_alpha_is_unchanged(self):
-        for size in [(200, 120), (400, 240), (202, 120)]:
-            with self.subTest(size=size):
-                _, meta = self.compose(size)
-                with Image.open(self.root / 'locked.png') as result, Image.open(self.root / 'source.png') as source:
-                    self.assertEqual(result.size, (200, 120))
-                    self.assertEqual(result.crop((100, 20, 180, 100)).tobytes(), source.tobytes())
-                    self.assertEqual(result.getpixel((0, 60)), (0, 0, 255, 255))
-                self.assertTrue(meta['outpaint_center_locked'])
+    def test_matching_result_is_left_byte_for_byte_unchanged(self):
+        before = self.save_result()
+        self.assertFalse(self.ns['_outpaint_original_redrawn']('/generated.png', self.preserve))
+        self.assertEqual((self.root / 'generated.png').read_bytes(), before)
 
-    def test_crop_does_not_stretch_or_shift_original(self):
-        geometry = self.ns['_outpaint_source_draw_geometry'](400, 250, self.preserve, (0, 5, 400, 245))
-        self.assertEqual(geometry, (200, 40, 160, 160))
+    def test_redrawn_result_is_marked_without_replacing_source_pixels(self):
+        before = self.save_result(include_source=False)
+        self.assertTrue(self.ns['_outpaint_original_redrawn']('/generated.png', self.preserve))
+        self.assertEqual((self.root / 'generated.png').read_bytes(), before)
+        with Image.open(self.root / 'generated.png') as result:
+            self.assertEqual(result.getpixel((120, 40)), (0, 0, 255, 255))
 
-    def test_incompatible_ratio_is_not_published(self):
-        with self.assertRaisesRegex(ValueError, '比例'):
-            self.compose((200, 200))
-        self.assertFalse((self.root / 'locked.png').exists())
+    def test_different_output_ratio_is_kept_and_marked(self):
+        before = self.save_result(size=(200, 200))
+        self.assertTrue(self.ns['_outpaint_original_redrawn']('/generated.png', self.preserve))
+        self.assertEqual((self.root / 'generated.png').read_bytes(), before)
+        with Image.open(self.root / 'generated.png') as result:
+            self.assertEqual(result.size, (200, 200))
 
-    def test_missing_original_fails_instead_of_publishing_raw_generation(self):
+    def test_missing_original_does_not_discard_saved_result(self):
+        self.save_result()
         self.preserve['sourceUrl'] = '/missing.png'
-        with self.assertRaisesRegex(ValueError, '无法读取'):
-            asyncio.run(self.ns['preserve_outpaint_centers'](['/generated.png'], [], self.preserve))
+        self.assertIsNone(self.ns['_outpaint_original_redrawn']('/generated.png', self.preserve))
+        self.assertTrue((self.root / 'generated.png').exists())
 
-    def test_out_of_frame_geometry_is_rejected(self):
+    def test_out_of_frame_geometry_is_rejected_before_generation(self):
         for changes in [dict(x=-1), dict(y=100), dict(canvasW=0), dict(canvasW=20000)]:
             with self.subTest(changes=changes), self.assertRaises(ValueError):
-                self.ns['_outpaint_source_draw_geometry'](200, 120, {**self.preserve, **changes})
-
-    def test_ordinary_generation_is_unchanged(self):
-        urls, items = ['/ordinary.png'], [{'url': '/ordinary.png'}]
-        self.assertEqual(asyncio.run(self.ns['preserve_outpaint_centers'](urls, items, {})), (urls, items))
+                self.ns['_validate_outpaint_frame']({**self.preserve, **changes})
 
     def test_native_edit_sends_mask_and_never_retries_without_it(self):
         source = Path(__file__).resolve().parents[1] / 'main.py'
@@ -82,6 +77,8 @@ class OutpaintTests(unittest.TestCase):
                     if getattr(n, 'name', '') == 'generate_ai_image')
         calls = []
         status = 200
+        protocol = 'openai'
+        request_mode = 'openai'
 
         class Client:
             def __init__(self, **kwargs):
@@ -92,7 +89,7 @@ class OutpaintTests(unittest.TestCase):
                 pass
             async def post(self, url, **kwargs):
                 files = [(key, value[1].read()) for key, value in kwargs.get('files', [])]
-                calls.append((url, files))
+                calls.append((url, files, kwargs.get('json')))
                 return httpx.Response(status, json={'image': 'fixture'}, request=httpx.Request('POST', url))
 
         ns = dict(self.ns, httpx=SimpleNamespace(AsyncClient=Client, Timeout=httpx.Timeout, HTTPError=httpx.HTTPError),
@@ -103,11 +100,16 @@ class OutpaintTests(unittest.TestCase):
                   upstream_request_id=lambda _response: "",
                   append_gpt_image_edit_diagnostic=lambda **_kwargs: None,
                   get_api_provider=lambda _: {'id': 'fixture', 'base_url': 'https://fixture.test'},
-                  effective_protocol=lambda *args: 'openai', effective_image_request_mode=lambda *args: 'openai',
+                  effective_protocol=lambda *args: protocol, effective_image_request_mode=lambda *args: request_mode,
                   normalize_image_quality=lambda *args: '', gpt_image_background_options=lambda *args: {},
                   provider_endpoint_url=lambda p, key, default: p['base_url'] + default,
                   api_headers=lambda **kwargs: {}, content_type_for_path=lambda _: 'image/png',
-                  image_task_error_payload=lambda _: None, extract_image=lambda raw: raw['image'])
+                   image_task_error_payload=lambda _: None, extract_image=lambda raw: raw['image'],
+                   reference_to_data_url=lambda ref, max_size=None: 'data:image/png;base64,fixture')
+        async def gemini_image(*args):
+            calls.append(('gemini', [], None))
+            return 'fixture', {'image': 'fixture'}
+        ns['generate_gemini_provider_image'] = gemini_image
         for name in ['is_codex_provider', 'is_gemini_cli_provider', 'is_jimeng_provider',
                      'is_runninghub_provider', 'is_comfly_gemini_image_model', 'is_volcengine_provider',
                      'is_gpt_image_2_model', 'is_apimart_provider', 'is_comfly_provider']:
@@ -119,6 +121,16 @@ class OutpaintTests(unittest.TestCase):
         self.assertEqual([key for key, _ in calls[0][1]], ['image', 'mask'])
         self.assertEqual(calls[0][1][0][1], calls[0][1][1][1])
         calls.clear()
+        protocol, request_mode = 'gemini', 'openai'
+        self.assertEqual(asyncio.run(ns['generate_ai_image']('expand', '200x120', '', 'fixture', [ref]))[0], 'fixture')
+        self.assertEqual(calls[0][0], 'gemini')
+        calls.clear()
+        protocol, request_mode = 'openai', 'openai-json'
+        self.assertEqual(asyncio.run(ns['generate_ai_image']('expand', '200x120', '', 'fixture', [ref]))[0], 'fixture')
+        self.assertTrue(calls[0][0].endswith('/images/generations'))
+        self.assertEqual(len(calls[0][2]['extra_body']['image']), 1)
+        calls.clear()
+        protocol = request_mode = 'openai'
         status = 400
         with self.assertRaises(HTTPException) as error:
             asyncio.run(ns['generate_ai_image']('expand', '200x120', '', 'fixture', [ref]))

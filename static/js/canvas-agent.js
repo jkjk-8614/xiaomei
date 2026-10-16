@@ -1572,6 +1572,7 @@
     }
     function scopeNodeLabel(id=''){
         const node=nodes.find(item=>item.id===id);
+        if(node?.type==='smart-agent' && node.title==='Agent') return '智能对话';
         return String(node?.title||node?.type||id||'未命名节点').slice(0,56);
     }
     function scopeNodeTypeLabel(node){
@@ -1580,7 +1581,7 @@
             'smart-image':'图片',
             'smart-paint':'绘画',
             'smart-prompt':'提示词',
-            'smart-agent':'Agent',
+            'smart-agent':'智能对话',
             'smart-loop':'循环',
             'smart-group':'分组'
         };
@@ -2032,7 +2033,7 @@
         }
         if(op==='update_node'){
             const changes=value.changes&&typeof value.changes==='object'?value.changes:(value.fields&&typeof value.fields==='object'?value.fields:{});
-            const allowed=['title','prompt','execution_prompt','text','user_prompt','system_prompt','settings','count','mode','show_prompt','image_input','variable_prompt','prompt_split_enabled','llm_enabled','llm_instruction','llm_system_prompt','llm_provider','llm_model','agent_provider','agent_model','installed_skills'];
+            const allowed=['title','prompt','execution_prompt','text','user_prompt','system_prompt','settings','count','mode','show_prompt','image_input','variable_prompt','llm_enabled','llm_instruction','llm_system_prompt','llm_provider','llm_model','agent_provider','agent_model','installed_skills'];
             result.changes=Object.fromEntries(allowed.filter(key=>Object.prototype.hasOwnProperty.call(changes,key)).map(key=>[key,changes[key]]));
         }
         if(['connect','disconnect'].includes(op)){
@@ -3064,7 +3065,6 @@
         if(node.type==='smart-prompt'){
             const text=String(spec.text||spec.prompt||spec.user_prompt||'').trim();
             if(text)node.text=text;
-            if(spec.prompt_split_enabled!==undefined)node.promptSplitEnabled=Boolean(spec.prompt_split_enabled);
             if(spec.llm_enabled!==undefined || spec.llmEnabled!==undefined)node.llmEnabled=Boolean(spec.llm_enabled ?? spec.llmEnabled);
             if(spec.llm_instruction!==undefined)node.llmInstruction=String(spec.llm_instruction||'');
             if(spec.llm_system_prompt!==undefined)node.llmSystemPrompt=String(spec.llm_system_prompt||'');
@@ -3098,7 +3098,7 @@
         const type=normalizePlanNodeType(spec?.type);
         if(type==='current')return null;
         if(type==='smart-prompt')return createPromptNode((point?.x||0)-158,(point?.y||0)-97,{select:false,skipUndo:true});
-        if(type==='smart-agent')return createAgentNode((point?.x||0)-215,(point?.y||0)-180,{select:false,skipUndo:true});
+        if(type==='smart-agent')return createAgentNode((point?.x||0)-SMART_AGENT_DEFAULT_WIDTH/2,(point?.y||0)-SMART_AGENT_DEFAULT_HEIGHT/2,{select:false,skipUndo:true});
         if(type==='smart-loop')return createLoopNode((point?.x||0)-170,(point?.y||0)-84,{select:false,skipUndo:true});
         if(type==='smart-group')return createSmartGroupNode((point?.x||0)-170,(point?.y||0)-143,{select:false,skipUndo:true});
         if(type==='smart-upload')return createImageNodeAt(point,[],{select:false,skipUndo:true,nodeType:SMART_UPLOAD_NODE_TYPE});
@@ -3329,7 +3329,7 @@
             if(node.type==='smart-agent'){
                 const before=String(node.outputText||'').trim();
                 await runAgentNode(node.id);
-                if(!String(node.outputText||'').trim()&&!before)throw new Error(`Agent 节点「${node.title||node.id}」没有返回结果`);
+                if(!String(node.outputText||'').trim()&&!before)throw new Error(`智能对话节点「${scopeNodeLabel(node.id)}」没有返回结果`);
             }else if(node.type==='smart-prompt'&&node.llmEnabled){
                 const promptResult=await runPromptLLMNode(node.id);
                 if(promptResult?.ok===false)throw new Error(promptResult.error||`提示词节点「${node.title||node.id}」运行失败`);
@@ -4335,6 +4335,12 @@
             event.stopPropagation();
         }
     });
+    let externalSkillRefresh = false;
+    const refreshExternalSkill = next => {
+        if(!next || skills.some(skill=>skill.id===next) || externalSkillRefresh)return;
+        externalSkillRefresh = true;
+        loadSkills().finally(()=>{externalSkillRefresh=false;});
+    };
     window.addEventListener('storage',event=>{
         if(event.key===fontSizePrefKey){
             applyFontSize();
@@ -4342,6 +4348,7 @@
         }
         if(event.key!==skillSelectionKey)return;
         const next=canonicalSkillId(event.newValue);
+        refreshExternalSkill(next);
         if(next&&skills.some(skill=>skill.id===next&&skill.enabled!==false))skillEl.value=next;
         else if(!next)skillEl.value='';
         renderSkillList();
@@ -4349,6 +4356,7 @@
     });
     if(sharedSkillApi?.subscribe)sharedSkillApi.subscribe(next=>{
         next=canonicalSkillId(next);
+        refreshExternalSkill(next);
         if(next&&skills.some(skill=>skill.id===next&&skill.enabled!==false))skillEl.value=next;
         else if(!next)skillEl.value='';
         renderSkillList();

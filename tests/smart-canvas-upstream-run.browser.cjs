@@ -65,7 +65,7 @@ async function install(page, list, connections){
 }
 const edge = (from, to, kind='input') => ({from, to, kind});
 
-test('one click waits for all ancestors, reuses unchanged results and reruns changed inputs', {timeout:40000}, async t => {
+test('one click runs missing ancestors, then reuses completed Agents until each is run directly', {timeout:40000}, async t => {
     const {page, calls, setHandler} = await fixture(t);
     await install(page, [
         {id:'photo', type:'smart-upload', images:[{url:'/output/product.png', name:'商品'}]},
@@ -81,27 +81,103 @@ test('one click waits for all ancestors, reuses unchanged results and reruns cha
     await page.waitForFunction(() => nodes.find(n => n.id === 'analysis').running);
     assert.equal(calls.length, 1);
     assert.deepEqual(calls[0].images, ['/output/product.png']);
-    assert.equal(await page.locator('[data-id="tail"] .agent-run').innerText(), '等待上游');
-    assert.equal(await page.locator('[data-id="tail"] .agent-run').isDisabled(), true);
+    assert.equal(await page.locator('[data-id="tail"] .agent-run').innerText(), '取消');
+    assert.equal(await page.locator('[data-id="tail"] .agent-run').isDisabled(), false);
     assert.equal(await page.locator('[data-id="tail"]').getAttribute('data-run-phase'), 'queued');
     release();
     await page.waitForFunction(() => !smartDependencyRuns.size && nodes.find(n => n.id === 'tail').outputText);
     assert.equal(calls.length, 3);
     assert.match(calls[1].message, /输出：analysis\n\nplan/);
     assert.match(calls[2].message, /plan\n\ntail/);
-    await page.evaluate(() => { nodes = JSON.parse(JSON.stringify(nodes)); render(); });
+    await page.evaluate(() => {
+        nodes = JSON.parse(JSON.stringify(nodes));
+        nodes.find(n => n.id === 'analysis').dependencyRunSignature = undefined;
+        nodes.find(n => n.id === 'plan').dependencyRunSignature = undefined;
+        render();
+    });
     assert.equal((await page.evaluate(() => runAgentNode('tail'))).ok, true);
-    assert.equal(calls.length, 4, 'saved input signatures survive reopening and reuse both ancestors');
-    await page.evaluate(() => { nodes.find(n => n.id === 'photo').images[0].url = '/output/new-product.png'; });
+    assert.equal(calls.length, 4, 'completed ancestors are reused even without saved signatures');
+    await page.evaluate(() => {
+        nodes.find(n => n.id === 'photo').images[0].url = '/output/new-product.png';
+        nodes.find(n => n.id === 'analysis').systemPrompt = '分析材质';
+    });
     setHandler((route, body) => route.fulfill({json:{text:`新结果：${body.message}`}}));
     assert.equal((await page.evaluate(() => runAgentNode('tail'))).ok, true);
+    assert.equal(calls.length, 5, 'editing upstream inputs does not rerun completed Agents');
+    assert.match(calls[4].message, /输出：analysis\n\nplan\n\ntail/);
+    assert.equal((await page.evaluate(() => runAgentNode('analysis'))).ok, true);
+    assert.equal(calls.length, 6);
+    assert.deepEqual(calls[5].images, ['/output/new-product.png']);
+    assert.equal(calls[5].system_prompt, '分析材质');
+    assert.equal((await page.evaluate(() => runAgentNode('plan'))).ok, true);
     assert.equal(calls.length, 7);
-    assert.deepEqual(calls[4].images, ['/output/new-product.png']);
-    await page.evaluate(() => { nodes.find(n => n.id === 'analysis').systemPrompt = '分析材质'; });
+    assert.match(calls[6].message, /新结果：analysis\n\nplan/);
     assert.equal((await page.evaluate(() => runAgentNode('tail'))).ok, true);
-    assert.equal(calls.length, 9, 'a branch whose actual input text is identical can reuse its result');
-    assert.equal(calls[7].system_prompt, '分析材质');
+    assert.equal(calls.length, 8);
+    assert.match(calls[7].message, /新结果：新结果：analysis\n\nplan\n\ntail/);
     assert.ok(calls.every(call => !/unrelated|downstream/.test(call.message)));
+});
+
+test('cancel stops a stalled upstream Agent and leaves the downstream node ready to rerun', {timeout:40000}, async t => {
+    const {page, calls, setHandler} = await fixture(t);
+    await install(page, [agent('source'), agent('tail', {x:600})], [edge('source','tail')]);
+    let release;
+    setHandler(async route => {
+        await new Promise(resolve => { release = resolve; });
+        await route.fulfill({json:{text:'迟到的输出'}}).catch(() => {});
+    });
+    await page.locator('[data-id="tail"] .agent-run').click();
+    await page.waitForFunction(() => nodes.find(n => n.id === 'source').running);
+    await page.locator('[data-id="tail"] .agent-cancel-top').click();
+    await page.waitForFunction(() => !smartDependencyRuns.size && !nodes.find(n => n.id === 'source').running);
+    assert.equal(calls.length, 1);
+    assert.equal(await page.evaluate(() => nodes.find(n => n.id === 'tail').runError), 'Agent 运行已取消');
+    assert.equal(await page.locator('[data-id="tail"]').getAttribute('data-run-phase'), 'cancelled');
+    assert.equal(await page.locator('[data-id="tail"] .agent-run').innerText(), '运行');
+    release();
+    setHandler((route, body) => route.fulfill({json:{text:`重试成功：${body.message}`}}));
+    assert.equal((await page.evaluate(() => runAgentNode('tail'))).ok, true);
+    assert.equal(calls.length, 3);
+    assert.match(await page.evaluate(() => nodes.find(n => n.id === 'tail').outputText), /重试成功/);
+});
+
+test('canceling one chain keeps a shared upstream Agent for another chain', {timeout:40000}, async t => {
+    const {page, calls, setHandler} = await fixture(t);
+    await install(page, [agent('shared'), agent('left', {x:600}), agent('right', {x:1100})],
+        [edge('shared','left'), edge('shared','right')]);
+    let release;
+    setHandler(async (route, body) => {
+        if(body.message === 'shared') await new Promise(resolve => { release = resolve; });
+        await route.fulfill({json:{text:`输出：${body.message}`}}).catch(() => {});
+    });
+    await page.evaluate(() => { window.leftRun = runAgentNode('left'); window.rightRun = runAgentNode('right'); });
+    await page.waitForFunction(() => nodes.find(n => n.id === 'shared').running && smartDependencyRuns.get('shared')?.owners.size === 2);
+    await page.locator('[data-id="left"] .agent-cancel-top').click();
+    assert.equal((await page.evaluate(() => window.leftRun)).ok, false);
+    assert.equal(await page.evaluate(() => smartDependencyRuns.get('shared')?.controller.signal.aborted), false);
+    release();
+    assert.equal((await page.evaluate(() => window.rightRun)).ok, true);
+    assert.equal(calls.filter(call => call.message === 'shared').length, 1);
+    assert.equal(await page.evaluate(() => nodes.find(n => n.id === 'left').outputText || ''), '');
+    assert.match(await page.evaluate(() => nodes.find(n => n.id === 'right').outputText), /输出/);
+});
+
+test('cancel aborts a running Agent request without replacing its previous output', {timeout:40000}, async t => {
+    const {page, calls, setHandler} = await fixture(t);
+    await install(page, [agent('solo', {outputText:'之前的输出'})], []);
+    let release;
+    setHandler(async route => {
+        await new Promise(resolve => { release = resolve; });
+        await route.fulfill({json:{text:'迟到的输出'}}).catch(() => {});
+    });
+    await page.locator('[data-id="solo"] .agent-run').click();
+    await page.waitForFunction(() => nodes.find(n => n.id === 'solo').running);
+    await page.locator('[data-id="solo"] .agent-run').click();
+    await page.waitForFunction(() => !smartDependencyRuns.size && !nodes.find(n => n.id === 'solo').running);
+    release();
+    assert.equal(calls.length, 1);
+    assert.equal(await page.evaluate(() => nodes.find(n => n.id === 'solo').outputText), '之前的输出');
+    assert.equal(await page.evaluate(() => nodes.find(n => n.id === 'solo').runError), 'Agent 运行已取消');
 });
 
 test('shared ancestors run once across branches and simultaneous targets', {timeout:40000}, async t => {
@@ -155,6 +231,78 @@ test('LLM prompt nodes preserve instructions, reuse results and refresh after mo
     assert.equal((await page.evaluate(() => runAgentNode('tail'))).ok, true);
     assert.equal(calls.length, 5);
     assert.equal(calls[3].message, '商品信息\n\n生成卖点');
+});
+
+test('Prompt keeps its instruction separate from editable downstream output', {timeout:40000}, async t => {
+    const {page, calls} = await fixture(t);
+    await install(page, [
+        {id:'source', type:'smart-prompt', text:'商品信息', x:80, y:150},
+        {id:'prompt', type:'smart-prompt', text:'生成卖点', llmEnabled:true, images:[], x:470, y:150}
+    ], [edge('source','prompt','flow')]);
+    const prompt = page.locator('[data-id="prompt"]');
+    assert.equal(await prompt.locator('.prompt-node-top').innerText(), '提示词');
+    assert.equal(await prompt.locator('.prompt-node-output-field > span').innerText(), '输出提示词');
+    assert.equal(await prompt.locator('.prompt-node-upstream .prompt-node-segment p').innerText(), '商品信息');
+    const layout = await prompt.evaluate(element => ({
+        card:element.querySelector('.prompt-node-card').getBoundingClientRect(),
+        output:element.querySelector('.prompt-node-text').getBoundingClientRect(),
+        footer:element.querySelector('.prompt-node-footer').getBoundingClientRect()
+    }));
+    assert.ok(layout.output.height >= 72 && layout.footer.bottom <= layout.card.bottom + 1);
+    assert.equal((await page.evaluate(() => runPromptLLMNode('prompt'))).ok, true);
+    assert.equal(calls[0].message, '商品信息\n\n生成卖点');
+    assert.equal(await prompt.locator('.prompt-llm-instruction').inputValue(), '生成卖点');
+    await prompt.locator('.prompt-node-text').fill('手动修改后的提示词');
+    assert.deepEqual(await page.evaluate(() => ({text:textForNode(nodes.find(n => n.id === 'prompt')), images:outputImagesForNode(nodes.find(n => n.id === 'prompt'))})),
+        {text:'手动修改后的提示词', images:[]});
+    assert.equal((await page.evaluate(() => runPromptLLMNode('prompt'))).ok, true);
+    assert.equal(calls[1].message, '商品信息\n\n生成卖点');
+    assert.equal(await prompt.locator('.prompt-node-text').inputValue(), '结果2：商品信息\n\n生成卖点');
+    await page.evaluate(() => { const node = nodes.find(n => n.id === 'prompt'); node.llmInstruction = ''; node.promptRunAt = Date.now(); canvas.connections = []; });
+    const before = calls.length;
+    assert.equal((await page.evaluate(() => runPromptLLMNodeDirect('prompt'))).ok, false);
+    assert.equal(calls.length, before, 'completed output cannot silently become a new instruction');
+    await prompt.locator('.prompt-node-text').fill('第一段;第二段');
+    assert.equal(await prompt.locator('.prompt-split-toggle').count(), 0);
+    assert.equal(await page.evaluate(() => textForNode(nodes.find(n => n.id === 'prompt'))), '第一段;第二段');
+    await page.evaluate(() => { nodes.find(n => n.id === 'prompt').promptSplitEnabled = true; });
+    assert.equal(await page.evaluate(() => textForNode(nodes.find(n => n.id === 'prompt'))), '第一段;第二段');
+    const fresh = await page.evaluate(() => {
+        const node = createPromptNode(900, 150, {select:false});
+        node.text = '手动输出';
+        node.llmEnabled = true;
+        render();
+        return {initialized:node.promptInstructionInitialized, instruction:node.llmInstruction};
+    });
+    assert.deepEqual(fresh, {initialized:true, instruction:''});
+});
+
+test('Prompt shows system instructions first and uses Skills from the shared library', {timeout:40000}, async t => {
+    const {page, calls} = await fixture(t);
+    await page.route('**/api/agent-skills', route => route.fulfill({json:{skills:[{id:'fixture-skill', name:'商品文案'}]}}));
+    await page.route('**/api/agent-skills/fixture-skill', route => route.fulfill({json:{instructions:'用简洁的中文写卖点'}}));
+    await install(page, [{id:'prompt', type:'smart-prompt', text:'', llmEnabled:true, llmSystemEnabled:true,
+        llmSystemPrompt:'遵守品牌语气', llmInstruction:'写一句商品文案', promptInstructionInitialized:true,
+        llmProvider:'fixture', llmModel:'fixture-chat', x:470, y:150, w:460, h:560}], []);
+    const prompt = page.locator('[data-id="prompt"]');
+    const fileChooser = page.waitForEvent('filechooser');
+    await prompt.locator('.agent-skill-install').click();
+    await fileChooser;
+    assert.deepEqual(await prompt.evaluate(element => [
+        '.prompt-llm-system', '.prompt-llm-instruction', '.prompt-node-text'
+    ].map(selector => element.querySelector(selector).getBoundingClientRect().top).every((top, index, values) => !index || values[index - 1] < top)), true);
+    await prompt.locator('.agent-skill-library').click();
+    await prompt.locator('.agent-skill-library-use').click();
+    await prompt.locator('.agent-skill-chip').waitFor({state:'visible'});
+    assert.equal(await prompt.locator('.agent-skill-chip').count(), 1);
+    assert.equal(await prompt.evaluate(element => {
+        const card = element.querySelector('.prompt-node-card').getBoundingClientRect();
+        const output = element.querySelector('.prompt-node-text').getBoundingClientRect();
+        const footer = element.querySelector('.prompt-node-footer').getBoundingClientRect();
+        return output.height >= 72 && footer.bottom <= card.bottom + 1;
+    }), true);
+    assert.equal((await page.evaluate(() => runPromptLLMNodeDirect('prompt'))).ok, true);
+    assert.match(calls[0].system_prompt, /遵守品牌语气[\s\S]*商品文案[\s\S]*用简洁的中文写卖点/);
 });
 
 test('image ancestors finish polling before Agent consumes images and reuse the displayed output', {timeout:40000}, async t => {
@@ -236,6 +384,32 @@ test('drawing failure belongs to the selected node and keeps the reference image
     assert.equal(await page.evaluate(() => selectedId), 'paint');
 });
 
+test('retrying a failed drawing reuses an Agent output even when its last run has an error', {timeout:40000}, async t => {
+    const {page, calls, imageCalls} = await fixture(t);
+    await install(page, [
+        agent('source', {outputText:'已经完成的生图提示词', x:80, y:100}),
+        {id:'paint', type:'smart-paint', images:[], x:600, y:100,
+            promptDraftText:'绘制主图', promptDraftHtml:'绘制主图',
+            runSettings:{engine:'api', provider_id:'fixture', model:'gpt-image-2', count:1, ratio:'1:1', resolution:'1k'}}
+    ], [edge('source','paint','flow')]);
+    await page.route('**/api/canvas-image-tasks/image-*', route => route.fulfill({json:
+        imageCalls.length === 1
+            ? {status:'failed', error:'模拟生图失败', upstream_terminal_error:true}
+            : {status:'succeeded', result:{images:['/output/generated.png']}}
+    }));
+    await page.evaluate(() => { selectedId='paint'; render(); updateComposer(); });
+    assert.equal((await page.evaluate(() => runGeneration())).ok, false);
+    assert.equal(calls.length, 0);
+    await page.evaluate(() => { nodes.find(node => node.id === 'source').runError = '之前一次 Agent 重试失败'; render(); });
+    assert.match(await page.locator('[data-id="paint"] .generation-failed-message').innerText(), /模拟生图失败/);
+    await page.locator('[data-id="paint"] [data-image-rerun]').click();
+    await page.waitForFunction(() => nodes.find(node => node.id === 'paint').images?.some(image => image.url));
+    assert.equal(calls.length, 0, 'the saved upstream text must not be regenerated');
+    assert.equal(imageCalls.length, 2, 'only the failed drawing is submitted again');
+    assert.match(imageCalls[1].prompt, /已经完成的生图提示词/);
+    assert.equal(await page.evaluate(() => nodes.find(node => node.id === 'source').outputText), '已经完成的生图提示词');
+});
+
 test('drawing waits for an upstream image already being regenerated and consumes its new result', {timeout:40000}, async t => {
     const {page, imageCalls} = await fixture(t);
     await install(page, [
@@ -275,6 +449,7 @@ test('changed inputs during a request stop the chain and deleting a target stops
     assert.equal((await page.evaluate(() => window.chain)).ok, false);
     assert.equal(calls.length, 1);
     assert.equal(await page.evaluate(() => smartDependencyRuns.size), 0);
+    assert.equal(await page.evaluate(() => nodes.find(n => n.id === 'source').outputText || ''), '', 'a reply for changed inputs is discarded');
     setHandler(null);
     assert.equal((await page.evaluate(() => runAgentNode('tail'))).ok, true);
     setHandler(async route => {
@@ -283,6 +458,7 @@ test('changed inputs during a request stop the chain and deleting a target stops
     });
     await page.evaluate(() => {
         nodes.find(n => n.id === 'source').userPrompt = '再次修改';
+        nodes.find(n => n.id === 'source').outputText = '';
         window.chain = runAgentNode('tail');
     });
     await page.waitForFunction(() => nodes.find(n => n.id === 'source').running);
@@ -316,7 +492,7 @@ test('an existing upstream task is awaited without another request', {timeout:40
     await install(page, [agent('source', {running:true, runStartedAt:Date.now()}), agent('tail')], [edge('source','tail')]);
     await page.evaluate(() => { window.chain = runAgentNode('tail'); });
     assert.equal(calls.length, 0);
-    assert.equal(await page.locator('[data-id="tail"] .agent-run').innerText(), '等待上游');
+    assert.equal(await page.locator('[data-id="tail"] .agent-run').innerText(), '取消');
     await page.evaluate(() => {
         const source = nodes.find(n => n.id === 'source');
         source.outputText = '已完成的分析'; source.running = false; source.runFinishedAt = Date.now();
@@ -324,6 +500,18 @@ test('an existing upstream task is awaited without another request', {timeout:40
     assert.equal((await page.evaluate(() => window.chain)).ok, true);
     assert.equal(calls.length, 1);
     assert.equal(calls[0].message, '已完成的分析\n\ntail');
+});
+
+test('cancel clears an orphaned upstream Agent running state', {timeout:40000}, async t => {
+    const {page, calls} = await fixture(t);
+    await install(page, [agent('source', {running:true, runStartedAt:Date.now() - 600000}), agent('tail')], [edge('source','tail')]);
+    await page.evaluate(() => { window.chain = runAgentNode('tail'); });
+    await page.waitForFunction(() => smartDependencyRuns.get('source')?.waitingForExistingTask);
+    await page.locator('[data-id="tail"] .agent-cancel-top').click();
+    assert.equal((await page.evaluate(() => window.chain)).ok, false);
+    assert.equal(await page.evaluate(() => nodes.find(n => n.id === 'source').running), false);
+    assert.equal(await page.evaluate(() => nodes.find(n => n.id === 'source').runError), 'Agent 运行已取消');
+    assert.equal(calls.length, 0);
 });
 
 test('changing connections while waiting stops the chain without starting a new cycle', {timeout:40000}, async t => {

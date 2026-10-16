@@ -156,6 +156,8 @@ test('canvas resolution swaps, failed loads and panning paint remain stable', {t
                 const r = img.getBoundingClientRect(), x = r.left+r.width/2, y = r.top+r.height/2;
                 if(x<50 || x>innerWidth-30 || y<100 || y>innerHeight-30
                     || (x>innerWidth-240 && y>innerHeight-190)) return [];
+                const navigation = document.querySelector('.canvas-nav-panel')?.getBoundingClientRect();
+                if(navigation && x >= navigation.left && x <= navigation.right && y >= navigation.top && y <= navigation.bottom) return [];
                 return [Array.from(ctx.getImageData(Math.round(x*sample.width/innerWidth),Math.round(y*sample.height/innerHeight),1,1).data)];
             });
         },screenshot.toString('base64'));

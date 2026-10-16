@@ -2,6 +2,7 @@
 
 import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 const root = path.resolve(process.argv[2] || '.');
 const forbidden = [
@@ -55,6 +56,31 @@ async function walk(directory, relative = '') {
 }
 
 await walk(root);
+const snapshot = JSON.parse(await readFile(new URL('../source-snapshot.json', import.meta.url), 'utf8'));
+for (const file of [
+  'tools/commerce-analysis/node_modules/playwright/package.json',
+  'tools/commerce-analysis/node_modules/playwright-core/package.json',
+]) {
+  if (!await stat(path.join(root, file)).then(info => info.isFile()).catch(() => false)) {
+    violations.push(`${file}: 浏览器自动化运行依赖缺失`);
+  }
+}
+if (process.platform === 'darwin') {
+  const browserRoot = path.join(root, 'bundled', 'playwright-browsers');
+  const browsers = await readdir(browserRoot).catch(() => []);
+  if (!browsers.some(name => name.startsWith('chromium-'))) {
+    violations.push('bundled/playwright-browsers: macOS 浏览器运行组件缺失');
+  }
+}
+for (const file of snapshot.criticalPackagedPaths || []) {
+  const expected = snapshot.files.find((entry) => entry.path === file)?.releaseSha256;
+  if (!expected) throw new Error(`当前功能快照缺少关键文件：${file}`);
+  const packaged = await readFile(path.join(root, file)).catch(() => null);
+  const normalized = packaged && Buffer.from(packaged.toString('utf8').replace(/\r\n/g, '\n'), 'utf8');
+  if (!normalized || createHash('sha256').update(normalized).digest('hex') !== expected) {
+    violations.push(`${file}: 安装包内容与当前功能源码不一致`);
+  }
+}
 if (violations.length) {
   for (const violation of violations.slice(0, 50)) console.error(violation);
   throw new Error(`发布隐私检查失败：${violations.length} 项`);

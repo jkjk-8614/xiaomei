@@ -23,9 +23,7 @@ function setup(count=4) {
             }
             return pending.get(id).promise;
         },
-        preserveOutpaintCenterOnResults:async (_node, images) => images,
         cleanHistoryImages:items => items,
-        copyMediaSizeFields:(_source, item) => item,
         stripImageGenerationMeta:item => item,
         render(){}, scheduleSave(){}, requestSmartProgressRender(){}, toast(){},
         addSmartGenerationLog(){}, nowMs:() => 1000, tr:key => key,
@@ -33,7 +31,7 @@ function setup(count=4) {
         MEDIA_NODE_DEFAULT_SCALE:1, MEDIA_GROUP_PREVIOUS_DEFAULT_SCALE:1,
         MEDIA_GROUP_DEFAULT_SCALE:0.5, mediaNodeDefaultScale:() => 0.5,
     });
-    for(const name of ['liveSmartNode', 'smartPendingTasks', 'resultMediaUrls', 'finalizeSmartPendingTask', 'resumeSmartPendingNode']) vm.runInContext(extract(name), ctx);
+    for(const name of ['liveSmartNode', 'smartPendingTasks', 'copyMediaSizeFields', 'resultMediaUrls', 'finalizeSmartPendingTask', 'resumeSmartPendingNode']) vm.runInContext(extract(name), ctx);
     return {ctx, node, pending};
 }
 test('four results reach the current node after replacement while polling', async () => {
@@ -64,17 +62,19 @@ test('concurrent resume does not apply a task twice or clear another pending tas
     assert.equal(node.images.length, 2);
     assert.equal(node.pending, 0);
 });
-test('replacement during asynchronous image processing still receives results', async () => {
+test('outpaint polling keeps the complete saved model image', async () => {
     const {ctx, node, pending} = setup(1);
-    ctx.preserveOutpaintCenterOnResults = async (_node, images) => {
-        ctx.nodes = [structuredClone(node)];
-        return images;
-    };
+    node.outpaintPreserve = {sourceUrl:'/source.png', canvasW:3840, canvasH:3840,
+        sourceW:2565, sourceH:2565, x:645, y:645};
     const running = ctx.resumeSmartPendingNode(node);
-    pending.get('task-0').resolve({images:['/result.png']});
+    pending.get('task-0').resolve({image_items:[{url:'/raw-model.png', kind:'image',
+        natural_w:2880, natural_h:2880, outpaint_original_redrawn:true}]});
     await running;
-    assert.equal(ctx.nodes[0].images.length, 1);
-    assert.equal(ctx.nodes[0].pending, 0);
+    assert.equal(node.images.length, 1);
+    assert.equal(node.images[0].url, '/raw-model.png');
+    assert.equal(node.images[0].natural_w, 2880);
+    assert.equal(node.images[0].outpaintOriginalRedrawn, true);
+    assert.equal(node.pending, 0);
 });
 test('failed task clears the current node and records its error', async () => {
     const {ctx, node, pending} = setup(1);

@@ -126,6 +126,7 @@ test('canvas batch background removal keeps source groups and processes images i
     });
     const multiAction = page.locator(`[data-smart-node-action="background-remove"][data-node-id="${multiId}"]`);
     assert.equal(await multiAction.getAttribute('title'), '批量去背景');
+    await page.locator(`[data-id="${multiId}"] [data-smart-node-settings]`).click();
     await multiAction.click();
     const multiResult = await waitForOutput(multiId);
     assert.deepEqual(removalCalls.map(call => call.source_url), [
@@ -176,7 +177,8 @@ test('canvas batch background removal keeps source groups and processes images i
         render();
         return node.id;
     });
-    await page.locator(`[data-smart-node-action="background-remove"][data-node-id="${partialId}"]`).click();
+    assert.equal(await page.locator('.smart-selection-toolbar [data-smart-selection-action="background-remove"]').isVisible(), true);
+    await page.locator('.smart-selection-toolbar [data-smart-selection-action="background-remove"]').click();
     const partialResult = await waitForOutput(partialId);
     assert.equal(partialResult.output.images.length, 2);
     assert.deepEqual(partialResult.output.images.map(image => image.derived_from.url), ['/output/batch-a.png', '/output/batch-c.png']);
@@ -197,7 +199,7 @@ test('canvas batch background removal keeps source groups and processes images i
         render();
         return node.id;
     });
-    await page.locator(`[data-smart-node-action="background-remove"][data-node-id="${allFailId}"]`).click();
+    await page.locator('.smart-selection-toolbar [data-smart-selection-action="background-remove"]').click();
     await page.waitForFunction(id => smartBackgroundRemovalBusy === false, allFailId);
     const allFailResult = await page.evaluate(sourceId => ({
         nodeCount:nodes.length,
@@ -245,6 +247,7 @@ test('canvas batch background removal keeps source groups and processes images i
     });
     const singleAction = page.locator(`[data-smart-node-action="background-remove"][data-node-id="${singleId}"]`);
     assert.equal(await singleAction.getAttribute('title'), '去背景');
+    await page.locator(`[data-id="${singleId}"] [data-smart-node-settings]`).click();
     await singleAction.click();
     const singleResult = await waitForOutput(singleId);
     assert.deepEqual(removalCalls.map(call => call.source_url), ['/output/single.png']);

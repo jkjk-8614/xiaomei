@@ -1,5 +1,7 @@
 const { chromium } = require('../tools/commerce-analysis/node_modules/playwright');
 const assert = require('node:assert/strict');
+const os = require('node:os');
+const path = require('node:path');
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   try {
@@ -42,8 +44,8 @@ const assert = require('node:assert/strict');
     const row = page.locator('.app-dependency-row').filter({ has: button });
     assert.equal(await row.locator(':scope > strong').innerText(), 'LoRA · 风格 / 效果');
     assert.equal(await row.locator('.app-dependency-name').innerText(), name);
-    assert(await page.locator('.app-preflight > :first-child').evaluate(n => n.classList.contains('app-dependency-section')));
-    await page.screenshot({ path: 'logs/comfy-model-role-cards.png', fullPage: true });
+    assert.equal(await page.locator('.app-preflight > .app-dependency-section').count(), 1);
+    await page.screenshot({ path: path.join(os.tmpdir(), 'xiaomei-comfy-model-role-cards.png'), fullPage: true });
     const width = await row.locator(':scope > span').evaluate(n => n.getBoundingClientRect().width);
     assert(width > 150, `模型名称被压缩：${width}px`);
     const chooser = page.waitForEvent('filechooser');
@@ -52,7 +54,7 @@ const assert = require('node:assert/strict');
     await page.waitForFunction(() => document.querySelector('#app-notice')?.textContent.includes('已替换并完成复查'));
     assert.equal(await page.getByRole('button', { name: '导入此模型', exact: true }).count(), 0);
     assert.equal(await page.locator('body > input[type=file]:not([id])').count(), 0);
-    await page.screenshot({ path: 'logs/comfy-dependency-import.png', fullPage: true });
+    await page.screenshot({ path: path.join(os.tmpdir(), 'xiaomei-comfy-dependency-import.png'), fullPage: true });
     assert.deepEqual(errors, []);
     console.log('PASS dependency layout, file picker, renamed model auto replacement');
   } finally { await browser.close(); }

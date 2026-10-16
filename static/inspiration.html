@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-studio-skin="minimal">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>灵感案例</title>
+    <link rel="icon" href="/static/images/logo.png?v=2026.10.16" type="image/png">
+    <script src="/static/js/theme.js?v=2026.10.16.1791335865"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.16.1791851171">
+    <link rel="stylesheet" href="/static/css/inspiration.css?v=2026.10.16.1792075223">
+</head>
+<body>
+    <div class="inspiration-page">
+        <header class="page-head">
+            <div><p class="eyebrow">发现 · 学习 · 应用</p><h1>灵感案例</h1><p>按模型和任务查找提示词、参考素材与制作步骤。</p></div>
+            <div class="page-actions"><button id="sourcesButton" class="subtle-button" type="button">管理来源</button><button id="syncAllButton" class="subtle-button" type="button" disabled>同步全部</button></div>
+        </header>
+        <section class="filters" aria-label="案例筛选">
+            <div id="kindFilters" class="chips" aria-label="类型"></div>
+            <div id="modelFilters" class="chips model-chips" aria-label="模型"></div>
+            <div class="filter-line">
+                <label class="search-box"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" placeholder="搜索标题、提示词、标签或模型" autocomplete="off"></label>
+                <select id="taskFilter" aria-label="任务"><option value="">全部任务</option></select>
+                <select id="sourceFilter" aria-label="来源"><option value="">全部来源</option></select>
+                <label class="favorite-toggle"><input id="favoriteFilter" type="checkbox"> 只看收藏</label>
+            </div>
+        </section>
+        <div class="list-head"><span id="resultCount">正在读取案例…</span><span id="status" role="status" aria-live="polite"></span></div>
+        <main id="caseGrid" class="case-grid"></main>
+        <nav id="pager" class="pager" aria-label="案例分页"></nav>
+    </div>
+    <div id="detailOverlay" class="overlay" hidden>
+        <div class="backdrop" data-close-detail></div>
+        <aside class="detail-panel" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+            <button class="close-button" type="button" data-close-detail aria-label="关闭详情">×</button>
+            <div id="detailBody"></div>
+        </aside>
+    </div>
+    <div id="sourcesOverlay" class="overlay" hidden>
+        <div class="backdrop" data-close-sources></div>
+        <aside class="sources-panel" role="dialog" aria-modal="true" aria-labelledby="sourcesTitle">
+            <button class="close-button" type="button" data-close-sources aria-label="关闭来源">×</button>
+            <p class="eyebrow">本地索引</p><h2 id="sourcesTitle">案例来源</h2>
+            <p class="muted">可逐个同步，也可在页面右上角同步全部来源。原始媒体保留在来源网站，不会自动下载到素材库。</p>
+            <p id="syncAllStatus" class="sync-all-status" role="status" aria-live="polite"></p>
+            <div id="sourceList"></div>
+        </aside>
+    </div>
+    <script src="/static/js/shared-agent-skill.js?v=2026.10.16.1791504727"></script>
+    <script src="/static/js/inspiration.js?v=2026.10.16.1792075580"></script>
+</body>
+</html>

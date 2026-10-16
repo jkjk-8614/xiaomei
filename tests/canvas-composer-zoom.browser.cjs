@@ -7,7 +7,7 @@ const { chromium } = require('../tools/commerce-analysis/node_modules/playwright
 const root = path.resolve(__dirname, '..');
 const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7v8AAAAASUVORK5CYII=', 'base64');
 
-test('selected node composer keeps its screen size and position while the canvas zooms', { timeout: 40000 }, async t => {
+test('selected node composer has a readable size floor while the canvas zooms out', { timeout: 40000 }, async t => {
     const browser = await chromium.launch({ channel: 'msedge', headless: true });
     t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
@@ -68,7 +68,7 @@ test('selected node composer keeps its screen size and position while the canvas
     });
     const aligned = (sample, label) => {
         assert.ok(Math.abs(sample.composerCenterX - sample.nodeCenterX) < 3, `${label}: composer is not centered on its node`);
-        assert.ok(Math.abs(sample.composerTop - sample.nodeBottom - 14) < 3, `${label}: composer lost its node gap`);
+        assert.ok(Math.abs(sample.composerTop - sample.nodeBottom - 20) < 3, `${label}: composer lost its node gap`);
     };
     const initial = await snapshot();
     aligned(initial, '1x');
@@ -76,7 +76,7 @@ test('selected node composer keeps its screen size and position while the canvas
     await page.evaluate(() => { viewport.scale = 1.6; applyViewport(); });
     const zoomedIn = await snapshot();
     aligned(zoomedIn, '1.6x');
-    assert.ok(Math.abs(zoomedIn.width - initial.width) < 2, `composer grew from ${initial.width}px to ${zoomedIn.width}px`);
+    assert.ok(Math.abs(zoomedIn.width - initial.width * 1.6) < 2, `composer did not follow zoom-in from ${initial.width}px to ${zoomedIn.width}px`);
 
     await page.evaluate(() => { viewport.scale = 0.7; applyViewport(); });
     const zoomedOut = await snapshot();

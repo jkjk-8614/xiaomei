@@ -98,6 +98,9 @@ let localUploadQuery = '';
 let localUploadManageMode = false;
 let localUploadClipboard = null;
 let localUploadFolderCreateMode = false;
+let localUploadFolderDragPath = '';
+let localUploadCardDragIds = [];
+let localUploadMoveIds = [];
 let assetClassifyBusy = false;
 let backgroundRemovalBusy = false;
 let assetCategoryLocalImportBusy = false;
@@ -561,7 +564,7 @@ function renderUploadManager(){
     const tree = uploadAssetProjectTree();
     const project = uploadAssetsState.projectId ? (uploadAssetsState.canvasId ? (uploadAssetsState.canvases || []).find(c => c.id === uploadAssetsState.canvasId)?.title || '画布素材' : uploadAssetProjectName(uploadAssetsState.projectId)) : '全部上传';
     const body = uploadAssetsState.error ? `<div class="empty-state" role="alert"><i data-lucide="triangle-alert"></i><strong>上传素材读取失败</strong><span>${escapeHtml(uploadAssetsState.error)}</span><button class="asset-btn primary" type="button" data-upload-retry><i data-lucide="refresh-cw"></i><span>重新读取</span></button></div>` : (uploadAssetsState.loading ? '<div class="storage-empty">正在读取上传素材目录...</div>' : `<div class="asset-grid"><button id="assetDrop" class="upload-grid-card ${assetUploadBusy ? 'uploading' : ''}" type="button" data-asset-upload><span class="upload-thumb"><i data-lucide="${assetUploadBusy ? 'loader-circle' : 'upload-cloud'}"></i></span><span class="upload-body"><strong>${assetUploadBusy ? '正在上传素材' : '上传到此项目/画布'}</strong><small>${assetUploadBusy ? '请稍候，不需要重复点击' : '拖入文件或点击上传'}</small></span></button>${items.map(renderUploadAssetCard).join('')}${!items.length ? '<div class="empty-state">上传素材目录中还没有符合条件的文件。</div>' : ''}${uploadAssetsState.hasMore ? `<div class="storage-load-more">已加载 ${items.length} / ${uploadAssetsState.total}，向下滚动继续</div>` : ''}</div>`);
-    root.innerHTML = `<aside class="asset-panel asset-nav"><div class="panel-head"><div class="panel-title"><strong>上传素材</strong><span>按画布项目和画布分类</span></div><div class="panel-actions"><button class="asset-btn" type="button" data-asset-library-view><i data-lucide="layers-3"></i><span>图片资产库</span></button></div></div><div class="nav-scroll"><div class="nav-tree">${tree.map(item => `<button class="tree-row tree-parent ${uploadAssetsState.projectId === item.id && !uploadAssetsState.canvasId ? 'active' : ''}" type="button" data-upload-project="${escapeAttr(item.id)}"><span class="tree-row-icon"><i data-lucide="${item.id ? 'folder' : 'images'}"></i></span><span class="tree-row-name">${escapeHtml(item.name)}</span><span class="tree-row-count">${item.count || 0}</span></button>${item.id && uploadAssetsState.projectId === item.id ? (uploadAssetsState.canvases || []).filter(canvas => canvas.project === item.id).map(canvas => `<button class="tree-row tree-child ${uploadAssetsState.canvasId === canvas.id ? 'active' : ''}" type="button" data-upload-canvas="${escapeAttr(canvas.id)}"><span class="tree-elbow"></span><span class="tree-row-icon"><i data-lucide="layers"></i></span><span class="tree-row-name">${escapeHtml(canvas.title || '未命名画布')}</span><span class="tree-row-count">${canvas.count || 0}</span></button>`).join('') : ''}`).join('')}</div><div class="nav-hint">归属来自画布引用和上传时选择的项目/画布；未关联的文件放在“未归属项目”。</div></div></aside><section class="asset-panel asset-content"><div class="content-toolbar"><div class="content-heading"><strong>${escapeHtml(project)}</strong><span>图片空间 / 上传素材 · ${uploadAssetsState.total} 个文件</span></div><div class="asset-tools"><label class="asset-search-wrap"><i data-lucide="search"></i><input id="assetSearch" class="asset-search" type="search" value="${escapeAttr(uploadAssetsState.query)}" placeholder="搜索上传素材"></label><button class="asset-btn" type="button" data-asset-upload><i data-lucide="upload-cloud"></i><span>上传素材</span></button><button class="asset-btn" type="button" data-upload-retry><i data-lucide="refresh-cw"></i><span>刷新</span></button></div></div><div class="content-scroll" data-upload-file-grid>${body}</div></section><aside class="asset-panel asset-detail">${renderUploadAssetDetail(detail)}</aside>`;
+    root.innerHTML = `<aside class="asset-panel asset-nav"><div class="panel-head"><div class="panel-title"><strong>上传素材</strong><span>按画布项目和画布分类</span></div></div><div class="nav-scroll"><div class="nav-tree">${tree.map(item => `<button class="tree-row tree-parent ${uploadAssetsState.projectId === item.id && !uploadAssetsState.canvasId ? 'active' : ''}" type="button" data-upload-project="${escapeAttr(item.id)}"><span class="tree-row-icon"><i data-lucide="${item.id ? 'folder' : 'images'}"></i></span><span class="tree-row-name">${escapeHtml(item.name)}</span><span class="tree-row-count">${item.count || 0}</span></button>${item.id && uploadAssetsState.projectId === item.id ? (uploadAssetsState.canvases || []).filter(canvas => canvas.project === item.id).map(canvas => `<button class="tree-row tree-child ${uploadAssetsState.canvasId === canvas.id ? 'active' : ''}" type="button" data-upload-canvas="${escapeAttr(canvas.id)}"><span class="tree-elbow"></span><span class="tree-row-icon"><i data-lucide="layers"></i></span><span class="tree-row-name">${escapeHtml(canvas.title || '未命名画布')}</span><span class="tree-row-count">${canvas.count || 0}</span></button>`).join('') : ''}`).join('')}</div><div class="nav-hint">归属来自画布引用和上传时选择的项目/画布；未关联的文件放在“未归属项目”。</div></div></aside><section class="asset-panel asset-content"><div class="content-toolbar"><div class="content-heading"><strong>${escapeHtml(project)}</strong><span>图片空间 / 上传素材 · ${uploadAssetsState.total} 个文件</span></div><div class="asset-tools"><label class="asset-search-wrap"><i data-lucide="search"></i><input id="assetSearch" class="asset-search" type="search" value="${escapeAttr(uploadAssetsState.query)}" placeholder="搜索上传素材"></label><button class="asset-btn" type="button" data-asset-upload><i data-lucide="upload-cloud"></i><span>上传素材</span></button><button class="asset-btn" type="button" data-upload-retry><i data-lucide="refresh-cw"></i><span>刷新</span></button></div></div><div class="content-scroll" data-upload-file-grid>${body}</div></section><aside class="asset-panel asset-detail">${renderUploadAssetDetail(detail)}</aside>`;
 }
 function generatedAssetTypeLabel(item){
     return assetKind(item) === 'video' ? '视频' : '图片';
@@ -1575,7 +1578,7 @@ function canvasAssetsForProject(projectId=activeCanvasAssetProjectId){
 function canvasAssetOpenUrl(canvas){
     if(!canvas?.id) return '';
     const id = encodeURIComponent(canvas.id);
-return canvas.kind === 'smart' ? `/static/smart-canvas.html?id=${id}&v=2026.10.11.local-assets-default.1` : `/static/canvas.html?id=${id}`;
+return canvas.kind === 'smart' ? `/static/smart-canvas.html?id=${id}&v=2026.10.16.project-agent.2` : `/static/canvas.html?id=${id}`;
 }
 function activeCanvasAssetCanvas(){
     if(!activeCanvasAssetCanvasId) return null;
@@ -2312,7 +2315,7 @@ function renderLocalUploadFolderBranch(folder, depth=0){
     const active = !activeLocalUploadClassFilter && path === activeLocalUploadFolder;
     const contains = !active && (folder.children || []).some(child => localUploadFolderContainsActive(child));
     return `<div class="tree-branch">
-        <button class="tree-row ${depth ? 'tree-child' : 'tree-parent'} ${active ? 'active' : ''} ${contains ? 'contains-active' : ''}" type="button" data-localup-folder="${escapeAttr(path)}">
+        <button class="tree-row ${depth ? 'tree-child' : 'tree-parent'} ${active ? 'active' : ''} ${contains ? 'contains-active' : ''}" type="button" data-localup-folder="${escapeAttr(path)}" ${path ? 'draggable="true" title="拖动可调整同级文件夹顺序"' : ''}>
             ${depth ? '<span class="tree-elbow"></span>' : ''}
             <span class="tree-row-icon"><i data-lucide="${active ? 'folder-open' : (depth ? 'folder' : 'upload-cloud')}"></i></span>
             <span class="tree-row-name">${escapeHtml(folder.name || '文件夹')}</span>
@@ -2326,6 +2329,36 @@ function localUploadFolderContainsActive(folder){
     if(activeLocalUploadClassFilter) return false;
     if(String(folder.path || '') === activeLocalUploadFolder) return true;
     return (folder.children || []).some(child => localUploadFolderContainsActive(child));
+}
+function localUploadFolderParentPath(path){
+    return String(path || '').split('/').slice(0, -1).join('/');
+}
+function localUploadFolderSiblings(path){
+    const parentPath = localUploadFolderParentPath(path);
+    const parent = parentPath ? localUploadFolderByPath(parentPath) : localUploadTree;
+    return parent?.children || [];
+}
+function clearLocalUploadFolderDropTargets(){
+    root.querySelectorAll('.local-folder-drop-before, .local-folder-drop-after').forEach(node => {
+        node.classList.remove('local-folder-drop-before', 'local-folder-drop-after');
+    });
+}
+async function reorderLocalUploadFolder(sourcePath, targetPath, after){
+    if(!sourcePath || !targetPath || sourcePath === targetPath) return;
+    const parent = localUploadFolderParentPath(sourcePath);
+    if(parent !== localUploadFolderParentPath(targetPath)) return;
+    const paths = localUploadFolderSiblings(sourcePath).map(folder => folder.path);
+    if(!paths.includes(sourcePath) || !paths.includes(targetPath)) return;
+    paths.splice(paths.indexOf(sourcePath), 1);
+    paths.splice(paths.indexOf(targetPath) + (after ? 1 : 0), 0, sourcePath);
+    const data = await apiJson('/api/local-assets/folders/reorder', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({parent, paths})
+    });
+    localUploadTree = data.tree || localUploadTree;
+    render();
+    setStatus('文件夹顺序已保存');
 }
 function renderLocalUploadSmartClassTree(){
     return '';
@@ -2394,7 +2427,7 @@ function renderLocalManager(){
                     ${renderLocalUploadSmartClassTree()}
                     ${renderImageSpaceCollections()}
                 </div>
-                <div class="nav-hint">选择图片、视频或音频即可上传；当前文件夹支持新建、重命名和删除。</div>
+                <div class="nav-hint">选择图片、视频或音频即可上传。拖动素材到文件夹可移动；拖动文件夹可调整同级顺序。</div>
             </div>
         </aside>
         <section class="asset-panel asset-content ${localUploadManageMode ? 'manage-on' : ''}">
@@ -2420,6 +2453,7 @@ function renderLocalManager(){
                         <button class="asset-btn" type="button" data-localup-download-selected ${selectedLocalUploadIds.size ? '' : 'disabled'}><i data-lucide="download"></i><span>下载</span></button>
                         <button class="asset-btn" type="button" data-localup-canvas-selected ${selectedLocalUploadIds.size ? '' : 'disabled'}><i data-lucide="clipboard-paste"></i><span>复制到画布</span></button>
                         <button class="asset-btn" type="button" data-localup-cut-selected ${selectedLocalUploadIds.size ? '' : 'disabled'}><i data-lucide="scissors"></i><span>剪切/移动</span></button>
+                        <button class="asset-btn" type="button" data-localup-move-selected ${selectedLocalUploadIds.size ? '' : 'disabled'}><i data-lucide="folder-input"></i><span>移动</span></button>
                         <button class="asset-btn danger" type="button" data-localup-delete-selected ${selectedLocalUploadIds.size ? '' : 'disabled'}><i data-lucide="trash-2"></i><span>删除</span></button>
                     </div>
                 </div>
@@ -2449,13 +2483,14 @@ function renderLocalUploadAddCard(){
 }
 function renderLocalUploadCard(item){
     const hasCaption = assetKind(item) === 'image' && String(item.caption || '').trim();
-    return `<article class="asset-card ${item.id === selectedLocalUploadId ? 'active' : ''}" data-localup-card="${escapeAttr(item.id)}">
+    return `<article class="asset-card ${item.id === selectedLocalUploadId ? 'active' : ''}" data-localup-card="${escapeAttr(item.id)}" draggable="true" title="拖动到左侧文件夹可移动">
         <input class="asset-card-check" type="checkbox" data-localup-check="${escapeAttr(item.id)}" ${selectedLocalUploadIds.has(item.id) ? 'checked' : ''}>
         <div class="asset-thumb">${assetThumb(item)}</div>
         <button class="asset-card-quick asset-card-fav ${isFileFavorite('local', item) ? 'is-fav' : ''}" type="button" data-localup-favorite="${escapeAttr(item.id)}" title="${isFileFavorite('local', item) ? '取消收藏' : '收藏'}" aria-label="${isFileFavorite('local', item) ? '取消收藏' : '收藏'}"><i data-lucide="star"></i></button>
         <div class="asset-card-body">
             <div class="asset-card-name" data-localup-rename="${escapeAttr(item.id)}" title="${escapeAttr(item.name || '')}">${escapeHtml(item.name || '本地素材')}</div>
             <div class="asset-card-meta">${escapeHtml(assetKindLabel(item))} · ${escapeHtml(formatFileSize(item.size))}${hasCaption ? ' · 有提示词' : ''}</div>
+            ${localUploadManageMode ? '' : `<button class="local-asset-move-button" type="button" data-localup-move-one="${escapeAttr(item.id)}"><i data-lucide="folder-input"></i><span>移动</span></button>`}
         </div>
     </article>`;
 }
@@ -2467,8 +2502,8 @@ function renderLocalUploadDetail(item){
             <div class="panel-title"><strong>素材预览</strong><span>${escapeHtml(assetKindLabel(item))}</span></div>
             <div class="panel-actions">
                 <button class="asset-icon-btn" type="button" data-localup-rename="${escapeAttr(item.id)}" title="重命名"><i data-lucide="pencil"></i></button>
+                <button class="asset-icon-btn" type="button" data-localup-move-one="${escapeAttr(item.id)}" title="移动到文件夹" aria-label="移动到文件夹"><i data-lucide="folder-input"></i></button>
                 <button class="asset-icon-btn" type="button" data-localup-download="${escapeAttr(item.id)}" title="下载"><i data-lucide="download"></i></button>
-                <button class="asset-icon-btn" type="button" data-localup-open="${escapeAttr(item.id)}" title="新窗口打开"><i data-lucide="external-link"></i></button>
                 <button class="asset-icon-btn" type="button" data-localup-copy="${escapeAttr(item.id)}" title="复制链接"><i data-lucide="link"></i></button>
                 <button class="asset-icon-btn danger" type="button" data-localup-delete-one="${escapeAttr(item.id)}" title="删除"><i data-lucide="trash-2"></i></button>
             </div>
@@ -2624,6 +2659,7 @@ function renderAssetManager(){
                 </div>
                 <div class="asset-tools">
                     <label class="asset-search-wrap"><i data-lucide="search"></i><input id="assetSearch" class="asset-search" type="search" value="${escapeAttr(assetQuery)}" placeholder="搜索素材"></label>
+                    <button class="asset-btn primary" type="button" data-asset-upload><i data-lucide="upload-cloud"></i><span>上传文件</span></button>
                     <button class="asset-btn ${assetManageMode ? 'primary' : ''}" type="button" data-asset-manage><i data-lucide="list-checks"></i><span>${assetManageMode ? '完成管理' : '批量管理'}</span></button>
                 </div>
             </div>
@@ -2654,7 +2690,7 @@ function renderAssetManager(){
                 <div class="asset-grid">
                     ${activeAssetClassFilter || assetFavoritesOnly ? '' : renderUploadCard(cat)}
                     ${items.map(item => renderAssetCard(item)).join('')}
-                    ${items.length ? '' : `<div class="empty-state">${assetFavoritesOnly ? '还没有收藏的上传素材。点击素材卡片右上角的 ⭐ 即可收藏。' : '没有符合条件的素材，可清空筛选或上传素材。'}</div>`}
+                    ${items.length ? '' : `<div class="empty-state">${assetFavoritesOnly ? '还没有收藏的上传素材。点击素材卡片右上角的 ⭐ 即可收藏。' : !cat ? '当前资产库还没有分组。可直接上传文件，或先新建分组；直接上传的文件会显示在“上传目录”。' : '当前分组没有符合条件的素材，可清空筛选或上传文件。'}</div>`}
                 </div>
             </div>
         </section>
@@ -2813,11 +2849,11 @@ function renderWorkflowDetail(item){
     `;
 }
 function renderUploadCard(cat){
-    return `<button id="assetDrop" class="upload-grid-card ${assetUploadBusy ? 'uploading' : ''}" type="button" data-asset-upload ${!cat || assetUploadBusy ? 'disabled' : ''}>
+    return `<button id="assetDrop" class="upload-grid-card ${assetUploadBusy ? 'uploading' : ''}" type="button" data-asset-upload ${assetUploadBusy ? 'disabled' : ''}>
         <span class="upload-thumb"><i data-lucide="${assetUploadBusy ? 'loader-circle' : 'upload-cloud'}"></i></span>
         <span class="upload-body">
-            <strong>${assetUploadBusy ? '正在上传素材' : '上传到当前分组'}</strong>
-            <small>${assetUploadBusy ? '请稍候，不需要重复点击' : '拖入文件或点击上传'}</small>
+            <strong>${assetUploadBusy ? '正在上传素材' : cat ? '上传到当前分组' : '上传文件'}</strong>
+            <small>${assetUploadBusy ? '请稍候，不需要重复点击' : cat ? '拖入文件或点击上传' : '上传后在“上传目录”查看'}</small>
         </span>
     </button>`;
 }
@@ -3957,7 +3993,8 @@ async function runAssetBackgroundRemoval(ids=[]){
     }
 }
 async function uploadFiles(files){
-    const uploadView = uploadAssetsState.view;
+    const uploadView = uploadAssetsState.view === 'library' && !activeAssetCategory() ? 'disk' : uploadAssetsState.view;
+    if(uploadView === 'disk') uploadAssetsState.view = 'disk';
     const uploadProjectId = uploadAssetsState.projectId || '';
     const uploadCanvasId = uploadAssetsState.canvasId || '';
     const cat = activeAssetCategory();
@@ -4489,6 +4526,58 @@ async function pasteLocalUploadClipboard(){
         setStatus(`已移动 ${data?.moved ?? names.length} 个素材`);
     } catch(err){
         setStatus(err.message || '移动失败');
+    }
+}
+function closeLocalUploadMoveDialog(){
+    localUploadMoveIds = [];
+    document.getElementById('localUploadMoveModal').hidden = true;
+}
+document.getElementById('localUploadMoveModal').addEventListener('click', event => {
+    if(event.target.closest?.('[data-localup-move-close]')){ closeLocalUploadMoveDialog(); return; }
+    const target = event.target.closest?.('[data-localup-move-target]');
+    if(target && !target.disabled) moveLocalUploadsToFolder([...localUploadMoveIds], target.dataset.localupMoveTarget || '');
+});
+document.getElementById('localUploadMoveModal').addEventListener('keydown', event => {
+    if(event.key === 'Escape') closeLocalUploadMoveDialog();
+});
+function openLocalUploadMoveDialog(ids){
+    localUploadMoveIds = [...new Set(ids)].filter(id => findLocalUpload(id)?.file);
+    if(!localUploadMoveIds.length){ setStatus('没有可移动的素材'); return; }
+    const modal = document.getElementById('localUploadMoveModal');
+    const folders = document.getElementById('localUploadMoveFolders');
+    document.getElementById('localUploadMoveCount').textContent = `选择 ${localUploadMoveIds.length} 个素材的目标文件夹`;
+    const allInFolder = path => localUploadMoveIds.every(id => String(findLocalUpload(id)?.folder || '') === path);
+    const row = (path, label, depth) => `<button class="local-upload-move-folder" type="button" data-localup-move-target="${escapeAttr(path)}" style="--folder-depth:${depth}" ${allInFolder(path) ? 'disabled' : ''}><i data-lucide="folder"></i><span>${escapeHtml(label)}</span>${allInFolder(path) ? '<small>当前位置</small>' : ''}</button>`;
+    const children = (node, depth) => (node?.children || []).map(folder => row(folder.path || '', folder.name || '文件夹', depth) + children(folder, depth + 1)).join('');
+    folders.innerHTML = row('', '全部上传（根目录）', 0) + children(localUploadTree, 1);
+    modal.hidden = false;
+    refreshIcons();
+    folders.querySelector('button:not(:disabled)')?.focus();
+}
+async function moveLocalUploadsToFolder(ids, folder){
+    const names = [...new Set(ids)].map(id => findLocalUpload(id)?.file).filter(Boolean);
+    if(!names.length){ setStatus('没有可移动的素材'); return; }
+    if(!localUploadFolderExists(folder)){ setStatus('目标文件夹不存在'); return; }
+    if(names.every(name => (localAssets.find(item => item.file === name)?.folder || '') === folder)){
+        setStatus('素材已在这个文件夹');
+        return;
+    }
+    setStatus('正在移动素材...');
+    try {
+        const data = await apiJson('/api/local-assets/move', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({names, folder})
+        });
+        await loadLocalAssets();
+        closeLocalUploadMoveDialog();
+        selectedLocalUploadIds.clear();
+        if(ids.includes(selectedLocalUploadId)) selectedLocalUploadId = '';
+        render();
+        const moved = Number(data?.moved || 0);
+        setStatus(moved === names.length ? `已移动 ${moved} 个素材` : `已移动 ${moved} 个素材，${names.length - moved} 个未移动`);
+    } catch(err){
+        setStatus(err.message || '移动素材失败');
     }
 }
 async function renameWorkflowItem(id){
@@ -5256,10 +5345,9 @@ async function handleClick(event){
         }
     }
     const tabBtn = target.closest?.('[data-tab]');
-    if(tabBtn){ imageSpaceState.collectionId = ''; clearCanvasAssetScope(); activeTab = tabBtn.dataset.tab || 'assets'; selectedAssetIds.clear(); selectedWorkflowIds.clear(); selectedPromptIds.clear(); selectedLocalIds.clear(); selectedLocalUploadIds.clear(); selectedCanvasAssetIds.clear(); generatedAssetsState.selectedIds.clear(); render(); if(activeTab === 'generated' && !generatedAssetsState.loaded) await loadGeneratedAssets(); if(activeTab === 'assets' && !uploadAssetsState.loaded) await loadUploadAssets(); return; }
+    if(tabBtn){ imageSpaceState.collectionId = ''; clearCanvasAssetScope(); activeTab = tabBtn.dataset.tab || 'assets'; if(activeTab === 'assets') uploadAssetsState.view = 'disk'; selectedAssetIds.clear(); selectedWorkflowIds.clear(); selectedPromptIds.clear(); selectedLocalIds.clear(); selectedLocalUploadIds.clear(); selectedCanvasAssetIds.clear(); generatedAssetsState.selectedIds.clear(); render(); if(activeTab === 'generated' && !generatedAssetsState.loaded) await loadGeneratedAssets(); if(activeTab === 'assets' && !uploadAssetsState.loaded) await loadUploadAssets(); return; }
     if(target.closest?.('#refreshBtn')){ await loadAll(); return; }
     if(activeTab === 'assets'){
-        if(target.closest?.('[data-asset-library-view]')){ uploadAssetsState.view = 'library'; render(); return; }
         if(target.closest?.('[data-upload-disk-view]')){ uploadAssetsState.view = 'disk'; render(); if(!uploadAssetsState.loaded) loadUploadAssets().catch(err => setStatus(err.message || '读取上传素材失败')); return; }
         if(target.closest?.('[data-upload-retry]')){ loadUploadAssets().catch(err => setStatus(err.message || '读取上传素材失败')); return; }
         const uploadProject = target.closest?.('[data-upload-project]');
@@ -5333,6 +5421,7 @@ async function handleClick(event){
     if(target.closest?.('[data-localup-download-selected]')){ await downloadSelectedLocalUploads(); return; }
     if(target.closest?.('[data-localup-canvas-selected]')){ copySelectedLocalUploadsToCanvas(); return; }
     if(target.closest?.('[data-localup-cut-selected]')){ setLocalUploadClipboard(); return; }
+    if(target.closest?.('[data-localup-move-selected]')){ openLocalUploadMoveDialog([...selectedLocalUploadIds]); return; }
     if(target.closest?.('[data-localup-paste-clipboard]')){ await pasteLocalUploadClipboard(); return; }
     if(target.closest?.('[data-localup-clear-clipboard]')){ localUploadClipboard = null; render(); return; }
     const localUpDownload = target.closest?.('[data-localup-download]');
@@ -5349,6 +5438,8 @@ async function handleClick(event){
     if(localUpCaptionSave){ await saveLocalUploadCaption(localUpCaptionSave.dataset.localupCaptionSave || ''); return; }
     const localUpRename = target.closest?.('[data-localup-rename]');
     if(localUpRename){ event.stopPropagation(); beginLocalUploadInlineRename(localUpRename.dataset.localupRename || ''); return; }
+    const localUpMoveOne = target.closest?.('[data-localup-move-one]');
+    if(localUpMoveOne){ event.stopPropagation(); openLocalUploadMoveDialog([localUpMoveOne.dataset.localupMoveOne || '']); return; }
     const localUpDeleteOne = target.closest?.('[data-localup-delete-one]');
     if(localUpDeleteOne){ await deleteLocalAssets([localUpDeleteOne.dataset.localupDeleteOne || '']); return; }
     const localUpCheck = target.closest?.('[data-localup-check]');
@@ -5360,8 +5451,6 @@ async function handleClick(event){
         render();
         return;
     }
-    const localUpOpen = target.closest?.('[data-localup-open]');
-    if(localUpOpen){ const it = findLocalUpload(localUpOpen.dataset.localupOpen || ''); if(it?.url) window.open(it.url, '_blank'); return; }
     const localUpCopy = target.closest?.('[data-localup-copy]');
     if(localUpCopy){ const it = findLocalUpload(localUpCopy.dataset.localupCopy || ''); const ok = await copyTextToClipboard(it?.url || ''); setStatus(ok ? '已复制链接' : '复制失败'); return; }
     const localUpCard = target.closest?.('[data-localup-card]');
@@ -6727,6 +6816,7 @@ root.addEventListener('submit', event => {
 });
 root.addEventListener('change', event => {
     if(event.target.matches('[data-space-all]')){
+        imageSpaceReadFilterForm();
         imageSpaceState.all[activeTab] = event.target.checked;
         imageSpaceRefresh().catch(err => setStatus(err.message || '筛选失败'));
         return;
@@ -6796,6 +6886,27 @@ document.addEventListener('change', event => {
     }
 });
 root.addEventListener('dragstart', event => {
+    if(activeTab === 'local'){
+        const card = event.target.closest?.('[data-localup-card]');
+        if(card && event.dataTransfer){
+            const id = card.dataset.localupCard || '';
+            localUploadCardDragIds = selectedLocalUploadIds.has(id) ? [...selectedLocalUploadIds] : [id];
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('application/x-xiaomei-local-assets', JSON.stringify(localUploadCardDragIds));
+            event.dataTransfer.setData('text/plain', `${localUploadCardDragIds.length} 个素材`);
+            card.classList.add('local-asset-dragging');
+            return;
+        }
+        const folder = event.target.closest?.('[data-localup-folder]');
+        const path = folder?.dataset.localupFolder || '';
+        if(path && event.dataTransfer){
+            localUploadFolderDragPath = path;
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', path);
+            folder.classList.add('local-folder-dragging');
+            return;
+        }
+    }
     if(activeTab === 'assets'){
         const category = event.target.closest?.('[data-asset-cat]');
         const libraryId = category?.dataset.assetCatLib || '';
@@ -6821,11 +6932,64 @@ root.addEventListener('dragstart', event => {
     card.classList.add('workflow-dragging');
 });
 root.addEventListener('dragend', event => {
+    localUploadFolderDragPath = '';
+    localUploadCardDragIds = [];
+    clearLocalUploadFolderDropTargets();
+    root.querySelectorAll('.local-asset-drop-target, .local-asset-dragging').forEach(node => node.classList.remove('local-asset-drop-target', 'local-asset-dragging'));
+    event.target.closest?.('[data-localup-folder]')?.classList.remove('local-folder-dragging');
     assetCategoryDragState = null;
     event.target.closest?.('[data-asset-cat]')?.classList.remove('asset-category-dragging');
     clearAssetCategoryDropTargets();
     event.target.closest?.('[data-workflow-drag]')?.classList.remove('workflow-dragging');
     root.querySelectorAll('[data-workflow-cat].workflow-drop-target').forEach(node => node.classList.remove('workflow-drop-target'));
+});
+root.addEventListener('dragover', event => {
+    if(activeTab === 'local' && localUploadCardDragIds.length){
+        const folder = event.target.closest?.('[data-localup-folder]');
+        root.querySelectorAll('.local-asset-drop-target').forEach(node => node.classList.remove('local-asset-drop-target'));
+        if(folder){
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+            folder.classList.add('local-asset-drop-target');
+        }
+        return;
+    }
+    if(activeTab !== 'local' || !localUploadFolderDragPath) return;
+    event.preventDefault();
+    const folder = event.target.closest?.('[data-localup-folder]');
+    const targetPath = folder?.dataset.localupFolder || '';
+    clearLocalUploadFolderDropTargets();
+    if(!targetPath || targetPath === localUploadFolderDragPath ||
+        localUploadFolderParentPath(targetPath) !== localUploadFolderParentPath(localUploadFolderDragPath)) return;
+    event.dataTransfer.dropEffect = 'move';
+    const after = event.clientY > folder.getBoundingClientRect().top + folder.getBoundingClientRect().height / 2;
+    folder.classList.add(after ? 'local-folder-drop-after' : 'local-folder-drop-before');
+});
+root.addEventListener('drop', event => {
+    if(activeTab === 'local' && localUploadCardDragIds.length){
+        const folder = event.target.closest?.('[data-localup-folder]');
+        if(!folder) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const ids = localUploadCardDragIds;
+        localUploadCardDragIds = [];
+        root.querySelectorAll('.local-asset-drop-target, .local-asset-dragging').forEach(node => node.classList.remove('local-asset-drop-target', 'local-asset-dragging'));
+        moveLocalUploadsToFolder(ids, folder.dataset.localupFolder || '');
+        return;
+    }
+    if(activeTab !== 'local' || !localUploadFolderDragPath) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const folder = event.target.closest?.('[data-localup-folder]');
+    const sourcePath = localUploadFolderDragPath;
+    const targetPath = folder?.dataset.localupFolder || '';
+    localUploadFolderDragPath = '';
+    clearLocalUploadFolderDropTargets();
+    root.querySelector('.local-folder-dragging')?.classList.remove('local-folder-dragging');
+    if(!targetPath || targetPath === sourcePath ||
+        localUploadFolderParentPath(targetPath) !== localUploadFolderParentPath(sourcePath)) return;
+    const after = event.clientY > folder.getBoundingClientRect().top + folder.getBoundingClientRect().height / 2;
+    reorderLocalUploadFolder(sourcePath, targetPath, after).catch(err => setStatus(err.message || '调整文件夹顺序失败'));
 });
 document.addEventListener('dragenter', event => {
     if(!isAssetCategoryDrag(event)) return;
@@ -6931,6 +7095,7 @@ document.querySelectorAll('[data-tab]').forEach(btn => {
         imageSpaceState.collectionId = '';
         clearCanvasAssetScope();
         activeTab = btn.dataset.tab || 'assets';
+        if(activeTab === 'assets') uploadAssetsState.view = 'disk';
         selectedAssetIds.clear();
         selectedWorkflowIds.clear();
         selectedPromptIds.clear();
@@ -6942,6 +7107,10 @@ document.querySelectorAll('[data-tab]').forEach(btn => {
         if(activeTab === 'generated' && !generatedAssetsState.loaded){
             try { await loadGeneratedAssets(); }
             catch(err){ setStatus(err.message || '加载生成素材失败'); }
+        }
+        if(activeTab === 'assets' && !uploadAssetsState.loaded){
+            try { await loadUploadAssets(); }
+            catch(err){ setStatus(err.message || '读取上传素材失败'); }
         }
     });
 });

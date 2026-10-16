@@ -11,9 +11,9 @@
             if(params.get('manager') === '1') document.documentElement.classList.add('manager-mode');
         } catch(e) {}
     </script>
-    <script src="/static/vendor/js/lucide.js?v=2026.10.13.1784161005"></script>
-    <script src="/static/js/theme.js?v=2026.10.13.1791335865"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.13.1791851171">
+    <script src="/static/vendor/js/lucide.js?v=2026.10.16.1784161005"></script>
+    <script src="/static/js/theme.js?v=2026.10.16.1791335865"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.16.1791851171">
     <style>
         *{box-sizing:border-box}
         :root{--bg:#f7faf6;--card:#fff;--text:#111827;--muted:#8993a4;--line:#e5ebe4;--soft:#eef5ec;--accent:#111827;--danger:#d94b4b}
@@ -54,6 +54,7 @@
         .drag-hint{position:absolute;left:50%;bottom:10px;z-index:1;padding:5px 9px;border-radius:99px;background:rgba(15,23,42,.78);color:#fff;font-size:10px;font-weight:800;white-space:nowrap;pointer-events:none;opacity:0;transform:translate(-50%,5px);transition:opacity .16s ease,transform .16s ease}
         .card:hover .drag-hint,.thumb:focus-visible .drag-hint,html.drawer-mode .drag-hint{opacity:1;transform:translate(-50%,0)}
         .type{position:absolute;top:10px;left:10px;padding:4px 8px;border-radius:99px;background:rgba(20,30,23,.72);color:#fff;font-size:10px;font-weight:800;backdrop-filter:blur(8px)}
+        .outpaint-redraw{position:absolute;top:38px;left:10px;padding:4px 8px;border-radius:99px;background:rgba(120,53,15,.88);color:#fff;font-size:10px;font-weight:800}
         .multi{position:absolute;top:10px;right:10px;padding:4px 7px;border-radius:99px;background:rgba(20,30,23,.72);color:#fff;font-size:10px;font-weight:800}
         .body{padding:12px}
         .prompt{font-size:12px;font-weight:700;line-height:1.55;height:38px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all}
@@ -340,9 +341,9 @@
             html.manager-mode body > .page > .filters{padding:10px 16px !important}
         }
     </style>
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.13.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.13.1791859157">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.13.1790178173"></script>
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.16.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.16.1791859157">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.16.1790178173"></script>
 </head>
 <body>
     <div class="page">
@@ -500,7 +501,8 @@
                     url,kind:mediaKind(value,fallback),
                     name:String(value && typeof value === 'object' ? (value.name || '') : ''),
                     natural_w:Number(value && typeof value === 'object' ? (value.natural_w || value.width || 0) : 0) || 0,
-                    natural_h:Number(value && typeof value === 'object' ? (value.natural_h || value.height || 0) : 0) || 0
+                    natural_h:Number(value && typeof value === 'object' ? (value.natural_h || value.height || 0) : 0) || 0,
+                    outpaint_original_redrawn:value && typeof value === 'object' && value.outpaint_original_redrawn === true
                 };
                 const existing = seen.get(url);
                 if(existing){
@@ -509,6 +511,7 @@
                         existing.natural_h = entry.natural_h;
                     }
                     if(!existing.name && entry.name) existing.name = entry.name;
+                    if(entry.outpaint_original_redrawn) existing.outpaint_original_redrawn = true;
                     return;
                 }
                 seen.set(url, entry);
@@ -1083,9 +1086,10 @@
             const copyButton = media.kind === 'video' ? '' : `<button class="icon-btn" title="复制图片" aria-label="复制图片" onclick="copyImage(this.closest('.card').querySelector('.thumb').dataset.mediaUrl,this)"><i data-lucide="clipboard"></i></button>`;
             const dragHint = media.kind === 'image' ? '<span class="drag-hint">拖到画布 · 拖出自动压缩</span>' : '';
             const countBadge = mediaItems.length > 1 ? `<span class="multi">${mediaItems.length} 个</span>` : '';
+            const redrawBadge = mediaItems.some(entry => entry.outpaint_original_redrawn) ? '<span class="outpaint-redraw" title="扩图模型重新绘制了原图区域；请与原图核对细节">原图已重绘</span>' : '';
             return `<article class="card${selected ? ' hbm-selected' : ''}" data-ts="${esc(recordKey)}" data-history-ts="${esc(recordKey)}">
                 <div class="thumb" draggable="${media.kind === 'image'}" data-media-url="${esc(media.url)}" data-media-kind="${media.kind}" data-media-name="${esc(media.name || '')}" data-media-width="${media.natural_w}" data-media-height="${media.natural_h}" onclick="openPreview(this.dataset.mediaUrl,this.closest('.card').querySelector('.prompt').dataset.full,this.dataset.mediaKind)" oncontextmenu="openHistoryImageContextMenu(event,this.dataset.mediaUrl,this.dataset.mediaKind)" ondragstart="startHistoryMediaDrag(event,this)" ondragend="endHistoryMediaDrag(event,this)" title="${media.kind === 'video' ? '点击播放视频' : '拖到画布保留原图；拖到外部自动压缩'}">
-                    ${mediaMarkup}<span class="manager-card-check" aria-hidden="true"><i data-lucide="check"></i></span><span class="type">${esc(typeLabel(item))}</span>${countBadge}${dragHint}
+                    ${mediaMarkup}<span class="manager-card-check" aria-hidden="true"><i data-lucide="check"></i></span><span class="type">${esc(typeLabel(item))}</span>${redrawBadge}${countBadge}${dragHint}
                 </div>
                 <div class="body"><div class="prompt" data-full="${esc(prompt)}">${esc(prompt)}</div>
                     <div class="meta"><span>${esc(formatTime(ts))}</span><b>·</b><span>${esc(model)}</span></div>

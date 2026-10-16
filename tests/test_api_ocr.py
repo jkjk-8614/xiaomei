@@ -40,7 +40,7 @@ class APIOCRTests(unittest.IsolatedAsyncioTestCase):
             return self.result
         class CanvasLLMRequest:
             def __init__(self, **kwargs):
-                self.__dict__.update({"skill_id": "", "link_job_ids": [], "messages": [], "system_prompt": "", **kwargs})
+                self.__dict__.update({"skill_id": "", "link_job_ids": [], "messages": [], "attachments": [], "system_prompt": "", **kwargs})
         self.app = FastAPI()
         self.ns = dict(globals(), app=self.app, AI_REFERENCE_UPLOAD_MAX_BYTES=50*1024*1024,
                        get_api_provider_exact=resolve, canvas_llm=canvas_llm, CanvasLLMRequest=CanvasLLMRequest,
@@ -95,7 +95,7 @@ class APIOCRTests(unittest.IsolatedAsyncioTestCase):
         async def enrich(message, images, job_ids):
             return {"message": message, "images": images, "link_count": 0}
         async def prepare(images):
-            return images, {"submitted": len(images)}
+            return images, {"submitted": len(images), "skipped_indices": []}
         def runner(protocol):
             async def run(payload, messages):
                 cli_calls.append((protocol, payload, messages))

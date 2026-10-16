@@ -21,7 +21,9 @@ numpy==2.2.6
 opencv-contrib-python==4.10.0.84
 mcp==1.30.0
 onnxruntime==1.23.2
+onnxruntime-gpu==1.23.2
 pillow==12.3.0
+pypdf==6.20.1
 pydantic==2.13.4
 pydantic_core==2.46.4
 protobuf==7.36.0

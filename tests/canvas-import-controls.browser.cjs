@@ -74,7 +74,7 @@ test('ordinary generation uses API controls while ComfyUI keeps its node control
     await page.evaluate(() => { window.paintFixture = createPaintNodeAt({x:1050,y:250}); updateComposer(); });
     assert.equal(await page.locator('#promptInput').isVisible(), true);
     await page.locator('.composer .param-row').waitFor({state:'visible'});
-    assert.equal(await page.locator('.composer').evaluate(el => getComputedStyle(el).width), '540px');
+    assert.equal(await page.locator('.composer').evaluate(el => getComputedStyle(el).width), '660px');
     await page.evaluate(() => { window.comfyFixture = createComfyWorkflowNodeAt({x:1600,y:250}, {workflow_ref:'fixture.json'}); updateComposer(); });
     assert.equal(await page.locator('#promptInput').isVisible(), false);
     assert.equal(await page.locator('.composer').evaluate(el => getComputedStyle(el).width), '104px');
@@ -88,7 +88,7 @@ test('ordinary generation uses API controls while ComfyUI keeps its node control
         updateComposer(); renderDynamicParams();
     });
     assert.equal(await page.evaluate(() => settings.engine), 'api');
-    await page.locator('.composer .model-control').waitFor({state:'visible'});
+    await page.locator('.composer .image-model-control').waitFor({state:'visible'});
     assert.equal(await page.locator('.smart-source-control').count(), 0);
     assert.equal(await page.evaluate(() => window.paintFixture.runSettings.engine), 'api');
     assert.equal(await page.evaluate(() => smartSettingsForNode(window.paintFixture).model), 'fixture-image');
@@ -99,9 +99,9 @@ test('ordinary generation uses API controls while ComfyUI keeps its node control
         updateComposer(); renderDynamicParams();
     });
     assert.equal(await page.evaluate(() => window.newPaint.runSettings.engine), 'api');
-    await page.locator('.composer .model-control').waitFor({state:'visible'});
+    await page.locator('.composer .image-model-control').waitFor({state:'visible'});
     assert.equal(await page.evaluate(async () => prepareSmartImportedPreview(new File(['broken'], 'bad.png', {type:'image/png'}))), null);
-    await page.locator('.composer .model-control').waitFor({state:'visible'});
+    await page.locator('.composer .image-model-control').waitFor({state:'visible'});
     await page.screenshot({path: path.join(require('node:os').tmpdir(), 'xiaomei-canvas-controls-review.png')});
     assert.deepEqual(errors, []);
 });

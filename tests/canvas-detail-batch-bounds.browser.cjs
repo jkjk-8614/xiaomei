@@ -46,6 +46,8 @@ test('detail batch outer frame follows all sections and resized copy fields', { 
             const outer = el.getBoundingClientRect();
             const blocks = [...el.querySelector('.loop-paired-card').children].map(child => child.getBoundingClientRect());
             return {height:el.offsetHeight, modelHeight:nodeRect(node).height, nodeHeight:node.h, measured:smartLoopMeasuredHeights.get(node), cardHeight:el.querySelector('.loop-paired-card').offsetHeight,
+                sourceHeight:el.querySelector('[data-loop-detail-text]').offsetHeight, sourceStyle:el.querySelector('[data-loop-detail-text]').style.height,
+                manualOpen:el.querySelector('.loop-detail-manual').open,
                 contained:blocks.every(box => box.top >= outer.top && box.bottom <= outer.bottom),
                 footerGap:outer.bottom - el.querySelector('.loop-paired-actions').getBoundingClientRect().bottom};
         });
@@ -62,7 +64,7 @@ test('detail batch outer frame follows all sections and resized copy fields', { 
         input.style.height = '300px';
     });
     const expanded = await bounds();
-    assert.ok(expanded.height > initial.height + 150, 'frame expands when the text box is resized and manual split opens');
+    assert.ok(expanded.height > initial.height + 150, `frame expands when the text box is resized and manual split opens: ${JSON.stringify({initial, expanded})}`);
     assert.ok(expanded.contained);
     assert.equal(expanded.modelHeight, expanded.height);
     await page.evaluate(() => {
@@ -112,10 +114,12 @@ test('detail batch outer frame follows all sections and resized copy fields', { 
                 const end = group.querySelector('.conn-end');
                 const target = world.querySelector(`[data-id="${group.dataset.connTo}"]`).getBoundingClientRect();
                 const left = new DOMPoint(target.left, target.top + target.height / 2).matrixTransform(inverse);
-                return Math.max(Math.abs(Number(end.getAttribute('cx')) - left.x), Math.abs(Number(end.getAttribute('cy')) - left.y));
+                const marker = end.getBoundingClientRect();
+                const endpoint = new DOMPoint(marker.left + marker.width / 2, marker.top + marker.height / 2).matrixTransform(inverse);
+                return Math.max(Math.abs(endpoint.x - left.x), Math.abs(endpoint.y - left.y));
             });
     });
-    assert.ok(endpointGaps.every(gap => gap < 1), 'line endpoints meet the visible target edge');
+    assert.ok(endpointGaps.every(gap => gap < 1), `line endpoints meet the visible target edge: ${JSON.stringify(endpointGaps)}`);
     await page.evaluate(() => {
         smartLoopDetailPaintNodes(nodes.find(item => item.id === 'loop-bounds')).forEach((item, index) => {
             item.x += 17 + index;

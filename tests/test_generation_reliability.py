@@ -34,13 +34,45 @@ class GenerationReliabilityTests(unittest.TestCase):
                 extract_images=lambda raw: [{"url": raw["task_id"]}],
                 save_ai_image_to_output=save,
                 image_output_meta=lambda url, _: {"url": url},
-                preserve_outpaint_centers=mock.AsyncMock(side_effect=lambda urls, items, _: (urls, items)),
                 save_to_history=mock.Mock(),
                 GLOBAL_LOOP=None,
             ):
                 result = await main.build_online_image_result(main.OnlineImageRequest(prompt="test", n=3))
                 self.assertEqual(result["images"], ["upstream-1", "upstream-3"])
                 self.assertEqual(result["partial_failures"][0]["error"], "one image failed")
+                main.save_to_history.assert_called_once_with(result)
+
+        asyncio.run(scenario())
+
+    def test_outpaint_keeps_the_saved_model_image_and_marks_detected_redraw(self):
+        async def scenario():
+            async def generate(*args):
+                self.assertEqual(len(args[4]), 1)
+                self.assertEqual(args[4][0]['url'], '/base.png')
+                self.assertTrue(args[4][0]['outpaint_canvas'])
+                return {'url': '/remote.png'}, {'id': 'upstream'}
+
+            with mock.patch.multiple(
+                main,
+                get_api_provider=lambda _: {'id': 'test', 'image_models': ['test-image']},
+                generate_ai_image=generate,
+                extract_images=lambda raw: [{'url': '/remote.png'}],
+                save_ai_image_to_output=mock.AsyncMock(return_value='/raw-model.png'),
+                image_output_meta=lambda url, _: {'url': url, 'width': 2880, 'height': 2880},
+                _outpaint_original_redrawn=lambda url, preserve: True,
+                save_to_history=mock.Mock(),
+                GLOBAL_LOOP=None,
+            ):
+                payload = main.OnlineImageRequest(
+                    prompt='expand', provider_id='test', model='test-image', size='3840x3840',
+                    outpaint_mode=True, reference_images=[{'url': '/base.png'}],
+                    outpaint_preserve={'sourceUrl': '/source.png', 'canvasW': 3840, 'canvasH': 3840,
+                                       'sourceW': 2565, 'sourceH': 2565, 'x': 645, 'y': 645},
+                )
+                result = await main.build_online_image_result(payload)
+                self.assertEqual(result['images'], ['/raw-model.png'])
+                self.assertEqual(result['image_items'], [{'url': '/raw-model.png', 'width': 2880,
+                                                          'height': 2880, 'outpaint_original_redrawn': True}])
                 main.save_to_history.assert_called_once_with(result)
 
         asyncio.run(scenario())

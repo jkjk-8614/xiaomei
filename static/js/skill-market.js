@@ -3,7 +3,7 @@
 
   const SELECTION_KEY = 'xiaomei_agent_skill_selection_v1';
   const state = {
-    tab: 'library', query: '', category: 'all', status: 'all', skills: [], selectedId: '',
+    tab: 'library', query: '', category: 'all', status: 'all', sort: 'newest', skills: [], selectedId: '',
     detailId: '', detail: null, detailTab: 'examples', detailLoading: false, loading: false, error: '',
     uploadFiles: [], sourceDir: '', scan: null, busy: false, message: '', focusSkillId: '',
     batchMode: false, batchIds: new Set(), batchBusy: false,
@@ -47,6 +47,7 @@
   const categoryLabel = (skill) => clean(skill?.category_label || skill?.category || '其他');
   const versionLabel = (skill) => clean(skill?.version) ? `v${clean(skill.version)}` : '本地 Skill';
   const isPackageSkill = (skill) => clean(skill?.kind) === 'package' || clean(skill?.source) === 'package';
+  const skillTime = (skill) => Number(skill?.imported_at || skill?.updated_at) || 0;
 
   async function requestJson(url, options = {}) {
     const response = await fetch(url, options);
@@ -82,9 +83,10 @@
         && (state.category === 'all' || clean(skill?.category || 'other') === state.category)
         && (state.status === 'all' || statusKey(skill) === state.status);
     }).sort((a, b) => {
-      const activeA = skillId(a) === state.selectedId ? 0 : 1;
-      const activeB = skillId(b) === state.selectedId ? 0 : 1;
-      return activeA - activeB || skillName(a).localeCompare(skillName(b), 'zh-CN');
+      const byName = skillName(a).localeCompare(skillName(b), 'zh-CN');
+      if (state.sort === 'name') return byName;
+      const byTime = skillTime(b) - skillTime(a);
+      return (state.sort === 'oldest' ? -byTime : byTime) || byName;
     });
   }
 
@@ -142,7 +144,7 @@
     return `<div class="skill-market-root skill-market-library">
       <div class="skill-market-current${selected ? ' has-selection' : ''}"><span class="skill-market-current-icon">✦</span><span class="skill-market-current-copy"><small>当前使用的 Skill</small><strong>${esc(selected ? skillName(selected) : '通用助手')}</strong></span>${selected ? '<button type="button" class="skill-market-clear" data-skill-market-clear>清除</button>' : '<span class="skill-market-current-default">默认</span>'}</div>
       <div class="skill-market-toolbar"><label class="skill-market-search"><span aria-hidden="true">⌕</span><input data-skill-market-search type="search" value="${esc(state.query)}" placeholder="搜索技能名称或说明" autocomplete="off"></label><span class="skill-market-result-count">${state.query || state.category !== 'all' || state.status !== 'all' ? `${visible.length} / ` : ''}${state.skills.length} 个</span><button type="button" class="skill-market-button subtle${state.batchMode ? ' is-active' : ''}" data-skill-market-batch-toggle>${state.batchMode ? '退出批量' : '批量管理'}</button><button type="button" class="skill-market-button subtle" data-skill-market-tab="install">安装 Skill</button></div>
-      <div class="skill-market-filter-row"><label><span>分类</span><select data-skill-market-category><option value="all">全部分类</option>${categoryOptions}</select></label><label><span>状态</span><select data-skill-market-status><option value="all">全部状态</option><option value="ready" ${state.status === 'ready' ? 'selected' : ''}>对话可用</option><option value="prompt-only" ${state.status === 'prompt-only' ? 'selected' : ''}>脚本待适配</option><option value="warning" ${state.status === 'warning' ? 'selected' : ''}>有导入警告</option><option value="disabled" ${state.status === 'disabled' ? 'selected' : ''}>已停用</option></select></label><button type="button" class="skill-market-filter-reset" data-skill-market-reset ${state.query || state.category !== 'all' || state.status !== 'all' ? '' : 'hidden'}>清除筛选</button></div>
+      <div class="skill-market-filter-row"><label><span>分类</span><select data-skill-market-category><option value="all">全部分类</option>${categoryOptions}</select></label><label><span>状态</span><select data-skill-market-status><option value="all">全部状态</option><option value="ready" ${state.status === 'ready' ? 'selected' : ''}>对话可用</option><option value="prompt-only" ${state.status === 'prompt-only' ? 'selected' : ''}>脚本待适配</option><option value="warning" ${state.status === 'warning' ? 'selected' : ''}>有导入警告</option><option value="disabled" ${state.status === 'disabled' ? 'selected' : ''}>已停用</option></select></label><label><span>排序</span><select data-skill-market-sort><option value="newest" ${state.sort === 'newest' ? 'selected' : ''}>最近安装</option><option value="oldest" ${state.sort === 'oldest' ? 'selected' : ''}>最早安装</option><option value="name" ${state.sort === 'name' ? 'selected' : ''}>名称排序</option></select></label><button type="button" class="skill-market-filter-reset" data-skill-market-reset ${state.query || state.category !== 'all' || state.status !== 'all' ? '' : 'hidden'}>清除筛选</button></div>
       <div class="skill-market-list-head"><strong>已安装 Skill</strong>${state.batchMode ? batchToolsMarkup() : '<span>点击“选择”供问问小美使用，详情可查看指令与资料</span>'}</div>${empty}${state.message ? `<p class="skill-market-message">${esc(state.message)}</p>` : ''}
     </div>`;
   }
@@ -363,6 +365,7 @@
     mount.body.querySelector('[data-skill-market-search]')?.addEventListener('input', (event) => { state.query = event.target.value || ''; render(); const input = mount.body.querySelector('[data-skill-market-search]'); input?.focus(); input?.setSelectionRange(state.query.length, state.query.length); });
     mount.body.querySelector('[data-skill-market-category]')?.addEventListener('change', (event) => { state.category = event.target.value || 'all'; render(); });
     mount.body.querySelector('[data-skill-market-status]')?.addEventListener('change', (event) => { state.status = event.target.value || 'all'; render(); });
+    mount.body.querySelector('[data-skill-market-sort]')?.addEventListener('change', (event) => { state.sort = event.target.value || 'newest'; render(); });
     mount.body.querySelector('[data-skill-market-reset]')?.addEventListener('click', () => { state.query = ''; state.category = 'all'; state.status = 'all'; render(); });
     mount.body.querySelector('[data-skill-market-reload]')?.addEventListener('click', () => loadSkills(true));
     mount.body.querySelector('[data-skill-market-clear]')?.addEventListener('click', () => { setSelection(''); if (typeof config.onSelected === 'function') config.onSelected('', null, { close: false }); notify('已切换为通用助手'); render(); });
@@ -382,10 +385,19 @@
 
   async function open(options = {}) {
     mount = { body: options.body || document.getElementById('desktopDrawerBody') }; config = { ...options }; session += 1;
-    state.tab = options.tab || 'library'; state.detailId = ''; state.detail = null; state.query = ''; state.category = 'all'; state.status = 'all'; state.message = ''; state.batchMode = false; state.batchIds = new Set(); state.batchBusy = false; state.selectedId = clean(global.StudioSharedSkill?.canonicalId?.(options.selectedId ?? readSelection()) ?? (options.selectedId ?? readSelection())); setHeader(); render(); await loadSkills(true, session); return state.skills;
+    state.tab = options.tab || 'library'; state.detailId = ''; state.detail = null; state.query = ''; state.category = 'all'; state.status = 'all'; state.sort = 'newest'; state.message = ''; state.batchMode = false; state.batchIds = new Set(); state.batchBusy = false; state.selectedId = clean(global.StudioSharedSkill?.canonicalId?.(options.selectedId ?? readSelection()) ?? (options.selectedId ?? readSelection())); setHeader(); render(); await loadSkills(true, session); return state.skills;
   }
   function close() { session += 1; mount = null; config = {}; state.batchMode = false; state.batchIds = new Set(); state.batchBusy = false; }
   function syncSelected(id) { state.selectedId = clean(global.StudioSharedSkill?.canonicalId?.(id) || id); if (mount) render(); }
+
+  global.addEventListener('storage', (event) => {
+    if (event.key !== SELECTION_KEY || !mount) return;
+    const id = clean(event.newValue);
+    if (id && !state.skills.some((skill) => skillId(skill) === id)) {
+      state.selectedId = id;
+      loadSkills(true);
+    } else syncSelected(id);
+  });
 
   global.XiaomeiSkillMarket = { open, close, render, syncSelected, getSelected: () => state.selectedId, selectionKey: SELECTION_KEY };
 })(window);

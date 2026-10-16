@@ -55,7 +55,7 @@ const assert = require('node:assert/strict');
   await page.screenshot({ path: 'logs/comfy-simple-mobile.png', fullPage: true });
   await page.setViewportSize({ width: 1440, height: 950 });
   await page.locator('#app-file').setInputFiles({ name: 'workflow.json', mimeType: 'application/json', buffer: Buffer.from('{"nodes":[]}') });
-  await page.waitForFunction(() => document.querySelector('#app-notice').textContent.includes('自动准备'));
+  await page.waitForFunction(() => document.querySelector('#app-notice').textContent.includes('正在自动安装缺失节点'));
   assert.equal(prepared, 1);
   await page.locator('.app-prepare-live').waitFor();
   await page.locator('.app-prepare-log summary').click();

@@ -2,11 +2,13 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
+import { refreshReleaseSnapshot, verifySourceSnapshot } from './current-source-snapshot.mjs';
 
 const repository = 'jkjk-8614/xiaomei';
 const releasePattern = /^v1\.(\d{2})$/;
 const requiredAssets = [/Windows-x64\.exe$/, /macOS-arm64\.zip$/, /^update\.json$/];
 const dryRun = process.argv.includes('--dry-run');
+await verifySourceSnapshot({ checkLocal: true });
 
 function githubToken() {
   if (process.env.GH_TOKEN || process.env.GITHUB_TOKEN) return process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
@@ -100,5 +102,6 @@ if (!dryRun) {
     writeFile(versionFile, `${version}\n`),
     writeFile(notesFile, `${JSON.stringify(notes, null, 2)}\n`),
   ]);
+  await refreshReleaseSnapshot(['static/update-notes.json']);
 }
 console.log(`${dryRun ? '预演' : retry ? '重试' : '准备'} ${tag}：软件显示 v${displayVersion}，内部版本 ${version}${dryRun ? (retry ? '（当前版本重试）' : '（下一正式版本）') : ''}`);

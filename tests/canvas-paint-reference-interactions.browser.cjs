@@ -50,6 +50,7 @@ test('paint references preview, reorder, submit and survive a canvas reload', { 
     });
     const thumbs = page.locator('#inputThumbsRow .input-thumb');
     assert.deepEqual(await thumbs.evaluateAll(items => items.map(item => item.dataset.url.split('/').pop())), names.map(name => `${name}.png`));
+    assert.deepEqual(await page.evaluate(() => sourceDimensionsForRun(selectedNode())), {w:400,h:200});
 
     await thumbs.nth(1).hover();
     await page.locator('.paint-input-ref-hover img').waitFor({state:'visible'});
@@ -94,22 +95,26 @@ test('paint references preview, reorder, submit and survive a canvas reload', { 
     await page.waitForFunction(() => [...document.querySelectorAll('#inputThumbsRow .input-thumb')].map(item => item.dataset.url).join('|').includes('square.png|/fixture-images/wide.png'));
     assert.deepEqual(await thumbs.evaluateAll(items => items.map(item => item.dataset.url.split('/').pop())), ['square.png','wide.png','tall.png']);
     assert.deepEqual(await page.locator('#inputThumbsRow .input-thumb-label').allTextContents(), ['图1','图2','图3']);
+    assert.deepEqual(await page.evaluate(() => sourceDimensionsForRun(selectedNode())), {w:300,h:300});
     assert.equal(await page.locator('#smartLogLightbox.open').count(), 0, 'drag does not open the large preview');
 
     const request = await page.evaluate(async () => {
         const node = selectedNode();
+        setPromptDraftForNode(node, '将图1中的产品放到图2的场景');
+        const numberedPrompt = buildPromptRequestForNode(node).prompt;
         const refs = buildPromptRequest(node).refs;
         const original = XiaomeiImageTaskClient.createImageTask;
         let payload;
         XiaomeiImageTaskClient.createImageTask = async value => { payload = value; return {task_id:'fixture-task'}; };
-        try { await runApiGeneration('fixture prompt', refs, {provider_id:'fixture',model:'fixture-image',count:1}); }
+        try { await runApiGeneration(numberedPrompt, refs, {provider_id:'fixture',model:'fixture-image',count:1}); }
         finally { XiaomeiImageTaskClient.createImageTask = original; }
         await saveCanvas();
-        return {refs:refs.map(ref => ref.url), submitted:payload.reference_images.map(ref => ref.url), stored:node.inputRefOrder};
+        return {refs:refs.map(ref => ref.url), submitted:payload.reference_images.map(ref => ref.url), prompt:payload.prompt, stored:node.inputRefOrder};
     });
     const expected = ['square','wide','tall'].map(name => `/fixture-images/${name}.png`);
     assert.deepEqual(request.refs, expected);
     assert.deepEqual(request.submitted, expected);
+    assert.match(request.prompt, /图1：square[\s\S]*图2：wide[\s\S]*图3：tall/);
     assert.equal(request.stored.length, 3);
     assert.deepEqual(storedCanvas.nodes.find(node => node.id === nodeId).inputRefOrder, request.stored);
 

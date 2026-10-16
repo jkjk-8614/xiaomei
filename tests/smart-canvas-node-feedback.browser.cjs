@@ -22,10 +22,13 @@ async function fixture(t){
             return fs.existsSync(file) ? route.fulfill({path:file}) : route.fulfill({status:404, body:''});
         }
         if(url.pathname === '/api/canvases/fixture') return route.fulfill({json:{canvas:{id:'fixture', title:'节点运行反馈', nodes:[], connections:[], logs:[], settings:{}}}});
+        if(url.pathname === '/api/config') return route.fulfill({json:{api_providers:[
+            {id:'fixture', name:'Fixture', enabled:true, chat_models:['fixture-chat'], image_models:[]}
+        ], comfy_instances:[]}});
         return route.fulfill({json:{api_providers:[], skills:[], categories:[], libraries:[], items:[], workflows:[], batches:[]}});
     });
     await page.goto('http://node-feedback.test/static/smart-canvas.html?id=fixture');
-    await page.waitForFunction(() => canvas?.id === 'fixture');
+    await page.waitForFunction(() => canvas?.id === 'fixture' && smartConfigReady);
     return {page, errors};
 }
 

@@ -168,7 +168,7 @@ def photoshop_open_image(payload: PhotoshopOpenImage, request: Request) -> dict[
     from canvas_image_layers import installed_photoshop
     executable = installed_photoshop()
     if not executable:
-        raise HTTPException(409, "未检测到本机 Photoshop，请先安装或通过下载按钮保存图片")
+        raise HTTPException(409, "未找到 Photoshop 程序路径。请检查安装，或下载图片后在 Photoshop 中手动打开。")
     try:
         subprocess.Popen([str(executable), str(image_path)], shell=False,
                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))

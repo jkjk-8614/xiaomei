@@ -2164,7 +2164,7 @@ async function checkDeepSeekHarnessUpdate({ manual = false } = {}) {
     const state = readDeepSeekHarnessUpdateState();
     const dismissedRecently = state.dismissedCommit === result.remote_commit
       && Number(state.dismissedAt || 0) > Date.now() - 24 * 60 * 60 * 1000;
-    if (!manual && state.failedCommit === result.remote_commit) {
+    if (!manual && state.failedCommit === result.remote_commit && !/\bpnpm\.cmd\b/i.test(state.failedMessage || '')) {
       const failed = { ...result, status: 'error', message: state.failedMessage || '此版本上次更新失败，请手动检查更新后重试' };
       deepSeekHarnessUpdateLastResult = failed;
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('deepseek-harness:update-status', failed);
@@ -3425,26 +3425,69 @@ function harnessOpenAiBaseURL(value) {
 
 function syncXiaomeiHarnessWorkspace(home) {
   const storagePath = path.join(home, 'storages', 'workspace.json');
+  let temporaryPath;
   try {
     let state = {};
-    if (fs.existsSync(storagePath)) state = JSON.parse(fs.readFileSync(storagePath, 'utf8')) || {};
+    let recovering = false;
+    if (fs.existsSync(storagePath)) {
+      const contents = fs.readFileSync(storagePath, 'utf8');
+      try {
+        state = JSON.parse(contents);
+      } catch {
+        const backupPath = `${storagePath}.corrupt-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+        fs.copyFileSync(storagePath, backupPath, fs.constants.COPYFILE_EXCL);
+        console.warn(`[deepseek-harness] 工作区索引无法解析，已备份到 ${backupPath}；将从会话记录重建`);
+        state = {};
+        recovering = true;
+      }
+      if (!state || typeof state !== 'object' || Array.isArray(state)) {
+        throw new Error(`工作区索引格式无效：${storagePath}`);
+      }
+      if (!recovering && (state.unit?.name !== 'workspace' || state.unit?.version !== 2)) {
+        throw new Error(`工作区索引版本不匹配：${storagePath}`);
+      }
+    }
     const tables = state.tables && typeof state.tables === 'object' ? state.tables : {};
     const workspaces = tables.workspaces && typeof tables.workspaces === 'object' ? tables.workspaces : {};
     const ids = Array.isArray(state.global?.workspaceIds) ? state.global.workspaceIds : Object.keys(workspaces);
-    const primaryId = state.global?.defaultWorkspaceId || ids[0] || crypto.randomUUID();
+    const primaryId = state.global?.defaultWorkspaceId
+      || ids.find((id) => workspaces[id]?.path === PROJECT_ROOT)
+      || ids[0] || crypto.randomUUID();
+    let changed = recovering || !fs.existsSync(storagePath);
     if (!workspaces[primaryId]) {
       workspaces[primaryId] = { path: PROJECT_ROOT, title: '小美画布工作区', sessionIds: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      changed = true;
     } else {
-      workspaces[primaryId].path = PROJECT_ROOT;
-      workspaces[primaryId].title = '小美画布工作区';
-      workspaces[primaryId].updatedAt = new Date().toISOString();
+      if (workspaces[primaryId].path !== PROJECT_ROOT || workspaces[primaryId].title !== '小美画布工作区') {
+        workspaces[primaryId].path = PROJECT_ROOT;
+        workspaces[primaryId].title = '小美画布工作区';
+        workspaces[primaryId].updatedAt = new Date().toISOString();
+        changed = true;
+      }
     }
+    const orderedIds = [primaryId, ...ids.filter((id) => id !== primaryId)];
+    if (state.global?.defaultWorkspaceId !== primaryId || ids.some((id, index) => id !== orderedIds[index])) changed = true;
     state.unit = { name: 'workspace', version: 2 };
-    state.global = { ...(state.global || {}), initialized: true, workspaceIds: [primaryId, ...ids.filter((id) => id !== primaryId)], defaultWorkspaceId: primaryId, archivedSessionIds: state.global?.archivedSessionIds || [], pinnedSessionIds: state.global?.pinnedSessionIds || [] };
+    state.global = { ...(state.global || {}), initialized: recovering || !state.global ? false : state.global.initialized, workspaceIds: orderedIds, defaultWorkspaceId: primaryId, archivedSessionIds: state.global?.archivedSessionIds || [], pinnedSessionIds: state.global?.pinnedSessionIds || [] };
     state.tables = { ...tables, workspaces };
+    if (!changed) return;
     fs.mkdirSync(path.dirname(storagePath), { recursive: true });
-    fs.writeFileSync(storagePath, JSON.stringify(state, null, 2) + '\n', 'utf8');
-  } catch {}
+    temporaryPath = `${storagePath}.${crypto.randomUUID()}.tmp`;
+    const temporaryFile = fs.openSync(temporaryPath, 'wx');
+    try {
+      fs.writeFileSync(temporaryFile, JSON.stringify(state, null, 2) + '\n', 'utf8');
+      fs.fsyncSync(temporaryFile);
+    } finally {
+      fs.closeSync(temporaryFile);
+    }
+    fs.renameSync(temporaryPath, storagePath);
+    temporaryPath = undefined;
+  } catch (error) {
+    console.error(`[deepseek-harness] 无法同步工作区索引：${error?.message || error}`);
+    throw error;
+  } finally {
+    if (temporaryPath) { try { fs.unlinkSync(temporaryPath); } catch {} }
+  }
 }
 
 /** Read the same provider/model registry used by 小美画布 API 设置. */
@@ -3813,6 +3856,8 @@ async function refreshDeepSeekHarness() {
 function startApi(port = API_PORT) {
   if (process.env.XIAOMEI_CANVAS_DESKTOP_NO_API === '1') return;
   setApiEndpoint(port);
+  const bundledNode = chooseHarnessNode();
+  const bundledBrowsers = path.join(PROJECT_ROOT, 'bundled', 'playwright-browsers');
   const env = {
     ...process.env,
     XIAOMEI_CANVAS_PROJECT_ROOT: PROJECT_ROOT,
@@ -3822,7 +3867,10 @@ function startApi(port = API_PORT) {
     COMMERCE_ANALYSIS_BROWSER_PORT: String(TEST_BROWSER_PORT),
     TEMP: TEST_TEMP_ROOT,
     TMP: TEST_TEMP_ROOT,
+    XIAOMEI_NODE: bundledNode,
+    PATH: `${path.dirname(bundledNode)}${path.delimiter}${process.env.PATH || ''}`,
   };
+  if (fs.existsSync(bundledBrowsers)) env.PLAYWRIGHT_BROWSERS_PATH = bundledBrowsers;
   try {
     const command = choosePython();
     apiProcess = spawn(command, chooseApiArguments(command), { cwd: PROJECT_ROOT, env, windowsHide: true, stdio: 'ignore' });
@@ -6573,7 +6621,7 @@ function createWindow() {
     scheduleCommerceSurfaceResync();
   });
   // Electron 的顶层页面必须是完整的小美画布；商品分析台通过 iframe 作为其中一个工作区加载。
-  mainWindow.loadURL(`${LOCAL_ORIGIN}/static/index.html?page=${encodeURIComponent(START_PAGE)}&v=2026.10.13.desktop-tray.1`);
+  mainWindow.loadURL(`${LOCAL_ORIGIN}/static/index.html?page=${encodeURIComponent(START_PAGE)}&v=2026.10.16.current-source.1`);
 }
 
 app.whenReady().then(async () => {

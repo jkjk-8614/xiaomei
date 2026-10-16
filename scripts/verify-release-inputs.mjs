@@ -3,8 +3,10 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { verifySourceSnapshot } from './current-source-snapshot.mjs';
 
 const root = process.cwd();
+await verifySourceSnapshot();
 const ignored = new Set(['.git', 'node_modules', 'dist', 'dist-package', 'build', 'python', '__pycache__']);
 const forbidden = [
   /^(?:data|assets|output|user_data|logs|\.xiaomei-data|\.ui-patch-backup)(?:[\\/]|$)/i,

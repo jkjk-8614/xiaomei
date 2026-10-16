@@ -1,5 +1,5 @@
 (function(){
-  const VERSION = '2026.10.12.detail-concurrency.2';
+  const VERSION = '2026.10.15.inspiration.1.prompt-layout.1';
     const scripts = [
         '/static/js/i18n-core.js',
         '/static/js/i18n/common.js',

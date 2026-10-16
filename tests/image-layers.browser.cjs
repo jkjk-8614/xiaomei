@@ -48,6 +48,7 @@ test('canvas outpaint, layer progress/history, and layered smart-object PSD roun
   await page.waitForFunction(()=>document.getElementById('smartTitle')?.textContent==='Layers fixture', {timeout:10000}).catch(async error=>{console.log(errors,await page.evaluate(()=>({title:document.getElementById('smartTitle')?.textContent,text:document.body.innerText.slice(-900)})));throw error;});
   await page.evaluate(()=>{apiProviders=[{id:'fixture',name:'测试平台',enabled:true,protocol:'openai',chat_models:['vision'],image_models:['image']}];});
   const id=await page.evaluate(()=>createNode(200,160,[{url:'/output/source.png',name:'source.png',kind:'image',natural_w:200,natural_h:120}],{nodeType:'smart-image',select:true}).id);
+  await page.locator(`[data-id="${id}"] [data-smart-node-settings]`).click();
   await page.locator(`[data-smart-node-action="ai-layers"][data-node-id="${id}"]`).click();
   await page.waitForSelector('.image-layers-dialog[open]');
   assert.equal(await page.locator('[data-analysis] option').count(),1);
@@ -180,11 +181,14 @@ test('canvas outpaint, layer progress/history, and layered smart-object PSD roun
     window.cancelledOutpaint=applyImageOutpaint({autoRun:false}).then(()=>null,error=>error.message);
   });
   await page.waitForFunction(()=>!!window.finishOutpaintUpload);
-  const cancelled=await page.evaluate(async()=>{
+  const closedDuringUpload=await page.evaluate(async()=>{
     closeImageEditor();window.finishOutpaintUpload({url:'/output/cancelled.png',name:'cancelled.png'});
-    return {message:await window.cancelledOutpaint,sameCount:nodes.length===window.nodeCountBeforeUpload};
+    return {message:await window.cancelledOutpaint,nodeCount:nodes.length,previousCount:window.nodeCountBeforeUpload,
+      outputUrl:nodes.find(n=>n.images?.some(image=>image.url==='/output/cancelled.png'))?.images?.[0]?.url};
   });
-  assert.match(cancelled.message,/编辑状态已改变/);assert.ok(cancelled.sameCount);
+  assert.equal(closedDuringUpload.message,null);
+  assert.equal(closedDuringUpload.nodeCount,closedDuringUpload.previousCount+1);
+  assert.equal(closedDuringUpload.outputUrl,'/output/cancelled.png');
   // A grouped node's second image must not inherit the first image's task history.
   await page.evaluate(id=>{nodes.find(n=>n.id===id).images.push({url:'/output/second.png',name:'second.png',kind:'image'});return openSmartImageLayers(id,1);},id);
   assert.equal(await page.locator('[data-history] option').count(),1);

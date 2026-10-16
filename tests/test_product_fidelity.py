@@ -125,6 +125,18 @@ class FidelityTests(unittest.TestCase):
         source=pf.load_image('/source.png',self.resolve)
         self.assertEqual(image.tobytes(),source.crop(pf.crop_box(self.config['rois'][0],source.size)).tobytes())
 
+    def test_boxed_product_area_uses_the_same_mask_as_paint(self):
+        source=pf.load_image('/source.png',self.resolve)
+        strokes=[{'rect':[.25,.25,.5,.5]}]
+        mask=pf.product_mask(source,{'maskStrokes':strokes},self.resolve)
+        self.assertEqual(mask.getpixel((80,60)),255)
+        self.assertEqual(mask.getpixel((25,25)),0)
+        erased=pf.product_mask(source,{'maskStrokes':strokes+[{'points':[[.5,.5]],'width':.1,'erase':True}]},self.resolve)
+        self.assertEqual(erased.getpixel((80,60)),0)
+        for rect in ([.9,.2,.2,.2],[-.1,.2,.2,.2],[.2,.2,0,.2]):
+            with self.assertRaisesRegex(ValueError,'商品保护框'):
+                pf.product_mask(source,{'maskStrokes':[{'rect':rect}]},self.resolve)
+
     def test_automatic_crops_use_masked_texture_original_pixels_and_manual_priority(self):
         rng=np.random.default_rng(8)
         source=Image.new('RGBA',(600,400),'red')
@@ -273,9 +285,21 @@ class FidelityTests(unittest.TestCase):
         self.assertFalse(any(x.get('role')=='perspective-proxy' for x in other['reference_images']))
         self.assertTrue(any('已跳过' in s for s in other['warnings']))
 
-    def test_excessive_proxy_angle_and_unimported_reference_are_rejected(self):
-        with self.assertRaisesRegex(ValueError,'±60'):
-            self.prepare(mode='view',view=dict(mode='target',yaw=75,proxyEnabled=True))
+    def test_large_angle_skips_planar_proxy_and_reaches_view_prompt(self):
+        result=self.prepare(mode='view',view=dict(mode='target',yaw=180,pitch=30,framing='closeup',fov=110,proxyEnabled=True))
+        self.assertFalse(any(x.get('role')=='perspective-proxy' for x in result['reference_images']))
+        self.assertTrue(any('超过平面透视示意' in warning for warning in result['warnings']))
+        prompt=pf.prompt_for('展示产品',result)
+        for phrase in ('反向 180°','俯拍 30°','特写','鱼眼广角','不要镜像产品'):
+            self.assertIn(phrase,prompt)
+        near_back=self.prepare(mode='view',view=dict(mode='target',yaw=179))
+        near_prompt=pf.prompt_for('展示产品',near_back)
+        self.assertIn('环绕 179°',near_prompt)
+        self.assertNotIn('反向 180°',near_prompt)
+        with self.assertRaisesRegex(ValueError,'-180° 到 180°'):
+            self.prepare(mode='view',view=dict(mode='target',yaw=181))
+
+    def test_unimported_reference_is_rejected(self):
         self.refs[0]['url']='https://example.test/remote.png'
         with self.assertRaisesRegex(ValueError,'先保存到本地'):self.prepare()
 

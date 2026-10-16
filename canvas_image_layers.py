@@ -205,6 +205,42 @@ def audit_alpha(image, transparent):
 def installed_photoshop():
     if os.name != 'nt':
         return None
+    # Use the executable of the running instance first, since App Paths can be
+    # absent or point to a different Photoshop version.
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        psapi = ctypes.WinDLL('Psapi.dll')
+        kernel32 = ctypes.WinDLL('Kernel32.dll')
+        psapi.EnumProcesses.argtypes = (ctypes.POINTER(wintypes.DWORD), wintypes.DWORD,
+                                       ctypes.POINTER(wintypes.DWORD))
+        psapi.EnumProcesses.restype = wintypes.BOOL
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.QueryFullProcessImageNameW.argtypes = (wintypes.HANDLE, wintypes.DWORD,
+                                                      wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD))
+        kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        process_ids = (wintypes.DWORD * 4096)()
+        bytes_used = wintypes.DWORD()
+        if psapi.EnumProcesses(process_ids, ctypes.sizeof(process_ids), ctypes.byref(bytes_used)):
+            for pid in process_ids[:bytes_used.value // ctypes.sizeof(wintypes.DWORD)]:
+                handle = kernel32.OpenProcess(0x1000, False, pid)
+                if not handle:
+                    continue
+                try:
+                    image_path = ctypes.create_unicode_buffer(32768)
+                    length = wintypes.DWORD(len(image_path))
+                    if kernel32.QueryFullProcessImageNameW(handle, 0, image_path, ctypes.byref(length)):
+                        executable = Path(image_path.value)
+                        if executable.name.casefold() == 'photoshop.exe' and executable.is_file():
+                            return executable
+                finally:
+                    kernel32.CloseHandle(handle)
+    except (AttributeError, OSError):
+        pass
     import winreg
     key = r'SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Photoshop.exe'
     for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):

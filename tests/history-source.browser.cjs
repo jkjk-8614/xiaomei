@@ -4,7 +4,7 @@ const path = require('node:path');
 const {test} = require('node:test');
 const {chromium} = require('../tools/commerce-analysis/node_modules/playwright');
 
-test('history counts and source filters use the saved entry point with an older backend', async () => {
+test('history counts and source filters include legacy records', async () => {
     const browser = await chromium.launch({channel:'msedge', headless:true});
     try {
         const page = await browser.newPage();
@@ -31,13 +31,13 @@ test('history counts and source filters use the saved entry point with an older 
         });
         await page.goto('http://history.test/static/history.html?manager=1');
         await page.waitForFunction(() => document.getElementById('managerAllCount').textContent === '7');
-        for(const [id, count] of Object.entries({Canvas:2,Chat:1,Commerce:1,Online:2,Comfyui:1})) {
+        for(const [id, count] of Object.entries({Canvas:2,Chat:1,Commerce:1,Comfyui:1})) {
             assert.equal(await page.locator('#manager' + id + 'Count').innerText(), String(count));
         }
         for(const [source, expected] of [
             ['canvas',['canvas result','legacy canvas result']],
             ['chat',['chat result']], ['commerce',['commerce result']],
-            ['online',['online result','legacy online result']], ['comfyui',['comfyui result']],
+            ['comfyui',['comfyui result']],
         ]) {
             await page.locator('[data-manager-source="' + source + '"]').click();
             const prompts = await page.evaluate(() => filteredRecords.map(record => record.prompt));

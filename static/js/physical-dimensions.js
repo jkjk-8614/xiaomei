@@ -8,7 +8,7 @@
     const empty=value=>value===null||value===undefined||value==='';
     function numeric(value){
         if(empty(value))return null;
-        if(typeof value==='boolean'||!['number','string'].includes(typeof value)||typeof value==='string'&&!value.trim()||!Number.isFinite(Number(value)))throw new Error('尺寸必须是有限数字，未知请留空');
+        if(typeof value==='boolean'||!['number','string'].includes(typeof value)||typeof value==='string'&&!value.trim()||!Number.isFinite(Number(value)))throw new Error('请输入有效的尺寸数字；不知道的尺寸请留空');
         return Number(value);
     }
     function convertToMillimeters(value,unit){if(!Object.hasOwn(units,unit))throw new Error('单位仅支持 mm、cm、m、in');const n=numeric(value);return n===null?null:n*units[unit];}
@@ -41,11 +41,11 @@
     function validatePhysicalDimensions(data){
         const errors=[];
         if(!Object.hasOwn(units,data.unit))errors.push('单位仅支持 mm、cm、m、in');
-        if(!['rectangle','cuboid','circle'].includes(data.shape))errors.push('结构图仅支持矩形、长方体和圆形平面');
-        if(!['prompt','guide','protect'].includes(data.constraintMode))errors.push('约束方式无效');
+        if(!['rectangle','cuboid','circle'].includes(data.shape))errors.push('商品形状仅支持矩形平面、立体方盒和圆形平面');
+        if(!['prompt','guide','protect'].includes(data.constraintMode))errors.push('尺寸处理方式无效，请重新选择');
         for(const [key,label] of [['width','宽度'],['height','高度'],['depth','厚度']]){
-            try{const n=numeric(data[key]);if(n!==null&&(n<=0||n>1e9))errors.push(label+'必须大于 0 且不超过 10亿 mm；未知请留空');else if(n===null&&data.enabled&&key!=='depth')errors.push('启用尺寸约束时请填写'+label);}
-            catch{errors.push(label+'必须是有限数字，未知请留空');}
+            try{const n=numeric(data[key]);if(n!==null&&(n<=0||n>1e9))errors.push(label+'必须大于 0 且不超过 10亿 mm；未知请留空');else if(n===null&&data.enabled&&key!=='depth')errors.push('已开启商品实物尺寸，请填写'+label);}
+            catch{errors.push(label+'请输入有效数字，不知道时请留空');}
         }
         if(!errors.length&&data.enabled&&data.shape==='circle'&&data.width!==null&&data.height!==null&&Math.abs(data.width/data.height-1)>1e-10)errors.push('圆形平面宽、高均表示直径，必须相同；厚度为轴向深度');
         const tolerance=Number(data.validationSettings?.tolerancePct??3);

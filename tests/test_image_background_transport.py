@@ -12,6 +12,11 @@ import main
 
 
 class ImageBackgroundTransportTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        diagnostic = patch.object(main, 'append_gpt_image_edit_diagnostic')
+        diagnostic.start()
+        self.addCleanup(diagnostic.stop)
+
     async def test_layer_transparency_reaches_generation_and_edit_http_requests(self):
         image = io.BytesIO()
         Image.new('RGBA', (32, 32), (200, 100, 50, 0)).save(image, format='PNG')

@@ -42,8 +42,10 @@ test('processor dimensions: real-time preview, unit invariance, undo/redo, copy/
     const {page,requests,previews,stored}=await fixture(t);
     const id=await page.evaluate(()=>{viewport={x:0,y:0,scale:1};applyViewport();const node=createProductFidelityNodeAt({x:600,y:500});return node.id;});
     const panel=page.locator('[data-id="'+id+'"] [data-pd-root]');
-    await page.locator('[data-id="'+id+'"] [data-pf-tab="validation"]').click();
+    await page.locator('[data-id="'+id+'"] [data-pf-ui-mode="all"]').click();
+    await page.locator('[data-id="'+id+'"] [data-pf-group="size"] > summary').click();
     await panel.locator('[data-pd-field="enabled"]').check();
+    await page.locator('.pf-confirm-dialog [data-pf-confirm="accept"]').click();
     for(const [key,value] of [['width','30'],['height','40'],['depth','2']])await panel.locator('[data-pd-field="'+key+'"]').fill(value);
     await panel.locator('[data-pd-field="constraintMode"]').selectOption('guide');
     await page.waitForFunction(id=>document.querySelector('[data-id="'+id+'"] [data-pd-ratio]').textContent.includes('3:4'),id);
@@ -76,8 +78,9 @@ test('processor dimensions: real-time preview, unit invariance, undo/redo, copy/
     assert.equal((await get()).width,310);assert.equal((await get()).depth,null);
     assert.equal(requests.length,0);
     if(process.env.PHYSICAL_DIMENSIONS_SCREENSHOT){
-        await page.locator('[data-id="'+id+'"] [data-pf-tab="validation"]').click();
-        await page.evaluate(id=>{const el=document.querySelector('[data-id="'+id+'"] .pf-settings-column'),pd=el.querySelector('[data-pd-root]'),nav=el.querySelector('.pf-section-nav');const scale=el.getBoundingClientRect().width/el.offsetWidth;el.scrollTop+=(pd.getBoundingClientRect().top-el.getBoundingClientRect().top-nav.getBoundingClientRect().height-16)/scale;},id);
+        await page.locator('[data-id="'+id+'"] [data-pf-ui-mode="all"]').click();
+        await page.locator('[data-id="'+id+'"] [data-pf-group="size"] > summary').click();
+        await page.locator('[data-id="'+id+'"] [data-pd-root]').scrollIntoViewIfNeeded();
         await page.locator('[data-id="'+id+'"]').screenshot({path:path.resolve(process.env.PHYSICAL_DIMENSIONS_SCREENSHOT)});
     }
 });

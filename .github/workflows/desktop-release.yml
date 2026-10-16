@@ -48,6 +48,12 @@ jobs:
       - name: Install desktop build tools
         shell: pwsh
         run: npm install --no-audit --no-fund --ignore-scripts
+      - name: Bundle browser automation runtime
+        shell: pwsh
+        run: |
+          $env:PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = '1'
+          npm ci --prefix tools/commerce-analysis --omit=dev --no-audit --no-fund --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot install browser automation runtime' }
       - name: Build DeepSeek Harness runtime
         shell: pwsh
         run: |
@@ -162,6 +168,11 @@ jobs:
           pyinstaller --onefile --name xiaomei-api main.py --distpath bundled/mac-api --workpath build/mac-api-work --specpath build/mac-api-spec
       - name: Install desktop build tools
         run: npm install --no-audit --no-fund --ignore-scripts
+      - name: Bundle browser automation runtime
+        run: |
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci --prefix tools/commerce-analysis --omit=dev --no-audit --no-fund --ignore-scripts
+          mkdir -p bundled/playwright-browsers
+          PLAYWRIGHT_BROWSERS_PATH="$PWD/bundled/playwright-browsers" ./tools/commerce-analysis/node_modules/.bin/playwright install chromium
       - name: Build DeepSeek Harness runtime
         run: |
           npm install --global pnpm@11.7.0

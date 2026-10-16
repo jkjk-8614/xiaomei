@@ -6,14 +6,14 @@
         'smart-timeline': {title:'视频时间线', inputs:['image','video','audio'], outputs:['video']},
         'smart-prompt': {title:'LLM / 提示词', inputs:['text','image','video','table'], outputs:['text']},
         'smart-paint': {title:'绘画', inputs:['text','image','video','table'], outputs:['image','video']},
-        'smart-product-fidelity': {title:'产品保真', inputs:['image'], outputs:['image']},
+        'smart-product-fidelity': {title:'产品保护', inputs:['image'], outputs:['image']},
         'smart-camera': {title:'视角控制', inputs:['image'], outputs:['image','text']},
         // 循环节点把已连接的图片和/或提示词逐项传给下游绘画节点。
         // 之前这里没有声明它的输出类型，导致尚未生成结果时被误判为“无输出”。
         'smart-loop': {title:'循环', inputs:['text','image','video','table'], outputs:['image','text']},
         'smart-group': {title:'智能分组', inputs:['image','video','audio','text'], outputs:['image','text']},
         'smart-upload': {title:'上传', inputs:[], outputs:['image','video','audio']},
-        'smart-agent': {title:'Agent', inputs:['text','image','video','table'], outputs:['text']},
+        'smart-agent': {title:'智能对话', inputs:['text','image','video','table'], outputs:['text']},
         'smart-compare': {title:'对比', inputs:['image'], outputs:[]}
     });
     function typeOfMedia(item){

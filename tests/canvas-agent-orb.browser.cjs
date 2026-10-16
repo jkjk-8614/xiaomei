@@ -56,7 +56,6 @@ test('canvas Agent uses a bottom-right orb and keeps the existing panel toggle a
             bottom: window.innerHeight - rect.bottom,
             labelWidth: element.querySelector('.canvas-agent-toggle-label')?.getBoundingClientRect().width || 0,
             hasOrb: Boolean(orb),
-            hasEyes: orb?.querySelectorAll('.canvas-agent-orb-eye').length || 0,
             expanded: element.getAttribute('aria-expanded')
         };
     });
@@ -66,7 +65,7 @@ test('canvas Agent uses a bottom-right orb and keeps the existing panel toggle a
     assert.ok(initial.bottom >= 12 && initial.bottom <= 40, 'orb should be anchored near the bottom edge');
     assert.equal(initial.labelWidth, 1, 'the text label remains available to assistive technology but is visually hidden');
     assert.equal(initial.hasOrb, true);
-    assert.equal(initial.hasEyes, 2);
+    assert.equal(await toggle.locator('.agent-eye').count(), 2);
     assert.equal(initial.expanded, 'false');
     const toolbar = await page.evaluate(() => ['assetToggle', 'smartLogToggle', 'smartShortcutToggle', 'smartWorkflowToggle'].map(id => {
         const rect = document.getElementById(id).getBoundingClientRect();
@@ -77,17 +76,18 @@ test('canvas Agent uses a bottom-right orb and keeps the existing panel toggle a
     const orbBox = await toggle.locator('.canvas-agent-orb').boundingBox();
     assert.ok(orbBox, 'orb should expose a measurable visual surface');
     await page.mouse.move(orbBox.x + orbBox.width * .18, orbBox.y + orbBox.height * .2);
+    await page.evaluate(() => window.CanvasAgentOrb._tick(performance.now()));
     await page.waitForFunction(() => {
-        const orb = document.querySelector('.canvas-agent-orb');
-        return parseFloat(getComputedStyle(orb).getPropertyValue('--agent-eye-x')) < -1
-            && parseFloat(getComputedStyle(orb).getPropertyValue('--agent-eye-y')) < -1;
+        const eyes = document.querySelector('.agent-eyes-position');
+        const matrix = new DOMMatrixReadOnly(getComputedStyle(eyes).transform);
+        return matrix.m41 < -0.1 && matrix.m42 < -0.1;
     });
-    const tracking = await toggle.locator('.canvas-agent-orb').evaluate(orb => ({
-        x: getComputedStyle(orb).getPropertyValue('--agent-eye-x'),
-        y: getComputedStyle(orb).getPropertyValue('--agent-eye-y')
+    const tracking = await toggle.locator('.agent-eyes-position').evaluate(eyes => ({
+        x: new DOMMatrixReadOnly(getComputedStyle(eyes).transform).m41,
+        y: new DOMMatrixReadOnly(getComputedStyle(eyes).transform).m42
     }));
-    assert.ok(parseFloat(tracking.x) < -1, 'eyes should look toward the mouse horizontally');
-    assert.ok(parseFloat(tracking.y) < -1, 'eyes should look toward the mouse vertically');
+    assert.ok(tracking.x < -0.1, 'eyes should look toward the mouse horizontally');
+    assert.ok(tracking.y < -0.1, 'eyes should look toward the mouse vertically');
 
     await toggle.click();
     const opened = await page.locator('#canvasAgentPanel').evaluate(panel => ({
@@ -125,8 +125,8 @@ test('canvas Agent uses a bottom-right orb and keeps the existing panel toggle a
     for (const skin of ['minimal', 'dark']) {
         await page.evaluate(skin => StudioAppearance.set({ skin, accent: '#bb44cc' }), skin);
         assert.equal(await toggle.locator('.canvas-agent-orb').isVisible(), true);
-        assert.equal(await toggle.locator('.canvas-agent-orb-eye').first().isVisible(), true);
-        assert.match(await toggle.evaluate(el => getComputedStyle(el).getPropertyValue('--agent-orb-accent')), /\S+/);
+        assert.equal(await toggle.locator('.agent-eye').first().isVisible(), true);
+        assert.match(await toggle.evaluate(el => getComputedStyle(el).getPropertyValue('--cao-core')), /\S+/);
         const bounds = await page.evaluate(() => ({
             orb: document.getElementById('canvasAgentToggle').getBoundingClientRect().toJSON(),
             map: document.getElementById('minimap').getBoundingClientRect().toJSON(),
@@ -174,8 +174,9 @@ test('canvas Agent uses a bottom-right orb and keeps the existing panel toggle a
     assert.ok(mobile.width >= 58 && mobile.height >= 58, 'mobile orb should remain a usable touch target');
     assert.ok(mobile.right >= 10 && mobile.right <= 28);
     assert.ok(mobile.bottom >= 10 && mobile.bottom <= 28);
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('#canvasAgentToggle')).visibility === 'visible');
     assert.equal(await toggle.locator('.canvas-agent-orb').isVisible(), true);
-    assert.equal(await toggle.locator('.canvas-agent-orb-eye').first().isVisible(), true);
+    assert.equal(await toggle.locator('.agent-eye').first().evaluate(el => getComputedStyle(el).display !== 'none'), true);
     if (process.env.XIAOMEI_ORB_QA_DIR) await page.screenshot({ path: path.join(process.env.XIAOMEI_ORB_QA_DIR, 'mobile-dark.png') });
 
     await page.goto('http://canvas-agent-orb.test/static/smart-canvas.html?id=orb&shared=1');

@@ -67,18 +67,24 @@ function renderImageSpaceFilterBar(){
         const tags = [...new Set(available.flatMap(item => key === 'tags' ? item.classification?.tags || [] : item.classification?.categories?.[key] || []))].sort();
         return `<label>${label}<input data-space-filter="${key}" list="space-${key}" value="${escapeAttr(f[key] || '')}" placeholder="不限"><datalist id="space-${key}">${tags.map(tag => `<option value="${escapeAttr(tag)}"></option>`).join('')}</datalist></label>`;
     };
+    const categorySelect = (key,label) => {
+        const tags = [...new Set(available.flatMap(item => item.classification?.categories?.[key] || []))].sort();
+        const selected = String(f[key] || '');
+        if(selected && !tags.includes(selected)) tags.unshift(selected);
+        return `<label>${label}<select data-space-filter="${key}" ${tags.length ? '' : 'disabled'}><option value="">${tags.length ? '全部' : '暂无分类标签'}</option>${tags.map(tag => option(escapeAttr(tag),escapeHtml(tag),selected)).join('')}</select></label>`;
+    };
     const count = Object.values(f).filter(Boolean).length;
     const collection = imageSpaceState.collections.find(c => c.id === imageSpaceState.collectionId && c.source === source);
-    const moreCount = ['kind','format','min_edge','annotated','materials','style','use_case'].filter(key => f[key]).length;
+    const moreCount = ['format','min_edge','tags','annotated','materials','use_case'].filter(key => f[key]).length;
     return `<div class="image-space-filter-bar"><div class="asset-tools"><button class="asset-btn" type="button" data-space-toggle aria-expanded="${imageSpaceState.open}"><i data-lucide="sliders-horizontal"></i>筛选${count ? ` · ${count}` : ''}</button>${count || imageSpaceQuery() ? '<button class="asset-btn space-quiet" type="button" data-space-clear>清除</button>' : ''}<span class="space-toolbar-spacer"></span><button class="asset-btn space-quiet" type="button" data-space-save><i data-lucide="bookmark-plus"></i>保存合集</button>${collection ? '<details class="space-collection-menu"><summary aria-label="合集操作">···</summary><div><button type="button" data-space-update>更新名称与条件</button><button type="button" data-space-delete>删除合集</button></div></details>' : ''}</div>
     ${imageSpaceState.open ? `<form class="image-space-filter-form" data-space-form>
-    <div class="space-filter-fields">${field('color','色彩')}${select('shape','形状',[['','不限'],['landscape','横图'],['portrait','竖图'],['square','正方形']])}${field('tags','标签')}</div>
-    <details class="space-more"><summary>更多条件${moreCount ? ` · ${moreCount}` : ''}</summary><div class="space-filter-fields">
-    ${select('kind','类型',[['','不限'],['image','图片'],['video','视频'],['audio','音频'],['text','文本']])}
-    ${select('format','格式',[['','不限'],['png','PNG'],['jpg,jpeg','JPG'],['webp','WebP'],['gif','GIF'],['mp4','MP4']])}
-    ${select('min_edge','最短边',[['','不限'],['1000','至少 1000 px'],['2000','至少 2000 px'],['4000','至少 4000 px']])}
-    ${field('materials','材质')}${field('style','风格')}${field('use_case','用途')}
-    ${select('annotated','分类状态',[['','不限'],['manual','有人工修订'],['missing','尚未分类']])}</div><p class="image-space-note">多个值用逗号分隔，同一项满足任意一个。</p></details>
+    <div class="space-filter-fields">${select('kind','素材类型',[['','全部类型'],['image','图片'],['video','视频'],['audio','音频'],['text','文本']])}${select('shape','画面方向',[['','全部方向'],['landscape','横图'],['portrait','竖图'],['square','正方形']])}${categorySelect('color','主色调')}${categorySelect('style','画面风格')}</div>
+    <p class="image-space-note">主色调和画面风格来自素材分类；没有选项时，可先为素材添加分类。</p>
+    <details class="space-more"><summary>更多查找条件${moreCount ? ` · ${moreCount}` : ''}</summary><div class="space-filter-fields">
+    ${field('use_case','使用场景')}${field('materials','材质')}${field('tags','标签')}
+    ${select('min_edge','图片尺寸',[['','不限尺寸'],['1000','短边至少 1000 px'],['2000','短边至少 2000 px'],['4000','短边至少 4000 px']])}
+    ${select('format','文件格式',[['','全部格式'],['png','PNG'],['jpg,jpeg','JPG / JPEG'],['webp','WebP'],['gif','GIF'],['mp4','MP4']])}
+    ${select('annotated','分类情况',[['','全部素材'],['manual','手动编辑过'],['missing','尚未分类']])}</div><p class="image-space-note">文字条件可输入多个词，用逗号隔开，匹配其中任意一个。</p></details>
     <div class="space-filter-footer"><label class="image-space-scope"><input type="checkbox" data-space-all ${imageSpaceState.all[source] ? 'checked' : ''}>${source === 'assets' ? '整个资产库' : '全部文件夹'}</label><button class="asset-btn primary" type="submit">应用</button></div></form>` : ''}</div>`;
 }
 function renderImageSpaceClassification(item){

@@ -1971,7 +1971,7 @@ async function createSmartCanvas(){
 }
 function openSmartCanvasPage(id){
     if(!id) return;
-window.location.href = `/static/smart-canvas.html?id=${encodeURIComponent(id)}&v=2026.10.11.local-assets-default.1`;
+window.location.href = `/static/smart-canvas.html?id=${encodeURIComponent(id)}&v=2026.10.16.project-agent.2`;
 }
 function toggleEmojiPicker(id, event){
     event?.preventDefault();

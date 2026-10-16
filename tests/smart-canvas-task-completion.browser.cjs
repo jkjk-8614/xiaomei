@@ -14,6 +14,7 @@ test('completed image tasks recover after undo restores a running snapshot', {ti
     const page = electron ? await browser.firstWindow() : await browser.newPage({viewport:{width:1440, height:1000}});
     const errors = [], generationRequests = [];
     const completed = new Set();
+    let fixtureCanvas = {id:'completion-fixture', title:'Completion fixture', nodes:[], connections:[], logs:[], settings:{}};
     page.on('pageerror', error => errors.push(error.message));
     const png = await page.evaluate(() => {
         const c = document.createElement('canvas'); c.width = 288; c.height = 512;
@@ -44,7 +45,7 @@ test('completed image tasks recover after undo restores a running snapshot', {ti
             return route.fulfill({contentType:'image/png', body:Buffer.from(png, 'base64')});
         }
         if(pathname === '/api/canvases/completion-fixture' && request.method() === 'GET'){
-            return route.fulfill({json:{canvas:{id:'completion-fixture', title:'Completion fixture', nodes:[], connections:[], logs:[], settings:{}}}});
+            return route.fulfill({json:{canvas:fixtureCanvas}});
         }
         return route.fulfill({json:{skills:[], categories:[], libraries:[], items:[], workflows:[], batches:[], api_providers:[]}});
     });
@@ -120,6 +121,14 @@ test('completed image tasks recover after undo restores a running snapshot', {ti
         window.fixturePendingSnapshot = structuredClone({...canvas, nodes});
         nodes.find(n => n.id === fixtureId).x += 20;
         render();
+        const stale = structuredClone(nodes.find(n => n.id === fixtureId));
+        delete stale.pendingTasks;
+        undoStack.push({...snapshotForUndo(), nodes:[stale]});
+        performUndo();
+    });
+    await page.waitForFunction(() => {
+        const node = nodes.find(item => item.id === fixtureId);
+        return node.pending === 1 && node.pendingTasks?.[0]?.taskId === 'fixture-3';
     });
     completed.add('fixture-3');
     await page.evaluate(() => fixtureRun);
@@ -145,6 +154,49 @@ test('completed image tasks recover after undo restores a running snapshot', {ti
     }, null, {timeout:8000});
     await page.waitForFunction(() => [...world.querySelectorAll('.node-body img')].every(img => img.complete && img.naturalWidth > 0));
     await assertGenerationBounds('all completed');
+    await page.evaluate(() => {
+        const completedNode = nodes.find(node => node.id === fixtureId);
+        const stale = structuredClone(completedNode);
+        stale.images = completedNode.images.slice(0, 3);
+        stale.pending = 1;
+        stale.running = true;
+        delete stale.pendingTasks;
+        delete stale.runFinishedAt;
+        stale.x = 100;
+        undoStack.push({...snapshotForUndo(), nodes:[stale]});
+        completedNode.x = 150;
+        performUndo();
+    });
+    await page.waitForFunction(() => {
+        const node = nodes.find(item => item.id === fixtureId);
+        return node.x === 100 && node.images.length === 4 && !node.pending
+            && !world.querySelector('.generation-progress-ring');
+    });
+    fixtureCanvas = await page.evaluate(() => {
+        const source = nodes.find(node => node.id === fixtureId);
+        const startedAt = Date.now() - 120000;
+        const stale = structuredClone(source);
+        stale.id = 'stale-success';
+        stale.images = [];
+        stale.pending = 1;
+        stale.running = true;
+        stale.runStartedAt = startedAt;
+        delete stale.pendingTasks;
+        delete stale.runFinishedAt;
+        const unrelated = {...structuredClone(stale), id:'stale-unrelated', x:stale.x + 400};
+        return {id:'completion-fixture', title:'Completion fixture', nodes:[stale, unrelated], connections:[], settings:{}, logs:[
+            {status:'success', nodeId:stale.id, createdAt:startedAt + 1000, outputs:[{url:'/output/recovered.png'}]},
+            {status:'success', nodeId:unrelated.id, createdAt:startedAt - 1000, outputs:[{url:'/output/old.png'}]},
+        ]};
+    });
+    await page.reload();
+    await page.waitForFunction(() => {
+        const recovered = nodes.find(node => node.id === 'stale-success');
+        const unrelated = nodes.find(node => node.id === 'stale-unrelated');
+        return recovered?.images?.[0]?.url === '/output/recovered.png' && !recovered.pending
+            && unrelated && !unrelated.images.length && !unrelated.pending
+            && !world.querySelector('.generation-progress-ring');
+    });
     assert.deepEqual(generationRequests, [], 'recovery only queries existing tasks');
     assert.deepEqual(errors, []);
 });

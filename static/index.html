@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="/static/images/app-icon.ico?v=2026.10.13" type="image/x-icon">
+    <link rel="icon" href="/static/images/app-icon.ico?v=2026.10.16" type="image/x-icon">
     <title>小美画布</title>
     <style>
         html.studio-route-booting body {
@@ -18,14 +18,14 @@
             } catch(e) {}
         })();
     </script>
-    <script defer src="/static/vendor/js/tailwindcss-cdn.js?v=2026.10.13.1784161005"></script>
-    <script defer src="/static/js/theme.js?v=2026.10.13.1791335865"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.13.1791851171">
-    <script defer src="/static/js/i18n.js?v=2026.10.13.1791804215"></script>
-    <script src="/static/js/legacy-common.js?v=2026.10.13.1786170056"></script>
-<script defer src="/static/js/generation-notifications.js?v=2026.10.13.1787131165"></script>
+    <script defer src="/static/vendor/js/tailwindcss-cdn.js?v=2026.10.16.1784161005"></script>
+    <script defer src="/static/js/theme.js?v=2026.10.16.1791335865"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.16.1791851171">
+    <script defer src="/static/js/i18n.js?v=2026.10.16.1792035707"></script>
+    <script src="/static/js/legacy-common.js?v=2026.10.16.1786170056"></script>
+<script defer src="/static/js/generation-notifications.js?v=2026.10.16.1787131165"></script>
     <style>
-        @import url('/static/vendor/css/fonts.css?v=2026.10.13.1784161005');
+        @import url('/static/vendor/css/fonts.css?v=2026.10.16.1784161005');
 
         /* 本地 Tailwind 工具类兜底：CDN 慢/未就绪时也能立刻给图标尺寸，避免首屏左侧栏空白 */
         .w-1\.5 { width: 0.375rem; }
@@ -1071,10 +1071,11 @@
             transition: max-height .28s var(--fluid-ease), opacity .18s ease;
         }
         .settings-fold-group:not(.is-collapsed) {
-            max-height: 220px;
+            max-height: 250px;
             opacity: 1;
             pointer-events: auto;
         }
+        #desktop-hide-to-tray[hidden] { display:none !important; }
         .side-pill-text {
             opacity:0;
             max-width:0;
@@ -1136,7 +1137,7 @@
                 gap: 5px;
             }
             .settings-fold-group:not(.is-collapsed) {
-                max-height: 140px;
+                max-height: 180px;
             }
             .side-pill {
                 height:30px;
@@ -1192,7 +1193,7 @@
                 gap: 4px;
             }
             .settings-fold-group:not(.is-collapsed) {
-                max-height: 136px;
+                max-height: 170px;
             }
             .side-pill {
                 height:30px;
@@ -1772,10 +1773,10 @@
             }
         }
     </style>
-    <link rel="stylesheet" href="/static/css/workspace-polish.css?v=2026.10.13.1789456340">
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.13.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.13.1791859157">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.13.1790178173"></script>
+    <link rel="stylesheet" href="/static/css/workspace-polish.css?v=2026.10.16.1789456340">
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.16.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.16.1791859157">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.16.1790178173"></script>
 </head>
 
 <body>
@@ -1844,6 +1845,12 @@
                     </svg>
                     <span class="nav-text" data-i18n="nav.history">历史记录</span>
                 </div>
+                <div class="nav-item" onclick="switchUI(this, 'inspiration')">
+                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M9 18h6m-5 4h4m-5.5-7.5A7 7 0 1 1 15.5 14.5c-.9.7-1.5 1.8-1.5 3h-4c0-1.2-.6-2.3-1.5-3Z"></path>
+                    </svg>
+                    <span class="nav-text" data-i18n="nav.inspiration">灵感案例</span>
+                </div>
             </nav>
 
             <div class="side-actions">
@@ -1872,12 +1879,6 @@
                     </svg>
                 </button>
                 <div class="settings-fold-group" id="settings-fold-group">
-                    <button class="side-pill" id="desktop-hide-to-tray" onclick="hideDesktopToTray()" type="button" title="隐藏窗口，后台任务继续运行；点击托盘图标恢复" aria-label="隐藏到托盘" style="display:none">
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M12 3v12m-4-4 4 4 4-4"></path><path d="M4 15v5h16v-5"></path>
-                        </svg>
-                        <span class="side-pill-text">隐藏到托盘</span>
-                    </button>
                     <button class="side-pill" onclick="openAssetManagerSettings(this)" type="button" title="资产管理设置">
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M12 2v4"></path><path d="M12 18v4"></path><path d="m4.93 4.93 2.83 2.83"></path><path d="m16.24 16.24 2.83 2.83"></path><path d="M2 12h4"></path><path d="M18 12h4"></path><path d="m4.93 19.07 2.83-2.83"></path><path d="m16.24 7.76 2.83-2.83"></path><circle cx="12" cy="12" r="3"></circle>
@@ -1899,6 +1900,12 @@
                             <circle cx="13.5" cy="6.5" r="2.5"></circle><circle cx="6.5" cy="12" r="2.5"></circle><circle cx="15.5" cy="17.5" r="2.5"></circle><path d="M4 4h16v16H4z" opacity=".25"></path>
                         </svg>
                         <span class="side-pill-text">外观设置</span>
+                    </button>
+                    <button class="side-pill" id="desktop-hide-to-tray" onclick="hideDesktopToTray()" type="button" title="隐藏到托盘" hidden>
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="4" width="18" height="13" rx="2"></rect><path d="M8 21h8M12 17v4"></path><path d="m9 10 3 3 3-3"></path>
+                        </svg>
+                        <span class="side-pill-text">隐藏到托盘</span>
                     </button>
                 </div>
                 <div id="sidebar-datetime" class="sidebar-datetime" role="group" aria-label="当前日期和时间">
@@ -1936,14 +1943,15 @@
                 </div>
             </div>
 
-                    <iframe id="frame-online" data-src="/static/comfyui.html?v=2026.10.13" class="active" scrolling="yes"></iframe>
+                    <iframe id="frame-online" data-src="/static/comfyui.html?v=2026.10.16" class="active" scrolling="yes"></iframe>
         <div id="frame-gpt-chat" class="deepseek-route-placeholder" aria-hidden="true"></div>
-        <iframe id="frame-commerce" data-src="/static/commerce.html?v=2026.10.13.1791859932" scrolling="yes"></iframe>
-                <iframe id="frame-commerce-analysis" data-src="/static/commerce-analysis.html?v=2026.10.13.1791859932" scrolling="yes"></iframe>
-        <iframe id="frame-product-3d" data-src="/static/product-3d.html?v=2026.10.13.1791859932" scrolling="yes"></iframe>
-            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=2026.10.13.1791859932" scrolling="yes"></iframe>
+        <iframe id="frame-commerce" data-src="/static/commerce.html?v=2026.10.16.1792111637" scrolling="yes"></iframe>
+                <iframe id="frame-commerce-analysis" data-src="/static/commerce-analysis.html?v=2026.10.16.1792111637" scrolling="yes"></iframe>
+        <iframe id="frame-product-3d" data-src="/static/product-3d.html?v=2026.10.16.1792111637" scrolling="yes"></iframe>
+            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=2026.10.16.1792113343" scrolling="yes"></iframe>
+            <iframe id="frame-inspiration" data-src="/static/inspiration.html?v=2026.10.16.1792111637" scrolling="yes" title="灵感案例"></iframe>
             <div id="historyDrawerScrim" class="history-drawer-scrim" hidden onclick="closeHistoryDrawer()"></div>
-            <iframe id="frame-history" class="history-drawer-frame" data-src="/static/history.html?v=2026.10.13.1791859932&drawer=1" scrolling="yes" title="历史记录"></iframe>
+            <iframe id="frame-history" class="history-drawer-frame" data-src="/static/history.html?v=2026.10.16.1792113421&drawer=1&outpaint-redraw=2026.10.16.1" scrolling="yes" title="历史记录"></iframe>
             <button id="historyDrawerClose" class="history-drawer-close" type="button" hidden onclick="closeHistoryDrawer()" aria-label="关闭历史记录">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
             </button>
@@ -1971,14 +1979,14 @@
         <div id="historyPreviewContextMenu" class="history-preview-context-menu" role="menu" aria-label="媒体操作" hidden>
             <button id="historyPreviewContextCopy" type="button" role="menuitem" onclick="copyHistoryPreviewFromContextMenu(event)"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>复制图片</span></button>
         </div>
-                <iframe id="frame-api-settings" data-src="/static/api-settings.html?v=2026.10.13.1791859932" scrolling="yes"></iframe>
-                <iframe id="frame-canvas" data-src="/static/canvas-list.html?v=2026.10.13.1791859932&image-model-picker=2026.09.27.3" scrolling="yes"></iframe>
+                <iframe id="frame-api-settings" data-src="/static/api-settings.html?v=2026.10.16.1792111637" scrolling="yes"></iframe>
+                <iframe id="frame-canvas" data-src="/static/canvas-list.html?v=2026.10.16.1792113343&image-model-picker=2026.09.27.3" scrolling="yes"></iframe>
 
                 <script>
                     /* 尽早启动上次页面，避免主窗口已显示但中央 iframe 仍是空白。 */
                     (function(){
                         try {
-                            var pageIds = ['online','gpt-chat','canvas','commerce','commerce-analysis','product-3d','asset-manager','api-settings'];
+                            var pageIds = ['online','gpt-chat','canvas','commerce','commerce-analysis','product-3d','asset-manager','inspiration','api-settings'];
                             var savedId = localStorage.getItem('studio_active_page');
                             var launchId = new URLSearchParams(window.location.search).get('page');
                             if(launchId === 'task-manager') launchId = 'commerce-analysis';
@@ -2159,7 +2167,7 @@
         const SIDEBAR_SETTINGS_RESTORE_KEY = 'studio_formal_sidebar_settings_restored_v1';
         const SIDEBAR_PINNED_KEY = 'studio_sidebar_pinned';
         const DEFAULT_PAGE_ID = 'online';
-        const PAGE_IDS = ['online','gpt-chat','canvas','commerce','commerce-analysis','product-3d','asset-manager','api-settings'];
+        const PAGE_IDS = ['online','gpt-chat','canvas','commerce','commerce-analysis','product-3d','asset-manager','inspiration','api-settings'];
         const LOCAL_PAGE_IDS = [];
         const PROMPT_CASE_PENDING_KEY = 'studio_pending_prompt_case';
         const PROMPT_CASE_PENDING_TTL = 10 * 60 * 1000;
@@ -2237,6 +2245,21 @@
             const group = document.getElementById('settings-fold-group');
             setSidebarSettingsCollapsed(!group?.classList.contains('is-collapsed'));
         }
+
+        async function hideDesktopToTray() {
+            const button = document.getElementById('desktop-hide-to-tray');
+            if(!button || button.disabled || typeof window.electronAPI?.hideToTray !== 'function') return;
+            button.disabled = true;
+            try {
+                const result = await window.electronAPI.hideToTray();
+                if(!result?.ok) alert(result?.message || '隐藏到托盘失败，请重试。');
+            } catch(error) {
+                alert(error?.message || '隐藏到托盘失败，请重试。');
+            } finally {
+                button.disabled = false;
+            }
+        }
+        document.getElementById('desktop-hide-to-tray').hidden = typeof window.electronAPI?.hideToTray !== 'function';
 
         function openComfyUiSettings(button) {
             switchUI(button, 'online');
@@ -2705,6 +2728,7 @@
             'commerce-analysis': '正在打开商品分析…',
             'product-3d': '正在打开 3D 软装…',
             'asset-manager': '正在打开资产管理…',
+            inspiration: '正在打开灵感案例…',
             'api-settings': '正在打开 API 设置…',
         };
 
@@ -3369,23 +3393,7 @@
             sidebarDateTimeTimer = window.setInterval(updateSidebarDateTime, 1000);
         }
 
-        async function hideDesktopToTray() {
-            const button = document.getElementById('desktop-hide-to-tray');
-            if(!window.electronAPI?.hideToTray || !button || button.disabled) return;
-            button.disabled = true;
-            try {
-                const result = await window.electronAPI.hideToTray();
-                if(!result?.ok) alert(result?.message || '隐藏到托盘失败，请稍后重试。');
-            } catch(error) {
-                alert('无法隐藏到托盘，请退出并重新启动小美画布后重试。');
-            } finally {
-                button.disabled = false;
-            }
-        }
-
         window.addEventListener('DOMContentLoaded', () => {
-            const trayButton = document.getElementById('desktop-hide-to-tray');
-            if(trayButton && window.electronAPI?.hideToTray) trayButton.style.removeProperty('display');
             if(window.StudioI18n) {
                 if(window.StudioI18n.lang?.() !== 'zh') window.StudioI18n.set('zh');
                 else window.StudioI18n.apply();
@@ -4155,9 +4163,10 @@
                 if(badge) badge.classList.remove('checking');
             }
         }
+
     </script>
-    <link rel="stylesheet" href="/static/css/mcp-settings.css?v=2026.10.13.1789283121">
-    <script src="/static/js/mcp-settings.js?v=2026.10.13.1789283281"></script>
+    <link rel="stylesheet" href="/static/css/mcp-settings.css?v=2026.10.16.1789283121">
+    <script src="/static/js/mcp-settings.js?v=2026.10.16.1789283281"></script>
 </body>
 
 </html>

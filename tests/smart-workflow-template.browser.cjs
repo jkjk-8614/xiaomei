@@ -58,7 +58,9 @@ test('smart canvas can save a selected workflow as a clean template', {timeout: 
         selectedId = '';
         render();
     });
-    await page.evaluate(() => saveSelectedSmartWorkflowTemplate());
+    const saving = page.evaluate(() => saveSelectedSmartWorkflowTemplate());
+    await page.locator('.xiaomei-workflow-dialog [data-confirm]').click();
+    await saving;
     assert.equal(errors.length, 0, errors.join('\n'));
     assert.ok(exportPayload);
     assert.equal(exportPayload.name, '模板测试画布模板');

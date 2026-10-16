@@ -112,3 +112,33 @@ test('more than twenty references keep their order in both composers, request an
     assert.deepEqual(Array.from(f.context.composerAttachmentReferences(scope), ref => ref.url), [...left, 'extra.png']);
     assert.deepEqual(Array.from(f.context.planReferenceImages(extraScope), ref => ref.url), [...left, 'extra.png']);
 });
+
+test('adapt input measures image 1 even when only image 2 has saved dimensions', async () => {
+    const start = source.indexOf('function imageSizeForRatio(');
+    const end = source.indexOf('function agentChatProviders(', start);
+    assert.ok(start >= 0 && end > start);
+    const references = [
+        { url: 'first.png' },
+        { url: 'second.png', natural_w: 400, natural_h: 300 },
+    ];
+    class ImageProbe {
+        naturalWidth = 320;
+        naturalHeight = 320;
+        set src(value) {
+            assert.equal(value, 'first.png');
+            queueMicrotask(() => this.onload());
+        }
+    }
+    const context = vm.createContext({
+        visibleReferenceImagesFor: () => references,
+        isAudioMediaItem: () => false,
+        mediaKindForItem: () => 'image',
+        Image: ImageProbe,
+        setTimeout,
+        clearTimeout,
+    });
+    vm.runInContext(source.slice(start, end), context);
+    assert.equal(context.sourceRatioImageForNode({}).url, 'first.png');
+    const dimensions = await context.sourceDimensionsForRun({});
+    assert.deepEqual({ ...dimensions }, { w: 320, h: 320 });
+});

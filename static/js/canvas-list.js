@@ -542,7 +542,7 @@ function openCanvas(c){
     const project = encodeURIComponent(c.project || currentProjectId || 'default');
     rememberProjectId(c.project || currentProjectId || 'default');
     window.location.href = (c.kind === 'smart')
-        ? `/static/smart-canvas.html?id=${enc}&project=${project}&v=2026.10.11.local-assets-default.1`
+        ? `/static/smart-canvas.html?id=${enc}&project=${project}&v=2026.10.16.project-agent.2`
         : `/static/canvas.html?id=${enc}&project=${project}&v=2026.09.10.1`;
 }
 
@@ -602,7 +602,7 @@ async function openSoftFurnishingInbox(){
         const projectId = data.canvas.project || currentProjectId || 'default';
         rememberProjectId(projectId);
         created = true;
-        window.location.href = `/static/smart-canvas.html?id=${encodeURIComponent(data.canvas.id)}&project=${encodeURIComponent(projectId)}&v=2026.10.11.local-assets-default.1`;
+        window.location.href = `/static/smart-canvas.html?id=${encodeURIComponent(data.canvas.id)}&project=${encodeURIComponent(projectId)}&v=2026.10.16.project-agent.2`;
         return true;
     } catch(e){
         console.error('open soft furnishing inbox failed', e);
@@ -640,7 +640,7 @@ async function openComfyWorkflowInbox(){
         const projectId = data.canvas.project || currentProjectId || 'default';
         rememberProjectId(projectId);
         created = true;
-        window.location.href = `/static/smart-canvas.html?id=${encodeURIComponent(data.canvas.id)}&project=${encodeURIComponent(projectId)}&v=2026.10.11.local-assets-default.1`;
+        window.location.href = `/static/smart-canvas.html?id=${encodeURIComponent(data.canvas.id)}&project=${encodeURIComponent(projectId)}&v=2026.10.16.project-agent.2`;
         return true;
     } catch(e){
         console.error('open ComfyUI workflow inbox failed', e);
