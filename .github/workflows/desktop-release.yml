@@ -173,6 +173,7 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci --prefix tools/commerce-analysis --omit=dev --no-audit --no-fund --ignore-scripts
           mkdir -p bundled/playwright-browsers
           PLAYWRIGHT_BROWSERS_PATH="$PWD/bundled/playwright-browsers" ./tools/commerce-analysis/node_modules/.bin/playwright install chromium
+          tar -czf bundled/playwright-browsers.tar.gz -C bundled playwright-browsers
       - name: Build DeepSeek Harness runtime
         run: |
           npm install --global pnpm@11.7.0
@@ -197,6 +198,7 @@ jobs:
           APP_ROOT=$(find "$RUNNER_TEMP/xiaomei-harness-package-smoke" -path '*/Contents/Resources/app' -type d -print -quit)
           [ -n "$APP_ROOT" ] || { echo 'Packaged app directory is missing'; exit 1; }
           node scripts/audit-release-tree.mjs "$APP_ROOT"
+          tar -tzf "$APP_ROOT/bundled/playwright-browsers.tar.gz" | grep '^playwright-browsers/chromium-' > /dev/null
           NODE=$(find "$RUNNER_TEMP/xiaomei-harness-package-smoke" -path '*/Contents/Resources/app/bundled/node/bin/node' -type f -print -quit)
           [ -n "$NODE" ] || { echo 'Packaged Harness Node is missing'; exit 1; }
           RUNTIME="${NODE%/bundled/node/bin/node}/bundled/deepseek-harness"

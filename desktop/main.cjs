@@ -3857,7 +3857,25 @@ function startApi(port = API_PORT) {
   if (process.env.XIAOMEI_CANVAS_DESKTOP_NO_API === '1') return;
   setApiEndpoint(port);
   const bundledNode = chooseHarnessNode();
-  const bundledBrowsers = path.join(PROJECT_ROOT, 'bundled', 'playwright-browsers');
+  let bundledBrowsers = path.join(PROJECT_ROOT, 'bundled', 'playwright-browsers');
+  const browserArchive = path.join(PROJECT_ROOT, 'bundled', 'playwright-browsers.tar.gz');
+  if (process.platform === 'darwin' && app.isPackaged && fs.existsSync(browserArchive)) {
+    const browserRoot = path.join(TEST_RUNTIME_DATA_ROOT, 'browser-runtimes');
+    fs.mkdirSync(browserRoot, { recursive: true });
+    bundledBrowsers = path.join(browserRoot, String(APP_BUILD_REVISION));
+    if (!fs.existsSync(path.join(bundledBrowsers, '.complete'))) {
+      const staging = fs.mkdtempSync(path.join(browserRoot, '.install-'));
+      const result = spawnSync('tar', ['-xzf', browserArchive, '-C', staging], { windowsHide: true, stdio: 'ignore' });
+      const unpacked = path.join(staging, 'playwright-browsers');
+      if (result.status !== 0 || !fs.existsSync(unpacked)
+          || !fs.readdirSync(unpacked).some(name => name.startsWith('chromium-'))) {
+        throw new Error('无法解压 macOS 浏览器运行组件');
+      }
+      fs.writeFileSync(path.join(unpacked, '.complete'), String(APP_BUILD_REVISION));
+      fs.renameSync(unpacked, bundledBrowsers);
+      fs.rmdirSync(staging);
+    }
+  }
   const env = {
     ...process.env,
     XIAOMEI_CANVAS_PROJECT_ROOT: PROJECT_ROOT,

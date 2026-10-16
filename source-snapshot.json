@@ -157,7 +157,7 @@
     {
       "path": "desktop/main.cjs",
       "sourceSha256": "cc436d92c775a13523ada75b00f53112da1a794199edb871473b974d20bb34e4",
-      "releaseSha256": "fde4016937cac4b638589b81c4c0b9251380be8915f29cda5ad875cc6d782130"
+      "releaseSha256": "093b046687da005d515a90705a2036f716f2feeb3d64bde58e7a4fce6e68d89d"
     },
     {
       "path": "desktop/preload.cjs",

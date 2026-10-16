@@ -22,7 +22,7 @@ files:
   - packages/**
   - bundled/deepseek-harness/**
   - bundled/node/**
-  - bundled/playwright-browsers/**
+  - bundled/playwright-browsers.tar.gz
   - bundled/win-api/**
   - bundled/mac-api/**
   - python/**

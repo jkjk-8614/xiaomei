@@ -66,10 +66,10 @@ for (const file of [
   }
 }
 if (process.platform === 'darwin') {
-  const browserRoot = path.join(root, 'bundled', 'playwright-browsers');
-  const browsers = await readdir(browserRoot).catch(() => []);
-  if (!browsers.some(name => name.startsWith('chromium-'))) {
-    violations.push('bundled/playwright-browsers: macOS 浏览器运行组件缺失');
+  const archive = path.join(root, 'bundled', 'playwright-browsers.tar.gz');
+  const info = await stat(archive).catch(() => null);
+  if (!info?.isFile() || info.size < 1024 * 1024) {
+    violations.push('bundled/playwright-browsers.tar.gz: macOS 浏览器运行组件缺失');
   }
 }
 for (const file of snapshot.criticalPackagedPaths || []) {
