@@ -43,7 +43,7 @@ function isProductSource(file, tracked) {
 
 const textExtensions = new Set(['.py', '.js', '.cjs', '.mjs', '.json', '.html', '.css', '.svg', '.yaml', '.yml', '.txt']);
 function fileHash(bytes, file) {
-  const content = textExtensions.has(path.extname(file).toLowerCase())
+  const content = (textExtensions.has(path.extname(file).toLowerCase()) || path.basename(file) === '.env.example')
     ? Buffer.from(bytes.toString('utf8').replace(/\r\n/g, '\n'), 'utf8')
     : bytes;
   return createHash('sha256').update(content).digest('hex');
