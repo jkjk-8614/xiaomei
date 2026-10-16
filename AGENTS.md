@@ -65,6 +65,8 @@ GET http://127.0.0.1:3000/api/history
 
 ## 固定发布规则
 
+- 默认依赖和安装包只包含 CPU 版 ONNX Runtime。`onnxruntime-gpu[cuda,cudnn]` 由 `tools/install-windows-gpu-runtime.ps1` 按需单独下载，安装到持久用户数据目录；禁止将 GPU、CUDA、cuDNN 依赖重新并入基础包。构建与最终 Windows 运行时必须通过 `scripts/verify_cpu_runtime.py`。
+
 - 发布前以 `D:\小美画布` 当前程序功能为准，将其源码改动安全同步到隔离发布检出；不要只修改版本号。保留发布仓库的桌面自动更新、安装器和用户数据保护实现，合并冲突后验证实际界面。`source-snapshot.json` 记录当前开发源码和发布源码的指纹；`prepare-release.mjs` 会核对开发目录，若出现未同步功能则停止发布。构建后的安装包也必须通过关键界面文件一致性检查。
 - 收到“发布更新”后，从 GitHub 最新正式 Release 读取版本，运行 `node scripts/prepare-release.mjs`。显示版本按 `v1.07 → v1.08 → v1.09 → v1.10` 递增，内部版本分别为 `1.0.7 → 1.0.8 → 1.0.9 → 1.0.10`；同步 `VERSION`、根目录和桌面端 `package.json`、锁文件、`static/update-notes.json` 与 Git 标签。若本次发布未通过全部验证，重试沿用本次标签和版本，不再递增。构建编号由同一次 GitHub Actions 运行号写入各平台包和 `update.json`。
 - 发布前检查 Git 跟踪文件和发布输入；禁止上传或打包真实 API Key、私人 `.env`、用户图片、历史记录、素材、个人配置和缓存等运行数据。安装包构建后检查解包内容和更新清单。保留本地所有数据，不清理或覆盖用户目录。

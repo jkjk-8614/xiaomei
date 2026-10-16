@@ -7,6 +7,7 @@
     detailId: '', detail: null, detailTab: 'examples', detailLoading: false, loading: false, error: '',
     uploadFiles: [], sourceDir: '', scan: null, busy: false, message: '', focusSkillId: '',
     batchMode: false, batchIds: new Set(), batchBusy: false,
+    renameId: '', renameDraft: '', renameError: '',
   };
   let mount = null;
   let config = {};
@@ -113,7 +114,7 @@
         <span class="skill-market-card-icon"><span>✦</span></span>
         <span class="skill-market-card-copy"><strong>${esc(skillName(skill))}</strong><span class="skill-market-card-meta">${statusMarkup(skill)}<em>${esc(versionLabel(skill))}</em></span><small>${esc(skillDescription(skill))}</small></span>
       </button>
-      <div class="skill-market-card-actions"><button type="button" class="skill-market-card-action" data-skill-market-detail="${esc(id)}">详情</button>${toggle}<button type="button" class="skill-market-card-action skill-market-card-delete" data-skill-market-delete="${esc(id)}">删除</button><button type="button" class="skill-market-card-action${selected ? ' is-current' : ''}" data-skill-market-select="${esc(id)}" ${enabled ? '' : 'disabled'}>${selected ? '已选择' : enabled ? '选择' : '先启用'}</button></div>
+      <div class="skill-market-card-actions"><button type="button" class="skill-market-card-action" data-skill-market-detail="${esc(id)}">详情</button><button type="button" class="skill-market-card-action" data-skill-market-rename="${esc(id)}">重命名</button>${toggle}<button type="button" class="skill-market-card-action skill-market-card-delete" data-skill-market-delete="${esc(id)}">删除</button><button type="button" class="skill-market-card-action${selected ? ' is-current' : ''}" data-skill-market-select="${esc(id)}" ${enabled ? '' : 'disabled'}>${selected ? '已选择' : enabled ? '选择' : '先启用'}</button></div>
     </article>`;
   }
 
@@ -158,7 +159,7 @@
     else if (state.detailTab === 'example') content = resources.example ? `<pre>${esc(resources.example)}</pre>` : '<div class="skill-market-detail-empty">这个 Skill 没有附带对话示例。</div>';
     else content = detail.instructions ? `<pre>${esc(String(detail.instructions).slice(0, 14000))}${String(detail.instructions).length > 14000 ? '\n\n…内容较长，已在界面中截断。' : ''}</pre>` : '<div class="skill-market-detail-empty">没有可显示的指令正文。</div>';
     const refs = Array.isArray(resources.reference_files) ? resources.reference_files : []; const scripts = Array.isArray(resources.script_files) ? resources.script_files : []; const enabled = skill.enabled !== false;
-    return `<div class="skill-market-root skill-market-detail-view"><button type="button" class="skill-market-back" data-skill-market-back>‹ 返回 Skill 列表</button><div class="skill-market-detail-head"><span class="skill-market-detail-icon">✦</span><div><span class="skill-market-kicker">SKILL DETAIL</span><h3>${esc(skillName(skill))}</h3><p>${esc(skillDescription(skill))}</p><div class="skill-market-detail-meta">${statusMarkup(skill)}<em>${esc(versionLabel(skill))}</em><em>${esc(categoryLabel(skill))}</em></div></div><button type="button" class="skill-market-button primary" data-skill-market-select="${esc(skillId(skill))}" ${enabled ? '' : 'disabled'}>${state.selectedId === skillId(skill) ? '已选择' : enabled ? '选择这个 Skill' : '请先启用'}</button></div><div class="skill-market-detail-facts"><div><small>能力</small><strong>${esc((skill.capabilities || ['对话指令']).join(' · '))}</strong></div><div><small>参考资料</small><strong>${refs.length} 个文件</strong></div><div><small>脚本</small><strong>${scripts.length ? `${scripts.length} 个（不自动执行）` : '无'}</strong></div></div><nav class="skill-market-detail-tabs" role="tablist"><button type="button" class="${state.detailTab === 'examples' ? 'is-active' : ''}" data-skill-detail-tab="examples">指令预览</button><button type="button" class="${state.detailTab === 'example' ? 'is-active' : ''}" data-skill-detail-tab="example">对话示例</button><button type="button" class="${state.detailTab === 'tutorial' ? 'is-active' : ''}" data-skill-detail-tab="tutorial">使用教程</button></nav><section class="skill-market-detail-content">${content}</section><div class="skill-market-detail-files"><strong>资源状态</strong><span>${refs.length ? `参考资料：${refs.slice(0, 4).map(esc).join('、')}` : '无已登记参考资料'}</span><span>${scripts.length ? '包含脚本，但宿主不会自动运行脚本、CLI 或安装依赖。' : '未发现脚本依赖。'}</span></div><div class="skill-market-detail-actions"><button type="button" class="skill-market-button skill-market-delete" data-skill-market-delete="${esc(skillId(skill))}">删除 Skill</button></div></div>`;
+    return `<div class="skill-market-root skill-market-detail-view"><button type="button" class="skill-market-back" data-skill-market-back>‹ 返回 Skill 列表</button><div class="skill-market-detail-head"><span class="skill-market-detail-icon">✦</span><div><span class="skill-market-kicker">SKILL DETAIL</span><h3>${esc(skillName(skill))}</h3><p>${esc(skillDescription(skill))}</p><div class="skill-market-detail-meta">${statusMarkup(skill)}<em>${esc(versionLabel(skill))}</em><em>${esc(categoryLabel(skill))}</em></div></div><button type="button" class="skill-market-button primary" data-skill-market-select="${esc(skillId(skill))}" ${enabled ? '' : 'disabled'}>${state.selectedId === skillId(skill) ? '已选择' : enabled ? '选择这个 Skill' : '请先启用'}</button></div><div class="skill-market-detail-facts"><div><small>能力</small><strong>${esc((skill.capabilities || ['对话指令']).join(' · '))}</strong></div><div><small>参考资料</small><strong>${refs.length} 个文件</strong></div><div><small>脚本</small><strong>${scripts.length ? `${scripts.length} 个（不自动执行）` : '无'}</strong></div></div><nav class="skill-market-detail-tabs" role="tablist"><button type="button" class="${state.detailTab === 'examples' ? 'is-active' : ''}" data-skill-detail-tab="examples">指令预览</button><button type="button" class="${state.detailTab === 'example' ? 'is-active' : ''}" data-skill-detail-tab="example">对话示例</button><button type="button" class="${state.detailTab === 'tutorial' ? 'is-active' : ''}" data-skill-detail-tab="tutorial">使用教程</button></nav><section class="skill-market-detail-content">${content}</section><div class="skill-market-detail-files"><strong>资源状态</strong><span>${refs.length ? `参考资料：${refs.slice(0, 4).map(esc).join('、')}` : '无已登记参考资料'}</span><span>${scripts.length ? '包含脚本，但宿主不会自动运行脚本、CLI 或安装依赖。' : '未发现脚本依赖。'}</span></div><div class="skill-market-detail-actions"><button type="button" class="skill-market-button" data-skill-market-rename="${esc(skillId(skill))}">重命名</button><button type="button" class="skill-market-button skill-market-delete" data-skill-market-delete="${esc(skillId(skill))}">删除 Skill</button></div></div>`;
   }
 
   function installMarkup() {
@@ -167,10 +168,25 @@
     return `<div class="skill-market-root skill-market-install"><div class="skill-market-install-top"><button type="button" class="skill-market-back" data-skill-market-tab="library">‹ 返回 Skill 库</button><span>只复制到小美画布本地 Skill 库，不修改源目录，也不会自动执行包内脚本。</span></div><section class="skill-market-install-card"><div class="skill-market-install-title"><span class="skill-market-install-icon">⇧</span><div><strong>从本地目录导入</strong><small>支持浏览器选择文件夹；也可在桌面版粘贴本地目录路径。</small></div></div><label class="skill-market-source-label"><span>Skill 文件夹</span><div class="skill-market-source-row"><input data-skill-market-source type="text" value="${esc(state.sourceDir)}" placeholder="粘贴目录路径，或点击右侧选择文件夹"><button type="button" class="skill-market-button subtle" data-skill-market-browse>选择文件夹</button></div></label><input class="skill-market-directory-input" data-skill-market-directory type="file" webkitdirectory directory multiple><p class="skill-market-file-hint">${esc(files)}</p>${preview}<div class="skill-market-install-actions"><button type="button" class="skill-market-button subtle" data-skill-market-inspect>检查文件夹</button><button type="button" class="skill-market-button primary" data-skill-market-import ${state.scan?.valid_count ? '' : 'disabled'}>${state.busy ? '处理中…' : '导入 Skill'}</button></div>${state.message ? `<p class="skill-market-message">${esc(state.message)}</p>` : ''}</section><form class="skill-market-create-card" data-skill-market-create><div class="skill-market-install-title"><span class="skill-market-install-icon is-secondary">＋</span><div><strong>新建 Markdown Skill</strong><small>把稳定的提示词规则保存为可复用能力。</small></div></div><div class="skill-market-create-grid"><label><span>名称</span><input name="name" maxlength="120" placeholder="例如：电商主图策划" required></label><label><span>一句话说明</span><input name="description" maxlength="2000" placeholder="这个 Skill 适合解决什么问题？"></label></div><label class="skill-market-create-instructions"><span>Skill 指令</span><textarea name="instructions" rows="5" maxlength="50000" placeholder="写下 Agent 必须遵循的规则、输出格式和边界…" required></textarea></label><div class="skill-market-install-actions"><span></span><button type="submit" class="skill-market-button primary" ${state.busy ? 'disabled' : ''}>保存并启用</button></div></form><div class="skill-market-safety">▣ 仅注入 SKILL.md 与正文明确引用的文本资料；不会执行脚本、CLI、第三方依赖或外部授权。</div></div>`;
   }
 
+  function renameMarkup() {
+    const skill = state.skills.find((item) => skillId(item) === state.renameId);
+    if (!skill) return '';
+    return `<div class="skill-market-rename-overlay" data-skill-market-rename-overlay>
+      <form class="skill-market-rename-dialog" data-skill-market-rename-form role="dialog" aria-modal="true" aria-labelledby="skillMarketRenameTitle">
+        <h3 id="skillMarketRenameTitle">重命名 Skill</h3>
+        <p>输入在小美画布中显示的名称。Skill 文件和调用标识保持不变。</p>
+        <label for="skillMarketRenameInput">显示名称</label>
+        <input id="skillMarketRenameInput" name="display_name" maxlength="120" value="${esc(state.renameDraft)}" autocomplete="off" required>
+        <span class="skill-market-rename-error" role="alert">${esc(state.renameError)}</span>
+        <div class="skill-market-rename-actions"><button type="button" class="skill-market-button" data-skill-market-rename-cancel>取消</button><button type="submit" class="skill-market-button primary" ${state.busy ? 'disabled' : ''}>${state.busy ? '保存中…' : '保存名称'}</button></div>
+      </form>
+    </div>`;
+  }
+
   function render() {
     if (!mount?.body) return;
     setHeader();
-    mount.body.innerHTML = state.detailId ? detailMarkup() : state.tab === 'install' ? installMarkup() : libraryMarkup();
+    mount.body.innerHTML = (state.detailId ? detailMarkup() : state.tab === 'install' ? installMarkup() : libraryMarkup()) + renameMarkup();
     bind();
     if (state.focusSkillId) {
       const target = mount.body.querySelector(`[data-skill-market-card="${CSS.escape(state.focusSkillId)}"]`);
@@ -217,6 +233,52 @@
       if (!enabled && state.selectedId === skillId(item)) { setSelection(''); if (typeof config.onSelected === 'function') config.onSelected('', null, { close: false }); }
       if (!silent) notify(enabled ? 'Skill 已启用' : 'Skill 已停用'); render(); return true;
     } catch (error) { if (!silent) notify(`更新 Skill 失败：${error.message || error}`); return false; }
+  }
+
+  function openRename(id) {
+    const item = state.skills.find((skill) => skillId(skill) === clean(id));
+    if (!item || state.busy) return;
+    state.renameId = skillId(item);
+    state.renameDraft = skillName(item);
+    state.renameError = '';
+    render();
+    const input = mount?.body?.querySelector('#skillMarketRenameInput');
+    input?.focus();
+    input?.select();
+  }
+
+  function closeRename() {
+    if (state.busy) return;
+    state.renameId = '';
+    state.renameDraft = '';
+    state.renameError = '';
+    render();
+  }
+
+  async function renameSkill(name) {
+    const id = state.renameId;
+    const item = state.skills.find((skill) => skillId(skill) === id);
+    if (!item || state.busy) return;
+    name = clean(name);
+    state.renameDraft = name;
+    if (!name || name.length > 120) { state.renameError = '名称需为 1 到 120 个字符。'; render(); mount?.body?.querySelector('#skillMarketRenameInput')?.focus(); return; }
+    if (name === skillName(item)) { closeRename(); return; }
+    state.busy = true;
+    state.renameError = '';
+    render();
+    try {
+      const data = await requestJson(`/api/agent-skills/${encodeURIComponent(id)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ display_name: name }),
+      });
+      const updated = data?.skill || {};
+      state.skills = state.skills.map((skill) => skillId(skill) === id ? { ...skill, ...updated } : skill);
+      if (state.detailId === id && state.detail?.skill) state.detail.skill = { ...state.detail.skill, ...updated };
+      state.message = `已重命名为“${name}”。`;
+      state.renameId = '';
+      state.renameDraft = '';
+      notify(state.message); notifySkillsChanged();
+    } catch (error) { state.renameError = `重命名失败：${error.message || error}`; }
+    finally { state.busy = false; render(); if (state.renameId) mount?.body?.querySelector('#skillMarketRenameInput')?.focus(); }
   }
 
   async function deleteSkill(id) {
@@ -372,6 +434,12 @@
     mount.body.querySelectorAll('[data-skill-market-back]').forEach((button) => { button.onclick = () => { state.detailId = ''; state.detail = null; state.message = ''; render(); }; });
     mount.body.querySelectorAll('[data-skill-market-select]').forEach((button) => { button.onclick = () => selectSkill(button.dataset.skillMarketSelect); });
     mount.body.querySelectorAll('[data-skill-market-detail]').forEach((button) => { button.onclick = () => openDetail(button.dataset.skillMarketDetail); });
+    mount.body.querySelectorAll('[data-skill-market-rename]').forEach((button) => { button.onclick = () => openRename(button.dataset.skillMarketRename); });
+    mount.body.querySelector('[data-skill-market-rename-cancel]')?.addEventListener('click', closeRename);
+    mount.body.querySelector('[data-skill-market-rename-form]')?.addEventListener('submit', (event) => { event.preventDefault(); void renameSkill(event.currentTarget.elements.display_name.value); });
+    mount.body.querySelector('[data-skill-market-rename-overlay]')?.addEventListener('click', (event) => { if (event.target === event.currentTarget) closeRename(); });
+    mount.body.querySelector('#skillMarketRenameInput')?.addEventListener('input', (event) => { state.renameDraft = event.target.value; });
+    mount.body.querySelector('#skillMarketRenameInput')?.addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.preventDefault(); closeRename(); } });
     mount.body.querySelectorAll('[data-skill-market-toggle]').forEach((button) => { button.onclick = () => { const item = state.skills.find((skill) => skillId(skill) === button.dataset.skillMarketToggle); if (item) toggleSkill(skillId(item), item.enabled === false); }; });
     mount.body.querySelectorAll('[data-skill-market-delete]').forEach((button) => { button.onclick = () => deleteSkill(button.dataset.skillMarketDelete); });
     mount.body.querySelectorAll('[data-skill-detail-tab]').forEach((button) => { button.onclick = () => { state.detailTab = button.dataset.skillDetailTab || 'examples'; render(); }; });
@@ -385,7 +453,7 @@
 
   async function open(options = {}) {
     mount = { body: options.body || document.getElementById('desktopDrawerBody') }; config = { ...options }; session += 1;
-    state.tab = options.tab || 'library'; state.detailId = ''; state.detail = null; state.query = ''; state.category = 'all'; state.status = 'all'; state.sort = 'newest'; state.message = ''; state.batchMode = false; state.batchIds = new Set(); state.batchBusy = false; state.selectedId = clean(global.StudioSharedSkill?.canonicalId?.(options.selectedId ?? readSelection()) ?? (options.selectedId ?? readSelection())); setHeader(); render(); await loadSkills(true, session); return state.skills;
+    state.tab = options.tab || 'library'; state.detailId = ''; state.detail = null; state.query = ''; state.category = 'all'; state.status = 'all'; state.sort = 'newest'; state.message = ''; state.batchMode = false; state.batchIds = new Set(); state.batchBusy = false; state.renameId = ''; state.renameDraft = ''; state.renameError = ''; state.selectedId = clean(global.StudioSharedSkill?.canonicalId?.(options.selectedId ?? readSelection()) ?? (options.selectedId ?? readSelection())); setHeader(); render(); await loadSkills(true, session); return state.skills;
   }
   function close() { session += 1; mount = null; config = {}; state.batchMode = false; state.batchIds = new Set(); state.batchBusy = false; }
   function syncSelected(id) { state.selectedId = clean(global.StudioSharedSkill?.canonicalId?.(id) || id); if (mount) render(); }

@@ -4182,6 +4182,9 @@
                 renderSkills();
             };
             if(window.StudioSharedSkill?.subscribe)window.StudioSharedSkill.subscribe(syncSharedSkill);
+            window.addEventListener('message',event=>{
+                if(event.origin===location.origin&&event.data?.type==='skills-changed')void loadSkills();
+            });
             else window.addEventListener('storage',event=>{if(event.key===SKILL_SELECTION_KEY)syncSharedSkill(event.newValue);});
         }
 

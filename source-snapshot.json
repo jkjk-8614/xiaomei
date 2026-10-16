@@ -216,8 +216,8 @@
     },
     {
       "path": "main.py",
-      "sourceSha256": "1ac481425ccf47b8c628aa78a12897583dff9ccea966c72645f56b12aebf5f16",
-      "releaseSha256": "1ac481425ccf47b8c628aa78a12897583dff9ccea966c72645f56b12aebf5f16"
+      "sourceSha256": "b95e134a75264f2125778a34974988de95ccd7303bc8d3efda47fa641f141a0e",
+      "releaseSha256": "b95e134a75264f2125778a34974988de95ccd7303bc8d3efda47fa641f141a0e"
     },
     {
       "path": "mcp_settings.py",
@@ -256,13 +256,13 @@
     },
     {
       "path": "requirements-lock.txt",
-      "sourceSha256": "9005959439a6549728ead6b33ad13c398797ffb859f14fcbeed95ef5f3dd00a9",
-      "releaseSha256": "9005959439a6549728ead6b33ad13c398797ffb859f14fcbeed95ef5f3dd00a9"
+      "sourceSha256": "61598b2830d9b3dd7633c0a45bb87b6a7840cc8d1c8daeccc07198d7a3ebc564",
+      "releaseSha256": "61598b2830d9b3dd7633c0a45bb87b6a7840cc8d1c8daeccc07198d7a3ebc564"
     },
     {
       "path": "requirements.txt",
-      "sourceSha256": "44f73755a0d9a4777ead9a30119d4eb8243d4a9058d0541feb94f015330cfd91",
-      "releaseSha256": "44f73755a0d9a4777ead9a30119d4eb8243d4a9058d0541feb94f015330cfd91"
+      "sourceSha256": "290008f1ebd696f09e3a3a91f57fcab42fb84a42186ebd287f50248050d66052",
+      "releaseSha256": "290008f1ebd696f09e3a3a91f57fcab42fb84a42186ebd287f50248050d66052"
     },
     {
       "path": "static/angle.html",
@@ -276,8 +276,8 @@
     },
     {
       "path": "static/asset-manager.html",
-      "sourceSha256": "45a6fb42b2f49a3619db9c2cbc4f275242b2084f9f7a09949dfc77ab9a8ef682",
-      "releaseSha256": "45a6fb42b2f49a3619db9c2cbc4f275242b2084f9f7a09949dfc77ab9a8ef682"
+      "sourceSha256": "f87283e6051e4f04965baa0a0e687ab9fbf90501251927fc0fbe27e06e0c5f0b",
+      "releaseSha256": "f87283e6051e4f04965baa0a0e687ab9fbf90501251927fc0fbe27e06e0c5f0b"
     },
     {
       "path": "static/canvas-list.html",
@@ -296,8 +296,8 @@
     },
     {
       "path": "static/commerce.html",
-      "sourceSha256": "604641086ff2f7afdf8bdb48326493de91fad7d68a41e414b2d0c1d78979aff8",
-      "releaseSha256": "604641086ff2f7afdf8bdb48326493de91fad7d68a41e414b2d0c1d78979aff8"
+      "sourceSha256": "c6d0348c8aea62257af3076dae5b76b56494963a58bac8f2e2140d4e8d3250f7",
+      "releaseSha256": "c6d0348c8aea62257af3076dae5b76b56494963a58bac8f2e2140d4e8d3250f7"
     },
     {
       "path": "static/css/api-settings.css",
@@ -396,8 +396,8 @@
     },
     {
       "path": "static/css/skill-market.css",
-      "sourceSha256": "2b74dd9f02d47956a053c72afe3242d3579d00ffa08b899cab1d29e9660fa1e6",
-      "releaseSha256": "2b74dd9f02d47956a053c72afe3242d3579d00ffa08b899cab1d29e9660fa1e6"
+      "sourceSha256": "670f32bee54904eb2215463adc1665a8889f9c53973e09f1a415827aa87cf383",
+      "releaseSha256": "670f32bee54904eb2215463adc1665a8889f9c53973e09f1a415827aa87cf383"
     },
     {
       "path": "static/css/smart-canvas-agent.css",
@@ -446,8 +446,8 @@
     },
     {
       "path": "static/gpt-chat.html",
-      "sourceSha256": "64cad88693e57e238043f7dcadf4b32b3e63518ae56aa1437dd2285b93aa8623",
-      "releaseSha256": "64cad88693e57e238043f7dcadf4b32b3e63518ae56aa1437dd2285b93aa8623"
+      "sourceSha256": "defeb7ce093aaeec7594c8d80fffe47dd46f66cf5cb66e1ce6da0e1a9e6c3dba",
+      "releaseSha256": "defeb7ce093aaeec7594c8d80fffe47dd46f66cf5cb66e1ce6da0e1a9e6c3dba"
     },
     {
       "path": "static/history.html",
@@ -591,8 +591,8 @@
     },
     {
       "path": "static/index.html",
-      "sourceSha256": "f1ad322a84f5d7e7b12e4eaa93601938d7878853cd3ec0a3c32080280958bb82",
-      "releaseSha256": "f4e5854a6e69bc9c1d650a9798dcf26a0f23f6982d6281d9a4d1fc80d9caffde"
+      "sourceSha256": "83dd321a8b8145122560ec1ac82465ee37255c8b6d5eed1327df9d71a5c3858a",
+      "releaseSha256": "95cf3f3a82bfcb00880e1dfdd84f9972dcd502d2cb0f9bdc887f781182bf6700"
     },
     {
       "path": "static/inspiration.html",
@@ -621,8 +621,8 @@
     },
     {
       "path": "static/js/canvas-agent.js",
-      "sourceSha256": "8b8b633f21933753f4224e771af6bf7dddfd5b335627006c15309ed05984b6d1",
-      "releaseSha256": "8b8b633f21933753f4224e771af6bf7dddfd5b335627006c15309ed05984b6d1"
+      "sourceSha256": "d3d747927a09eeff7842b514475f654df3eda3a9e13d4010d3a30a7d9b905306",
+      "releaseSha256": "d3d747927a09eeff7842b514475f654df3eda3a9e13d4010d3a30a7d9b905306"
     },
     {
       "path": "static/js/canvas-editor-core.js",
@@ -656,8 +656,8 @@
     },
     {
       "path": "static/js/commerce.js",
-      "sourceSha256": "b1327f3b3e7a40bb1b1e84dc252e4c0f55459a48d5969ed643ff831ffa2c8be7",
-      "releaseSha256": "b1327f3b3e7a40bb1b1e84dc252e4c0f55459a48d5969ed643ff831ffa2c8be7"
+      "sourceSha256": "d8608267df71b4e7904be3a63fb7b60b7f79e43749e103a04aeeb406e6b7b5a9",
+      "releaseSha256": "d8608267df71b4e7904be3a63fb7b60b7f79e43749e103a04aeeb406e6b7b5a9"
     },
     {
       "path": "static/js/generation-notifications.js",
@@ -801,8 +801,8 @@
     },
     {
       "path": "static/js/skill-market.js",
-      "sourceSha256": "0222fe85d6ba910493207656654bd7a45592d8be9b79b8a9bc7ab3d291872e28",
-      "releaseSha256": "0222fe85d6ba910493207656654bd7a45592d8be9b79b8a9bc7ab3d291872e28"
+      "sourceSha256": "61012464059080b9b0dab7d6ff2d7b7d85ed4175ccbbb11a8d0a0fe721469cc8",
+      "releaseSha256": "61012464059080b9b0dab7d6ff2d7b7d85ed4175ccbbb11a8d0a0fe721469cc8"
     },
     {
       "path": "static/js/smart-camera-node.js",
@@ -821,8 +821,8 @@
     },
     {
       "path": "static/js/smart-canvas.js",
-      "sourceSha256": "8370214f14f7ae834c2cb1226b7d02fb85603f6b8f395eb753f8c207c3b1e55c",
-      "releaseSha256": "8370214f14f7ae834c2cb1226b7d02fb85603f6b8f395eb753f8c207c3b1e55c"
+      "sourceSha256": "1884fad3dc7bb75d10692fa8751ff1fd4386099219cdd6e080fd366a8663011c",
+      "releaseSha256": "1884fad3dc7bb75d10692fa8751ff1fd4386099219cdd6e080fd366a8663011c"
     },
     {
       "path": "static/js/smart-color-node.js",
@@ -921,8 +921,8 @@
     },
     {
       "path": "static/smart-canvas.html",
-      "sourceSha256": "c3773d0ecf3496c000a8247cdac10c9cc6b98e31bec72f1c9bd97e716e4a146a",
-      "releaseSha256": "7e6e18cbedd38616dd2252ff1dc55f01ff800a83d41cbe8c2d44b11033c186ac"
+      "sourceSha256": "a5dce7fcd8c1af78c67a696b60595dce3d12e879cbb1e2ab441192abc96a0bbb",
+      "releaseSha256": "0f24a1b917ba4e69f2529b96f80bdba35e47dc7e8656376201bc806c8ddb2fb0"
     },
     {
       "path": "static/sw.js",
@@ -937,7 +937,7 @@
     {
       "path": "static/update-notes.json",
       "sourceSha256": "18d145bffd9d184af18f0d7bdc56f74cccb766f0e1f7ba3d53ca3f2e0107bbcc",
-      "releaseSha256": "0dac170f42106e2c8f18fb5fa39041575e52ec79f8c23ecdf39ce567f21b4c96"
+      "releaseSha256": "49749a511352147cf48d70241480e4d3d13d42c082ec82fe83ce94c6e55ddc26"
     },
     {
       "path": "static/vendor/css/fonts.css",

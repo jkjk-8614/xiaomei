@@ -4336,6 +4336,9 @@
         }
     });
     let externalSkillRefresh = false;
+    window.addEventListener('message',event=>{
+        if(event.origin===location.origin&&event.data?.type==='skills-changed')void loadSkills();
+    });
     const refreshExternalSkill = next => {
         if(!next || skills.some(skill=>skill.id===next) || externalSkillRefresh)return;
         externalSkillRefresh = true;

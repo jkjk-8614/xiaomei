@@ -1945,10 +1945,10 @@
 
                     <iframe id="frame-online" data-src="/static/comfyui.html?v=2026.10.16" class="active" scrolling="yes"></iframe>
         <div id="frame-gpt-chat" class="deepseek-route-placeholder" aria-hidden="true"></div>
-        <iframe id="frame-commerce" data-src="/static/commerce.html?v=2026.10.16.1792111637" scrolling="yes"></iframe>
+        <iframe id="frame-commerce" data-src="/static/commerce.html?v=2026.10.16.1792128703" scrolling="yes"></iframe>
                 <iframe id="frame-commerce-analysis" data-src="/static/commerce-analysis.html?v=2026.10.16.1792111637" scrolling="yes"></iframe>
         <iframe id="frame-product-3d" data-src="/static/product-3d.html?v=2026.10.16.1792111637" scrolling="yes"></iframe>
-            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=2026.10.16.1792113343" scrolling="yes"></iframe>
+            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=2026.10.16.1792129263" scrolling="yes"></iframe>
             <iframe id="frame-inspiration" data-src="/static/inspiration.html?v=2026.10.16.1792111637" scrolling="yes" title="灵感案例"></iframe>
             <div id="historyDrawerScrim" class="history-drawer-scrim" hidden onclick="closeHistoryDrawer()"></div>
             <iframe id="frame-history" class="history-drawer-frame" data-src="/static/history.html?v=2026.10.16.1792113421&drawer=1&outpaint-redraw=2026.10.16.1" scrolling="yes" title="历史记录"></iframe>
@@ -3124,6 +3124,9 @@
             }
             if(event.data?.type === 'skills-changed') {
                 requestDeepSeekHarnessRefresh();
+                document.querySelectorAll('iframe').forEach(iframe => {
+                    try { iframe.contentWindow?.postMessage(event.data, location.origin); } catch(e) {}
+                });
                 return;
             }
             forwardStudioApiChange(event.data);

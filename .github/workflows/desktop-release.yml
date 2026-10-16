@@ -38,6 +38,8 @@ jobs:
         run: node --test tests/test_desktop_updater.cjs tests/test_desktop_update_network.cjs tests/test_desktop_update_actions.cjs
       - name: Set desktop build revision
         run: node -e "const fs=require('node:fs'); const pkg=require('./package.json'); pkg.buildRevision=Number(process.env.GITHUB_RUN_NUMBER); fs.writeFileSync('package.json', JSON.stringify(pkg,null,2)+'\n');"
+      - name: Test optional GPU component isolation
+        run: python -B tests/test_optional_gpu_runtime.py
       - name: Build bundled Windows API runtime
         shell: pwsh
         run: |
@@ -70,6 +72,8 @@ jobs:
           node scripts/audit-release-tree.mjs $appRoot
           if ($LASTEXITCODE -ne 0) { throw 'Packaged Windows app failed privacy audit' }
           $runtime = Join-Path $appRoot 'bundled/win-api/python.exe'
+          & $runtime scripts/verify_cpu_runtime.py
+          if ($LASTEXITCODE -ne 0) { throw 'GPU components must not be included in the default installer' }
           $entry = Join-Path $appRoot 'windows_api_entry.py'
           $oldBackend = Join-Path $appRoot 'bundled/win-api/xiaomei-api.exe'
           if (-not (Test-Path -LiteralPath $runtime -PathType Leaf)) { throw 'Packaged Windows Python runtime is missing' }
@@ -163,8 +167,8 @@ jobs:
       - name: Build bundled macOS API runtime
         run: |
           python -m pip install --upgrade pip
-          grep -v '^onnxruntime-gpu' requirements.txt > /tmp/requirements-macos.txt
-          python -m pip install --no-cache-dir -r /tmp/requirements-macos.txt onnxruntime pyinstaller
+          python -m pip install --no-cache-dir -r requirements.txt pyinstaller
+          python scripts/verify_cpu_runtime.py
           pyinstaller --onefile --name xiaomei-api main.py --distpath bundled/mac-api --workpath build/mac-api-work --specpath build/mac-api-spec
       - name: Install desktop build tools
         run: npm install --no-audit --no-fund --ignore-scripts

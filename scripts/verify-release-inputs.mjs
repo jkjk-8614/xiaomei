@@ -30,6 +30,12 @@ function isPrivateEnv(file) {
 }
 
 const found = [];
+for (const file of ['requirements.txt', 'requirements-lock.txt']) {
+  const content = await readFile(path.join(root, file), 'utf8');
+  if (/^\s*(?:onnxruntime[-_]gpu|nvidia[-_])/mi.test(content)) {
+    throw new Error(`${file} 必须只包含 CPU 基础依赖；GPU/CUDA/cuDNN 通过可选组件安装器下载`);
+  }
+}
 const tracked = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 }).split('\0').filter(Boolean);
 const trackedForbidden = tracked.filter((file) => /^(?:node_modules|python)(?:[\\/]|$)/i.test(file) || forbidden.some(pattern => pattern.test(file)) || isPrivateEnv(file));
 if (trackedForbidden.length) {

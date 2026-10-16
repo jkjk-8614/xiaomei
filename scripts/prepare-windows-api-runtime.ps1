@@ -55,6 +55,8 @@ New-Item -ItemType Directory -Force -Path $sitePackages | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Unable to update pip for the Windows release build' }
 & $BuildPython -m pip install --no-cache-dir --disable-pip-version-check --no-compile --only-binary=:all: --target $sitePackages -r requirements.txt pip
 if ($LASTEXITCODE -ne 0) { throw 'Unable to vendor Windows API dependencies' }
+& (Join-Path $runtimeRoot 'python.exe') (Join-Path (Get-Location) 'scripts/verify_cpu_runtime.py')
+if ($LASTEXITCODE -ne 0) { throw 'Default Windows runtime must contain CPU ONNX Runtime only' }
 
 $entry = Join-Path (Get-Location) 'windows_api_entry.py'
 if (-not (Test-Path -LiteralPath $entry -PathType Leaf)) { throw 'Windows API entry point is missing' }

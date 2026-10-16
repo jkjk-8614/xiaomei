@@ -5488,6 +5488,7 @@ class AgentSkillStateRequest(BaseModel):
     # user-managed category without changing the existing toggle contract.
     enabled: Optional[bool] = None
     category_id: Optional[str] = Field(default=None, max_length=120)
+    display_name: Optional[str] = Field(default=None, max_length=120)
 
 
 class AgentSkillCategoryCreateRequest(BaseModel):
@@ -7106,6 +7107,15 @@ def save_agent_skill_package_registry(registry):
             except OSError:
                 pass
 
+
+def _agent_skill_apply_display_name(record, registry):
+    names = registry.get("display_names") or {}
+    label = names.get(record.get("id")) if isinstance(names, dict) else None
+    if isinstance(label, str) and label.strip():
+        record["name"] = label.strip()
+        record["display_name"] = label.strip()
+    return record
+
 def _agent_skill_registry_record(scan_record):
     record = {
         key: value for key, value in scan_record.items()
@@ -7187,7 +7197,7 @@ def _agent_skill_load_package_record(skill_id):
     category_map = _agent_skill_category_map(registry)
     record["category"] = category_id
     record["category_label"] = category_map.get(category_id, _agent_skill_category_label(category_id))
-    return record
+    return _agent_skill_apply_display_name(record, registry)
 
 def _agent_skill_legacy_record(skill_id):
     path = agent_skill_path(skill_id)
@@ -7226,7 +7236,7 @@ def _agent_skill_legacy_record(skill_id):
             "warnings": [],
             "package_bytes": 0,
         })
-        return parsed
+        return _agent_skill_apply_display_name(parsed, load_agent_skill_package_registry())
     except Exception as exc:
         print(f"读取 Skill 失败({skill_id}): {exc}")
         return None
@@ -40554,9 +40564,12 @@ async def update_agent_skill_state(skill_id: str, payload: AgentSkillStateReques
     with AGENT_SKILLS_LOCK:
         registry = load_agent_skill_package_registry()
         record = registry.get("packages", {}).get(cleaned_id)
-        if not isinstance(record, dict):
-            raise HTTPException(status_code=404, detail="只有包式 Skill 支持启用状态管理")
-        if payload.enabled is None and payload.category_id is None:
+        is_package = isinstance(record, dict)
+        if not is_package and not os.path.isfile(agent_skill_path(cleaned_id)):
+            raise HTTPException(status_code=404, detail="Skill 不存在")
+        if not is_package and (payload.enabled is not None or payload.category_id is not None):
+            raise HTTPException(status_code=400, detail="单文件 Skill 只支持重命名")
+        if payload.enabled is None and payload.category_id is None and payload.display_name is None:
             raise HTTPException(status_code=400, detail="没有需要更新的 Skill 状态")
         if payload.enabled is not None:
             record["enabled"] = bool(payload.enabled)
@@ -40570,7 +40583,15 @@ async def update_agent_skill_state(skill_id: str, payload: AgentSkillStateReques
                 raise HTTPException(status_code=404, detail="Skill 分类不存在")
             record["category"] = category_id
             record["category_label"] = category_map[category_id]
-        registry["packages"][cleaned_id] = record
+        if payload.display_name is not None:
+            display_name = payload.display_name.strip()
+            names = registry.setdefault("display_names", {})
+            if display_name:
+                names[cleaned_id] = display_name
+            else:
+                names.pop(cleaned_id, None)
+        if is_package:
+            registry["packages"][cleaned_id] = record
         save_agent_skill_package_registry(registry)
         skill = load_agent_skill_record(cleaned_id)
     return {"skill": _agent_skill_public_record(skill)}
@@ -40629,6 +40650,12 @@ async def update_agent_skill_legacy(skill_id: str, payload: AgentSkillLegacyRequ
             frontmatter=has_frontmatter,
         )
         write_skill_text(path, document)
+        if str(payload.name or "").strip():
+            registry = load_agent_skill_package_registry()
+            names = registry.get("display_names") or {}
+            if cleaned_id in names:
+                names.pop(cleaned_id)
+                save_agent_skill_package_registry(registry)
         skill = load_agent_skill_record(cleaned_id)
     return {"skill": _agent_skill_public_record(skill)}
 
@@ -40653,10 +40680,14 @@ async def delete_agent_skill_legacy(skill_id: str):
                 backup_path = os.path.join(AGENT_SKILL_PACKAGE_BACKUPS_DIR, f"{cleaned_id}-delete-{uuid.uuid4().hex}")
                 os.replace(package_path, backup_path)
             removed = packages.pop(cleaned_id)
+            names = registry.setdefault("display_names", {})
+            old_display_name = names.pop(cleaned_id, None)
             try:
                 save_agent_skill_package_registry(registry)
             except Exception:
                 packages[cleaned_id] = removed
+                if old_display_name is not None:
+                    names[cleaned_id] = old_display_name
                 if backup_path:
                     os.replace(backup_path, package_path)
                 raise
@@ -40667,6 +40698,10 @@ async def delete_agent_skill_legacy(skill_id: str):
             if not os.path.isfile(path):
                 raise HTTPException(status_code=404, detail="Skill 不存在")
             os.remove(path)
+            names = registry.get("display_names") or {}
+            if cleaned_id in names:
+                names.pop(cleaned_id)
+                save_agent_skill_package_registry(registry)
     return {"ok": True}
 
 @app.post("/api/agent-skills/upload")

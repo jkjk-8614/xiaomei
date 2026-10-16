@@ -261,10 +261,10 @@
         savePreferences();renderSharedSkillStatus();renderSkillPicker();renderForm();
         toast(state.skillId?`已启用共享 Skill：${skill?.name||state.skillId}`:'已切换为通用助手');
     }
-    async function loadSharedSkillLibrary(){
+    async function loadSharedSkillLibrary(force=false){
         state.skillLoading=true;state.skillError='';renderSkillPicker();
         try{
-            const result=sharedSkillApi?.load?await sharedSkillApi.load():await fetch('/api/agent-skills',{cache:'no-store'}).then(response=>{if(!response.ok)throw new Error(`Skill API ${response.status}`);return response.json();});
+            const result=sharedSkillApi?.load?await sharedSkillApi.load(force):await fetch('/api/agent-skills',{cache:'no-store'}).then(response=>{if(!response.ok)throw new Error(`Skill API ${response.status}`);return response.json();});
             state.skills=Array.isArray(result)?result:(result?.skills||[]);
             const selected=sharedSkillApi?.getSelected?sharedSkillApi.getSelected(state.skillId):canonicalSharedSkillId(localStorage.getItem(SHARED_SKILL_KEY)??state.skillId);
             if(state.skills.some(skill=>skill.id===selected&&skill.enabled!==false))state.skillId=selected;
@@ -890,6 +890,7 @@
         }catch(error){$('apiStatus').textContent='API 配置读取失败';render();}
     }
     if(sharedSkillApi?.subscribe)sharedSkillApi.subscribe(next=>{if(next&&state.skills.length&&!state.skills.some(skill=>skill.id===next&&skill.enabled!==false))return;if(next!==state.skillId){state.skillId=next||'';state.skillInstructionsFor='';state.skillInstructions='';renderSharedSkillStatus();renderSkillPicker();renderForm();}});
+    window.addEventListener('message',event=>{if(event.origin===location.origin&&event.data?.type==='skills-changed')void loadSharedSkillLibrary(true);});
     // 先渲染工作台骨架，再异步读取 Skill 和 API 配置。
     // 如果本地服务或网络响应较慢，页面也应先显示流程、参数和结果空状态，
     // 不能只留下静态标题而让整个工作区看起来像消失了。

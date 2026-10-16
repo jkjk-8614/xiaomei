@@ -13748,10 +13748,15 @@ async function loadCurrentAgentSkillLibrary(force=false){
         agentSkillLibraryLoaded = true;
         // 当前库是唯一来源：画布里残留的旧 Skill 不再继续挂在 Agent 节点上。
         const allowed = new Set(agentSkillLibraryCache.flatMap(skill => [skill.id, skill.name]).filter(Boolean));
+        const namesById = new Map(agentSkillLibraryCache.map(skill => [skill.id, skill.name]));
         let removedLegacy = false;
         nodes.forEach(node => {
             if(!['smart-agent', 'smart-prompt'].includes(node?.type) || !Array.isArray(node.installedSkills)) return;
             const next = node.installedSkills.filter(skill => allowed.has(skill?.id) || allowed.has(skill?.name));
+            next.forEach(skill => {
+                const currentName = namesById.get(skill?.id);
+                if(currentName && skill.name !== currentName){ skill.name = currentName; removedLegacy = true; }
+            });
             if(next.length !== node.installedSkills.length){
                 node.installedSkills = next;
                 removedLegacy = true;
@@ -13768,6 +13773,11 @@ async function loadCurrentAgentSkillLibrary(force=false){
     });
     return agentSkillLibraryLoading;
 }
+window.addEventListener('message', event => {
+    if(event.origin !== location.origin || event.data?.type !== 'skills-changed') return;
+    if(!agentSkillLibraryLoaded) return;
+    void loadCurrentAgentSkillLibrary(true).then(() => render());
+});
 async function hydrateCurrentAgentSkill(skill){
     if(!skill || skill.content) return skill;
     if(skill.source !== 'current-library' || !skill.id) return skill;
@@ -13810,12 +13820,13 @@ function openCanvasAgentSkillManager(){
     }, 0);
 }
 window.openCanvasAgentSkillManager = openCanvasAgentSkillManager;
-function renameAgentSkillLibraryItem(key, nextName){
-    const name = String(nextName || '').trim().slice(0, 80);
+async function renameAgentSkillLibraryItem(key, nextName){
+    const name = String(nextName || '').trim();
     if(!name){
         toast('请输入 Skill 名称');
         return false;
     }
+    if(name.length > 120){ toast('Skill 名称不能超过 120 个字符'); return false; }
     const library = agentSkillLibrary();
     const item = library.find(skill => (skill.id || skill.name) === key);
     if(!item) return false;
@@ -13825,8 +13836,20 @@ function renameAgentSkillLibraryItem(key, nextName){
         toast('已存在同名 Skill');
         return false;
     }
-    item.name = name;
-    if(!saveAgentSkillLibrary(library)) return false;
+    if(item.source === 'current-library'){
+        try {
+            const response = await fetch(`/api/agent-skills/${encodeURIComponent(item.id)}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({display_name:name})});
+            if(!response.ok){
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.detail || `请求失败（${response.status}）`);
+            }
+            window.parent?.postMessage({type:'skills-changed',updated_at:Date.now()}, location.origin);
+        } catch(error){ toast(`重命名失败：${error.message || error}`); return false; }
+        item.name = name;
+    } else {
+        item.name = name;
+        if(!saveAgentSkillLibrary(library)) return false;
+    }
     nodes.forEach(candidate => {
         if(!['smart-agent', 'smart-prompt'].includes(candidate?.type)) return;
         candidate.installedSkills = agentSkills(candidate).map(skill => {
@@ -13875,7 +13898,7 @@ function agentSkillLibraryHtml(node){
                 <button class="agent-node-control agent-skill-library-favorite ${favorite ? 'active' : ''}" type="button" data-skill-library-id="${escapeAttr(key)}" aria-label="${favorite ? '取消收藏' : '收藏'} Skill「${escapeAttr(skill.name || 'Skill')}」" aria-pressed="${favorite}" title="${favorite ? '取消收藏' : '收藏并置顶'}"><i data-lucide="star"></i></button>
                 <span class="agent-skill-library-label"><strong>${escapeHtml(skill.name || 'Skill')}</strong><small>${fileCount ? `${fileCount} 个文件` : '已保存'}</small></span>
                 <button class="agent-node-control agent-skill-library-use ${used ? 'active' : ''}" type="button" data-skill-library-id="${escapeAttr(key)}">${used ? '已调用' : '调用'}</button>
-                ${skill.source === 'current-library' ? `<button class="agent-node-control agent-skill-library-delete" type="button" data-skill-library-id="${escapeAttr(key)}" title="从本地 Skill 库删除"><i data-lucide="trash-2"></i></button>` : `<button class="agent-node-control agent-skill-library-rename" type="button" data-skill-library-id="${escapeAttr(key)}" title="重命名 Skill"><i data-lucide="pencil"></i></button><button class="agent-node-control agent-skill-library-delete" type="button" data-skill-library-id="${escapeAttr(key)}" title="从 Skill 库删除"><i data-lucide="trash-2"></i></button>`}
+                <button class="agent-node-control agent-skill-library-rename" type="button" data-skill-library-id="${escapeAttr(key)}" title="重命名 Skill"><i data-lucide="pencil"></i></button><button class="agent-node-control agent-skill-library-delete" type="button" data-skill-library-id="${escapeAttr(key)}" title="从 Skill 库删除"><i data-lucide="trash-2"></i></button>
             </div>`;
         }).join('')}<div class="agent-skill-library-empty agent-skill-library-filter-empty" ${visibleItems.length ? 'hidden' : ''}>${emptyLabel}</div></div>` : `<div class="agent-skill-library-empty">${emptyLabel}</div>`}
     </div>`;
@@ -16530,9 +16553,15 @@ function bindNodeSkillControls(el, node){
             label.appendChild(input);
             button.textContent = '✓';
             button.title = '确认名称';
-            const finishRename = () => {
+            let savingName = false;
+            const finishRename = async () => {
+                if(savingName) return;
                 const name = input.value.trim();
-                if(!renameAgentSkillLibraryItem(key, name)){
+                savingName = true;
+                button.disabled = true;
+                if(!await renameAgentSkillLibraryItem(key, name)){
+                    savingName = false;
+                    button.disabled = false;
                     input.focus();
                     input.select();
                     return;
