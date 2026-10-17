@@ -301,7 +301,6 @@ html body textarea::placeholder {
 .smart-log-toggle,
 .smart-shortcut-toggle,
 .smart-workflow-toggle,
-.prompt-optimizer-model-button,
 .canvas-agent-toggle {
     border: 1px solid var(--apple-border) !important;
     border-radius: 11px !important;
@@ -321,7 +320,6 @@ html body textarea::placeholder {
 .smart-log-toggle:hover,
 .smart-shortcut-toggle:hover,
 .smart-workflow-toggle:hover,
-.prompt-optimizer-model-button:hover,
 .canvas-agent-toggle:hover {
     border-color: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 3800%, transparent) !important;
     background: var(--apple-accent-soft) !important;
@@ -2510,7 +2508,6 @@ html body .smart-back:hover,
 html body .smart-log-toggle:hover,
 html body .smart-shortcut-toggle:hover,
 html body .smart-workflow-toggle:hover,
-html body .prompt-optimizer-model-button:hover,
 html body .canvas-agent-toggle:hover {
     border-color: var(--ui-accent-border) !important;
 }

@@ -3,24 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="/static/images/logo.png?v=2026.10.16" type="image/png">
+    <link rel="icon" href="/static/images/logo.png?v=2026.10.17" type="image/png">
     <title data-i18n="smart.title">智能画布</title>
-    <script src="/static/vendor/js/lucide.js?v=2026.10.16.1784161005"></script>
-    <script src="/static/vendor/js/perfect-freehand-1.2.3.js?v=2026.10.16.1789185308"></script>
-    <script src="/static/js/theme.js?v=2026.10.16.1791335865"></script>
-    <script src="/static/js/touch-mouse.js?v=2026.10.16.1784161005"></script>
-    <script src="/static/js/i18n.js?v=2026.10.16.1792035707&upload-documents=2026.10.14.1&document-images=2026.10.14.1&prompt-layout=2026.10.15.1"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.16.1791851171">
-    <link rel="stylesheet" href="/static/css/canvas-editor-common.css?v=2026.10.16.1786168693">
-<link rel="stylesheet" href="/static/css/smart-canvas.css?v=2026.10.16.1792113400&ps-open=2026.10.15.1&agent-resize=2026.10.13.1&popover-clip=2026.10.12.1&input-hover=2026.10.12.1&agent-surfaces=2026.10.12.1&node-refs=2026.10.12.1&ocr=2026.10.13.4&agent-cancel=2026.10.14.1&upload-documents=2026.10.14.1&document-icons=2026.10.14.1&document-images=2026.10.14.1&document-order=2026.10.14.2&prompt-layout=2026.10.15.1&skill-favorites=2026.10.15.1&prompt-skill-layout=2026.10.15.1&composer-scale=2026.10.15.1">
-    <link rel="stylesheet" href="/static/css/canvas-folder-batch.css?v=2026.10.16.1789432724">
-    <script src="/static/js/background-removal-bridge.js?v=2026.10.16.1789009721"></script>
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.16.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.16.1791859157&agent-model-picker=2026.09.28.1">
-    <link rel="stylesheet" href="/static/css/smart-canvas-agent.css?v=2026.10.16.1791784963&dark-model-picker=2026.10.12.2&dark-agent-contrast=2026.10.12.6">
-    <link rel="stylesheet" href="/static/css/project-agent.css?v=2026.10.16.1792113777">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.16.1790178173"></script>
-    <link rel="stylesheet" href="/static/css/image-layers.css?v=2026.10.16.1790738147">
+    <script src="/static/vendor/js/lucide.js?v=2026.10.17.1784161005"></script>
+    <script src="/static/vendor/js/perfect-freehand-1.2.3.js?v=2026.10.17.1789185308"></script>
+    <script src="/static/js/theme.js?v=2026.10.17.1791335865"></script>
+    <script src="/static/js/touch-mouse.js?v=2026.10.17.1784161005"></script>
+    <script src="/static/js/i18n.js?v=2026.10.17.1792198036&detail-stitch=2026.10.17.2&upload-documents=2026.10.14.1&document-images=2026.10.14.1&prompt-layout=2026.10.15.1"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.17.1792161228">
+    <link rel="stylesheet" href="/static/css/canvas-editor-common.css?v=2026.10.17.1786168693">
+<link rel="stylesheet" href="/static/css/smart-canvas.css?v=2026.10.17.1792197343&detail-stitch=2026.10.17.1&prompt-optimize=2026.10.16.3&ps-open=2026.10.15.1&agent-resize=2026.10.13.1&popover-clip=2026.10.12.1&input-hover=2026.10.12.1&agent-surfaces=2026.10.12.1&node-refs=2026.10.12.1&ocr=2026.10.13.4&agent-cancel=2026.10.14.1&upload-documents=2026.10.14.1&document-icons=2026.10.14.1&document-images=2026.10.14.1&document-order=2026.10.14.2&prompt-layout=2026.10.15.1&skill-favorites=2026.10.15.1&prompt-skill-layout=2026.10.15.1&composer-scale=2026.10.15.1">
+    <link rel="stylesheet" href="/static/css/smart-expert-workflow.css?v=2026.10.17.1792198885">
+    <link rel="stylesheet" href="/static/css/canvas-folder-batch.css?v=2026.10.17.1789432724">
+    <script src="/static/js/background-removal-bridge.js?v=2026.10.17.1789009721"></script>
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.17.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.17.1792161228&agent-model-picker=2026.09.28.1">
+    <link rel="stylesheet" href="/static/css/smart-canvas-agent.css?v=2026.10.17.1792161228&dark-model-picker=2026.10.12.2&dark-agent-contrast=2026.10.12.6">
+    <link rel="stylesheet" href="/static/css/project-agent.css?v=2026.10.17.1792113777">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.17.1790178173"></script>
+    <link rel="stylesheet" href="/static/css/image-layers.css?v=2026.10.17.1790738147">
 </head>
 <body>
     <div id="shell" class="shell">
@@ -51,6 +52,7 @@
                         <div id="dynamicParams" class="dynamic-params"></div>
                     </div>
                     <div class="composer-actions">
+                        <button id="promptOptimizeRestore" class="prompt-optimize-btn prompt-optimize-restore" type="button" title="恢复上次替换前的提示词" aria-label="恢复上次替换前的提示词" hidden><i data-lucide="undo-2"></i><span>恢复原文</span></button>
                         <button id="promptOptimizeBtn" class="prompt-optimize-btn" type="button" title="优化提示词" aria-label="优化提示词"><i data-lucide="wand-sparkles"></i><span>优化提示词</span></button>
                         <button id="runBtn" class="run-btn" type="button" title="运行（Ctrl/Cmd + Enter）" data-i18n-title="smart.runShortcut" aria-keyshortcuts="Control+Enter Meta+Enter"><i data-lucide="sparkles"></i><span data-i18n="smart.run">运行</span></button>
                     </div>
@@ -370,6 +372,13 @@
                         <div class="create-card-sub">持久分析节点；仅用于高级工作流</div>
                     </span>
                 </button>
+                <button class="create-card" type="button" data-create-type="expert-workflow">
+                    <span class="create-card-icon"><i data-lucide="network"></i></span>
+                    <span>
+                        <div class="create-card-title">专家协作</div>
+                        <div class="create-card-sub">在一个节点内连接多位 Skill 专家</div>
+                    </span>
+                </button>
                 <button class="create-card" type="button" data-create-type="compare">
                     <span class="create-card-icon"><i data-lucide="columns-2"></i></span>
                     <span>
@@ -463,12 +472,6 @@
             </div>
         </section>
         <div id="canvasAlignmentGuides" class="canvas-alignment-guides" aria-hidden="true"><i class="canvas-alignment-guide guide-v"></i><i class="canvas-alignment-guide guide-h"></i></div>
-        <div id="promptOptimizerModelControl" class="prompt-optimizer-model-control">
-            <button id="promptOptimizerModelButton" class="prompt-optimizer-model-button" type="button" aria-haspopup="listbox" aria-expanded="false" title="选择优化提示词使用的聊天模型">
-                <i data-lucide="wand-sparkles"></i><span>优化模型</span><strong id="promptOptimizerModelLabel">请选择</strong><i data-lucide="chevron-down"></i>
-            </button>
-            <div id="promptOptimizerModelMenu" class="prompt-optimizer-model-menu" role="listbox"></div>
-        </div>
         <button id="smartWorkflowToggle" class="smart-workflow-toggle" type="button" title="添加、导入或导出工作流" aria-label="工作流"><i data-lucide="package-open"></i><span>工作流</span></button>
         <button id="smartShortcutToggle" class="smart-shortcut-toggle" type="button" onclick="openSmartCanvasShortcuts()" title="快捷键" aria-label="快捷键" data-i18n-title="smart.shortcuts"><i data-lucide="keyboard"></i><span data-i18n="smart.shortcuts">快捷键</span></button>
         <button id="smartLogToggle" class="smart-log-toggle" type="button" onclick="openSmartCanvasLog()" title="日志" aria-label="日志" data-i18n-title="canvas.logs"><i data-lucide="list-todo"></i><span data-i18n="canvas.logs">日志</span></button>
@@ -961,17 +964,22 @@
         <div id="promptOptimizeModal" class="prompt-optimize-modal" role="dialog" aria-modal="true" aria-labelledby="promptOptimizeModalTitle">
             <div class="prompt-optimize-panel">
                 <div class="prompt-optimize-modal-head">
-                    <div><h2 id="promptOptimizeModalTitle">优化提示词预览</h2><p>原提示词不会自动修改，满意后再确认替换。</p></div>
+                    <div><h2 id="promptOptimizeModalTitle">优化提示词预览</h2><p>选择方式后点击“开始优化”才会发送请求；满意后再确认替换。</p></div>
                     <button id="promptOptimizeModalClose" type="button" title="关闭"><i data-lucide="x"></i></button>
                 </div>
-                <div id="promptOptimizeControls" class="prompt-optimize-controls">
-                    <label>优化方式 <select id="promptOptimizeMode"><option value="faithful">忠实整理</option><option value="detail">补充细节</option><option value="creative">创意增强</option></select></label>
-                    <label>优化模型 <select id="promptOptimizeModel"></select></label>
+                <div class="prompt-optimize-setup">
+                    <div id="promptOptimizeControls" class="prompt-optimize-controls">
+                        <label>优化方式 <select id="promptOptimizeMode"><option value="faithful">忠实整理</option><option value="detail">补充细节</option><option value="creative">创意增强</option></select></label>
+                        <label>优化模型 <select id="promptOptimizeModel"></select></label>
+                    </div>
+                    <div id="promptOptimizeReferenceGroup" class="prompt-optimize-reference-group" hidden>
+                        <div class="prompt-optimize-reference-title">参考图用途</div>
+                        <div id="promptOptimizeReferences" class="prompt-optimize-references"></div>
+                    </div>
                 </div>
-                <div id="promptOptimizeReferences" class="prompt-optimize-references"></div>
                 <div class="prompt-optimize-compare">
                     <section><div class="prompt-optimize-section-title"><span>原提示词</span><small>保持不变</small></div><textarea id="promptOptimizeOriginal" readonly></textarea></section>
-                    <section><div class="prompt-optimize-section-title"><span>优化结果</span><small id="promptOptimizeModalModel"></small></div><textarea id="promptOptimizeCandidate" placeholder="正在生成优化提示词…"></textarea></section>
+                    <section><div class="prompt-optimize-section-title"><span>优化结果</span><small id="promptOptimizeModalModel"></small></div><textarea id="promptOptimizeCandidate" placeholder="点击“开始优化”后显示结果"></textarea></section>
                 </div>
                 <label class="prompt-optimize-feedback">补充要求 / 修改意见<textarea id="promptOptimizeFeedback" rows="2" placeholder="例如：保留产品外观，只参考图2的文字布局，不使用图2的广告文案。"></textarea></label>
                 <div id="promptOptimizeVersions" class="prompt-optimize-versions" aria-label="本次优化版本"></div>
@@ -979,7 +987,7 @@
                 <div class="prompt-optimize-modal-actions">
                     <span id="promptOptimizeModalStatus">等待优化</span>
                     <button id="promptOptimizeCancel" class="secondary" type="button">取消，不替换</button>
-                    <button id="promptOptimizeRegenerate" class="secondary" type="button">从原文换一版</button>
+                    <button id="promptOptimizeRegenerate" class="secondary" type="button">开始优化</button>
                     <button id="promptOptimizeContinue" class="secondary" type="button" disabled>按意见继续优化</button>
                     <button id="promptOptimizeCopy" class="secondary" type="button" disabled>复制结果</button>
                     <button id="promptOptimizeApply" class="primary" type="button" disabled><i data-lucide="replace"></i>替换当前提示词</button>
@@ -998,37 +1006,38 @@
         <div id="toast" class="toast"></div>
         <div id="mentionPreview" class="mention-preview"><img alt="preview"></div>
     </div>
-    <script src="/static/js/upstream-rerun-utils.js?v=2026.10.16.1785467783"></script>
-    <script src="/static/js/smart-camera-node.js?v=2026.10.16.1786063012"></script>
-    <script src="/static/js/smart-color-node.js?v=2026.10.16.1788945447"></script>
-    <script src="/static/js/smart-drawing-board-node.js?v=2026.10.16.1790491245&drawing-ratio=2026.09.27.2"></script>
-    <script src="/static/js/smart-canvas-data-video.js?v=2026.10.16.1792034502&connect-types=2"></script>
-<script src="/static/js/generation-notifications.js?v=2026.10.16.1787131165"></script>
-<script src="/static/js/image-task-client.js?v=2026.10.16.1791025940"></script>
-    <script src="/static/js/canvas-editor-core.js?v=2026.10.16.1786171437"></script>
-      <script src="/static/js/outpaint-geometry.js?v=2026.10.16.1790090615"></script>
-      <link rel="stylesheet" href="/static/css/workflow-save-dialog.css?v=2026.10.16.1791355337">
-      <link rel="stylesheet" href="/static/css/workflow-preview.css?v=2026.10.16.1791372473">
-      <script src="/static/js/workflow-preview.js?v=2026.10.16.1791372436"></script>
-      <script src="/static/js/workflow-save-dialog.js?v=2026.10.16.1791365029"></script>
-      <script src="/static/js/smart-canvas.js?v=2026.10.16.1792128505&ps-open=2026.10.15.1&agent-default-size=2026.10.14.1&agent-resize=2026.10.13.1&batch-default=2026.10.12.2&input-hover=2026.10.12.1&upstream-run=2026.10.15.1&node-refs=2026.10.12.1&vector=2026.10.12.1&product-fidelity=2026.10.14.1&ocr=2026.10.13.4&agent-height=2026.10.13.1&dimensions=2026.10.13.1&alt-copy=2026.10.13.1&agent-cancel=2026.10.14.1&upload-documents=2026.10.14.1&crop=2026.10.14.1&document-icons=2026.10.14.1&document-images=2026.10.14.1&drag-position=2026.10.14.1&asset-drop=2026.10.15.2&document-order=2026.10.14.2&detail-grid=2026.10.14.1&connection-erase=2026.10.14.1&apimart-video=2026.10.14.1&outpaint=2026.10.16.1&prompt-layout=2026.10.15.1&skill-favorites=2026.10.15.1&prompt-skill-layout=2026.10.15.1&composer-scale=2026.10.15.1&toolbar-scale=2026.10.15.1&asset-delete=2026.10.15.1"></script>
-    <link rel="stylesheet" href="/static/css/smart-image-vectorizer.css?v=2026.10.16.1791852537">
-    <script src="/static/js/smart-image-vectorizer.js?v=2026.10.16.1791852537"></script>
-    <link rel="stylesheet" href="/static/css/product-fidelity.css?v=2026.10.16.1792056133&dimensions=2026.10.13.1&editor=2026.10.15.2&ui=2026.10.14.1&view-editor=2026.10.13.5">
-    <script src="/static/js/physical-dimensions.js?v=2026.10.16.1791940295"></script>
-    <script src="/static/js/product-fidelity.js?v=2026.10.16.1792056133&dimensions=2026.10.13.1&editor=2026.10.15.2&ui=2026.10.14.1&view-editor=2026.10.13.6"></script>
-    <script src="/static/js/smart-canvas-edit-suite.js?v=2026.10.16.1791198166"></script>
-<script src="/static/js/local-bridge-ui.js?v=2026.10.16.1789536752"></script>
-    <script src="/static/js/shared-agent-skill.js?v=2026.10.16.1791504727"></script>
-<script src="/static/js/link-analysis-client.js?v=2026.10.16.1791637062"></script>
-    <script src="/static/js/canvas-folder-batch.js?v=2026.10.16.1789432948"></script>
-<script src="/static/js/canvas-agent-orb.js?v=2026.10.16.1791679756"></script>
-<script src="/static/js/canvas-agent.js?v=2026.10.16.1792128491&agent-default-size=2026.10.14.1&agent-pref-sync=2026.10.02.1&agent-model-picker=2026.09.28.1&canvas-wide-agent=2026.10.08.1&canvas-command-tools=2026.10.10.commerce-rules.1&prompt-skill-layout=2026.10.15.1"></script>
-<script src="/static/js/project-agent-events.js?v=2026.10.16.1792111552"></script>
-<script src="/static/js/project-agent.js?v=2026.10.16.1792113777"></script>
-<script src="/static/vendor/js/ag-psd-seethrough.bundle.js?v=2026.10.16.1790092014&layers=2026.09.22.3"></script>
-<script src="/static/js/image-layer-psd.js?v=2026.10.16.1790233758"></script>
-<script src="/static/js/smart-image-layers.js?v=2026.10.16.1790749439"></script>
+    <script src="/static/js/upstream-rerun-utils.js?v=2026.10.17.1785467783"></script>
+    <script src="/static/js/smart-camera-node.js?v=2026.10.17.1786063012"></script>
+    <script src="/static/js/smart-color-node.js?v=2026.10.17.1788945447"></script>
+    <script src="/static/js/smart-drawing-board-node.js?v=2026.10.17.1790491245&drawing-ratio=2026.09.27.2"></script>
+    <script src="/static/js/smart-canvas-data-video.js?v=2026.10.17.1792034502&connect-types=2"></script>
+<script src="/static/js/generation-notifications.js?v=2026.10.17.1787131165"></script>
+<script src="/static/js/image-task-client.js?v=2026.10.17.1791025940"></script>
+    <script src="/static/js/canvas-editor-core.js?v=2026.10.17.1786171437"></script>
+      <script src="/static/js/outpaint-geometry.js?v=2026.10.17.1790090615"></script>
+      <link rel="stylesheet" href="/static/css/workflow-save-dialog.css?v=2026.10.17.1791355337">
+      <link rel="stylesheet" href="/static/css/workflow-preview.css?v=2026.10.17.1791372473">
+      <script src="/static/js/workflow-preview.js?v=2026.10.17.1791372436"></script>
+      <script src="/static/js/workflow-save-dialog.js?v=2026.10.17.1791365029"></script>
+      <script src="/static/js/smart-expert-workflow.js?v=2026.10.17.1792199014"></script>
+      <script src="/static/js/smart-canvas.js?v=2026.10.17.1792198013&detail-stitch=2026.10.17.2&prompt-optimize=2026.10.16.3&expert-workflow=2026.10.16.2&ps-open=2026.10.15.1&agent-default-size=2026.10.14.1&agent-resize=2026.10.13.1&batch-default=2026.10.12.2&input-hover=2026.10.12.1&upstream-run=2026.10.15.1&node-refs=2026.10.12.1&vector=2026.10.12.1&product-fidelity=2026.10.14.1&ocr=2026.10.13.4&agent-height=2026.10.13.1&dimensions=2026.10.13.1&alt-copy=2026.10.13.1&agent-cancel=2026.10.14.1&upload-documents=2026.10.14.1&crop=2026.10.14.1&document-icons=2026.10.14.1&document-images=2026.10.14.1&drag-position=2026.10.14.1&asset-drop=2026.10.15.2&document-order=2026.10.14.2&detail-grid=2026.10.14.1&connection-erase=2026.10.14.1&apimart-video=2026.10.14.1&outpaint=2026.10.16.1&prompt-layout=2026.10.15.1&skill-favorites=2026.10.15.1&prompt-skill-layout=2026.10.15.1&composer-scale=2026.10.15.1&toolbar-scale=2026.10.15.1&asset-delete=2026.10.15.1&agent-link-text=2026.10.16.2&viewport-perf=2026.10.16.1"></script>
+    <link rel="stylesheet" href="/static/css/smart-image-vectorizer.css?v=2026.10.17.1791852537">
+    <script src="/static/js/smart-image-vectorizer.js?v=2026.10.17.1791852537"></script>
+    <link rel="stylesheet" href="/static/css/product-fidelity.css?v=2026.10.17.1792056133&dimensions=2026.10.13.1&editor=2026.10.15.2&ui=2026.10.14.1&view-editor=2026.10.13.5">
+    <script src="/static/js/physical-dimensions.js?v=2026.10.17.1791940295"></script>
+    <script src="/static/js/product-fidelity.js?v=2026.10.17.1792056133&dimensions=2026.10.13.1&editor=2026.10.15.2&ui=2026.10.14.1&view-editor=2026.10.13.6"></script>
+    <script src="/static/js/smart-canvas-edit-suite.js?v=2026.10.17.1791198166"></script>
+<script src="/static/js/local-bridge-ui.js?v=2026.10.17.1789536752"></script>
+    <script src="/static/js/shared-agent-skill.js?v=2026.10.17.1791504727"></script>
+<script src="/static/js/link-analysis-client.js?v=2026.10.17.1791637062"></script>
+    <script src="/static/js/canvas-folder-batch.js?v=2026.10.17.1789432948"></script>
+<script src="/static/js/canvas-agent-orb.js?v=2026.10.17.1791679756"></script>
+<script src="/static/js/canvas-agent.js?v=2026.10.17.1792128491&agent-default-size=2026.10.14.1&agent-pref-sync=2026.10.02.1&agent-model-picker=2026.09.28.1&canvas-wide-agent=2026.10.08.1&canvas-command-tools=2026.10.10.commerce-rules.1&prompt-skill-layout=2026.10.15.1"></script>
+<script src="/static/js/project-agent-events.js?v=2026.10.17.1792111552"></script>
+<script src="/static/js/project-agent.js?v=2026.10.17.1792113777"></script>
+<script src="/static/vendor/js/ag-psd-seethrough.bundle.js?v=2026.10.17.1790092014&layers=2026.09.22.3"></script>
+<script src="/static/js/image-layer-psd.js?v=2026.10.17.1790233758"></script>
+<script src="/static/js/smart-image-layers.js?v=2026.10.17.1790749439"></script>
 </body>
 </html>
 \n

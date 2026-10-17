@@ -1854,12 +1854,6 @@ html[data-studio-skin="minimal"][data-studio-skin] body .image-node.loop-smart-n
 
 /* 亮色背景（minimal）菜单规格对齐 liblib：选中/悬停用浅色药丸而非深色实底，
    浮层阴影统一为 liblib 添加节点菜单同款软阴影（0 8px 32px + 0 2px 8px）。 */
-html[data-studio-skin="minimal"][data-studio-skin] body .prompt-optimizer-model-option.active {
-    background: var(--soft, #efefef) !important;
-    color: var(--text, #1a1a1e) !important;
-    font-weight: 650;
-}
-html[data-studio-skin="minimal"][data-studio-skin] body .prompt-optimizer-model-menu,
 html[data-studio-skin="minimal"][data-studio-skin] body .smart-popover,
 html[data-studio-skin="minimal"][data-studio-skin] body .prompt-template-panel,
 html[data-studio-skin="minimal"][data-studio-skin] body .prompt-preset-panel,

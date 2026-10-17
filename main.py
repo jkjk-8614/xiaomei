@@ -5573,6 +5573,9 @@ class CanvasAssetDownloadRequest(BaseModel):
     items: List[Dict[str, Any]] = []
     filename: str = "canvas-output-images.zip"
 
+class CanvasDetailStitchRequest(BaseModel):
+    urls: List[str] = []
+
 class CommerceAnalysisRequest(BaseModel):
     url: str = Field(min_length=1, max_length=4096)
     # 淘宝/天猫的公开请求经常会返回登录页；开启后会在需要时打开本机 Edge，
@@ -8143,6 +8146,8 @@ def _share_http_path_allowed(path: str, method: str, record: Dict[str, Any], que
     # 共享编辑者的裁剪/画笔/遮罩/宫格等操作是在浏览器完成像素处理，
     # 这里只接收它上传的派生图片；不会把生成、API 配置或本地目录接口暴露出去。
     if path == "/api/ai/upload":
+        return method == "POST" and _share_editor_asset_mutation_allowed(record)
+    if path == "/api/canvas-detail-stitch":
         return method == "POST" and _share_editor_asset_mutation_allowed(record)
     if path == "/api/canvas-assets/download":
         return method == "POST" and _share_asset_access_allowed(record)
@@ -13963,7 +13968,8 @@ def _image_size_metadata_from_bytes(content):
 
 STORAGE_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".avif"}
 STORAGE_VIDEO_EXTS = {".mp4", ".webm", ".mov", ".m4v", ".avi", ".mkv", ".flv"}
-STORAGE_MEDIA_EXTS = STORAGE_IMAGE_EXTS | STORAGE_VIDEO_EXTS
+STORAGE_AUDIO_EXTS = {".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac"}
+STORAGE_MEDIA_EXTS = STORAGE_IMAGE_EXTS | STORAGE_VIDEO_EXTS | STORAGE_AUDIO_EXTS
 
 def storage_file_item(kind, root, path, include_dimensions=True, register_asset=True, registry_record=None):
     rel = os.path.relpath(path, root).replace("\\", "/")
@@ -13981,6 +13987,14 @@ def storage_file_item(kind, root, path, include_dimensions=True, register_asset=
         "size": stat.st_size,
         "created_at": stat.st_mtime,
     }
+    if include_dimensions and kind in {"upload", "generated"}:
+        caption_path = path + ".caption.txt"
+        if os.path.isfile(caption_path):
+            try:
+                with open(caption_path, encoding="utf-8-sig") as handle:
+                    item["caption"] = handle.read()
+            except OSError:
+                pass
     if include_dimensions:
         try:
             with Image.open(path) as img:
@@ -14286,9 +14300,11 @@ def list_storage_files(kind: str = "generated", offset: int = 0, limit: int = 80
     offset = max(0, int(offset or 0))
     limit = max(20, min(200, int(limit or 80)))
     media_type = str(media_type or "").strip().lower()
-    if media_type not in {"", "image", "video"}:
+    if media_type not in {"", "image", "video", "audio"}:
         raise HTTPException(status_code=400, detail="未知的素材类型")
     items = []
+    folder_counts = {}
+    folder_paths = set()
     registry_records = upload_registry_records() if kind == "upload" else {}
     seen_rels = set()
     for source_root in roots:
@@ -14296,6 +14312,8 @@ def list_storage_files(kind: str = "generated", offset: int = 0, limit: int = 80
             continue
         for current, dirs, files in os.walk(source_root):
             dirs[:] = sorted([d for d in dirs if not d.startswith(".") and not d.startswith("._")], key=str.lower)
+            for dirname in dirs:
+                folder_paths.add(os.path.relpath(os.path.join(current, dirname), source_root).replace("\\", "/"))
             for name in sorted(files, key=str.lower):
                 if name.startswith(".") or name.startswith("._"):
                     continue
@@ -14312,6 +14330,10 @@ def list_storage_files(kind: str = "generated", offset: int = 0, limit: int = 80
                     item_kwargs["register_asset"] = False
                 item = storage_file_item(kind, source_root, os.path.join(current, name), **item_kwargs)
                 if item:
+                    folder_part = item.get("folder") or ""
+                    while folder_part:
+                        folder_counts[folder_part] = folder_counts.get(folder_part, 0) + 1
+                        folder_part = os.path.dirname(folder_part).replace("\\", "/")
                     if kind == "upload":
                         record = registry_records.get(upload_media_key(item.get("url")))
                         if record and registry_is_asset_id(record.get("id")):
@@ -14322,15 +14344,15 @@ def list_storage_files(kind: str = "generated", offset: int = 0, limit: int = 80
                             item["upload_canvas_id"] = metadata.get("upload_canvas_id") or ""
                     items.append(item)
     items.sort(key=lambda item: item.get("created_at") or 0, reverse=True)
-    media_counts = {"image": 0, "video": 0}
+    media_counts = {"image": 0, "video": 0, "audio": 0}
     for item in items:
         ext = os.path.splitext(str(item.get("name") or ""))[1].lower()
-        media_counts["video" if ext in STORAGE_VIDEO_EXTS else "image"] += 1
+        media_counts["video" if ext in STORAGE_VIDEO_EXTS else "audio" if ext in STORAGE_AUDIO_EXTS else "image"] += 1
     all_total = len(items)
     scopes = prepare_upload_scopes(items, upload_canvas_index()) if kind == "upload" else {}
     filtered_items = items if not media_type else [
         item for item in items
-        if ("video" if os.path.splitext(str(item.get("name") or ""))[1].lower() in STORAGE_VIDEO_EXTS else "image") == media_type
+        if ("video" if os.path.splitext(str(item.get("name") or ""))[1].lower() in STORAGE_VIDEO_EXTS else "audio" if os.path.splitext(str(item.get("name") or ""))[1].lower() in STORAGE_AUDIO_EXTS else "image") == media_type
     ]
     if kind == "upload":
         if project_id == "__unassigned__":
@@ -14339,12 +14361,12 @@ def list_storage_files(kind: str = "generated", offset: int = 0, limit: int = 80
             filtered_items = [item for item in filtered_items if project_id in item["project_ids"]]
         if canvas_id:
             filtered_items = [item for item in filtered_items if canvas_id in item["canvas_ids"]]
-        if favorites:
-            try:
-                favorite_rels = set(json.loads(favorites))
-            except (ValueError, TypeError):
-                raise HTTPException(status_code=422, detail="收藏筛选无效，请刷新素材列表")
-            filtered_items = [item for item in filtered_items if item["rel"] in favorite_rels]
+    if favorites and kind in {"upload", "generated"}:
+        try:
+            favorite_rels = set(json.loads(favorites))
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=422, detail="收藏筛选无效，请刷新素材列表")
+        filtered_items = [item for item in filtered_items if item["rel"] in favorite_rels]
     if filters or folder:
         matches = []
         for item in filtered_items:
@@ -14367,10 +14389,15 @@ def list_storage_files(kind: str = "generated", offset: int = 0, limit: int = 80
                 continue
             if kind in {"generated", "upload"}:
                 item["classification"] = image_space_read_generated_classification(page_path)
+                caption_path = page_path + ".caption.txt"
+                if os.path.isfile(caption_path):
+                    with open(caption_path, encoding="utf-8-sig") as handle:
+                        item["caption"] = handle.read()
             with Image.open(page_path) as img:
                 item["width"], item["height"] = img.size
         except Exception:
             pass
+    folder_orders = _storage_folder_orders(kind) if kind in {"upload", "generated"} else {}
     return {
         "kind": kind,
         "root": root,
@@ -14382,6 +14409,7 @@ def list_storage_files(kind: str = "generated", offset: int = 0, limit: int = 80
         "offset": offset,
         "limit": limit,
         "has_more": offset + len(page_items) < total,
+        "folders": [{"path": path, "name": os.path.basename(path), "count": folder_counts.get(path, 0)} for path in sorted(folder_paths, key=lambda value: _storage_folder_sort_key(value, folder_orders))],
         **scopes,
     }
 
@@ -14421,10 +14449,10 @@ async def delete_storage_files(payload: Dict[str, Any]):
     try:
         for rel, asset_id in candidates:
             companions = _local_upload_companion_paths(rel) if kind == "local" else []
-            if kind == "generated":
+            if kind in {"generated", "upload"}:
                 path = storage_file_path(kind, rel)
-                if path and os.path.isfile(path + ".classification.json"):
-                    companions.append(path + ".classification.json")
+                if path:
+                    companions.extend(sidecar for sidecar in (path + ".classification.json", path + ".caption.txt") if os.path.isfile(sidecar))
             _asset_registry_trash_media(asset_id, reason="storage_file_delete", companion_paths=companions)
             trashed.append((rel, asset_id))
     except Exception:
@@ -14435,6 +14463,400 @@ async def delete_storage_files(payload: Dict[str, Any]):
                 pass
         raise
     return {"removed": len(trashed), "trashed_asset_ids": [asset_id for _rel, asset_id in trashed]}
+
+
+def _managed_storage_file(kind: str, rel: str):
+    if kind not in {"upload", "generated"}:
+        raise HTTPException(status_code=400, detail="此操作仅支持上传素材和生成素材")
+    path = storage_file_path(kind, rel)
+    if not path or not os.path.isfile(path) or os.path.splitext(path)[1].lower() not in STORAGE_MEDIA_EXTS:
+        raise HTTPException(status_code=404, detail="素材文件不存在")
+    clean_rel = str(rel).replace("\\", "/").lstrip("/")
+    return clean_rel, path
+
+
+def _managed_storage_url(kind: str, rel: str):
+    return f"/api/storage-files/{kind}/{urllib.parse.quote(rel, safe='/')}"
+
+
+def _managed_storage_root(kind: str, path: str):
+    real_path = os.path.realpath(path)
+    for root in storage_kind_roots(kind):
+        real_root = os.path.realpath(root)
+        try:
+            if os.path.commonpath((real_root, real_path)) == real_root:
+                return root
+        except ValueError:
+            continue
+    raise HTTPException(status_code=400, detail="素材路径不属于当前目录")
+
+
+def _managed_storage_folder_location(kind: str, folder: str, *, unique: bool = False):
+    matches = []
+    for root in storage_kind_roots(kind):
+        _, path = _managed_storage_target(root, folder)
+        if os.path.isdir(path):
+            matches.append((root, path))
+    if not matches:
+        raise HTTPException(status_code=404, detail="文件夹不存在")
+    if unique and len(matches) > 1:
+        raise HTTPException(status_code=409, detail=f"新旧素材目录中都有「{folder}」，请先在素材目录设置中合并后重试")
+    return matches[0]
+
+
+def _managed_storage_rel_exists(kind: str, rel: str):
+    return any(os.path.exists(_managed_storage_target(root, rel)[1]) for root in storage_kind_roots(kind))
+
+
+def _managed_storage_target(root: str, rel: str):
+    clean = str(rel or "").replace("\\", "/").strip("/")
+    if clean in {"", ".", ".."} or clean.startswith("../") or "/../" in clean:
+        raise HTTPException(status_code=400, detail="目标路径无效")
+    target = os.path.realpath(os.path.join(root, clean))
+    real_root = os.path.realpath(root)
+    try:
+        inside = os.path.commonpath((real_root, target)) == real_root
+    except ValueError:
+        inside = False
+    if not inside:
+        raise HTTPException(status_code=400, detail="目标路径超出素材目录")
+    return clean, target
+
+
+def _managed_storage_require_unreferenced(kind: str, rels: List[str]):
+    asset_ids = []
+    for rel in rels:
+        _, path = _managed_storage_file(kind, rel)
+        record = asset_registry_register_media(
+            _managed_storage_url(kind, rel), name=os.path.basename(path),
+            kind=asset_library_media_kind(path),
+            source="upload" if kind == "upload" else "generated",
+            created_at=os.path.getmtime(path),
+        )
+        if record and registry_is_asset_id(record.get("id")):
+            asset_ids.append(record["id"])
+    asset_registry_require_unreferenced_many(asset_ids)
+
+
+def _storage_folder_order_path(kind: str):
+    if kind not in {"upload", "generated"}:
+        raise HTTPException(status_code=400, detail="未知的素材目录类型")
+    return os.path.join(DATA_DIR, f"{kind}_asset_folder_order.json")
+
+
+def _storage_folder_orders(kind: str):
+    path = _storage_folder_order_path(kind)
+    if not os.path.isfile(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        _backup_unreadable_data_file(path, "素材文件夹排序")
+        return {}
+
+
+def _storage_folder_sort_key(path: str, orders: dict):
+    parent = ""
+    key = []
+    for name in path.split("/"):
+        saved = orders.get(parent, [])
+        positions = {part: index for index, part in enumerate(saved)} if isinstance(saved, list) else {}
+        key.append((positions.get(name, len(positions)), name.casefold()))
+        parent = f"{parent}/{name}".lstrip("/")
+    return tuple(key)
+
+
+@app.post("/api/storage-files/upload")
+async def upload_generated_storage_files(request: Request, files: List[UploadFile] = File(...), folder: str = Form("")):
+    ensure_same_origin_request(request)
+    root = storage_kind_dir("generated")
+    os.makedirs(root, exist_ok=True)
+    clean_folder = str(folder or "").replace("\\", "/").strip("/")
+    if clean_folder:
+        root, target_dir = _managed_storage_folder_location("generated", clean_folder)
+    else:
+        target_dir = root
+    uploaded = []
+    for file in files[:100]:
+        raw_name = os.path.basename(str(file.filename or "").replace("\\", "/"))
+        extension = os.path.splitext(raw_name)[1].lower()
+        if extension not in STORAGE_MEDIA_EXTS:
+            raise HTTPException(status_code=400, detail=f"不支持的素材类型：{raw_name}")
+        filename = _local_upload_safe_file_stem(raw_name) + extension
+        candidate = os.path.join(target_dir, filename)
+        if os.path.exists(candidate):
+            filename = f"{os.path.splitext(filename)[0]}_{uuid.uuid4().hex[:6]}{extension}"
+            candidate = os.path.join(target_dir, filename)
+        written = 0
+        created = False
+        try:
+            with open(candidate, "xb") as handle:
+                created = True
+                while chunk := await file.read(1024 * 1024):
+                    written += len(chunk)
+                    if written > 200 * 1024 * 1024:
+                        raise HTTPException(status_code=413, detail=f"素材超过 200 MB：{raw_name}")
+                    handle.write(chunk)
+        except Exception:
+            if created and os.path.isfile(candidate):
+                os.remove(candidate)
+            raise
+        rel = os.path.relpath(candidate, root).replace("\\", "/")
+        uploaded.append(storage_file_item("generated", root, candidate))
+    return {"ok": True, "count": len(uploaded), "items": uploaded}
+
+
+@app.post("/api/storage-files/organize")
+async def organize_storage_files(payload: Dict[str, Any], request: Request):
+    ensure_same_origin_request(request)
+    kind = str(payload.get("kind") or "")
+    action = str(payload.get("action") or "")
+    rels = [str(value or "").strip() for value in payload.get("items") or [] if str(value or "").strip()]
+    if kind not in {"upload", "generated"} or action not in {"rename", "move"} or not rels or len(rels) > 200:
+        raise HTTPException(status_code=400, detail="请选择要整理的素材")
+    if action == "rename" and len(rels) != 1:
+        raise HTTPException(status_code=400, detail="重命名时请选择一个素材")
+    _managed_storage_require_unreferenced(kind, rels)
+    plans = []
+    reserved = set()
+    for rel in dict.fromkeys(rels):
+        clean_rel, source = _managed_storage_file(kind, rel)
+        root = _managed_storage_root(kind, source)
+        if action == "rename":
+            stem = _local_upload_safe_file_stem(payload.get("name"))
+            target_rel = f"{os.path.dirname(clean_rel).replace(chr(92), '/')}/{stem}{os.path.splitext(clean_rel)[1]}".lstrip("/")
+        else:
+            folder = str(payload.get("folder") or "").replace("\\", "/").strip("/")
+            if folder:
+                root, _folder_path = _managed_storage_folder_location(kind, folder)
+            else:
+                root = storage_kind_dir(kind)
+            target_rel = f"{folder}/{os.path.basename(clean_rel)}".lstrip("/")
+        target_rel, target = _managed_storage_target(root, target_rel)
+        if action == "move" and target_rel == clean_rel:
+            continue
+        if os.path.realpath(target) == os.path.realpath(source):
+            continue
+        if _managed_storage_rel_exists(kind, target_rel) or target in reserved:
+            if action == "rename":
+                raise HTTPException(status_code=409, detail="同名素材已存在")
+            stem, ext = os.path.splitext(target_rel)
+            while _managed_storage_rel_exists(kind, target_rel) or target in reserved:
+                target_rel, target = _managed_storage_target(root, f"{stem}_{uuid.uuid4().hex[:6]}{ext}")
+        companions = [(source + suffix, target + suffix) for suffix in (".classification.json", ".caption.txt") if os.path.isfile(source + suffix)]
+        if any(os.path.exists(destination) or destination in reserved for _, destination in companions):
+            raise HTTPException(status_code=409, detail="目标素材的分类或提示词文件已存在")
+        reserved.update([target, *(destination for _, destination in companions)])
+        plans.append((clean_rel, target_rel, [(source, target), *companions]))
+    moved_paths = []
+    relocated = []
+    try:
+        for clean_rel, target_rel, paths in plans:
+            for old_path, new_path in paths:
+                shutil.move(old_path, new_path)
+                moved_paths.append((old_path, new_path))
+            record = _asset_registry_relocate_url(_managed_storage_url(kind, clean_rel), _managed_storage_url(kind, target_rel))
+            relocated.append((clean_rel, target_rel, dict(record.get("metadata") or {}) if record else None))
+            if kind == "upload" and action == "rename" and record:
+                metadata = dict(record.get("metadata") or {})
+                metadata["upload_name"] = os.path.basename(target_rel)
+                asset_registry_register_media(_managed_storage_url(kind, target_rel), asset_id=record.get("id"),
+                                              name=os.path.basename(target_rel), kind=record.get("kind"),
+                                              source="upload", metadata=metadata)
+        _relocate_file_favorites(kind, ((old_rel, new_rel) for old_rel, new_rel, _paths in plans))
+    except Exception:
+        for old_rel, new_rel, original_metadata in reversed(relocated):
+            record = _asset_registry_relocate_url(_managed_storage_url(kind, new_rel), _managed_storage_url(kind, old_rel))
+            if record and original_metadata is not None:
+                asset_registry_register_media(_managed_storage_url(kind, old_rel), asset_id=record.get("id"),
+                                              name=os.path.basename(old_rel), kind=record.get("kind"),
+                                              source="upload" if kind == "upload" else "generated", metadata=original_metadata)
+        for old_path, new_path in reversed(moved_paths):
+            if os.path.exists(new_path):
+                shutil.move(new_path, old_path)
+        raise
+    results = [{"from": old_rel, "to": new_rel} for old_rel, new_rel, _paths in plans]
+    return {"ok": True, "moved": len(results), "items": results}
+
+
+@app.post("/api/storage-files/folders")
+async def manage_storage_folder(payload: Dict[str, Any], request: Request):
+    ensure_same_origin_request(request)
+    kind = str(payload.get("kind") or "")
+    action = str(payload.get("action") or "")
+    if kind not in {"upload", "generated"} or action not in {"create", "rename", "delete"}:
+        raise HTTPException(status_code=400, detail="文件夹操作无效")
+    root = storage_kind_dir(kind)
+    os.makedirs(root, exist_ok=True)
+    folder = str(payload.get("folder") or "").replace("\\", "/").strip("/")
+    if action == "create":
+        name = _local_upload_safe_folder_name(payload.get("name"))
+        if folder:
+            root, parent = _managed_storage_folder_location(kind, folder)
+        target_rel, target = _managed_storage_target(root, f"{folder}/{name}".lstrip("/"))
+        if _managed_storage_rel_exists(kind, target_rel):
+            raise HTTPException(status_code=409, detail="同名文件夹已存在")
+        os.mkdir(target)
+        return {"ok": True, "folder": target_rel}
+    if not folder:
+        raise HTTPException(status_code=400, detail="不能修改素材根目录")
+    root, source = _managed_storage_folder_location(kind, folder, unique=True)
+    media_rels = [os.path.relpath(os.path.join(current, name), root).replace("\\", "/")
+                  for current, _dirs, names in os.walk(source) for name in names
+                  if os.path.splitext(name)[1].lower() in STORAGE_MEDIA_EXTS]
+    if action == "rename":
+        _managed_storage_require_unreferenced(kind, media_rels)
+        name = _local_upload_safe_folder_name(payload.get("name"))
+        target_rel, target = _managed_storage_target(root, f"{os.path.dirname(folder).replace(chr(92), '/')}/{name}".lstrip("/"))
+        if _managed_storage_rel_exists(kind, target_rel):
+            raise HTTPException(status_code=409, detail="同名文件夹已存在")
+        orders = _storage_folder_orders(kind)
+        parent = os.path.dirname(folder).replace("\\", "/")
+        previous_name = os.path.basename(folder)
+        if isinstance(orders.get(parent), list):
+            orders[parent] = [name if part == previous_name else part for part in orders[parent]]
+        for key in list(orders):
+            if key == folder or key.startswith(folder + "/"):
+                orders[target_rel + key[len(folder):]] = orders.pop(key)
+        relocated = []
+        os.rename(source, target)
+        try:
+            for rel in media_rels:
+                next_rel = target_rel + rel[len(folder):]
+                _asset_registry_relocate_url(_managed_storage_url(kind, rel), _managed_storage_url(kind, next_rel))
+                relocated.append((rel, next_rel))
+            _atomic_write_json_file(_storage_folder_order_path(kind), orders)
+            _relocate_file_favorites(kind, folder_change=(folder, target_rel))
+        except Exception:
+            for old_rel, new_rel in reversed(relocated):
+                _asset_registry_relocate_url(_managed_storage_url(kind, new_rel), _managed_storage_url(kind, old_rel))
+            os.rename(target, source)
+            raise
+        return {"ok": True, "folder": target_rel}
+    media_paths = {os.path.abspath(os.path.join(root, rel)) for rel in media_rels}
+    companion_paths = {path + suffix for path in media_paths for suffix in (".classification.json", ".caption.txt")}
+    other_files = [name for current, _dirs, names in os.walk(source) for name in names
+                   if os.path.abspath(os.path.join(current, name)) not in media_paths | companion_paths]
+    if other_files:
+        raise HTTPException(status_code=409, detail="文件夹还有其它文件，不能整夹移入回收站")
+    if media_rels:
+        await delete_storage_files({"kind": kind, "items": media_rels})
+    for current, _dirs, _names in os.walk(source, topdown=False):
+        os.rmdir(current)
+    orders = _storage_folder_orders(kind)
+    parent = os.path.dirname(folder).replace("\\", "/")
+    if isinstance(orders.get(parent), list):
+        orders[parent] = [part for part in orders[parent] if part != os.path.basename(folder)]
+    for key in list(orders):
+        if key == folder or key.startswith(folder + "/"):
+            del orders[key]
+    _atomic_write_json_file(_storage_folder_order_path(kind), orders)
+    return {"ok": True, "deleted": folder}
+
+
+@app.post("/api/storage-files/folders/reorder")
+async def reorder_storage_folders(payload: Dict[str, Any], request: Request):
+    ensure_same_origin_request(request)
+    kind = str(payload.get("kind") or "")
+    if kind not in {"upload", "generated"}:
+        raise HTTPException(status_code=400, detail="未知的素材目录类型")
+    parent = str(payload.get("parent") or "").replace("\\", "/").strip("/")
+    root = storage_kind_dir(kind)
+    parent_paths = [_managed_storage_target(candidate, parent)[1] if parent else candidate
+                    for candidate in storage_kind_roots(kind)]
+    if not any(os.path.isdir(path) for path in parent_paths):
+        raise HTTPException(status_code=404, detail="父文件夹不存在")
+    actual = {f"{parent}/{entry.name}".lstrip("/") for parent_path in parent_paths
+              if os.path.isdir(parent_path) for entry in os.scandir(parent_path)
+              if entry.is_dir() and not entry.name.startswith((".", "._"))}
+    paths = payload.get("paths")
+    if not isinstance(paths, list) or len(paths) != len(actual) or len(set(paths)) != len(paths):
+        raise HTTPException(status_code=409, detail="文件夹列表已变化，请刷新后重试")
+    cleaned = []
+    for value in paths:
+        rel, _ = _managed_storage_target(root, value)
+        if os.path.dirname(rel).replace("\\", "/") != parent:
+            raise HTTPException(status_code=400, detail="只能调整同级文件夹顺序")
+        cleaned.append(rel)
+    if set(cleaned) != actual:
+        raise HTTPException(status_code=409, detail="文件夹列表已变化，请刷新后重试")
+    orders = _storage_folder_orders(kind)
+    orders[parent] = [path.rsplit("/", 1)[-1] for path in cleaned]
+    _atomic_write_json_file(_storage_folder_order_path(kind), orders)
+    return {"ok": True, "paths": cleaned}
+
+
+@app.post("/api/storage-files/caption")
+async def caption_storage_files(payload: Dict[str, Any], request: Request):
+    ensure_same_origin_request(request)
+    kind = str(payload.get("kind") or "")
+    rels = [str(value or "") for value in payload.get("items") or []][:100]
+    if not rels:
+        raise HTTPException(status_code=400, detail="请选择图片素材")
+    results = []
+    for rel in rels:
+        result = {"rel": rel, "ok": False}
+        try:
+            _, path = _managed_storage_file(kind, rel)
+            if asset_library_media_kind(path) != "image":
+                raise HTTPException(status_code=400, detail="仅图片支持提示词反推")
+            caption, model = await caption_image_with_provider(
+                path, str(payload.get("prompt") or "描述图片"),
+                str(payload.get("provider") or ""), str(payload.get("model") or ""), "",
+            )
+            with open(path + ".caption.txt", "w", encoding="utf-8") as handle:
+                handle.write(caption)
+            result.update(ok=True, caption=caption, model=model)
+        except HTTPException as exc:
+            result["error"] = str(exc.detail)
+        except Exception as exc:
+            result["error"] = str(exc)
+        results.append(result)
+    return {"count": sum(bool(item["ok"]) for item in results), "items": results}
+
+
+@app.patch("/api/storage-files/caption")
+async def save_storage_file_caption(payload: Dict[str, Any], request: Request):
+    ensure_same_origin_request(request)
+    _, path = _managed_storage_file(str(payload.get("kind") or ""), str(payload.get("rel") or ""))
+    if asset_library_media_kind(path) != "image":
+        raise HTTPException(status_code=400, detail="仅图片支持提示词反推")
+    caption = str(payload.get("caption") or "")[:100000]
+    with open(path + ".caption.txt", "w", encoding="utf-8") as handle:
+        handle.write(caption)
+    return {"ok": True, "caption": caption}
+
+
+@app.post("/api/storage-files/classify")
+async def classify_storage_files(payload: Dict[str, Any], request: Request):
+    ensure_same_origin_request(request)
+    kind = str(payload.get("kind") or "")
+    rels = [str(value or "") for value in payload.get("items") or []][:80]
+    if not rels:
+        raise HTTPException(status_code=400, detail="请选择图片素材")
+    results = []
+    for rel in rels:
+        result = {"rel": rel, "ok": False}
+        try:
+            _, path = _managed_storage_file(kind, rel)
+            if asset_library_media_kind(path) != "image":
+                raise HTTPException(status_code=400, detail="仅图片支持智能分类")
+            classification = await classify_image_with_provider(
+                path, str(payload.get("provider") or ""), str(payload.get("model") or ""),
+                "", str(payload.get("prompt") or ""),
+            )
+            previous = image_space_read_generated_classification(path)
+            value = replace_ai(previous, classification, _normalize_asset_classification_fields)
+            _atomic_write_json_locked(path + ".classification.json", value)
+            result.update(ok=True, classification=value)
+        except HTTPException as exc:
+            result["error"] = str(exc.detail)
+        except Exception as exc:
+            result["error"] = str(exc)
+        results.append(result)
+    return {"count": sum(bool(item["ok"]) for item in results), "items": results}
 
 @app.get("/api/asset-classification-prompt")
 async def get_asset_classification_prompt():
@@ -21713,9 +22135,17 @@ _ASSISTANT_VISIBLE_PAGE_SITES = {
     "xiaohongshu": ("小红书", ("xiaohongshu.com", "rednote.com")),
     "douyin": ("抖音", ("douyin.com",)),
     "1688": ("1688", ("1688.com",)),
+    "amazon": ("亚马逊", ("amazon.com", "amazon.cn", "amazon.co.uk", "amazon.de", "amazon.fr", "amazon.it", "amazon.es", "amazon.ca", "amazon.com.au", "amazon.co.jp", "amazon.in", "amazon.com.mx", "amazon.com.br", "amazon.nl", "amazon.pl", "amazon.se", "amazon.sg", "amazon.ae", "amazon.sa", "amazon.tr", "amazon.eg")),
+    "aliexpress": ("速卖通", ("aliexpress.com", "aliexpress.ru", "aliexpress.us")),
+    "shopee": ("虾皮 Shopee", ("shopee.com", "shopee.co.id", "shopee.sg", "shopee.co.th", "shopee.co.my", "shopee.vn", "shopee.ph", "shopee.tw", "shopee.com.br", "shopee.cl", "shopee.pl")),
+    "temu": ("Temu", ("temu.com", "temu.co.uk", "temu.de", "temu.fr", "temu.it", "temu.es", "temu.nl", "temu.pl", "temu.se", "temu.au", "temu.ca", "temu.mx", "temu.cl", "temu.co", "temu.com.br", "temu.jp", "temu.kr")),
+    "ozon": ("Ozon", ("ozon.ru", "ozon.com")),
+    "ebay": ("eBay", ("ebay.com", "ebay.co.uk", "ebay.de", "ebay.fr", "ebay.it", "ebay.es", "ebay.ca", "ebay.com.au", "ebay.at", "ebay.be", "ebay.ch", "ebay.ie", "ebay.nl", "ebay.pl", "ebay.com.sg", "ebay.com.my", "ebay.ph", "ebay.in")),
+    "shein": ("SHEIN", ("shein.com", "shein.co.uk", "shein.de", "shein.fr", "shein.it", "shein.es")),
+    "tiktok-shop": ("TikTok Shop", ("tiktok.com", "tiktokshop.com")),
 }
 _ASSISTANT_VISIBLE_PAGE_TYPES = {"seller-admin", "report", "content", "creator", "search", "product", "shop", "other"}
-_ASSISTANT_VISIBLE_PAGE_QUERY_KEYS = {"keyword", "keywords", "q", "query", "type", "tab", "showTab", "showSubTab"}
+_ASSISTANT_VISIBLE_PAGE_QUERY_KEYS = {"keyword", "keywords", "q", "query", "type", "tab", "showTab", "showSubTab", "goods_id", "product_id", "item_id"}
 # “@资料”并不是任意网页文字：每一项必须同时匹配对应站点和页型。
 # 后端再做一次白名单校验，避免前端页面状态被错误拼接时把小红书、报表或
 # 1688 的资源带到其它站点。动态报表名/榜单名仍由桌面端的安全文本传入。
@@ -21761,6 +22191,16 @@ _ASSISTANT_VISIBLE_PAGE_RESOURCE_IDS = {
         "1688-page": set(),
     },
 }
+for _marketplace_site in ("amazon", "aliexpress", "shopee", "temu", "ozon", "ebay", "shein", "tiktok-shop"):
+    _ASSISTANT_VISIBLE_PAGE_RESOURCE_IDS[_marketplace_site] = {
+        f"{_marketplace_site}-product": {
+            f"{_marketplace_site}-{resource}" for resource in ("product-info", "main-images", "sku-images", "variants", "video", "detail-images", "reviews")
+        },
+        **{
+            f"{_marketplace_site}-{page_type}": {f"{_marketplace_site}-{page_type}-items"}
+            for page_type in ("search", "shop", "other")
+        },
+    }
 
 
 def _commerce_analysis_visible_page_text(value: Any, limit: int = 1200) -> str:
@@ -21805,7 +22245,7 @@ def _commerce_analysis_visible_page_image_url(value: Any) -> str:
 
 
 def _commerce_analysis_format_visible_page_context(value: Dict[str, Any]) -> str:
-    """格式化六站点桌面端只读可见快照，不接受任意网页或脚本字段。"""
+    """格式化桌面端只读可见快照，不接受任意网页或脚本字段。"""
     if str(value.get("source") or "").strip() != "electron-visible-dom-assistant":
         return ""
     site = str(value.get("site") or "").strip().lower()
@@ -21898,6 +22338,11 @@ def _commerce_analysis_format_visible_page_context(value: Dict[str, Any]) -> str
         label = _commerce_analysis_visible_page_text(raw_resource.get("label") or raw_resource.get("title"), 120)
         # 资源名是桌面端固定页型采集器产生的引用标识；不接受任意网页注入的
         # 命令文本、链接或下载参数。
+        if structured_kind == f"{site}-product" and (
+            resource_id == f"{site}-detail-images" and not image_count
+            or resource_id == f"{site}-reviews" and not comments
+        ):
+            continue
         if resource_id in allowed_resource_ids and token.startswith("@") and label:
             structured_resources.append({"资源": label, "引用": token})
     # 页内分析先使用页型提取器返回的字段。不能在字段缺失时把整页
@@ -21915,6 +22360,8 @@ def _commerce_analysis_format_visible_page_context(value: Dict[str, Any]) -> str
         ]
         if structured_excerpt:
             blocks.append(f"页面主体可见摘录：{structured_excerpt}")
+        if structured_kind == f"{site}-product":
+            blocks.append(f"详情图片：{'已读取 ' + str(image_count) + ' 张' if image_count else '未读取或未返回'}；图片像素未返回")
         # 以下样本只供对应快捷分析使用：报表保留表格、搜索保留卡片、作品保留评论。
         if page_type == "report" and tables:
             blocks.append(f"报表表格样本：{_commerce_analysis_prompt_json(tables, 8000)}")
@@ -32152,6 +32599,7 @@ async def upload_ai_reference(
     files: List[UploadFile] = File(...),
     project_id: str = Form(""),
     canvas_id: str = Form(""),
+    folder: str = Form(""),
 ):
     # The optional scope is used by the upload-material view.  Validate it
     # before writing any file so a stale project/canvas selection cannot leave
@@ -32168,6 +32616,11 @@ async def upload_ai_reference(
         if not canvas or (project_id and str(canvas.get("project") or "") != project_id):
             raise HTTPException(status_code=400, detail="所选画布不存在或不属于当前项目，请刷新后重试")
         project_id = str(canvas.get("project") or project_id)
+    folder = str(folder or "").replace("\\", "/").strip("/")
+    if folder:
+        _, folder_path = _managed_storage_target(storage_kind_dir("upload"), folder)
+        if not os.path.isdir(folder_path):
+            raise HTTPException(status_code=404, detail="所选上传文件夹不存在，请刷新后重试")
     uploaded = []
     max_upload_bytes = AI_REFERENCE_UPLOAD_MAX_BYTES
     for file in files:
@@ -32197,10 +32650,11 @@ async def upload_ai_reference(
             content_type = auto_compressed["content_type"]
             display_name = _compressed_reference_upload_name(display_name, ext)
         filename = f"ai_ref_{uuid.uuid4().hex[:12]}{ext}"
-        path = output_path_for(filename, "input")
+        rel_name = f"{folder}/{filename}".lstrip("/")
+        path = output_path_for(rel_name, "input")
         with open(path, "wb") as f:
             f.write(content)
-        result = {"url": output_url_for(filename, "input"), "name": display_name or filename, "kind": kind, "mime": content_type}
+        result = {"url": output_url_for(rel_name, "input"), "name": display_name or filename, "kind": kind, "mime": content_type}
         if kind == "image":
             result.update(_image_size_metadata_from_bytes(content))
         elif kind in {"file", "text"}:
@@ -33235,6 +33689,7 @@ async def rename_local_asset_folder(payload: LocalAssetFolderRequest, request: R
         _local_upload_media_url(f"{rel}/"),
         _local_upload_media_url(f"{new_rel}/"),
     )
+    _relocate_file_favorites("local", folder_change=(rel, new_rel))
     orders = _local_upload_folder_orders()
     if parent in orders:
         orders[parent] = [name if name != os.path.basename(rel) else os.path.basename(new_rel) for name in orders[parent]]
@@ -33348,6 +33803,7 @@ async def rename_local_asset_item(payload: LocalAssetRenameRequest, request: Req
     if os.path.isfile(old_classification) and not os.path.exists(new_classification):
         os.rename(old_classification, new_classification)
     _asset_registry_relocate_url(old_url, _local_upload_media_url(new_rel))
+    _relocate_file_favorites("local", ((rel, new_rel),))
     tree, items = _local_upload_tree_and_items()
     return {"ok": True, "item": _local_upload_item(new_rel), "old_path": rel, "tree": tree, "items": items}
 
@@ -33398,6 +33854,7 @@ async def move_local_assets(payload: dict, request: Request):
     if target_rel and not os.path.isdir(target_abs):
         raise HTTPException(status_code=404, detail="目标文件夹不存在")
     moved = 0
+    favorite_changes = []
     for name in names:
         try:
             rel, abs_path = _local_upload_safe_path(name)
@@ -33428,8 +33885,10 @@ async def move_local_assets(payload: dict, request: Request):
                     os.rename(src_sib, dst_sib)
             _asset_registry_relocate_url(old_url, _local_upload_media_url(new_rel))
             moved += 1
+            favorite_changes.append((rel, new_rel))
         except OSError:
             continue
+    _relocate_file_favorites("local", favorite_changes)
     tree, items = _local_upload_tree_and_items()
     return {"ok": True, "moved": moved, "items": items, "tree": tree}
 
@@ -38885,6 +39344,24 @@ def _canvas_agent_policy_rejection_detail(value):
         "若仍被拒绝，可通过上游反馈链接申诉。"
     )
 
+
+def expert_workflow_chat_models(provider_id):
+    provider = get_api_provider_exact(provider_id)
+    return [model for model in (provider.get("chat_models") or []) if isinstance(model, str)]
+
+
+from expert_workflows import install_expert_workflows
+
+install_expert_workflows(
+    app,
+    data_dir=DATA_DIR,
+    invoke_llm=canvas_llm,
+    resolve_skill=resolve_canvas_skill_request,
+    model_choices=expert_workflow_chat_models,
+    request_factory=CanvasLLMRequest,
+    save_json=_atomic_write_json_locked,
+)
+
 @app.get("/api/browser-agent/status")
 async def browser_agent_status():
     """Return browser bridge availability without opening a browser window."""
@@ -43851,6 +44328,118 @@ async def commerce_analysis_fetch(payload: CommerceAnalysisRequest):
     return await _commerce_analysis_run_job(job["id"], url, payload.browser)
 
 
+def _compose_vertical_canvas(images, target_width, scaled_heights):
+    canvas = Image.new("RGB", (target_width, sum(scaled_heights)), "white")
+    resampling = getattr(Image, "Resampling", Image).LANCZOS
+    try:
+        y = 0
+        for source, height in zip(images, scaled_heights):
+            oriented = ImageOps.exif_transpose(source)
+            rgb = None
+            resized = None
+            try:
+                if image_has_alpha(oriented):
+                    rgba = oriented.convert("RGBA")
+                    white = Image.new("RGBA", rgba.size, "white")
+                    try:
+                        white.alpha_composite(rgba)
+                        rgb = white.convert("RGB")
+                    finally:
+                        rgba.close()
+                        white.close()
+                else:
+                    rgb = oriented.convert("RGB")
+                resized = rgb.resize((target_width, height), resampling)
+                canvas.paste(resized, (0, y))
+                y += height
+            finally:
+                if resized is not None:
+                    resized.close()
+                if rgb is not None:
+                    rgb.close()
+                if oriented is not source:
+                    oriented.close()
+        return canvas
+    except Exception:
+        canvas.close()
+        raise
+
+
+@app.post("/api/canvas-detail-stitch")
+async def canvas_detail_stitch(payload: CanvasDetailStitchRequest, request: Request):
+    for url in payload.urls:
+        share = _share_request_media_access(request, url)
+        if share and not _share_editor_asset_mutation_allowed(share):
+            raise HTTPException(status_code=403, detail="当前分享链接不能拼接详情页图片")
+    def _build_detail_stitch():
+        urls = [str(url or "").strip() for url in payload.urls]
+        if not 2 <= len(urls) <= 100:
+            raise ValueError("请选择 2–100 张已完成的 9:16 详情图")
+        sources = []
+        sizes = []
+        try:
+            for index, url in enumerate(urls, 1):
+                path = output_file_from_url(url)
+                if not path or not os.path.isfile(path):
+                    raise ValueError(f"第 {index} 屏不是可读取的本地图片，请先保存到小美画布素材")
+                source = None
+                try:
+                    source = Image.open(path)
+                    width, height = source.size
+                    orientation = source.getexif().get(274, 1)
+                    if orientation in (5, 6, 7, 8):
+                        width, height = height, width
+                    if width < 1 or height < 1 or width * height > 50_000_000:
+                        raise ValueError("图片尺寸无效或超过 5000 万像素")
+                    if abs(width / height - 9 / 16) > (9 / 16) * 0.03:
+                        raise ValueError(f"实际比例为 {width}:{height}，仅支持 9:16；请重新生成该屏")
+                except Exception as exc:
+                    if source is not None:
+                        source.close()
+                    raise ValueError(f"第 {index} 屏无法拼接：{exc}") from exc
+                sources.append(source)
+                sizes.append((width, height))
+            target_width = min(width for width, _ in sizes)
+            if target_width > 4096:
+                raise ValueError("详情图宽度超过 4096 像素，请先降低源图尺寸")
+            heights = [max(1, round(height * target_width / width)) for width, height in sizes]
+            total_height = sum(heights)
+            if total_height > 50_000 or target_width * total_height > 120_000_000:
+                raise ValueError(f"长图预计为 {target_width}×{total_height} 像素，超过单图上限；请减少屏数或降低源图宽度")
+            try:
+                canvas = _compose_vertical_canvas(sources, target_width, heights)
+            except Exception as exc:
+                raise ValueError("图片解码或拼接失败，请检查源图后重试") from exc
+            try:
+                filename = generated_output_filename("detail_page_", ".png")
+                path = output_path_for(filename, "output")
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                temporary = f"{path}.tmp"
+                try:
+                    canvas.save(temporary, format="PNG", optimize=True)
+                    os.replace(temporary, path)
+                finally:
+                    if os.path.exists(temporary):
+                        os.remove(temporary)
+            finally:
+                canvas.close()
+            result_url = output_url_for(filename, "output")
+            record = asset_registry_register_media(
+                result_url, name="详情页长图.png", kind="image", source="generated",
+                derived_from=urls, metadata={"operation": "detail-stitch", "screens": len(urls)},
+            )
+            return {"url": result_url, "name": "详情页长图.png", "width": target_width,
+                    "height": total_height, "asset_ref_id": (record or {}).get("id", "")}
+        finally:
+            for source in sources:
+                source.close()
+
+    try:
+        return await asyncio.to_thread(_build_detail_stitch)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @app.post("/api/commerce/long-preview")
 async def commerce_long_preview(payload: CanvasAssetDownloadRequest):
     """按任务顺序把成功图片纵向拼接成一张长图，兼容本地和远程 API 图片。"""
@@ -43904,19 +44493,17 @@ async def commerce_long_preview(payload: CanvasAssetDownloadRequest):
             target_width = max(240, round(target_width * 50000 / total_height))
             scaled_heights = [max(1, round(image.height * target_width / image.width)) for image in images]
             total_height = sum(scaled_heights)
-        canvas = Image.new("RGB", (target_width, total_height), "white")
-        y = 0
-        resampling = getattr(Image, "Resampling", Image).LANCZOS
-        for image, height in zip(images, scaled_heights):
-            resized = image.resize((target_width, height), resampling)
-            canvas.paste(resized, (0, y))
-            y += height
-            resized.close()
-            image.close()
-        output = BytesIO()
-        canvas.save(output, format="PNG", optimize=True)
-        canvas.close()
-        return output.getvalue()
+        try:
+            canvas = _compose_vertical_canvas(images, target_width, scaled_heights)
+            try:
+                output = BytesIO()
+                canvas.save(output, format="PNG", optimize=True)
+                return output.getvalue()
+            finally:
+                canvas.close()
+        finally:
+            for image in images:
+                image.close()
 
     try:
         content = await asyncio.to_thread(_build_long_image)
@@ -44421,15 +45008,17 @@ class ImageSpaceFilters(BaseModel):
 
 class ImageSpaceCollectionRequest(BaseModel):
     name: str = Field(min_length=1, max_length=80)
-    source: Literal["assets", "local", "generated"]
+    source: Literal["assets", "upload", "local", "generated"]
     library_id: str = ""
     category_id: str = ""
     folder: str = ""
+    project_id: str = ""
+    canvas_id: str = ""
     filters: ImageSpaceFilters
 
 
 class ImageSpaceClassificationRequest(BaseModel):
-    source: Literal["assets", "local", "generated"]
+    source: Literal["assets", "upload", "local", "generated"]
     id: str
     manual: Optional[Dict[str, Any]] = None
 
@@ -44527,7 +45116,8 @@ async def edit_image_space_classification(payload: ImageSpaceClassificationReque
             sidecar = _local_upload_classification_path(filename)
             previous = _read_local_upload_classification(filename) or {}
         else:
-            path = storage_file_path("generated", payload.id.removeprefix("generated:"))
+            source = "upload" if payload.source == "upload" else "generated"
+            path = storage_file_path(source, payload.id.removeprefix(f"{source}:"))
             if not path or not os.path.isfile(path):
                 raise HTTPException(status_code=404, detail="素材不存在")
             sidecar = path + ".classification.json"
@@ -45431,6 +46021,32 @@ def save_asset_favorites(data):
             except OSError:
                 pass
     return data
+
+
+def _relocate_file_favorites(kind, changes=(), folder_change=None):
+    """Keep path-based favorites attached to files when a managed folder changes."""
+    if kind not in {"upload", "generated", "local"}:
+        return
+    mapping = dict(changes)
+    old_folder, new_folder = folder_change or (None, None)
+    data = load_asset_favorites()
+    dirty = False
+    for item in data["items"]:
+        if item.get("kind") != kind or not str(item.get("key") or "").startswith(kind + ":"):
+            continue
+        old_rel = item["key"][len(kind) + 1:]
+        new_rel = mapping.get(old_rel)
+        if new_rel is None and old_folder and old_rel.startswith(old_folder + "/"):
+            new_rel = new_folder + old_rel[len(old_folder):]
+        if not new_rel or new_rel == old_rel:
+            continue
+        item["key"] = f"{kind}:{new_rel}"
+        item["url"] = (f"/api/storage-files/{kind}/{urllib.parse.quote(new_rel, safe='/')}")
+        item["name"] = os.path.basename(new_rel)
+        item["folder"] = os.path.dirname(new_rel).replace("\\", "/")
+        dirty = True
+    if dirty:
+        save_asset_favorites(data)
 
 @app.get("/api/asset-favorites")
 async def list_asset_favorites():

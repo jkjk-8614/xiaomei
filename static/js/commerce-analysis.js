@@ -1381,8 +1381,76 @@
   function updateSiteProductInfoVisibility(view = activeSiteAssistantView()) {
     const productCard = $('productInfoCard');
     if (!productCard) return;
-    const keepProductCard = view?.profile?.id === '1688-detail';
+    const keepProductCard = view?.profile?.id === '1688-detail'
+      || (view?.profile?.pageType === 'product' && isCrossBorderPlatform({ id: view.profile.site }));
     productCard.hidden = Boolean(view && !keepProductCard);
+  }
+  function renderMarketplaceProductInfo(view, tab = activeCommerceTab()) {
+    const profile = view?.profile;
+    if (profile?.pageType !== 'product' || !isCrossBorderPlatform({ id: profile.site })) return;
+    const context = view.context || {};
+    const marketplace = context.marketplace || {};
+    const facts = new Map((context.facts || []).map((entry) => [entry.label, entry.value]));
+    const empty = document.querySelector('.info-empty');
+    const summary = $('productSummary');
+    const thumb = $('productThumb');
+    const thumbImage = $('productThumbImage');
+    const content = $('productInfoContent');
+    const list = $('resourceList');
+    if (!summary || !content || !list) return;
+    $('productInfoBody').classList.add('is-marketplace');
+    if (empty) empty.style.display = 'none';
+    summary.hidden = false;
+    const title = facts.get('标题') || context.structuredTitle || `${profile.title}资料待读取`;
+    $('productSummaryTitle').textContent = title;
+    $('productSummaryTitle').title = title;
+    const idLabel = profile.site === 'amazon' ? 'ASIN' : profile.site === 'ebay' ? '刊登编号' : '商品ID';
+    $('productSummaryIdLabel').textContent = idLabel;
+    $('productSummaryId').textContent = marketplace.productId || '页面未提供';
+    $('copyProductId').hidden = !marketplace.productId;
+    $('productSummaryCategoryLabel').textContent = '站点';
+    $('productSummaryCategory').textContent = facts.get('站点') || '未返回';
+    $('copyProductCategory').hidden = !facts.get('站点');
+    if (marketplace.mainImage) {
+      thumbImage.src = marketplace.mainImage;
+      thumb.classList.add('has-image');
+      thumbImage.onerror = () => { thumb.classList.remove('has-image'); thumbImage.removeAttribute('src'); };
+    } else { thumb.classList.remove('has-image'); thumbImage.removeAttribute('src'); }
+    const fieldLabels = ['店铺', '品牌', '规格', '成色', '交易方式', '尺码表', '面料', '评分', '评价数', '卖家反馈'];
+    const fields = fieldLabels.filter((label) => facts.get(label));
+    content.classList.toggle('has-data', Boolean(fields.length));
+    content.classList.add('is-marketplace');
+    content.innerHTML = fields.map((label) => `<div class="info-kv${label === '规格' || label === '配送' || label === '退货' ? ' wide' : ''}"><small>${escapeHtml(label)}</small><strong title="${escapeHtml(facts.get(label))}">${escapeHtml(facts.get(label))}</strong></div>`).join('');
+    const resources = new Set((view.resources || []).map((item) => item.id));
+    const loaded = tab?.marketplaceSectionState || {};
+    const resourceCard = (title, value, icon, mode = '') => {
+      const status = mode ? loaded[mode]?.status || 'deferred' : value ? 'ready' : 'missing';
+      const message = mode && status === 'deferred' ? '点击读取'
+        : mode && status === 'running' ? '正在读取'
+          : mode && status === 'missing' ? '当前页未读取到' : mode && status === 'failed' ? '读取失败，点击重试' : value || '页面未提供';
+      const note = mode ? loaded[mode]?.reason || (mode === 'detail' ? '点击后读取当前商品详情图片' : '点击后读取当前商品评价') : '';
+      const body = `<span class="resource-icon">${commerceIcon(icon)}</span><span class="resource-copy"><span class="resource-title">${escapeHtml(title)}</span><span class="resource-count">${escapeHtml(message)}</span></span>`;
+      return `<div class="resource-card ${mode && status === 'deferred' ? 'is-deferred' : status === 'running' ? 'is-running' : status === 'missing' ? 'is-missing' : status === 'failed' ? 'is-error' : ''}">${mode ? `<button class="resource-card-main" type="button" data-marketplace-read="${mode}" title="${escapeHtml(note)}" ${status === 'running' ? 'disabled' : ''}>${body}</button><span class="resource-actions"><span class="resource-trigger">${commerceIcon('Play')}</span></span>` : `<div class="resource-card-main">${body}</div>`}</div>`;
+    };
+    const groups = [
+      ['商品素材', [
+        resourceCard('商品信息', resources.has(`${profile.site}-product-info`) ? '已读取' : '', 'FileText'),
+        resourceCard('主图', marketplace.mainImageCount ? `×${marketplace.mainImageCount}` : '', 'Image'),
+        marketplace.skuImageCount ? resourceCard('规格图', `×${marketplace.skuImageCount}`, 'Images') : '',
+        resources.has(`${profile.site}-variants`) ? resourceCard('规格', '已读取', 'List') : '',
+        resources.has(`${profile.site}-video`) ? resourceCard('商品视频', '页面可见', 'Video') : '',
+        resourceCard('详情图片', loaded.detail?.status === 'ready' ? `×${marketplace.detailImageCount}` : '', 'Images', 'detail'),
+      ]],
+      ['用户反馈', [resourceCard(profile.site === 'ebay' ? '商品评价' : '用户评价', loaded.reviews?.status === 'ready' ? `样本 ${marketplace.reviewSampleCount}` : '', 'MessageSquare', 'reviews')]],
+    ];
+    const signals = ['价格', '划线价', '销量信号', '配送', '退货'].filter((label) => facts.get(label));
+    if (signals.length) groups.push(['市场信号', signals.map((label) => resourceCard(label, facts.get(label), 'ChartLine'))]);
+    list.innerHTML = `<div class="resource-heading"><strong>${escapeHtml(profile.title)}</strong><span>页面已加载资料 · ${escapeHtml(new Date(context.capturedAt || Date.now()).toLocaleString('zh-CN'))}</span></div>`
+      + groups.map(([name, cards]) => `<section class="research-resource-group"><h3>${escapeHtml(name)}</h3><div class="resource-grid">${cards.filter(Boolean).join('')}</div></section>`).join('')
+      + (loaded.detail?.status === 'ready' && context.images?.length ? `<div class="marketplace-image-preview">${context.images.slice(0, 12).map((item) => `<img src="${escapeHtml(item.url)}" alt="当前商品详情图片" loading="lazy">`).join('')}</div>` : '')
+      + (loaded.reviews?.status === 'ready' && context.comments?.length ? `<div class="marketplace-review-preview">${context.comments.slice(0, 8).map((item) => `<p>${escapeHtml(typeof item === 'string' ? item : item.text || '')}</p>`).join('')}</div>` : '');
+    if (tab && !tab.marketplacePanelInitialized) { tab.marketplacePanelInitialized = true; tab.productInfoExpanded = true; }
+    applyProductInfoExpandedForTab(true);
   }
   function renderSiteAssistantPending(tab = activeCommerceTab(), message = '') {
     const profile = assistantProfileForTab(tab);
@@ -1391,6 +1459,22 @@
     if (!card) return;
     const statusMessage = message || tab?.siteAssistantStatus || '正在读取当前已渲染且可见资料…';
     updateSiteProductInfoVisibility({ profile });
+    if (profile.pageType === 'product' && isCrossBorderPlatform({ id: profile.site })) {
+      $('productInfoBody').classList.add('is-marketplace');
+      renderProductSummary(null);
+      $('productInfoContent').classList.remove('has-data', 'is-marketplace');
+      $('productInfoContent').innerHTML = '';
+      $('resourceList').innerHTML = '';
+      const empty = document.querySelector('.info-empty');
+      if (empty) { empty.style.display = ''; empty.textContent = statusMessage; }
+      if (tab && !tab.marketplacePanelInitialized) { tab.marketplacePanelInitialized = true; tab.productInfoExpanded = true; }
+      applyProductInfoExpandedForTab(true);
+      card.hidden = true;
+      $('chatContextLabel').textContent = `${profile.title} · ${statusMessage}`;
+      updateQuickActions();
+      setSiteAssistantPlaceholderMessage(statusMessage);
+      return;
+    }
     card.hidden = false;
     $('pageContextTitle').textContent = profile.title || '当前页面';
     $('pageContextStatus').textContent = statusMessage;
@@ -1407,7 +1491,16 @@
     const card = $('pageContextCard');
     if (!card) return false;
     updateSiteProductInfoVisibility(view);
+    renderMarketplaceProductInfo(view);
     const context = view.context;
+    if (view.profile.pageType === 'product' && isCrossBorderPlatform({ id: view.profile.site })) {
+      card.hidden = true;
+      $('chatContextLabel').textContent = `${context.structuredTitle || view.profile.title} · 已读取可见资料`;
+      updateContextChip();
+      updateQuickActions();
+      replaceSiteAssistantPlaceholder(view);
+      return true;
+    }
     const visibleTitle = context.structuredTitle || view.profile.title || '当前页面';
     const referenceCount = context.facts?.length || context.items?.length || context.comments?.length || context.tables?.length || context.metrics?.length || context.visibleCount || 0;
     const resources = Array.isArray(view.resources) ? view.resources : [];
@@ -1491,38 +1584,84 @@
     renderSiteAssistant(state.siteContext);
     return true;
   }
+  function clearMarketplaceSectionSample(tab, mode, key) {
+    const previous = tab?.siteAssistantView?.context;
+    const site = tab?.siteAssistantView?.profile?.site;
+    if (!previous || !site || !isCrossBorderPlatform({ id: site }) || !['detail', 'reviews'].includes(mode)) return false;
+    const resourceId = `${site}-${mode === 'detail' ? 'detail-images' : 'reviews'}`;
+    const countKey = mode === 'detail' ? 'detailImageCount' : 'reviewSampleCount';
+    const rawContext = {
+      ...previous,
+      structured: {
+        ...previous.structured,
+        resources: (previous.capturedResources || []).filter((item) => item.id !== resourceId),
+        marketplace: { ...(previous.marketplace || {}), [countKey]: 0 },
+      },
+      images: mode === 'detail' ? [] : previous.images,
+      comments: mode === 'reviews' ? [] : previous.comments,
+    };
+    const view = assistantProfileApi()?.build?.(rawContext);
+    if (!view) return false;
+    view.context.pageKey = key;
+    tab.siteAssistantView = view;
+    return true;
+  }
   async function captureSiteAssistantContext(options = {}) {
     const tab = options.tab || activeCommerceTab();
     const key = siteAssistantContextKey(tab);
     if (!tab || !key) return null;
-    if (!options.force && hasCachedSiteAssistantContextForTab(tab, key)) {
+    const mode = ['detail', 'reviews'].includes(options.mode) ? options.mode : 'base';
+    if (mode === 'base' && !options.force && hasCachedSiteAssistantContextForTab(tab, key)) {
       if (tab.id === state.activeTabId) restoreSiteAssistantContextForTab(tab, key);
       return tab.siteAssistantView;
     }
     const profile = assistantProfileForTab(tab);
     const tabId = tab.id;
-    const isCurrent = () => state.activeTabId === tabId && siteAssistantContextKey(activeCommerceTab()) === key;
+    const viewAtStart = tab.siteAssistantView;
+    const surfaceRevision = Number(tab.surfaceRevision || 0);
+    tab.siteAssistantCaptureRequests = tab.siteAssistantCaptureRequests || {};
+    const requestId = tab.siteAssistantCaptureRequests[mode] = (tab.siteAssistantCaptureRequests[mode] || 0) + 1;
+    const isSameRequest = (currentTab) => Boolean(currentTab && siteAssistantContextKey(currentTab) === key
+      && Number(currentTab.surfaceRevision || 0) === surfaceRevision
+      && currentTab.siteAssistantCaptureRequests?.[mode] === requestId);
+    const isCurrent = () => state.activeTabId === tabId && isSameRequest(activeCommerceTab());
     const shell = shellApi();
     if (!shell?.captureAssistantContext) {
       tab.siteAssistantStatus = '普通浏览器受跨域隔离限制，需在小美画布桌面端读取页面资料';
       if (isCurrent()) { clearActiveSiteAssistantContext(); renderSiteAssistantPending(tab, tab.siteAssistantStatus); }
       return null;
     }
-    tab.siteAssistantStatus = '正在读取当前已渲染且可见资料…';
-    if (isCurrent()) {
-      state.siteContext = null;
+    tab.siteAssistantStatus = mode === 'base' ? '正在读取当前已渲染且可见资料…' : `正在读取${mode === 'detail' ? '详情图片' : '用户评价'}…`;
+    if (mode !== 'base') {
+      tab.marketplaceSectionState = { ...(tab.marketplaceSectionState || {}), [mode]: { status: 'running', reason: '' } };
+      if (isCurrent() && tab.siteAssistantView) renderMarketplaceProductInfo(tab.siteAssistantView, tab);
+    }
+    if (isCurrent() && mode === 'base') {
+      state.siteContext = hasCachedSiteAssistantContextForTab(tab, key) ? tab.siteAssistantView : null;
       state.siteContextKey = key;
       state.siteContextUrl = assistantProfileApi()?.safeContextUrl?.(tab.url) || tab.url || '';
       state.siteContextLoading = true;
       state.siteContextStatus = tab.siteAssistantStatus;
-      renderSiteAssistantPending(tab, tab.siteAssistantStatus);
+      if (!state.siteContext) renderSiteAssistantPending(tab, tab.siteAssistantStatus);
     }
     try {
-      const snapshot = await shell.captureAssistantContext({ tabId });
+      const snapshot = await shell.captureAssistantContext({ tabId, mode });
       const currentTab = state.tabs.find((item) => item.id === tabId);
-      if (!currentTab || siteAssistantContextKey(currentTab) !== key) return null;
+      if (!isSameRequest(currentTab)) return null;
       if (!snapshot?.ok) {
         currentTab.siteAssistantStatus = snapshot?.message || '当前页面没有可读取的可见资料';
+        if (mode !== 'base') {
+          currentTab.marketplaceSectionState[mode] = { status: 'failed', reason: currentTab.siteAssistantStatus };
+          clearMarketplaceSectionSample(currentTab, mode, key);
+          if (isCurrent() && currentTab.siteAssistantView) {
+            state.siteContext = currentTab.siteAssistantView;
+            state.siteContextKey = key;
+            state.siteContextStatus = currentTab.siteAssistantStatus;
+            renderSiteAssistant(currentTab.siteAssistantView);
+          }
+          return null;
+        }
+        if (currentTab.siteAssistantView && currentTab.siteAssistantView !== viewAtStart) return currentTab.siteAssistantView;
         currentTab.siteAssistantContextKey = key;
         currentTab.siteAssistantView = null;
         if (isCurrent()) {
@@ -1532,6 +1671,22 @@
         return null;
       }
       const rawContext = snapshot.page_context || snapshot.pageContext || snapshot;
+      const previous = currentTab.siteAssistantView?.context;
+      const currentProductId = rawContext.structured?.marketplace?.productId;
+      const previousProductId = previous?.marketplace?.productId;
+      const canPreserve = isCrossBorderPlatform({ id: profile?.site }) && profile?.pageType === 'product'
+        && previous?.pageKey === key && (!currentProductId || !previousProductId || currentProductId === previousProductId);
+      if (canPreserve) {
+        const replacedResource = mode === 'detail' ? `${profile.site}-detail-images` : mode === 'reviews' ? `${profile.site}-reviews` : '';
+        rawContext.structured.resources = [...(previous.capturedResources || []).filter((item) => item.id !== replacedResource), ...(rawContext.structured.resources || [])];
+        if (mode !== 'detail') rawContext.images = previous.images;
+        if (mode !== 'reviews') rawContext.comments = previous.comments;
+        rawContext.structured.marketplace = {
+          ...(previous.marketplace || {}), ...(rawContext.structured.marketplace || {}),
+          detailImageCount: mode === 'detail' ? rawContext.structured.marketplace?.detailImageCount || 0 : previous.marketplace?.detailImageCount || 0,
+          reviewSampleCount: mode === 'reviews' ? rawContext.structured.marketplace?.reviewSampleCount || 0 : previous.marketplace?.reviewSampleCount || 0,
+        };
+      } else if (previous && isCrossBorderPlatform({ id: profile?.site })) currentTab.marketplaceSectionState = {};
       const view = assistantProfileApi()?.build?.({ ...rawContext, url: snapshot.url || rawContext.url || currentTab.url }) || null;
       if (!view?.profile || view.profile.site !== profile?.site) throw new Error('当前页面类型发生变化，请重新读取页面资料');
       // 同一 URL 的作品弹窗/详情抽屉不会触发导航。采集器确认的结构化页型
@@ -1544,6 +1699,10 @@
       currentTab.siteAssistantContextKey = resolvedKey;
       currentTab.siteAssistantView = view;
       currentTab.siteAssistantStatus = '已读取当前可见资料';
+      if (mode !== 'base') {
+        const count = mode === 'detail' ? view.context.marketplace?.detailImageCount : view.context.marketplace?.reviewSampleCount;
+        currentTab.marketplaceSectionState[mode] = { status: count ? 'ready' : 'missing', reason: count ? '' : view.context.marketplace?.reason || '当前页没有可读取的内容；请在网页中打开对应区域后重试' };
+      }
       if (state.activeTabId === tabId) {
         state.siteContext = view;
         state.siteContextKey = resolvedKey;
@@ -1555,8 +1714,22 @@
       return view;
     } catch (error) {
       const currentTab = state.tabs.find((item) => item.id === tabId);
-      if (currentTab && siteAssistantContextKey(currentTab) === key) {
+      if (isSameRequest(currentTab)) {
         currentTab.siteAssistantStatus = error?.message || '当前页面资料读取失败';
+        if (mode !== 'base') {
+          currentTab.marketplaceSectionState[mode] = { status: 'failed', reason: currentTab.siteAssistantStatus };
+          clearMarketplaceSectionSample(currentTab, mode, key);
+          if (isCurrent() && currentTab.siteAssistantView) {
+            state.siteContext = currentTab.siteAssistantView;
+            state.siteContextKey = key;
+            state.siteContextStatus = currentTab.siteAssistantStatus;
+            renderSiteAssistant(currentTab.siteAssistantView);
+          }
+          return null;
+        }
+        if (currentTab.siteAssistantView && currentTab.siteAssistantView !== viewAtStart) return currentTab.siteAssistantView;
+        currentTab.siteAssistantContextKey = key;
+        currentTab.siteAssistantView = null;
         if (isCurrent()) {
           clearActiveSiteAssistantContext();
           renderSiteAssistantPending(currentTab, currentTab.siteAssistantStatus);
@@ -2304,6 +2477,18 @@
     }
     if (hasPayloadField('languageMessage')) tab.languageMessage = String(payload.languageMessage || '').trim();
     if (ensured.created) activateCommerceTab(tab.id, { load: false });
+    if (documentCommitted && surfaceRevision && tab.siteAssistantNavigationRevision !== surfaceRevision) {
+      if (tab.siteAssistantNavigationRevision) {
+        tab.siteAssistantContextKey = '';
+        tab.siteAssistantView = null;
+        tab.siteAssistantStatus = '';
+        tab.siteAssistantProfile = null;
+        tab.siteAssistantCaptureRequests = {};
+        tab.marketplaceSectionState = {};
+        if (tab.id === state.activeTabId) clearActiveSiteAssistantContext();
+      }
+      tab.siteAssistantNavigationRevision = surfaceRevision;
+    }
     const carriesNavigationState = Boolean(surfaceRevision || hasPayloadField('url') || hasPayloadField('requestedUrl') || hasPayloadField('loadError'));
     if (carriesNavigationState && !documentCommitted) {
       tab.ready = false;
@@ -2358,6 +2543,7 @@
       tab.siteAssistantView = null;
       tab.siteAssistantStatus = '';
       tab.siteAssistantProfile = null;
+      tab.marketplaceSectionState = {};
       if (tab.id === state.activeTabId) clearActiveSiteAssistantContext();
     }
     if (tab.id === state.activeTabId && nextIsDetail) {
@@ -3250,6 +3436,7 @@
   }
   function renderProductSummary(result) {
     const summary = $('productSummary'); const image = $('productThumbImage'); const thumb = $('productThumb'); if (!summary || !image || !thumb) return;
+    $('productSummaryIdLabel').textContent = '商品ID'; $('productSummaryCategoryLabel').textContent = '类目'; $('copyProductId').hidden = false; $('copyProductCategory').hidden = false;
     if (!result) { summary.hidden = true; image.removeAttribute('src'); thumb.classList.remove('has-image'); return; }
     const product = result.product || {}; const imageUrl = productSummaryImageUrl(result);
      summary.hidden = false; const displayState = productResultDisplayState(result); const blocked = displayState.needsAuth; const title = text(productDisplayTitle(result), blocked ? '待登录/验证后读取' : '商品信息待返回'); const titleNode = $('productSummaryTitle'); titleNode.textContent = title; titleNode.title = title; $('productSummaryId').textContent = text(product.id || product.itemId || product.productId); $('productSummaryCategory').textContent = text(product.category || product.categoryPath);
@@ -3287,6 +3474,9 @@
   function renderInfo(result = currentResult()) {
     const content = $('productInfoContent'); const empty = document.querySelector('.info-empty');
     if (!content) return;
+    content.classList.remove('is-marketplace');
+    $('productInfoBody')?.classList.remove('is-marketplace');
+    if (empty) empty.textContent = '打开商品页后会自动读取商品基础信息、主图、详情、SKU 和视频；评价、问大家、运营报表和人群结构按需采集。';
     if (!result) { content.classList.remove('has-data'); if (empty) empty.style.display = ''; renderProductSummary(null); renderResources(null); const preference = productInfoPreferenceForTab(); setProductInfoExpanded(typeof preference === 'boolean' ? preference : false, { remember: false, syncState: typeof preference === 'boolean' }); if (!isSiteAssistantTab()) $('chatContextLabel').textContent = '未关联商品任务'; updateContextChip(); return; }
     const product = result.product || {}; const quality = result.quality || result.analysis?.coverage || {}; const metrics = result.metrics || {};
     const price = product.priceRange || (product.price ? (String(product.price).startsWith('¥') ? product.price : `¥${product.price}`) : '');
@@ -3535,9 +3725,9 @@
   function toggleChatHistory(force) { const popover = $('chatHistoryPopover'); if (!popover) return; const open = typeof force === 'boolean' ? force : popover.hidden; popover.hidden = !open; if (open) renderChatHistory(); }
   function startNewChat() { const siteProfile = assistantProfileForTab(); state.conversationId = ''; state.conversationProductKey = activeConversationContextKey(); state.messages = []; state.chatScrollFollow = true; clearChatAttachments(); clearResourceSelection(); notifySharedConversation(''); $('chatMessages').innerHTML = ''; toggleChatHistory(false); appendMessage('assistant', siteProfile ? `新的${siteProfile.title}页面分析对话已开始。只会结合本标签当前可见资料回答。` : '新的商品研究对话已开始。你可以问我主图、评价、详情、视频或运营数据。'); }
   function toggleChatFocus() { const panel = $('assistantPanel'); if (!panel) return; const focused = panel.classList.toggle('chat-focus'); $('chatPopout')?.setAttribute('aria-pressed', String(focused)); toast(focused ? '已展开问答区，可专注查看分析结果' : '已恢复商品信息与问答并列视图'); }
-  async function copyProductValue(elementId, label) { const value = $(elementId)?.textContent?.trim(); if (!value || value === '未返回') return toast(`当前没有可复制的${label}`); try { await navigator.clipboard.writeText(value); toast(`${label}已复制`); } catch { toast(`复制失败，请手动选择${label}`); } }
-  async function copyProductId() { return copyProductValue('productSummaryId', '商品ID'); }
-  async function copyProductCategory() { return copyProductValue('productSummaryCategory', '商品类目'); }
+  async function copyProductValue(elementId, label) { const value = $(elementId)?.textContent?.trim(); if (!value || value === '未返回' || value === '页面未提供') return toast(`当前没有可复制的${label}`); try { await navigator.clipboard.writeText(value); toast(`${label}已复制`); } catch { toast(`复制失败，请手动选择${label}`); } }
+  async function copyProductId() { return copyProductValue('productSummaryId', $('productSummaryIdLabel')?.textContent || '商品ID'); }
+  async function copyProductCategory() { return copyProductValue('productSummaryCategory', $('productSummaryCategoryLabel')?.textContent || '商品类目'); }
   function toggleResourcePicker(force) { const popover = $('resourcePickerPopover'); if (!popover) return; const open = typeof force === 'boolean' ? force : popover.hidden; popover.hidden = !open; if (open) renderResourcePicker(); }
   function assistantSkillId(skill) { return String(skill?.id || skill?.slug || '').trim(); }
   function assistantSkillName(skill) { return String(skill?.display_name || skill?.name || assistantSkillId(skill) || '未命名 Skill').trim(); }
@@ -3813,7 +4003,11 @@
     if (merchantMode && (sitePage || searchPage || !state.jobId)) return toast('经营助手只能基于当前已完成的商品分析任务工作');
     let siteView = sitePage ? activeSiteAssistantView(requestTab) : null;
     if (sitePage) {
-      siteView = await captureSiteAssistantContext({ tab: requestTab, force: true });
+      const marketplaceProduct = assistantProfileForTab(requestTab)?.pageType === 'product'
+        && isCrossBorderPlatform({ id: assistantProfileForTab(requestTab)?.site });
+      siteView = marketplaceProduct && hasCachedSiteAssistantContextForTab(requestTab)
+        ? requestTab.siteAssistantView
+        : await captureSiteAssistantContext({ tab: requestTab, force: true });
       if (!siteView) return;
     } else if (searchPage && (!state.pageContext || state.pageContextKey !== productContextKey(activeUrl))) {
       const context = await captureCurrentPageContext({ url: activeUrl });
@@ -3832,10 +4026,10 @@
       return toast(switchedSearch ? '已切换搜索页，正在重新读取当前结果' : '已切换商品，正在自动读取基础数据');
     }
     if (currentKey) state.conversationProductKey = currentKey;
-    const availableResources = resourceItems(currentResult()).filter((item) => item.downloadable);
+    const availableResources = sitePage ? [] : resourceItems(currentResult()).filter((item) => item.downloadable);
     const availableIds = new Set(availableResources.map((item) => item.id));
-    const explicitIds = Array.isArray(options.resourceIds) ? options.resourceIds : [...state.selectedResourceIds];
-    const mentionedIds = mentionedResourceIds(message);
+    const explicitIds = sitePage ? [] : Array.isArray(options.resourceIds) ? options.resourceIds : [...state.selectedResourceIds];
+    const mentionedIds = sitePage ? [] : mentionedResourceIds(message);
     const merchantResourceIds = resourceItems(currentResult()).filter((item) => item?.id && ['ready', 'partial'].includes(String(item.status || ''))).map((item) => item.id);
     if (!merchantResourceIds.includes('product')) merchantResourceIds.unshift('product');
     const selectedIds = merchantMode ? [...new Set(merchantResourceIds)] : [...new Set([...explicitIds, ...mentionedIds])].filter((id) => availableIds.has(id));
@@ -4277,6 +4471,14 @@
     const shell = shellApi();
     bindChatScroll();
     $('resourceList')?.addEventListener('click', (event) => {
+      const marketplaceButton = event.target?.closest?.('[data-marketplace-read]');
+      if (marketplaceButton && event.currentTarget.contains(marketplaceButton)) {
+        event.preventDefault();
+        const mode = marketplaceButton.dataset.marketplaceRead;
+        const tab = activeCommerceTab();
+        if (['detail', 'reviews'].includes(mode) && isCrossBorderPlatform({ id: assistantProfileForTab(tab)?.site })) void captureSiteAssistantContext({ tab, mode, force: true });
+        return;
+      }
       const button = event.target?.closest?.('[data-resource-id]');
       if (!button || !event.currentTarget.contains(button)) return;
       event.preventDefault();

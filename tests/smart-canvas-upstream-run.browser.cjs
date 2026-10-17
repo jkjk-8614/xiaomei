@@ -87,6 +87,9 @@ test('one click runs missing ancestors, then reuses completed Agents until each 
     release();
     await page.waitForFunction(() => !smartDependencyRuns.size && nodes.find(n => n.id === 'tail').outputText);
     assert.equal(calls.length, 3);
+    assert.deepEqual(calls[1].images, [], 'the next Agent receives the analysis text without inherited images');
+    assert.deepEqual(calls[2].images, [], 'later Agents also receive text without inherited images');
+    assert.equal(await page.locator('[data-id="plan"] .smart-node-input-thumb').count(), 0);
     assert.match(calls[1].message, /输出：analysis\n\nplan/);
     assert.match(calls[2].message, /plan\n\ntail/);
     await page.evaluate(() => {
@@ -116,6 +119,22 @@ test('one click runs missing ancestors, then reuses completed Agents until each 
     assert.equal(calls.length, 8);
     assert.match(calls[7].message, /新结果：新结果：analysis\n\nplan\n\ntail/);
     assert.ok(calls.every(call => !/unrelated|downstream/.test(call.message)));
+});
+
+test('an Agent receives only its own direct image inputs beside upstream Agent text', {timeout:40000}, async t => {
+    const {page, calls} = await fixture(t);
+    await install(page, [
+        {id:'source-image', type:'smart-upload', images:[{url:'/output/source.png'}]},
+        agent('analysis', {outputText:'已分析商品图'}),
+        {id:'new-image', type:'smart-upload', images:[{url:'/output/new.png'}]},
+        agent('tail', {x:600})
+    ], [edge('source-image','analysis'), edge('analysis','tail','flow'), edge('new-image','tail')]);
+    assert.deepEqual(await page.locator('[data-id="tail"] .smart-node-input-thumb').count(), 1);
+    const result = await page.evaluate(() => runAgentNode('tail'));
+    assert.equal(result.ok, true, result.error);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].images, ['/output/new.png']);
+    assert.equal(calls[0].message, '已分析商品图\n\ntail');
 });
 
 test('cancel stops a stalled upstream Agent and leaves the downstream node ready to rerun', {timeout:40000}, async t => {

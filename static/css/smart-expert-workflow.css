@@ -1,0 +1,204 @@
+.image-node.agent-smart-node:has(.expert-workflow-node) {
+    background:color-mix(in srgb, var(--panel) 93%, #32a66b);
+    border-color:color-mix(in srgb, var(--line) 65%, #35ad70);
+}
+.image-node.agent-smart-node:has(.expert-workflow-node) .node-hint { display:none; }
+.expert-workflow-node {
+    display:flex;
+    flex-direction:column;
+    gap:13px;
+    width:100%;
+    height:100%;
+    min-height:0;
+    box-sizing:border-box;
+    padding:4px;
+    color:var(--text);
+}
+.expert-workflow-node-head { display:flex; align-items:center; gap:12px; min-width:0; }
+.expert-workflow-node-head > div { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.expert-workflow-node-head strong { font-size:17px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.expert-workflow-node-head small { color:var(--muted); font-size:12px; }
+.expert-workflow-node-mark,
+.expert-workflow-header-icon {
+    display:grid; place-items:center; flex:none;
+    width:38px; height:38px; border-radius:13px;
+    color:#157b4a; background:color-mix(in srgb, #45c982 20%, var(--panel));
+}
+.expert-workflow-node-mark svg,.expert-workflow-header-icon svg { width:19px; height:19px; }
+.expert-workflow-node-brief { display:flex; flex-direction:column; gap:6px; min-height:0; font-size:12px; font-weight:700; }
+.expert-workflow-node-input {
+    box-sizing:border-box; width:100%; min-height:76px; resize:vertical; padding:9px 10px;
+    border-radius:10px; border:1px solid var(--line); background:var(--panel);
+    color:var(--text); font:inherit; font-size:13px; font-weight:400; line-height:1.5;
+}
+.expert-workflow-node-input:focus { outline:2px solid color-mix(in srgb, #35ad70 45%, transparent); outline-offset:1px; }
+.expert-workflow-node-preview {
+    flex:1 1 auto; min-height:42px; overflow:auto; padding:10px;
+    border-radius:10px; background:var(--soft); color:var(--muted);
+    font-size:12px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere;
+}
+.expert-workflow-node-actions { display:flex; gap:8px; }
+.expert-workflow-node-actions button {
+    display:inline-flex; align-items:center; justify-content:center; gap:5px;
+    min-height:34px; padding:0 12px; border-radius:9px; border:1px solid var(--line);
+    background:var(--panel); color:var(--text); cursor:pointer; font:inherit; font-size:12px;
+}
+.expert-workflow-node-actions button:first-child { flex:1; }
+.expert-workflow-node-actions .expert-workflow-run {
+    color:white; background:#238c58; border-color:#238c58;
+}
+.expert-workflow-node-actions svg { width:14px; height:14px; }
+
+.expert-workflow-overlay {
+    position:fixed; inset:0; z-index:10020; display:flex; align-items:center; justify-content:center;
+    padding:20px; box-sizing:border-box; background:rgba(15,26,24,.48); backdrop-filter:blur(7px);
+}
+.expert-workflow-overlay[hidden] { display:none !important; }
+.expert-workflow-dialog {
+    display:flex; flex-direction:column; width:min(1540px,100%); height:min(920px,100%);
+    min-height:540px; overflow:hidden; border-radius:22px;
+    border:1px solid var(--line); background:var(--panel); color:var(--text);
+    box-shadow:0 32px 90px rgba(13,33,27,.32);
+}
+.expert-workflow-header {
+    display:flex; align-items:center; justify-content:space-between; gap:18px; padding:16px 20px;
+    border-bottom:1px solid var(--line);
+}
+.expert-workflow-header-name { display:flex; align-items:center; gap:11px; min-width:0; }
+.expert-workflow-header-name label { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.expert-workflow-header-name label span { color:var(--muted); font-size:11px; font-weight:700; }
+.expert-workflow-name {
+    width:min(360px,32vw); min-width:130px; padding:0; border:0; outline:0;
+    background:transparent; color:var(--text); font:inherit; font-size:19px; font-weight:750;
+}
+.expert-workflow-header-actions { display:flex; align-items:center; gap:9px; }
+.expert-workflow-header-actions button,
+.expert-workflow-continue {
+    display:inline-flex; align-items:center; justify-content:center; gap:7px;
+    min-height:36px; padding:0 12px; border:1px solid var(--line); border-radius:10px;
+    background:var(--panel); color:var(--text); cursor:pointer; font:inherit; font-size:12px; font-weight:650;
+}
+.expert-workflow-header-actions button:hover,.expert-workflow-continue:hover { border-color:#35ad70; }
+.expert-workflow-header-actions button:disabled,
+.expert-workflow-sidebar :is(button,input,select,textarea):disabled { opacity:.55; cursor:not-allowed; }
+.expert-workflow-header-actions button svg { width:15px; height:15px; }
+.expert-workflow-header-actions .expert-workflow-start,.expert-workflow-continue {
+    background:#238c58; border-color:#238c58; color:#fff;
+}
+.expert-workflow-header-actions .expert-workflow-close { width:36px; padding:0; }
+.expert-workflow-status {
+    max-width:300px; color:var(--muted); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.expert-workflow-status[data-phase="failed"],
+.expert-workflow-status[data-phase="interrupted"] { color:#b44735; }
+.expert-workflow-status[data-phase="completed"] { color:#238c58; }
+.expert-workflow-subhead {
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:8px 20px; color:var(--muted); font-size:11px; border-bottom:1px solid var(--line);
+}
+.expert-workflow-subhead label { display:flex; align-items:center; gap:8px; white-space:nowrap; }
+.expert-workflow-subhead select { max-width:260px; padding:5px 8px; border-radius:8px; border:1px solid var(--line); background:var(--panel); color:var(--text); }
+.expert-workflow-view-tools { display:flex; align-items:center; gap:5px; margin-left:auto; white-space:nowrap; }
+.expert-workflow-view-tools button { min-width:27px; height:27px; padding:0 5px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--text); cursor:pointer; }
+.expert-workflow-view-tools button:hover { border-color:#35ad70; }
+.expert-workflow-zoom-label { min-width:39px; text-align:center; font-size:11px; }
+.expert-workflow-main { display:flex; flex:1 1 auto; min-height:0; }
+.expert-workflow-viewport {
+    flex:1 1 auto; min-width:0; overflow:auto; cursor:grab;
+    background-color:color-mix(in srgb, var(--panel) 94%, #8fd4ad);
+    background-image:linear-gradient(color-mix(in srgb,var(--line) 35%,transparent) 1px,transparent 1px),
+        linear-gradient(90deg,color-mix(in srgb,var(--line) 35%,transparent) 1px,transparent 1px);
+    background-size:28px 28px;
+}
+.expert-workflow-viewport:active { cursor:grabbing; }
+.expert-workflow-stage { position:relative; min-width:100%; min-height:100%; }
+.expert-workflow-lines { position:absolute; inset:0; z-index:1; overflow:visible; pointer-events:none; }
+.expert-workflow-line { fill:none; stroke:#42ad69; stroke-width:3; stroke-linecap:round; }
+.expert-workflow-line.preview { stroke-dasharray:8 7; opacity:.8; }
+.expert-workflow-line-hit { fill:none; stroke:transparent; stroke-width:20; cursor:pointer; pointer-events:stroke; }
+.expert-workflow-card {
+    position:absolute; z-index:2; display:flex; flex-direction:column; gap:9px;
+    width:240px; min-height:142px; box-sizing:border-box; padding:15px;
+    border:1px solid var(--line); border-radius:16px; background:var(--panel);
+    box-shadow:0 12px 30px rgba(22,65,45,.09); cursor:grab; user-select:none; touch-action:none;
+}
+.expert-workflow-card:active { cursor:grabbing; }
+.expert-workflow-card.input,.expert-workflow-card.output { width:220px; min-height:110px; }
+.expert-workflow-card.selected { border-color:#35ad70; box-shadow:0 0 0 3px rgba(54,177,105,.15),0 12px 30px rgba(22,65,45,.09); }
+.expert-workflow-card[data-phase="running"] { border-color:#35ad70; box-shadow:0 0 0 4px rgba(54,177,105,.12); }
+.expert-workflow-card[data-phase="failed"] { border-color:#ce6d5d; }
+.expert-workflow-card[data-phase="completed"],.expert-workflow-card[data-phase="reused"] { border-color:#9acba9; }
+.expert-workflow-card-head { display:flex; align-items:center; gap:9px; min-width:0; }
+.expert-workflow-card-head strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
+.expert-workflow-card-icon {
+    display:grid; place-items:center; flex:none; width:32px; height:32px; border-radius:10px;
+    background:color-mix(in srgb,#50bf7b 19%,var(--panel)); color:#218754;
+}
+.expert-workflow-card-icon svg { width:17px; height:17px; }
+.expert-workflow-card-sub { color:var(--muted); font-size:11px; line-height:1.45; overflow-wrap:anywhere; }
+.expert-workflow-card-description {
+    display:-webkit-box; overflow:hidden; color:var(--text); font-size:11px; line-height:1.5;
+    overflow-wrap:anywhere; -webkit-box-orient:vertical; -webkit-line-clamp:3;
+}
+.expert-workflow-card-description span { display:block; color:var(--muted); font-size:10px; }
+.expert-workflow-port {
+    position:absolute; top:50%; width:15px; height:15px; border-radius:50%;
+    background:#39ad69; border:3px solid var(--panel); box-shadow:0 0 0 1px #39ad69;
+    transform:translateY(-50%); cursor:crosshair;
+}
+.expert-workflow-port.in { left:-9px; }
+.expert-workflow-port.out { right:-9px; }
+.expert-workflow-port:hover { width:19px; height:19px; }
+.expert-workflow-overlay.is-busy .expert-workflow-port,
+.expert-workflow-overlay.is-busy .expert-workflow-line-hit { pointer-events:none; }
+.expert-workflow-overlay.is-busy .expert-workflow-card { cursor:default; }
+.expert-workflow-sidebar {
+    flex:0 0 322px; box-sizing:border-box; overflow:auto; padding:19px;
+    border-left:1px solid var(--line); background:var(--panel);
+}
+.expert-workflow-sidebar h3 { margin:0 0 15px; font-size:15px; }
+.expert-workflow-sidebar h4 { margin:0 0 10px; font-size:13px; }
+.expert-workflow-sidebar p { color:var(--muted); font-size:12px; line-height:1.55; }
+.expert-workflow-sidebar-head { display:flex; align-items:start; justify-content:space-between; gap:8px; }
+.expert-workflow-sidebar-head button {
+    border:0; background:transparent; color:#b44735; cursor:pointer; font:inherit; font-size:11px;
+}
+.expert-workflow-sidebar label { display:flex; flex-direction:column; gap:6px; margin:0 0 13px; font-size:12px; font-weight:650; }
+.expert-workflow-sidebar input:not([type="checkbox"]),
+.expert-workflow-sidebar select,
+.expert-workflow-sidebar textarea {
+    box-sizing:border-box; width:100%; padding:8px 9px; border:1px solid var(--line);
+    border-radius:9px; background:var(--panel); color:var(--text);
+    font:inherit; font-size:12px; font-weight:400; line-height:1.45;
+}
+.expert-workflow-sidebar textarea { resize:vertical; }
+.expert-workflow-sidebar :is(input,select,textarea):focus { outline:2px solid rgba(53,173,112,.28); border-color:#35ad70; }
+.expert-workflow-sidebar .expert-workflow-checkbox { flex-direction:row; align-items:center; font-weight:400; }
+.expert-workflow-sidebar .expert-workflow-checkbox input { margin:0; }
+.expert-workflow-step-result { margin-top:20px; padding-top:16px; border-top:1px solid var(--line); }
+.expert-workflow-step-result details { margin-bottom:10px; color:var(--muted); font-size:11px; }
+.expert-workflow-step-result pre,
+.expert-workflow-result {
+    max-height:220px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere;
+    padding:10px; border-radius:9px; background:var(--soft); color:var(--text);
+    font:inherit; font-size:11px; line-height:1.5;
+}
+.expert-workflow-step-result textarea { min-height:150px; }
+.expert-workflow-step-result .expert-workflow-continue { margin-top:8px; width:100%; }
+.expert-workflow-error { color:#b44735 !important; }
+@media(max-width:900px){
+    .expert-workflow-overlay { padding:8px; }
+    .expert-workflow-dialog { height:100%; border-radius:15px; }
+    .expert-workflow-sidebar { flex-basis:270px; }
+    .expert-workflow-subhead > span { display:none; }
+    .expert-workflow-status { display:none; }
+}
+@media(max-width:660px){
+    .expert-workflow-main { flex-direction:column; }
+    .expert-workflow-sidebar { flex:0 0 260px; border-left:0; border-top:1px solid var(--line); }
+    .expert-workflow-header { padding:10px; }
+    .expert-workflow-header-actions button { padding:0 7px; }
+    .expert-workflow-header-actions .expert-workflow-add { font-size:0; }
+    .expert-workflow-header-actions .expert-workflow-add svg { width:16px; height:16px; }
+    .expert-workflow-name { width:130px; font-size:15px; }
+}

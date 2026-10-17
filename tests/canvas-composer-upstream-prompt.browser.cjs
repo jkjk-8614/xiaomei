@@ -35,7 +35,8 @@ test('connected composer preserves local drafts and submits upstream text once',
     await page.goto('http://upstream-prompt.test/static/smart-canvas.html?id=upstream-fixture');
     await page.waitForFunction(() => smartConfigReady && canvas);
     await page.evaluate(() => {
-        window.testAgent = {id:'upstream-agent', type:'smart-agent', x:100, y:100, outputText:'使用蓝色地毯，保留室内构图。'};
+        window.testAgent = {id:'upstream-agent', type:'smart-agent', x:100, y:100,
+            userPrompt:'请分析商品并写生图提示词。', outputText:'使用蓝色地毯，保留室内构图。'};
         nodes.push(window.testAgent);
         window.testPaint = createPaintNodeAt({x:650, y:100});
         connectInputNode(testAgent.id, testPaint.id);
@@ -76,6 +77,29 @@ test('connected composer preserves local drafts and submits upstream text once',
     });
     const updatedUpstream = '使用绿色地毯，保留室内构图。';
     assert.deepEqual(await state(), {draft:local, preview:updatedUpstream, prompt:`${local}\n\n${updatedUpstream}`, nodePrompt:`${local}\n\n${updatedUpstream}`});
+
+    await page.locator('[data-id="upstream-agent"] .agent-output-text').fill('');
+    await page.evaluate(() => {
+        selectedId = testPaint.id;
+        updateComposer();
+    });
+    assert.deepEqual(await state(), {draft:local, preview:'', prompt:local, nodePrompt:local});
+    assert.deepEqual(await page.evaluate(() => {
+        canvas.connections.push({from:testAgent.id, to:'downstream-agent', kind:'flow'});
+        const result = {
+            agentText:textForNode(testAgent),
+            promptItems:promptTextItemsForNode(testAgent),
+            upstreamText:agentNodeUpstreamText({id:'downstream-agent', type:'smart-agent'})
+        };
+        canvas.connections.pop();
+        return result;
+    }), {agentText:'', promptItems:[], upstreamText:''});
+    await page.locator('#promptInput').fill('');
+    assert.deepEqual(await state(), {draft:'', preview:'', prompt:'', nodePrompt:''});
+    await page.evaluate(() => {
+        testAgent.outputText = '使用绿色地毯，保留室内构图。';
+        render();
+    });
 
     await page.locator('#promptInput').fill('');
     savedCanvas = await page.evaluate(() => {

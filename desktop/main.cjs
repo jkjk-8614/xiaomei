@@ -12,6 +12,7 @@ const { createDesktopUpdateFetch } = require('./update-network.cjs');
 const { DeepSeekHarnessUpdater } = require('./deepseek-updater.cjs');
 const { installWindowLifecycle } = require('./window-lifecycle.cjs');
 const { installDesktopTray } = require('./tray.cjs');
+const { marketplaceCaptureScript } = require('./marketplace-assistant.cjs');
 const {
   MODULE_TARGETS: COMMERCE_MODULE_TARGETS,
   createCommerceNetworkCapture,
@@ -238,7 +239,7 @@ const COMMERCE_REQUEST_HEADER_URL_PATTERNS = Object.freeze([
 ]);
 const COMMERCE_REQUEST_HEADER_SESSIONS = new WeakSet();
 const SELLER_HOSTS = ['myseller.taobao.com', 'qianniu.taobao.com', 'sycm.taobao.com', '1688.com'];
-const ASSISTANT_CONTEXT_HOSTS = ['myseller.taobao.com', 'qianniu.taobao.com', 'sycm.taobao.com', 'dmp.taobao.com', '1688.com', 'xiaohongshu.com', 'rednote.com', 'douyin.com'];
+const ASSISTANT_CONTEXT_HOSTS = ['myseller.taobao.com', 'qianniu.taobao.com', 'sycm.taobao.com', 'dmp.taobao.com', '1688.com', 'xiaohongshu.com', 'rednote.com', 'douyin.com', ...MARKETPLACE_NAVIGATION_HOSTS];
 // 淘宝和 1688 继续复用历史的电商 Chromium 会话。1688 的登录链除了
 // Cookie 还会使用 Local Storage、IndexedDB 和页面缓存；拆到新 partition
 // 只能搬 Cookie，旧版本登录后打开新链接就会再次落到登录页。沿用旧会话
@@ -3003,7 +3004,7 @@ function redact(value, limit = 24000) {
 }
 
 // 右侧助手只需要用 URL 区分页型；绝不把登录态、追踪或临时签名带回渲染器/后端。
-const ASSISTANT_CONTEXT_QUERY_KEYS = new Set(['keyword', 'keywords', 'q', 'query', 'type', 'tab', 'showTab', 'showSubTab']);
+const ASSISTANT_CONTEXT_QUERY_KEYS = new Set(['keyword', 'keywords', 'q', 'query', 'type', 'tab', 'showTab', 'showSubTab', 'goods_id', 'product_id', 'item_id']);
 function safeAssistantContextUrl(value) {
   try {
     const parsed = new URL(String(value || ''));
@@ -3073,6 +3074,16 @@ function cleanAssistantContextPayload(payload, current, title = '') {
     // 仅保存页内主体的短摘录，不能回退为整页 rawText；避免聊天上下文
     // 把背景瀑布流、导航和登录提示误当成当前作品资料。
     excerpt: redact(rawStructured.excerpt || '', 600),
+    marketplace: rawStructured.marketplace && typeof rawStructured.marketplace === 'object' ? {
+      productId: redact(rawStructured.marketplace.productId || '', 80),
+      mainImage: safeAssistantContextImageUrl(rawStructured.marketplace.mainImage || ''),
+      mainImageCount: Math.max(0, Math.min(10, Number(rawStructured.marketplace.mainImageCount) || 0)),
+      skuImageCount: Math.max(0, Math.min(8, Number(rawStructured.marketplace.skuImageCount) || 0)),
+      detailImageCount: Math.max(0, Math.min(12, Number(rawStructured.marketplace.detailImageCount) || 0)),
+      reviewSampleCount: Math.max(0, Math.min(24, Number(rawStructured.marketplace.reviewSampleCount) || 0)),
+      captureMode: ['base', 'detail', 'reviews'].includes(rawStructured.marketplace.captureMode) ? rawStructured.marketplace.captureMode : 'base',
+      reason: redact(rawStructured.marketplace.reason || '', 240),
+    } : null,
   };
   const tables = list(payload?.tables, 24, (table) => {
     const rows = list(table?.rows, 120, (row) => Array.isArray(row)
@@ -6531,10 +6542,14 @@ async function captureAssistantContext(options = {}) {
   const title = webContents.getTitle?.() || '';
   if (isAssistantContextLogin(current, title)) return { ok: false, status: 'login_required', message: `当前${safeSite(current)}页面需要登录；完成登录后可重新读取可见资料` };
   if (isVerificationUrl(current, title)) return { ok: false, status: 'verification_required', message: '当前是验证页面；请先在网页中手动完成验证' };
-  if (!assistantContextHostAllowed(current)) return { ok: false, status: 'unsupported_page', message: '当前页面不在六站点可读范围内' };
+  if (!assistantContextHostAllowed(current)) return { ok: false, status: 'unsupported_page', message: '当前页面不在可读站点范围内' };
+  const marketplace = marketplaceLanguageProfile(current);
+  const captureMode = ['detail', 'reviews'].includes(options?.mode) ? options.mode : 'base';
   let payload;
   try {
-    payload = await webContents.executeJavaScript(ELECTRON_ASSISTANT_CONTEXT_SCRIPT, true);
+    payload = await webContents.executeJavaScript(marketplace
+      ? marketplaceCaptureScript(marketplace.family === 'tiktok' ? 'tiktok-shop' : marketplace.family, captureMode)
+      : ELECTRON_ASSISTANT_CONTEXT_SCRIPT, true);
   } catch (error) {
     return { ok: false, status: 'capture_failed', message: `读取当前可见页面失败：${redact(error?.message || error, 240)}` };
   }
@@ -6639,7 +6654,7 @@ function createWindow() {
     scheduleCommerceSurfaceResync();
   });
   // Electron 的顶层页面必须是完整的小美画布；商品分析台通过 iframe 作为其中一个工作区加载。
-  mainWindow.loadURL(`${LOCAL_ORIGIN}/static/index.html?page=${encodeURIComponent(START_PAGE)}&v=2026.10.16.current-source.1`);
+  mainWindow.loadURL(`${LOCAL_ORIGIN}/static/index.html?page=${encodeURIComponent(START_PAGE)}&v=2026.10.17.current-source.1`);
 }
 
 app.whenReady().then(async () => {

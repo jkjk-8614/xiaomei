@@ -90,11 +90,15 @@ let localAssets = [];
 let localAssetsLoaded = false;
 let localUploadTree = null;
 let activeLocalUploadFolder = '';
+let localUploadProjectId = '';
+let localUploadCanvasId = '';
+let localUploadScopeCache = {localAssets:null, canvasAssetsData:null, value:null};
 let activeLocalUploadClassFilter = '';
 let openLocalUploadClassGroup = '';
 let selectedLocalUploadId = '';
 let selectedLocalUploadIds = new Set();
 let localUploadQuery = '';
+let localUploadMediaType = 'all';
 let localUploadManageMode = false;
 let localUploadClipboard = null;
 let localUploadFolderCreateMode = false;
@@ -107,7 +111,10 @@ let assetCategoryLocalImportBusy = false;
 let assetContextMenuId = '';
 let localClassifyBusy = false;
 let assetUploadBusy = false;
-let uploadAssetsState = {view:'disk', items:[], projects:[], canvases:[], unassigned_count:0, loading:false, loadingMore:false, hasMore:false, offset:0, total:0, query:'', projectId:'', canvasId:'', selectedId:'', loaded:false, pageSize:120, requestId:0, reloadPending:false, error:''};
+let uploadAssetsState = {view:'disk', items:[], projects:[], canvases:[], folders:[], mediaCounts:{image:0,video:0,audio:0}, unassigned_count:0, loading:false, loadingMore:false, hasMore:false, offset:0, total:0, allTotal:0, query:'', projectId:'', canvasId:'', folder:'', mediaType:'all', selectedId:'', selectedIds:new Set(), manageMode:false, favoritesOnly:false, loaded:false, pageSize:120, requestId:0, reloadPending:false, error:''};
+let storageFileClipboards = {upload:null, generated:null};
+let storageFileFolderDrag = null;
+let storageFileCardDrag = null;
 let lightboxPanState = null;
 let canvasAssetsData = {categories:[], projects:[], canvases:[], items:[]};
 let activeCanvasAssetProjectId = '';
@@ -118,7 +125,7 @@ let canvasAssetQuery = '';
 let canvasAssetSort = 'canvas_asc';
 let canvasAssetManageMode = false;
 let generatedManageMode = false;
-let generatedAssetsState = {items:[], selectedId:'', selectedIds:new Set(), query:'', folder:'', mediaType:'all', mediaCounts:{image:0,video:0}, allTotal:0, loading:false, loadingMore:false, loaded:false, offset:0, total:0, hasMore:false, pageSize:80, restoreScrollTop:null};
+let generatedAssetsState = {items:[], folders:[], selectedId:'', selectedIds:new Set(), query:'', folder:'', mediaType:'all', mediaCounts:{image:0,video:0,audio:0}, allTotal:0, loading:false, loadingMore:false, loaded:false, offset:0, total:0, hasMore:false, pageSize:80, restoreScrollTop:null};
 const GENERATED_PROJECTS_COLLAPSED_KEY = 'asset_manager_generated_projects_collapsed_v1';
 function readGeneratedProjectsCollapsed(){
     try { return localStorage.getItem(GENERATED_PROJECTS_COLLAPSED_KEY) === '1'; } catch(_) { return false; }
@@ -509,28 +516,36 @@ async function loadUploadAssets(options={}){
     const grid = document.querySelector('[data-upload-file-grid]');
     const keepScrollTop = append && grid ? grid.scrollTop : null;
     const requestId = ++uploadAssetsState.requestId;
-    const scopeSnapshot = {projectId:uploadAssetsState.projectId || '', canvasId:uploadAssetsState.canvasId || '', query:uploadAssetsState.query || ''};
+    const scopeSnapshot = {projectId:uploadAssetsState.projectId || '', canvasId:uploadAssetsState.canvasId || '', folder:uploadAssetsState.folder || '', mediaType:uploadAssetsState.mediaType || 'all', favoritesOnly:uploadAssetsState.favoritesOnly, query:uploadAssetsState.query || ''};
     if(append) uploadAssetsState.loadingMore = true;
     else { uploadAssetsState.loading = true; uploadAssetsState.items = []; uploadAssetsState.offset = 0; uploadAssetsState.total = 0; uploadAssetsState.hasMore = false; }
     if(activeTab === 'assets') render();
     try {
         const offset = append ? uploadAssetsState.offset : 0;
-        const query = new URLSearchParams({kind:'upload', offset:String(offset), limit:String(uploadAssetsState.pageSize || 120), project_id:scopeSnapshot.projectId, canvas_id:scopeSnapshot.canvasId});
-        const filters = {...imageSpaceState.filters.assets, query:scopeSnapshot.query};
+        const allScope = imageSpaceState.all.upload;
+        const query = new URLSearchParams({kind:'upload', offset:String(offset), limit:String(uploadAssetsState.pageSize || 120), project_id:allScope ? '' : scopeSnapshot.projectId, canvas_id:allScope ? '' : scopeSnapshot.canvasId, folder:allScope ? '' : scopeSnapshot.folder});
+        if(scopeSnapshot.mediaType !== 'all') query.set('media_type', scopeSnapshot.mediaType);
+        if(scopeSnapshot.favoritesOnly) query.set('favorites', JSON.stringify([...fileFavoriteMap.values()].filter(entry => entry.kind === 'upload').map(entry => entry.key.slice('upload:'.length))));
+        const filters = {...imageSpaceState.filters.upload, query:scopeSnapshot.query};
         if(Object.keys(filters).some(key => filters[key])) query.set('filters', JSON.stringify(filters));
         const data = await apiJson(`/api/storage-files?${query.toString()}`);
         const items = Array.isArray(data.items) ? data.items : [];
         // Ignore a slower response after the user changed project, canvas or search.
-        if(requestId !== uploadAssetsState.requestId || scopeSnapshot.projectId !== (uploadAssetsState.projectId || '') || scopeSnapshot.canvasId !== (uploadAssetsState.canvasId || '') || scopeSnapshot.query !== (uploadAssetsState.query || '')) return;
+        if(requestId !== uploadAssetsState.requestId || scopeSnapshot.projectId !== (uploadAssetsState.projectId || '') || scopeSnapshot.canvasId !== (uploadAssetsState.canvasId || '') || scopeSnapshot.folder !== (uploadAssetsState.folder || '') || scopeSnapshot.mediaType !== (uploadAssetsState.mediaType || 'all') || scopeSnapshot.favoritesOnly !== uploadAssetsState.favoritesOnly || scopeSnapshot.query !== (uploadAssetsState.query || '')) return;
         uploadAssetsState.items = append ? [...uploadAssetsState.items, ...items] : items;
         uploadAssetsState.offset = offset + items.length;
         uploadAssetsState.total = Number(data.total || 0);
+        uploadAssetsState.allTotal = Number(data.all_total || 0);
         uploadAssetsState.hasMore = Boolean(data.has_more);
+        uploadAssetsState.folders = Array.isArray(data.folders) ? data.folders : [];
+        uploadAssetsState.mediaCounts = data.media_counts || {image:0,video:0,audio:0};
         uploadAssetsState.projects = Array.isArray(data.projects) ? data.projects : [];
         uploadAssetsState.canvases = Array.isArray(data.canvases) ? data.canvases : [];
         uploadAssetsState.unassigned_count = Number(data.unassigned_count || 0);
         uploadAssetsState.loaded = true;
         uploadAssetsState.error = '';
+        uploadAssetsState.selectedIds = new Set([...uploadAssetsState.selectedIds].filter(id => uploadAssetsState.items.some(item => item.id === id)));
+        if(uploadAssetsState.selectedId && !findUploadAsset(uploadAssetsState.selectedId)) uploadAssetsState.selectedId = '';
         if(!uploadAssetsState.selectedId && items.length) uploadAssetsState.selectedId = items[0].id;
     } catch(err) {
         if(requestId === uploadAssetsState.requestId) uploadAssetsState.error = err?.message || '读取上传素材失败';
@@ -545,43 +560,130 @@ async function loadUploadAssets(options={}){
 }
 function uploadAssetProjectTree(){
     const projects = uploadAssetsState.projects || [];
-    return [{id:'', name:'全部上传', count:uploadAssetsState.total}, ...projects.map(item => ({...item, count:Number(item.count || 0)})), {id:'__unassigned__', name:'未归属项目', count:uploadAssetsState.unassigned_count}];
+    return [{id:'', name:'全部上传', count:uploadAssetsState.allTotal}, ...projects.map(item => ({...item, count:Number(item.count || 0)})), {id:'__unassigned__', name:'未归属项目', count:uploadAssetsState.unassigned_count}];
 }
-function renderUploadAssetCard(item){
-    const refs = Array.isArray(item.references) ? item.references : [];
-    const projectLabel = refs.length ? [...new Set(refs.map(ref => uploadAssetProjectName(ref.project_id)))].join('、') : '未归属项目';
-    return `<article class="asset-card" data-upload-card="${escapeAttr(item.id)}"><div class="asset-thumb">${assetThumb(item)}</div><div class="asset-card-body"><div class="asset-card-name" title="${escapeAttr(item.name || '')}">${escapeHtml(item.name || '上传素材')}</div><div class="asset-card-meta">${escapeHtml(assetKindLabel(item))} · ${escapeHtml(projectLabel)}</div></div></article>`;
+function storageFileState(kind){ return kind === 'upload' ? uploadAssetsState : generatedAssetsState; }
+function storageFileSelectedItems(kind){
+    const state = storageFileState(kind);
+    return state.items.filter(item => state.selectedIds.has(item.id));
 }
-function renderUploadAssetDetail(item){
-    if(!item) return `<div class="panel-head"><div class="panel-title"><strong>素材预览</strong><span>选择一个上传素材查看详情</span></div></div><div class="detail-scroll"><div class="detail-empty"><i data-lucide="image"></i><span>暂无可预览素材</span></div></div>`;
+function renderStorageFileManageTools(kind, visibleItems){
+    const state = storageFileState(kind), selected = storageFileSelectedItems(kind);
+    const imageCount = selected.filter(item => assetKind(item) === 'image').length;
+    return `<div class="manage-tools storage-file-manage-tools">
+        <div class="manage-group manage-select-group"><span class="manage-group-title">管理</span><span class="manage-summary">已选 ${selected.length} 个，其中 ${imageCount} 张图片</span>
+            <div class="asset-tools"><button class="asset-btn" type="button" data-space-file-select-all ${visibleItems.length ? '' : 'disabled'}><i data-lucide="check-square"></i><span>全选</span></button>
+            <button class="asset-btn" type="button" data-space-file-clear ${selected.length ? '' : 'disabled'}><i data-lucide="square"></i><span>清空</span></button>
+            <button class="asset-btn" type="button" data-space-file-download ${selected.length ? '' : 'disabled'}><i data-lucide="download"></i><span>下载所选</span></button>
+            <button class="asset-btn" type="button" data-space-file-canvas ${selected.length ? '' : 'disabled'}><i data-lucide="clipboard-paste"></i><span>复制到画布</span></button>
+            <button class="asset-btn" type="button" data-space-file-import ${imageCount ? '' : 'disabled'}><i data-lucide="folder-input"></i><span>加入图片资产库</span></button>
+            <button class="asset-btn" type="button" data-space-file-cut ${selected.length ? '' : 'disabled'}><i data-lucide="scissors"></i><span>剪切/移动</span></button>
+            <button class="asset-btn" type="button" data-space-file-move ${selected.length ? '' : 'disabled'}><i data-lucide="folder-input"></i><span>移动</span></button>
+            <button class="asset-btn danger" type="button" data-space-file-delete ${selected.length ? '' : 'disabled'}><i data-lucide="trash-2"></i><span>移入回收站</span></button></div></div>
+        <div class="manage-group manage-ai-group"><span class="manage-group-title">AI 处理</span>${renderLocalCaptionTools(imageCount, kind)}
+            <button class="asset-btn" type="button" data-space-file-background ${imageCount && !backgroundRemovalBusy ? '' : 'disabled'}><i data-lucide="eraser"></i><span>去背景</span></button></div>
+    </div>`;
+}
+function renderStorageFileClipboardBar(kind){
+    const clipboard = storageFileClipboards[kind];
+    if(!clipboard?.rels?.length) return '';
+    const folder = storageFileState(kind).folder || '';
+    const sameFolder = clipboard.folders.every(value => value === folder);
+    return `<div class="asset-clipboard-bar"><div class="asset-clipboard-info"><i data-lucide="clipboard"></i><span>已剪切 ${clipboard.rels.length} 个素材</span></div>
+        <div class="asset-tools"><button class="asset-btn primary" type="button" data-space-file-paste ${sameFolder ? 'disabled' : ''}><i data-lucide="clipboard-paste"></i><span>${sameFolder ? '切到其他文件夹后移动' : `移动到「${escapeHtml(folder || '根目录')}」`}</span></button>
+        <button class="asset-icon-btn" type="button" data-space-file-cut-clear title="取消剪切"><i data-lucide="x"></i></button></div></div>`;
+}
+function renderStorageFileCaption(item){
+    if(assetKind(item) !== 'image') return '';
+    return `<div class="detail-caption-card"><div class="detail-caption-head"><strong>反推提示词</strong><div class="detail-caption-actions">
+        <button class="asset-btn" type="button" data-space-file-caption-one="${escapeAttr(item.id)}" ${localCaptionBusy ? 'disabled' : ''}><i data-lucide="wand-sparkles"></i><span>反推</span></button>
+        <button class="asset-btn" type="button" data-space-file-caption-copy="${escapeAttr(item.id)}"><i data-lucide="copy"></i><span>复制</span></button>
+        <button class="asset-btn primary" type="button" data-space-file-caption-save="${escapeAttr(item.id)}"><i data-lucide="save"></i><span>保存</span></button></div></div>
+        <textarea id="storageFileCaptionEdit" class="detail-caption-textarea" placeholder="可反推提示词，也可以手动填写。">${escapeHtml(item.caption || '')}</textarea></div>`;
+}
+function renderStorageFileFolders(kind){
+    const state = storageFileState(kind);
+    return `<div class="storage-folder-section"><div class="generated-projects-toggle"><span>按文件夹</span><div class="panel-actions compact-actions">
+        <button class="asset-icon-btn" type="button" data-space-folder-new="${kind}" title="新建文件夹"><i data-lucide="folder-plus"></i></button>
+        <button class="asset-icon-btn" type="button" data-space-folder-rename="${kind}" title="重命名当前文件夹" ${state.folder ? '' : 'disabled'}><i data-lucide="pencil"></i></button>
+        <button class="asset-icon-btn danger" type="button" data-space-folder-delete="${kind}" title="将当前文件夹移入回收站" ${state.folder ? '' : 'disabled'}><i data-lucide="trash-2"></i></button></div></div>
+        <button class="tree-row tree-parent ${!state.folder && kind === 'generated' ? 'active' : ''}" type="button" data-space-folder=""><span class="tree-row-icon"><i data-lucide="folder-open"></i></span><span class="tree-row-name">全部文件夹</span></button>
+        ${(state.folders || []).map(folder => `<button class="tree-row tree-child ${state.folder === folder.path ? 'active' : ''}" type="button" data-space-folder="${escapeAttr(folder.path)}" draggable="true" title="拖动素材到此文件夹可移动；拖动文件夹可调整同级顺序" style="padding-left:${Math.min(50, 14 + folder.path.split('/').length * 12)}px"><span class="tree-row-icon"><i data-lucide="folder"></i></span><span class="tree-row-name">${escapeHtml(folder.name)}</span><span class="tree-row-count">${folder.count || 0}</span></button>`).join('')}</div>`;
+}
+function renderStorageFileCard(kind, item){
+    const state = storageFileState(kind), upload = kind === 'upload';
     const refs = Array.isArray(item.references) ? item.references : [];
-    const labels = refs.length ? [...new Set(refs.map(ref => `${uploadAssetProjectName(ref.project_id)}${ref.canvas_title ? ` · ${ref.canvas_title}` : ''}`))] : [];
-    return `<div class="panel-head"><div class="panel-title"><strong>素材预览</strong><span>${escapeHtml(assetKindLabel(item))}</span></div><div class="panel-actions"><button class="asset-icon-btn" type="button" data-upload-download="${escapeAttr(item.id)}" title="下载素材"><i data-lucide="download"></i></button></div></div><div class="detail-scroll"><div class="detail-media"><button class="detail-media-frame detail-media-zoomable" type="button" data-upload-preview="${escapeAttr(item.id)}" title="点击放大预览">${assetThumb(item)}</button></div><div class="detail-body"><div class="detail-name">${escapeHtml(item.name || '上传素材')}</div><div class="detail-meta-grid"><div class="detail-meta"><span>类型</span><strong>${escapeHtml(assetKindLabel(item))}</strong></div><div class="detail-meta"><span>项目</span><strong>${escapeHtml(labels.length ? labels.map(label => label.split(' · ')[0]).join('、') : '未归属项目')}</strong></div><div class="detail-meta"><span>大小</span><strong>${escapeHtml(formatFileSize(item.size))}</strong></div><div class="detail-meta"><span>修改时间</span><strong>${escapeHtml(formatDate(item.created_at))}</strong></div></div><div class="detail-url">${escapeHtml(item.url || '')}</div>${labels.length ? `<div class="detail-caption-card"><div class="detail-caption-head"><strong>关联画布</strong></div><div class="detail-classification-body">${labels.map(label => `<span class="classification-chip">${escapeHtml(label)}</span>`).join('')}</div></div>` : '<div class="detail-caption-card"><div class="detail-classification-body"><span class="classification-empty">这张素材暂未被画布引用</span></div></div>'}</div></div>`;
+    const location = upload ? (refs.length ? [...new Set(refs.map(ref => uploadAssetProjectName(ref.project_id)))].join('、') : item.upload_project_id ? uploadAssetProjectName(item.upload_project_id) : '未归属项目') : (item.folder || '生成目录');
+    return `<article class="asset-card ${upload ? '' : 'generated-asset-card'} ${state.selectedId === item.id ? 'active' : ''} ${state.selectedIds.has(item.id) ? 'selected' : ''}" data-space-file-card="${escapeAttr(item.id)}" data-${upload ? 'upload' : 'generated'}-card="${escapeAttr(item.id)}" draggable="true" title="拖动到左侧文件夹可移动">
+        <input class="asset-card-check" type="checkbox" data-space-file-check="${escapeAttr(item.id)}" ${state.selectedIds.has(item.id) ? 'checked' : ''} aria-label="选择 ${escapeAttr(item.name)}">
+        <button class="asset-thumb generated-asset-preview" type="button" data-space-file-preview="${escapeAttr(item.id)}" title="预览">${assetThumb(item)}${assetKind(item) === 'video' ? '<span class="asset-kind-badge generated-kind-badge"><i data-lucide="play"></i></span>' : ''}</button>
+        <button class="asset-card-quick asset-card-fav ${isFileFavorite(kind, item) ? 'is-fav' : ''}" type="button" data-space-file-favorite="${escapeAttr(item.id)}" title="${isFileFavorite(kind, item) ? '取消收藏' : '收藏'}"><i data-lucide="star"></i></button>
+        <div class="asset-card-body"><div class="asset-card-name" title="${escapeAttr(item.name || '')}">${escapeHtml(item.name || '素材')}</div>
+            <div class="asset-card-meta">${escapeHtml(assetKindLabel(item))} · ${escapeHtml(formatFileSize(item.size))}</div>
+            <div class="asset-card-meta" title="${escapeAttr(location)}">${escapeHtml(location)}</div>
+            <div class="asset-card-actions"><button type="button" data-space-file-preview="${escapeAttr(item.id)}"><i data-lucide="maximize-2"></i><span>预览</span></button>
+            <button type="button" data-space-file-download-one="${escapeAttr(item.id)}"><i data-lucide="download"></i><span>下载</span></button></div></div></article>`;
+}
+function renderStorageFileDetail(kind, item){
+    if(!item) return `<div class="panel-head"><div class="panel-title"><strong>素材详情</strong><span>选择一个素材查看</span></div></div><div class="detail-scroll"><div class="detail-empty"><i data-lucide="image"></i><span>暂无可预览素材</span></div></div>`;
+    const refs = kind === 'upload' && Array.isArray(item.references) ? item.references : [];
+    const labels = [...new Set(refs.map(ref => `${uploadAssetProjectName(ref.project_id)}${ref.canvas_title ? ` · ${ref.canvas_title}` : ''}`))];
+    return `<div class="panel-head"><div class="panel-title"><strong>素材详情</strong><span>${escapeHtml(assetKindLabel(item))}</span></div>
+        <div class="panel-actions"><button class="asset-icon-btn" type="button" data-space-file-rename="${escapeAttr(item.id)}" title="重命名"><i data-lucide="pencil"></i></button>
+        <button class="asset-icon-btn" type="button" data-space-file-move-one="${escapeAttr(item.id)}" title="移动到文件夹"><i data-lucide="folder-input"></i></button>
+        <button class="asset-icon-btn" type="button" data-space-file-download-one="${escapeAttr(item.id)}" title="下载"><i data-lucide="download"></i></button>
+        <button class="asset-icon-btn" type="button" data-space-file-copy-link="${escapeAttr(item.id)}" title="复制链接"><i data-lucide="link"></i></button>
+        ${assetKind(item) === 'image' ? `<button class="asset-icon-btn" type="button" data-space-file-background-one="${escapeAttr(item.id)}" title="去背景"><i data-lucide="eraser"></i></button>` : ''}
+        <button class="asset-icon-btn danger" type="button" data-space-file-delete-one="${escapeAttr(item.id)}" title="移入回收站"><i data-lucide="trash-2"></i></button></div></div>
+        <div class="detail-scroll"><div class="detail-media">${assetKind(item) === 'audio' ? `<audio controls preload="metadata" src="${escapeAttr(item.url)}"></audio>` : `<button class="detail-media-frame detail-media-zoomable" type="button" data-space-file-preview="${escapeAttr(item.id)}" title="点击放大预览">${assetThumb(item)}</button>`}</div>
+        <div class="detail-body"><input class="detail-name-input" data-space-file-inline-name="${escapeAttr(item.id)}" type="text" value="${escapeAttr(item.name || '')}" title="直接修改名称">
+            <div class="detail-meta-grid"><div class="detail-meta"><span>类型</span><strong>${escapeHtml(assetKindLabel(item))}</strong></div>
+            <div class="detail-meta"><span>大小</span><strong>${escapeHtml(formatFileSize(item.size))}</strong></div>
+            <div class="detail-meta"><span>修改时间</span><strong>${escapeHtml(formatDate(Number(item.created_at || 0) * 1000))}</strong></div>
+            <div class="detail-meta"><span>文件夹</span><strong>${escapeHtml(item.folder || '根目录')}</strong></div></div>
+            <div class="detail-url">${escapeHtml(item.url || '')}</div>
+            ${assetKind(item) === 'image' ? renderImageSpaceClassification(item) + renderStorageFileCaption(item) : ''}
+            ${labels.length ? `<div class="detail-caption-card"><div class="detail-caption-head"><strong>关联画布</strong></div><div class="detail-classification-body">${labels.map(label => `<span class="classification-chip">${escapeHtml(label)}</span>`).join('')}</div></div>` : ''}</div></div>`;
 }
 function renderUploadManager(){
     const items = uploadAssetsState.items || [];
-    const detail = findUploadAsset(uploadAssetsState.selectedId);
+    const detail = findUploadAsset(uploadAssetsState.selectedId) || items[0] || null;
     const tree = uploadAssetProjectTree();
     const project = uploadAssetsState.projectId ? (uploadAssetsState.canvasId ? (uploadAssetsState.canvases || []).find(c => c.id === uploadAssetsState.canvasId)?.title || '画布素材' : uploadAssetProjectName(uploadAssetsState.projectId)) : '全部上传';
-    const body = uploadAssetsState.error ? `<div class="empty-state" role="alert"><i data-lucide="triangle-alert"></i><strong>上传素材读取失败</strong><span>${escapeHtml(uploadAssetsState.error)}</span><button class="asset-btn primary" type="button" data-upload-retry><i data-lucide="refresh-cw"></i><span>重新读取</span></button></div>` : (uploadAssetsState.loading ? '<div class="storage-empty">正在读取上传素材目录...</div>' : `<div class="asset-grid"><button id="assetDrop" class="upload-grid-card ${assetUploadBusy ? 'uploading' : ''}" type="button" data-asset-upload><span class="upload-thumb"><i data-lucide="${assetUploadBusy ? 'loader-circle' : 'upload-cloud'}"></i></span><span class="upload-body"><strong>${assetUploadBusy ? '正在上传素材' : '上传到此项目/画布'}</strong><small>${assetUploadBusy ? '请稍候，不需要重复点击' : '拖入文件或点击上传'}</small></span></button>${items.map(renderUploadAssetCard).join('')}${!items.length ? '<div class="empty-state">上传素材目录中还没有符合条件的文件。</div>' : ''}${uploadAssetsState.hasMore ? `<div class="storage-load-more">已加载 ${items.length} / ${uploadAssetsState.total}，向下滚动继续</div>` : ''}</div>`);
-    root.innerHTML = `<aside class="asset-panel asset-nav"><div class="panel-head"><div class="panel-title"><strong>上传素材</strong><span>按画布项目和画布分类</span></div></div><div class="nav-scroll"><div class="nav-tree">${tree.map(item => `<button class="tree-row tree-parent ${uploadAssetsState.projectId === item.id && !uploadAssetsState.canvasId ? 'active' : ''}" type="button" data-upload-project="${escapeAttr(item.id)}"><span class="tree-row-icon"><i data-lucide="${item.id ? 'folder' : 'images'}"></i></span><span class="tree-row-name">${escapeHtml(item.name)}</span><span class="tree-row-count">${item.count || 0}</span></button>${item.id && uploadAssetsState.projectId === item.id ? (uploadAssetsState.canvases || []).filter(canvas => canvas.project === item.id).map(canvas => `<button class="tree-row tree-child ${uploadAssetsState.canvasId === canvas.id ? 'active' : ''}" type="button" data-upload-canvas="${escapeAttr(canvas.id)}"><span class="tree-elbow"></span><span class="tree-row-icon"><i data-lucide="layers"></i></span><span class="tree-row-name">${escapeHtml(canvas.title || '未命名画布')}</span><span class="tree-row-count">${canvas.count || 0}</span></button>`).join('') : ''}`).join('')}</div><div class="nav-hint">归属来自画布引用和上传时选择的项目/画布；未关联的文件放在“未归属项目”。</div></div></aside><section class="asset-panel asset-content"><div class="content-toolbar"><div class="content-heading"><strong>${escapeHtml(project)}</strong><span>图片空间 / 上传素材 · ${uploadAssetsState.total} 个文件</span></div><div class="asset-tools"><label class="asset-search-wrap"><i data-lucide="search"></i><input id="assetSearch" class="asset-search" type="search" value="${escapeAttr(uploadAssetsState.query)}" placeholder="搜索上传素材"></label><button class="asset-btn" type="button" data-asset-upload><i data-lucide="upload-cloud"></i><span>上传素材</span></button><button class="asset-btn" type="button" data-upload-retry><i data-lucide="refresh-cw"></i><span>刷新</span></button></div></div><div class="content-scroll" data-upload-file-grid>${body}</div></section><aside class="asset-panel asset-detail">${renderUploadAssetDetail(detail)}</aside>`;
+    const body = uploadAssetsState.error ? `<div class="empty-state" role="alert"><i data-lucide="triangle-alert"></i><strong>上传素材读取失败</strong><span>${escapeHtml(uploadAssetsState.error)}</span><button class="asset-btn primary" type="button" data-upload-retry><i data-lucide="refresh-cw"></i><span>重新读取</span></button></div>` : (uploadAssetsState.loading ? '<div class="storage-empty">正在读取上传素材目录...</div>' : `<div class="asset-grid"><button id="assetDrop" class="upload-grid-card ${assetUploadBusy ? 'uploading' : ''}" type="button" data-asset-upload><span class="upload-thumb"><i data-lucide="${assetUploadBusy ? 'loader-circle' : 'upload-cloud'}"></i></span><span class="upload-body"><strong>${assetUploadBusy ? '正在上传素材' : '上传到此项目/画布'}</strong><small>${assetUploadBusy ? '请稍候，不需要重复点击' : '拖入文件或点击上传'}</small></span></button>${items.map(item => renderStorageFileCard('upload', item)).join('')}${!items.length ? '<div class="empty-state">上传素材目录中还没有符合条件的文件。</div>' : ''}${uploadAssetsState.hasMore ? `<div class="storage-load-more">已加载 ${items.length} / ${uploadAssetsState.total}，向下滚动继续</div>` : ''}</div>`);
+    root.innerHTML = `<aside class="asset-panel asset-nav"><div class="panel-head"><div class="panel-title"><strong>上传素材</strong><span>资产管理 / 上传素材</span></div></div>
+        <div class="nav-scroll"><div class="nav-tree">
+            <button class="tree-row tree-parent ${uploadAssetsState.favoritesOnly ? 'active' : ''}" type="button" data-upload-fav-filter><span class="tree-row-icon"><i data-lucide="star"></i></span><span class="tree-row-name">我的收藏</span><span class="tree-row-count">${favoriteFileCount('upload')}</span></button>
+            <button class="tree-row tree-parent" type="button" data-upload-library-view><span class="tree-row-icon"><i data-lucide="library"></i></span><span class="tree-row-name">图片资产库</span></button>
+            <div class="generated-projects-toggle"><span>按类型</span></div>
+            ${[['all','全部上传','images',uploadAssetsState.allTotal],['image','图片','image',uploadAssetsState.mediaCounts.image],['video','视频','video',uploadAssetsState.mediaCounts.video],['audio','音频','file-audio',uploadAssetsState.mediaCounts.audio]].map(([type,label,icon,count]) => `<button class="tree-row ${type === 'all' ? 'tree-parent' : 'tree-child'} ${uploadAssetsState.mediaType === type ? 'active' : ''}" type="button" data-upload-type="${type}"><span class="tree-row-icon"><i data-lucide="${icon}"></i></span><span class="tree-row-name">${label}</span><span class="tree-row-count">${count || 0}</span></button>`).join('')}
+            <div class="generated-projects-toggle"><span>按项目</span></div>
+            ${tree.map(item => `<button class="tree-row tree-parent ${uploadAssetsState.projectId === item.id && !uploadAssetsState.canvasId ? 'active' : ''}" type="button" data-upload-project="${escapeAttr(item.id)}"><span class="tree-row-icon"><i data-lucide="${item.id ? 'folder' : 'images'}"></i></span><span class="tree-row-name">${escapeHtml(item.name)}</span><span class="tree-row-count">${item.count || 0}</span></button>${item.id && uploadAssetsState.projectId === item.id ? (uploadAssetsState.canvases || []).filter(canvas => canvas.project === item.id).map(canvas => `<button class="tree-row tree-child ${uploadAssetsState.canvasId === canvas.id ? 'active' : ''}" type="button" data-upload-canvas="${escapeAttr(canvas.id)}"><span class="tree-elbow"></span><span class="tree-row-icon"><i data-lucide="layers"></i></span><span class="tree-row-name">${escapeHtml(canvas.title || '未命名画布')}</span><span class="tree-row-count">${canvas.count || 0}</span></button>`).join('') : ''}`).join('')}
+            ${renderStorageFileFolders('upload')}${renderImageSpaceCollections()}</div><div class="nav-hint">素材归属来自画布引用或上传时的选择。</div></div></aside>
+        <section class="asset-panel asset-content ${uploadAssetsState.manageMode ? 'manage-on' : ''}"><div class="content-toolbar"><div class="content-heading"><strong>${escapeHtml(uploadAssetsState.favoritesOnly ? '我的收藏 · 上传素材' : uploadAssetsState.folder || project)}</strong><span>资产管理 / 上传素材 · 共 ${uploadAssetsState.total} 个文件</span></div>
+            <div class="asset-tools"><label class="asset-search-wrap"><i data-lucide="search"></i><input id="assetSearch" class="asset-search" type="search" value="${escapeAttr(uploadAssetsState.query)}" placeholder="搜索文件名或目录"></label>
+            <button class="asset-btn primary" type="button" data-asset-upload><i data-lucide="upload-cloud"></i><span>上传文件</span></button><button class="asset-btn" type="button" data-upload-retry><i data-lucide="refresh-cw"></i><span>刷新</span></button>
+            <button class="asset-btn ${uploadAssetsState.manageMode ? 'primary' : ''}" type="button" data-space-file-manage><i data-lucide="list-checks"></i><span>${uploadAssetsState.manageMode ? '完成管理' : '批量管理'}</span></button></div></div>
+            ${renderImageSpaceFilterBar()}${renderStorageFileManageTools('upload', items)}${renderStorageFileClipboardBar('upload')}<div class="content-scroll" data-upload-file-grid>${body}</div></section>
+        <aside class="asset-panel asset-detail">${renderStorageFileDetail('upload', detail)}</aside>`;
 }
 function generatedAssetTypeLabel(item){
     return assetKind(item) === 'video' ? '视频' : '图片';
 }
 function generatedMediaTypeLabel(type){
-    return type === 'video' ? '视频' : type === 'image' ? '图片' : '生成素材';
+    return type === 'video' ? '视频' : type === 'audio' ? '音频' : type === 'image' ? '图片' : '生成素材';
 }
 function generatedMediaCounts(){
     const saved = generatedAssetsState.mediaCounts || {};
     const fallback = (generatedAssetsState.items || []).reduce((result, item) => {
-        const kind = assetKind(item) === 'video' ? 'video' : 'image';
+        const kind = assetKind(item) === 'video' ? 'video' : assetKind(item) === 'audio' ? 'audio' : 'image';
         result[kind] += 1;
         return result;
-    }, {image:0, video:0});
+    }, {image:0, video:0, audio:0});
     return {
         image: Number.isFinite(Number(saved.image)) ? Number(saved.image) : fallback.image,
         video: Number.isFinite(Number(saved.video)) ? Number(saved.video) : fallback.video,
+        audio: Number.isFinite(Number(saved.audio)) ? Number(saved.audio) : fallback.audio,
     };
 }
 function generatedAssetSelectedItems(){
@@ -617,7 +719,7 @@ async function loadGeneratedAssets(options={}){
         generatedAssetsState.offset = 0;
         generatedAssetsState.total = 0;
         generatedAssetsState.allTotal = 0;
-        generatedAssetsState.mediaCounts = {image:0, video:0};
+        generatedAssetsState.mediaCounts = {image:0, video:0, audio:0};
         generatedAssetsState.hasMore = false;
         generatedAssetsState.selectedIds.clear();
         renderGeneratedAssetViews();
@@ -630,23 +732,26 @@ async function loadGeneratedAssets(options={}){
             : '';
         const filterQuery = encodeURIComponent(JSON.stringify({...imageSpaceState.filters.generated,query:generatedAssetsState.query}));
         const folderQuery = encodeURIComponent(imageSpaceState.all.generated ? '' : generatedAssetsState.folder);
-        const data = await apiJson(`/api/storage-files?kind=generated&offset=${encodeURIComponent(offset)}&limit=${encodeURIComponent(limit)}${mediaTypeQuery}&filters=${filterQuery}&folder=${folderQuery}`);
+        const favoriteQuery = generatedFavoritesOnly ? `&favorites=${encodeURIComponent(JSON.stringify([...fileFavoriteMap.values()].filter(entry => entry.kind === 'generated').map(entry => entry.key.slice('generated:'.length))))}` : '';
+        const data = await apiJson(`/api/storage-files?kind=generated&offset=${encodeURIComponent(offset)}&limit=${encodeURIComponent(limit)}${mediaTypeQuery}&filters=${filterQuery}&folder=${folderQuery}${favoriteQuery}`);
         const items = Array.isArray(data.items) ? data.items : [];
         generatedAssetsState.items = append ? [...generatedAssetsState.items, ...items] : items;
         generatedAssetsState.offset = offset + items.length;
         generatedAssetsState.total = Number(data.total || generatedAssetsState.items.length || 0);
         generatedAssetsState.allTotal = Number(data.all_total ?? data.total ?? generatedAssetsState.items.length ?? 0);
         const fallbackCounts = generatedAssetsState.items.reduce((result, item) => {
-            const type = assetKind(item) === 'video' ? 'video' : 'image';
+            const type = assetKind(item) === 'video' ? 'video' : assetKind(item) === 'audio' ? 'audio' : 'image';
             result[type] += 1;
             return result;
-        }, {image:0, video:0});
+        }, {image:0, video:0, audio:0});
         const mediaCounts = data.media_counts || {};
         generatedAssetsState.mediaCounts = {
             image: Number.isFinite(Number(mediaCounts.image)) ? Number(mediaCounts.image) : fallbackCounts.image,
             video: Number.isFinite(Number(mediaCounts.video)) ? Number(mediaCounts.video) : fallbackCounts.video,
+            audio: Number.isFinite(Number(mediaCounts.audio)) ? Number(mediaCounts.audio) : fallbackCounts.audio,
         };
         generatedAssetsState.hasMore = Boolean(data.has_more);
+        generatedAssetsState.folders = Array.isArray(data.folders) ? data.folders : [];
         generatedAssetsState.loaded = true;
         generatedAssetsState.selectedIds = new Set([...generatedAssetsState.selectedIds].filter(id => generatedAssetsState.items.some(item => item.id === id)));
         if(generatedAssetsState.selectedId && !findGeneratedAsset(generatedAssetsState.selectedId)) generatedAssetsState.selectedId = '';
@@ -687,20 +792,7 @@ function renderGeneratedManager(){
     const cards = generatedAssetsState.loading
         ? '<div class="storage-empty">正在读取生成素材目录...</div>'
         : items.length
-            ? items.map(item => `<article class="asset-card generated-asset-card ${item.id === generatedAssetsState.selectedId ? 'active' : ''} ${generatedAssetsState.selectedIds.has(item.id) ? 'selected' : ''}" data-generated-card="${escapeAttr(item.id)}">
-                <input class="asset-card-check generated-card-check" type="checkbox" data-generated-check="${escapeAttr(item.id)}" ${generatedAssetsState.selectedIds.has(item.id) ? 'checked' : ''} aria-label="选择 ${escapeAttr(item.name)}" title="选择这个素材">
-                <button class="asset-thumb generated-asset-preview" type="button" data-generated-preview="${escapeAttr(item.id)}" title="${assetKind(item) === 'video' ? '预览视频' : '预览原图'}">${assetThumb(item)}${assetKind(item) === 'video' ? '<span class="asset-kind-badge generated-kind-badge" title="视频"><i data-lucide="play"></i></span>' : ''}</button>
-                <button class="asset-card-quick asset-card-fav ${isFileFavorite('generated', item) ? 'is-fav' : ''}" type="button" data-generated-favorite="${escapeAttr(item.id)}" title="${isFileFavorite('generated', item) ? '取消收藏' : '收藏'}" aria-label="${isFileFavorite('generated', item) ? '取消收藏' : '收藏'}"><i data-lucide="star"></i></button>
-                <div class="asset-card-body">
-                    <div class="asset-card-name" title="${escapeAttr(item.name)}">${escapeHtml(item.name)}</div>
-                    <div class="asset-card-meta">${generatedAssetTypeLabel(item)} · ${formatFileSize(item.size)}${item.width ? ` · ${item.width}×${item.height}` : ''}</div>
-                    <div class="asset-card-meta" title="${escapeAttr(item.folder || '生成目录')}">${escapeHtml(item.folder || '生成目录')}</div>
-                    <div class="asset-card-actions">
-                        <button type="button" data-generated-preview="${escapeAttr(item.id)}" title="${assetKind(item) === 'video' ? '预览视频' : '预览'}"><i data-lucide="${assetKind(item) === 'video' ? 'play' : 'maximize-2'}"></i><span>${assetKind(item) === 'video' ? '预览视频' : '预览'}</span></button>
-                        <a class="generated-card-download" href="${escapeAttr(item.url)}" download="${escapeAttr(item.name)}" title="下载"><i data-lucide="download"></i><span>下载</span></a>
-                    </div>
-                </div>
-            </article>`).join('') + (generatedFavoritesOnly
+            ? items.map(item => renderStorageFileCard('generated', item)).join('') + (generatedFavoritesOnly
                 ? ''
                 : (generatedAssetsState.hasMore || generatedAssetsState.loadingMore
                     ? `<div class="storage-load-more">${generatedAssetsState.loadingMore ? '继续加载中...' : `已加载 ${generatedAssetsState.items.length} / ${generatedAssetsState.total || generatedAssetsState.items.length}，向下滚动继续`}</div>`
@@ -713,21 +805,17 @@ function renderGeneratedManager(){
                 <div class="content-heading"><strong>${generatedFavoritesOnly ? '我的收藏 · 生成素材' : escapeHtml(viewLabel)}</strong><span>${generatedFavoritesOnly ? `收藏的 ${items.length} 个生成素材` : `资产管理 / 生成素材${mediaType === 'all' && !generatedAssetsState.folder ? '' : ` / ${escapeHtml(generatedMediaTypeLabel(mediaType))}`} · 最新生成的素材排在前面，共 ${viewTotal} 个`}</span></div>
                 <div class="asset-tools">
                     <label class="asset-search-wrap"><i data-lucide="search"></i><input id="generatedSearch" class="asset-search" value="${escapeAttr(generatedAssetsState.query)}" placeholder="搜索文件名或目录"></label>
+                    <button class="asset-btn primary" type="button" data-generated-upload><i data-lucide="upload-cloud"></i><span>上传文件</span></button>
                     <button class="asset-btn" type="button" data-generated-refresh><i data-lucide="refresh-cw"></i><span>刷新</span></button>
-                    <button class="asset-btn ${generatedManageMode ? 'primary' : ''}" type="button" data-generated-manage><i data-lucide="list-checks"></i><span>${generatedManageMode ? '完成管理' : '管理'}</span></button>
+                    <button class="asset-btn ${generatedManageMode ? 'primary' : ''}" type="button" data-space-file-manage data-generated-manage><i data-lucide="list-checks"></i><span>${generatedManageMode ? '完成管理' : '批量管理'}</span></button>
                 </div>
             </div>
             ${renderImageSpaceFilterBar()}
-            <div class="manage-tools generated-manage-tools">
-                <div class="manage-group"><span class="manage-group-title">管理</span><span class="manage-summary">已选 ${selectedCount} 个，共 ${viewTotal} 个素材${selectedVideoCount ? ` · ${selectedVideoCount} 个视频` : ''}</span><button class="asset-btn" type="button" data-generated-select-all ${items.length ? '' : 'disabled'}><i data-lucide="check-square"></i><span>全选</span></button><button class="asset-btn" type="button" data-generated-clear-selection ${selectedCount ? '' : 'disabled'}><i data-lucide="square"></i><span>清空</span></button></div>
-                <div class="manage-group"><button class="asset-btn primary" type="button" data-generated-import ${selectedImageCount ? '' : 'disabled'} title="${selectedVideoCount && !selectedImageCount ? '视频暂不支持加入图片资产库' : ''}"><i data-lucide="folder-input"></i><span>加入图片资产库${selectedImageCount ? ` (${selectedImageCount})` : ''}</span></button><button class="asset-btn danger" type="button" data-generated-delete ${selectedCount ? '' : 'disabled'}><i data-lucide="trash-2"></i><span>移入回收站 ${selectedCount ? `(${selectedCount})` : ''}</span></button></div>
-            </div>
-            <div class="content-scroll" data-generated-file-grid><div class="asset-grid generated-assets-grid">${cards}</div></div>
+            ${renderStorageFileManageTools('generated', items)}
+            ${renderStorageFileClipboardBar('generated')}
+            <div class="content-scroll" data-generated-file-grid><div class="asset-grid generated-assets-grid"><button id="generatedDrop" class="upload-grid-card" type="button" data-generated-upload><span class="upload-thumb"><i data-lucide="upload-cloud"></i></span><span class="upload-body"><strong>上传到生成素材</strong><small>拖入图片、视频或音频</small></span></button>${cards}</div></div>
         </section>
-        <aside class="asset-panel asset-detail">
-            <div class="panel-head"><div class="panel-title"><strong>素材详情</strong><span>${detail ? escapeHtml(detail.name) : '选择素材查看'}</span></div></div>
-            <div class="detail-scroll">${detail ? `<button class="generated-detail-preview" type="button" data-generated-preview="${escapeAttr(detail.id)}" title="${detailKind === 'video' ? '点击预览视频' : '点击查看原图'}">${assetThumb(detail)}${detailKind === 'video' ? '<span class="asset-kind-badge generated-kind-badge" title="视频"><i data-lucide="play"></i></span>' : ''}</button>${renderImageSpaceClassification(detail)}<div class="generated-detail-meta"><strong>${escapeHtml(detail.name)}</strong><span>${generatedAssetTypeLabel(detail)} · ${formatFileSize(detail.size)}${detail.width ? ` · ${detail.width}×${detail.height}` : ''}</span><span>${escapeHtml(detail.folder || '生成目录')}</span></div><div class="asset-tools"><button class="asset-btn" type="button" data-generated-preview="${escapeAttr(detail.id)}"><i data-lucide="${detailKind === 'video' ? 'play' : 'maximize-2'}"></i><span>${detailKind === 'video' ? '视频预览' : '原图预览'}</span></button><a class="asset-btn" href="${escapeAttr(detail.url)}" download="${escapeAttr(detail.name)}"><i data-lucide="download"></i><span>下载</span></a></div>` : '<div class="detail-empty"><i data-lucide="images"></i><span>暂无生成素材</span></div>'}</div>
-        </aside>`;
+        <aside class="asset-panel asset-detail">${renderStorageFileDetail('generated', detail)}</aside>`;
     const grid = root.querySelector('[data-generated-file-grid]');
     grid?.addEventListener('scroll', handleGeneratedGridScroll, {passive:true});
     if(grid && generatedAssetsState.restoreScrollTop !== null){
@@ -744,6 +832,7 @@ function renderGeneratedNavigation(){
     const mediaChannels = [
         {type:'image', label:'图片', icon:'image', count:mediaCounts.image},
         {type:'video', label:'视频', icon:'video', count:mediaCounts.video},
+        {type:'audio', label:'音频', icon:'file-audio', count:mediaCounts.audio},
     ];
     return `<aside class="asset-panel asset-nav">
         <div class="panel-head"><div class="panel-title"><strong>生成素材</strong><span>资产管理 / 生成素材</span></div></div>
@@ -767,7 +856,7 @@ function renderGeneratedNavigation(){
                     ${canvasAssetProjects().map(project => renderCanvasAssetTreeBranch(project)).join('')}
                 </div>`}
             </div>
-            ${folders.map(folder => `<button class="tree-row tree-child ${!projectView && !generatedFavoritesOnly && generatedAssetsState.folder === folder ? 'active' : ''}" type="button" data-generated-folder="${escapeAttr(folder)}"><span class="tree-elbow"></span><span class="tree-row-icon"><i data-lucide="folder"></i></span><span class="tree-row-name" title="${escapeAttr(folder)}">${escapeHtml(folder)}</span><span class="tree-row-count">${generatedAssetsState.items.filter(item => (item.folder || '') === folder).length}</span></button>`).join('')}
+            ${renderStorageFileFolders('generated')}
             ${renderImageSpaceCollections()}
         </div>
     </aside>`;
@@ -1044,7 +1133,7 @@ function assetKind(item){
     const url = String(item?.url || '').toLowerCase();
     const kind = String(item?.kind || item?.type || '').toLowerCase();
     if(kind.includes('video') || /\.(mp4|webm|mov|m4v|avi|mkv|flv)(\?|#|$)/.test(url)) return 'video';
-    if(kind.includes('audio') || /\.(mp3|wav|flac|ogg|m4a)(\?|#|$)/.test(url)) return 'audio';
+    if(kind.includes('audio') || /\.(mp3|wav|flac|ogg|m4a|aac)(\?|#|$)/.test(url)) return 'audio';
     if(kind.includes('text') || /\.(txt|json|csv|srt|vtt|md)(\?|#|$)/.test(url)) return 'text';
     return 'image';
 }
@@ -1380,7 +1469,7 @@ function localCaptionModels(){
     const provider = localCaptionProviders().find(p => p.id === localCaptionProvider);
     return (provider?.chat_models || []).filter(Boolean);
 }
-function renderLocalCaptionTools(imageCount){
+function renderLocalCaptionTools(imageCount, source='local'){
     normalizeLocalCaptionSettings();
     const providers = localCaptionProviders();
     const models = localCaptionModels();
@@ -1396,8 +1485,8 @@ function renderLocalCaptionTools(imageCount){
                 ${models.length ? models.map(m => `<option value="${escapeAttr(m)}" ${m === localCaptionModel ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('') : '<option value="">暂无模型</option>'}
             </select>
             <input id="localCaptionPrompt" class="local-caption-prompt-input" type="text" value="${escapeAttr(localCaptionPrompt || '描述图片')}" placeholder="描述图片">
-            <button class="asset-btn" type="button" data-local-classify-run ${classifyDisabled ? 'disabled' : ''}><i data-lucide="${localClassifyBusy ? 'loader-2' : 'tags'}"></i><span>${localClassifyBusy ? '分类中' : '智能分类'}</span></button>
-            <button class="asset-btn primary" type="button" data-local-caption-run ${captionDisabled ? 'disabled' : ''}><i data-lucide="${localCaptionBusy ? 'loader-2' : 'wand-sparkles'}"></i><span>${localCaptionBusy ? '反推中' : '提示词反推'}</span></button>
+            <button class="asset-btn" type="button" ${source === 'local' ? 'data-local-classify-run' : 'data-space-file-classify'} ${classifyDisabled ? 'disabled' : ''}><i data-lucide="${localClassifyBusy ? 'loader-2' : 'tags'}"></i><span>${localClassifyBusy ? '分类中' : '智能分类'}</span></button>
+            <button class="asset-btn primary" type="button" ${source === 'local' ? 'data-local-caption-run' : 'data-space-file-caption'} ${captionDisabled ? 'disabled' : ''}><i data-lucide="${localCaptionBusy ? 'loader-2' : 'wand-sparkles'}"></i><span>${localCaptionBusy ? '反推中' : '提示词反推'}</span></button>
             <button class="asset-icon-btn" type="button" data-local-classify-toggle title="智能分类要求"><i data-lucide="${localClassifyPromptOpen ? 'chevron-up' : 'sliders-horizontal'}"></i></button>
             </div>
             ${localClassifyPromptOpen ? `<textarea id="localClassifyPrompt" class="local-classify-prompt-input" placeholder="默认已内置室内/室外、空间、主体、光影、模特、风格、色彩等分类。这里可以追加你的分类要求，例如：增加家装风格、镜头焦段、商业用途、人物年龄段、产品材质。">${escapeHtml(localClassifyPrompt || '')}</textarea>` : ''}
@@ -1898,18 +1987,21 @@ async function refreshCanvasAssets(){
     try {
         setStatus('正在刷新画布资产...');
         const data = await apiJson('/api/canvas-assets', {cache:'no-store'});
-        canvasAssetsData = {
-            categories:Array.isArray(data.categories) ? data.categories : [],
-            projects:Array.isArray(data.projects) ? data.projects : [],
-            canvases:Array.isArray(data.canvases) ? data.canvases : [],
-            items:Array.isArray(data.items) ? data.items : []
-        };
+        setCanvasAssetsData(data);
         if(activeCanvasAssetProjectId) normalizeCanvasAssetState();
         render();
         setStatus('画布资产已刷新');
     } catch(err) {
         setStatus(err.message || '刷新画布资产失败');
     }
+}
+function setCanvasAssetsData(data){
+    canvasAssetsData = {
+        categories:Array.isArray(data.categories) ? data.categories : [],
+        projects:Array.isArray(data.projects) ? data.projects : [],
+        canvases:Array.isArray(data.canvases) ? data.canvases : [],
+        items:Array.isArray(data.items) ? data.items : []
+    };
 }
 function renderStartupState(message='正在打开资产管理…', detail='正在读取素材，画布资产会在后台继续准备。'){
     root.innerHTML = `
@@ -1986,12 +2078,7 @@ async function loadAll(){
     ]);
     promptLibrary = promptData.library || {libraries:[]};
     apiProviders = Array.isArray(providerData.providers) ? providerData.providers : [];
-    canvasAssetsData = {
-        categories:Array.isArray(canvasAssetData.categories) ? canvasAssetData.categories : [],
-        projects:Array.isArray(canvasAssetData.projects) ? canvasAssetData.projects : [],
-        canvases:Array.isArray(canvasAssetData.canvases) ? canvasAssetData.canvases : [],
-        items:Array.isArray(canvasAssetData.items) ? canvasAssetData.items : []
-    };
+    setCanvasAssetsData(canvasAssetData);
     render();
     setStatus('准备就绪');
 }
@@ -2255,9 +2342,55 @@ function focusTreeEditInput(id){
     });
 }
 function localUploadItems(){
+    const scope = localUploadProjectScope();
     return (localAssets || []).filter(item =>
         (imageSpaceState.all.local || !activeLocalUploadFolder || String(item.folder || '') === activeLocalUploadFolder) &&
+        (!localUploadProjectId || (localUploadProjectId === '__unassigned__'
+            ? !(scope.references.get(item.id) || []).length
+            : (scope.references.get(item.id) || []).some(ref => ref.projectId === localUploadProjectId && (!localUploadCanvasId || ref.canvasId === localUploadCanvasId)))) &&
+        (localUploadMediaType === 'all' || assetKind(item) === localUploadMediaType) &&
         imageSpaceMatches(item, {...imageSpaceState.filters.local,query:localUploadQuery}));
+}
+function localUploadMediaRel(url){
+    try {
+        const parsed = new URL(String(url || ''), location.href);
+        if(parsed.origin !== location.origin && !['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)) return '';
+        const path = parsed.pathname;
+        const prefix = '/api/storage-files/local/';
+        return path.startsWith(prefix) ? decodeURIComponent(path.slice(prefix.length)).replace(/\\/g, '/').toLowerCase() : '';
+    } catch(_) { return ''; }
+}
+function localUploadProjectScope(){
+    if(localUploadScopeCache.localAssets === localAssets && localUploadScopeCache.canvasAssetsData === canvasAssetsData && localUploadScopeCache.value) return localUploadScopeCache.value;
+    const byRel = new Map();
+    (canvasAssetsData.items || []).forEach(asset => {
+        const rel = localUploadMediaRel(asset.url);
+        if(!rel) return;
+        const refs = byRel.get(rel) || [];
+        const ref = {projectId:String(asset.project || 'default'), canvasId:String(asset.canvas_id || ''), canvasTitle:String(asset.canvas_title || '')};
+        if(!refs.some(value => value.projectId === ref.projectId && value.canvasId === ref.canvasId)) refs.push(ref);
+        byRel.set(rel, refs);
+    });
+    const projectCounts = new Map();
+    const canvasCounts = new Map();
+    const references = new Map();
+    let unassignedCount = 0;
+    (localAssets || []).forEach(item => {
+        const refs = byRel.get(localUploadMediaRel(item.url)) || [];
+        references.set(item.id, refs);
+        if(!refs.length) unassignedCount++;
+        new Set(refs.map(ref => ref.projectId)).forEach(id => projectCounts.set(id, (projectCounts.get(id) || 0) + 1));
+        new Set(refs.map(ref => ref.canvasId).filter(Boolean)).forEach(id => canvasCounts.set(id, (canvasCounts.get(id) || 0) + 1));
+    });
+    const projects = (canvasAssetsData.projects || []).map(project => ({...project, count:projectCounts.get(project.id) || 0}));
+    const canvases = (canvasAssetsData.canvases || []).map(canvas => ({...canvas, count:canvasCounts.get(canvas.id) || 0}));
+    const value = {projects, canvases, references, unassignedCount};
+    localUploadScopeCache = {localAssets, canvasAssetsData, value};
+    return value;
+}
+function localUploadVisibleItems(){
+    const items = localUploadItems();
+    return localFavoritesOnly ? items.filter(item => isFileFavorite('local', item)) : items;
 }
 function findLocalUpload(id){
     return (localAssets || []).find(it => it.id === id) || null;
@@ -2287,6 +2420,12 @@ function localUploadFolderByPath(path=''){
 function localUploadFolderTitle(){
     const entry = activeLocalUploadClassEntry();
     if(entry) return entry.tag || '智能分类';
+    if(localUploadProjectId){
+        if(localUploadProjectId === '__unassigned__') return '未归属项目';
+        const scope = localUploadProjectScope();
+        return scope.canvases.find(canvas => canvas.id === localUploadCanvasId)?.title
+            || scope.projects.find(project => project.id === localUploadProjectId)?.name || '项目素材';
+    }
     if(!activeLocalUploadFolder) return '本地上传';
     return localUploadFolderByPath(activeLocalUploadFolder)?.name || activeLocalUploadFolder.split('/').pop() || '本地上传';
 }
@@ -2312,7 +2451,7 @@ function localUploadItemsForClassFilter(key=activeLocalUploadClassFilter){
 function renderLocalUploadFolderBranch(folder, depth=0){
     if(!folder) return '';
     const path = folder.path || '';
-    const active = !activeLocalUploadClassFilter && path === activeLocalUploadFolder;
+    const active = !localUploadProjectId && !activeLocalUploadClassFilter && path === activeLocalUploadFolder;
     const contains = !active && (folder.children || []).some(child => localUploadFolderContainsActive(child));
     return `<div class="tree-branch">
         <button class="tree-row ${depth ? 'tree-child' : 'tree-parent'} ${active ? 'active' : ''} ${contains ? 'contains-active' : ''}" type="button" data-localup-folder="${escapeAttr(path)}" ${path ? 'draggable="true" title="拖动可调整同级文件夹顺序"' : ''}>
@@ -2395,8 +2534,8 @@ function renderLocalManager(){
     activeLocalUploadClassFilter = '';
     openLocalUploadClassGroup = '';
     normalizeLocalCaptionSettings();
-    const allItems = localUploadItems();
-    const items = localFavoritesOnly ? allItems.filter(item => isFileFavorite('local', item)) : allItems;
+    const projectScope = localUploadProjectScope();
+    const items = localUploadVisibleItems();
     // 只有当选中的素材"真的不存在了"(被删除)才清空；只是被分类/筛选挡住时仍保留预览，
     // 这样切换分类时中间预览不会跳回第一张，方便对照着找相似图片。
     if(selectedLocalUploadId && !findLocalUpload(selectedLocalUploadId)) selectedLocalUploadId = '';
@@ -2423,6 +2562,10 @@ function renderLocalManager(){
                         <span class="tree-row-name">我的收藏</span>
                         <span class="tree-row-count">${favoriteFileCount('local')}</span>
                     </button>
+                    <div class="generated-projects-toggle"><span>按类型</span></div>
+                    ${[['all','全部本地素材','images',total],['image','图片','image',localAssets.filter(item => assetKind(item) === 'image').length],['video','视频','video',localAssets.filter(item => assetKind(item) === 'video').length],['audio','音频','file-audio',localAssets.filter(item => assetKind(item) === 'audio').length]].map(([type,label,icon,count]) => `<button class="tree-row ${type === 'all' ? 'tree-parent' : 'tree-child'} ${localUploadMediaType === type ? 'active' : ''}" type="button" data-localup-type="${type}"><span class="tree-row-icon"><i data-lucide="${icon}"></i></span><span class="tree-row-name">${label}</span><span class="tree-row-count">${count}</span></button>`).join('')}
+                    <div class="generated-projects-toggle"><span>按项目</span></div>
+                    ${[{id:'',name:'全部本地素材',count:total},...projectScope.projects,{id:'__unassigned__',name:'未归属项目',count:projectScope.unassignedCount}].map(project => `<button class="tree-row tree-parent ${localUploadProjectId === project.id && !localUploadCanvasId ? 'active' : ''}" type="button" data-localup-project="${escapeAttr(project.id)}"><span class="tree-row-icon"><i data-lucide="${project.id ? 'folder' : 'images'}"></i></span><span class="tree-row-name">${escapeHtml(project.name)}</span><span class="tree-row-count">${project.count || 0}</span></button>${project.id && project.id !== '__unassigned__' && localUploadProjectId === project.id ? projectScope.canvases.filter(canvas => canvas.project === project.id).map(canvas => `<button class="tree-row tree-child ${localUploadCanvasId === canvas.id ? 'active' : ''}" type="button" data-localup-canvas="${escapeAttr(canvas.id)}"><span class="tree-elbow"></span><span class="tree-row-icon"><i data-lucide="layers"></i></span><span class="tree-row-name">${escapeHtml(canvas.title || '未命名画布')}</span><span class="tree-row-count">${canvas.count || 0}</span></button>`).join('') : ''}`).join('')}
                     ${renderLocalUploadFolderBranch(localUploadTree || {path:'', name:'全部上传', count:total, children:[]})}
                     ${renderLocalUploadSmartClassTree()}
                     ${renderImageSpaceCollections()}
@@ -2439,6 +2582,7 @@ function renderLocalManager(){
                 <div class="asset-tools">
                     <label class="asset-search-wrap"><i data-lucide="search"></i><input id="localUploadSearch" class="asset-search" type="search" value="${escapeAttr(localUploadQuery)}" placeholder="搜索本地上传"></label>
                     <button class="asset-btn primary" type="button" data-localup-upload><i data-lucide="upload"></i><span>上传文件</span></button>
+                    <button class="asset-btn" type="button" data-localup-refresh><i data-lucide="refresh-cw"></i><span>刷新</span></button>
                     <button class="asset-btn ${localUploadManageMode ? 'primary' : ''}" type="button" data-localup-manage ${total ? '' : 'disabled'}><i data-lucide="list-checks"></i><span>${localUploadManageMode ? '完成管理' : '批量管理'}</span></button>
                 </div>
             </div>
@@ -2454,9 +2598,12 @@ function renderLocalManager(){
                         <button class="asset-btn" type="button" data-localup-canvas-selected ${selectedLocalUploadIds.size ? '' : 'disabled'}><i data-lucide="clipboard-paste"></i><span>复制到画布</span></button>
                         <button class="asset-btn" type="button" data-localup-cut-selected ${selectedLocalUploadIds.size ? '' : 'disabled'}><i data-lucide="scissors"></i><span>剪切/移动</span></button>
                         <button class="asset-btn" type="button" data-localup-move-selected ${selectedLocalUploadIds.size ? '' : 'disabled'}><i data-lucide="folder-input"></i><span>移动</span></button>
+                        <button class="asset-btn" type="button" data-localup-import-selected ${imageCount ? '' : 'disabled'}><i data-lucide="folder-input"></i><span>加入图片资产库</span></button>
                         <button class="asset-btn danger" type="button" data-localup-delete-selected ${selectedLocalUploadIds.size ? '' : 'disabled'}><i data-lucide="trash-2"></i><span>删除</span></button>
                     </div>
                 </div>
+                <div class="manage-group manage-ai-group"><span class="manage-group-title">AI 处理</span>${renderLocalCaptionTools(imageCount)}
+                    <button class="asset-btn" type="button" data-localup-background-selected ${imageCount && !backgroundRemovalBusy ? '' : 'disabled'}><i data-lucide="eraser"></i><span>去背景</span></button></div>
             </div>
             ${renderLocalUploadClipboardBar()}
             <div class="content-scroll">
@@ -2483,13 +2630,18 @@ function renderLocalUploadAddCard(){
 }
 function renderLocalUploadCard(item){
     const hasCaption = assetKind(item) === 'image' && String(item.caption || '').trim();
-    return `<article class="asset-card ${item.id === selectedLocalUploadId ? 'active' : ''}" data-localup-card="${escapeAttr(item.id)}" draggable="true" title="拖动到左侧文件夹可移动">
+    const scope = localUploadProjectScope();
+    const refs = scope.references.get(item.id) || [];
+    const location = refs.length ? [...new Set(refs.map(ref => scope.projects.find(project => project.id === ref.projectId)?.name || '未归属项目'))].join('、') : item.folder || '根目录';
+    return `<article class="asset-card ${item.id === selectedLocalUploadId ? 'active' : ''} ${selectedLocalUploadIds.has(item.id) ? 'selected' : ''}" data-localup-card="${escapeAttr(item.id)}" draggable="true" title="拖动到左侧文件夹可移动">
         <input class="asset-card-check" type="checkbox" data-localup-check="${escapeAttr(item.id)}" ${selectedLocalUploadIds.has(item.id) ? 'checked' : ''}>
         <div class="asset-thumb">${assetThumb(item)}</div>
         <button class="asset-card-quick asset-card-fav ${isFileFavorite('local', item) ? 'is-fav' : ''}" type="button" data-localup-favorite="${escapeAttr(item.id)}" title="${isFileFavorite('local', item) ? '取消收藏' : '收藏'}" aria-label="${isFileFavorite('local', item) ? '取消收藏' : '收藏'}"><i data-lucide="star"></i></button>
         <div class="asset-card-body">
             <div class="asset-card-name" data-localup-rename="${escapeAttr(item.id)}" title="${escapeAttr(item.name || '')}">${escapeHtml(item.name || '本地素材')}</div>
             <div class="asset-card-meta">${escapeHtml(assetKindLabel(item))} · ${escapeHtml(formatFileSize(item.size))}${hasCaption ? ' · 有提示词' : ''}</div>
+            <div class="asset-card-meta" title="${escapeAttr(location)}">${escapeHtml(location)}</div>
+            <div class="asset-card-actions"><button type="button" data-localup-preview="${escapeAttr(item.id)}"><i data-lucide="maximize-2"></i><span>预览</span></button><button type="button" data-localup-download="${escapeAttr(item.id)}"><i data-lucide="download"></i><span>下载</span></button></div>
             ${localUploadManageMode ? '' : `<button class="local-asset-move-button" type="button" data-localup-move-one="${escapeAttr(item.id)}"><i data-lucide="folder-input"></i><span>移动</span></button>`}
         </div>
     </article>`;
@@ -2497,6 +2649,8 @@ function renderLocalUploadCard(item){
 function renderLocalUploadDetail(item){
     if(!item) return `<div class="panel-head"><div class="panel-title"><strong>素材预览</strong><span>选择一个素材查看详情</span></div></div><div class="detail-scroll"><div class="detail-empty"><i data-lucide="image"></i><span>暂无可预览素材</span></div></div>`;
     const isImage = assetKind(item) === 'image';
+    const scope = localUploadProjectScope();
+    const labels = [...new Set((scope.references.get(item.id) || []).map(ref => `${scope.projects.find(project => project.id === ref.projectId)?.name || '未归属项目'}${ref.canvasTitle ? ` · ${ref.canvasTitle}` : ''}`))];
     return `
         <div class="panel-head">
             <div class="panel-title"><strong>素材预览</strong><span>${escapeHtml(assetKindLabel(item))}</span></div>
@@ -2505,11 +2659,12 @@ function renderLocalUploadDetail(item){
                 <button class="asset-icon-btn" type="button" data-localup-move-one="${escapeAttr(item.id)}" title="移动到文件夹" aria-label="移动到文件夹"><i data-lucide="folder-input"></i></button>
                 <button class="asset-icon-btn" type="button" data-localup-download="${escapeAttr(item.id)}" title="下载"><i data-lucide="download"></i></button>
                 <button class="asset-icon-btn" type="button" data-localup-copy="${escapeAttr(item.id)}" title="复制链接"><i data-lucide="link"></i></button>
+                ${isImage ? `<button class="asset-icon-btn" type="button" data-localup-background-one="${escapeAttr(item.id)}" title="去背景"><i data-lucide="eraser"></i></button>` : ''}
                 <button class="asset-icon-btn danger" type="button" data-localup-delete-one="${escapeAttr(item.id)}" title="删除"><i data-lucide="trash-2"></i></button>
             </div>
         </div>
         <div class="detail-scroll">
-            <div class="detail-media"><button class="detail-media-frame detail-media-zoomable" type="button" data-localup-preview="${escapeAttr(item.id)}" title="点击放大预览">${assetThumb(item)}</button></div>
+            <div class="detail-media">${assetKind(item) === 'audio' ? `<audio controls preload="metadata" src="${escapeAttr(item.url)}"></audio>` : `<button class="detail-media-frame detail-media-zoomable" type="button" data-localup-preview="${escapeAttr(item.id)}" title="点击放大预览">${assetThumb(item)}</button>`}</div>
             <div class="detail-body">
                 <input class="detail-name-input" data-localup-inline-name="${escapeAttr(item.id)}" type="text" value="${escapeAttr(item.name || '本地素材')}" title="直接修改名称">
                 <div class="detail-meta-grid">
@@ -2533,6 +2688,7 @@ function renderLocalUploadDetail(item){
                         <textarea id="localUploadCaptionEdit" class="detail-caption-textarea" placeholder="暂无反推提示词，可以批量反推后自动写入，也可以在这里手动编辑。">${escapeHtml(item.caption || '')}</textarea>
                     </div>
                 ` : ''}
+                ${labels.length ? `<div class="detail-caption-card"><div class="detail-caption-head"><strong>关联画布</strong></div><div class="detail-classification-body">${labels.map(label => `<span class="classification-chip">${escapeHtml(label)}</span>`).join('')}</div></div>` : ''}
             </div>
         </div>
     `;
@@ -3115,6 +3271,7 @@ async function loadFileFavorites(){
 function fileFavoriteKey(kind, item){
     if(!item) return '';
     if(kind === 'generated') return `generated:${item.rel || item.url || ''}`;
+    if(kind === 'upload') return `upload:${item.rel || item.url || ''}`;
     if(kind === 'local') return `local:${item.id || item.path || item.url || ''}`;
     return `${kind}:${item.id || item.rel || item.url || ''}`;
 }
@@ -4006,6 +4163,7 @@ async function uploadFiles(files){
     if(uploadView === 'disk'){
         if(uploadProjectId && uploadProjectId !== '__unassigned__') form.append('project_id', uploadProjectId);
         if(uploadCanvasId) form.append('canvas_id', uploadCanvasId);
+        if(uploadAssetsState.folder) form.append('folder', uploadAssetsState.folder);
     }
     assetUploadBusy = true;
     setStatus(`准备上传 ${list.length} 个素材...`);
@@ -4040,6 +4198,17 @@ async function uploadFiles(files){
         assetUploadBusy = false;
         render();
     }
+}
+async function uploadGeneratedFiles(files){
+    const list = Array.from(files || []).filter(Boolean);
+    if(!list.length) return;
+    const form = new FormData();
+    form.append('folder', generatedAssetsState.folder || '');
+    list.forEach(file => form.append('files', file, file.name));
+    setStatus(`正在上传 ${list.length} 个素材...`);
+    const data = await uploadFormWithProgress('/api/storage-files/upload', form, percent => setStatus(`正在上传 ${list.length} 个素材 · ${percent}%`));
+    await loadGeneratedAssets();
+    setStatus(`已上传 ${data.count || 0} 个素材到生成素材`);
 }
 function assetCategoryForDrag(libraryId, categoryId){
     const library = (assetLibrary?.libraries || []).find(item => item?.id === libraryId);
@@ -4488,6 +4657,165 @@ function copySelectedLocalUploadsToCanvas(){
     }
     setStatus(`已复制 ${items.length} 个素材，去智能画布按 Ctrl+V 粘贴`);
 }
+function activeStorageFileKind(){
+    if(activeTab === 'assets' && uploadAssetsState.view === 'disk') return 'upload';
+    if(activeTab === 'generated') return 'generated';
+    return '';
+}
+async function refreshStorageFileKind(kind){
+    if(kind === 'upload') await loadUploadAssets();
+    else await loadGeneratedAssets();
+    await loadFileFavorites();
+    render();
+}
+async function downloadStorageFileItems(items){
+    const files = items.filter(item => item?.url);
+    if(!files.length) return;
+    if(files.length === 1){ downloadUrl(files[0].url, assetDownloadName(files[0])); setStatus('已开始下载'); return; }
+    setStatus(`正在打包 ${files.length} 个素材...`);
+    const filename = '素材.zip';
+    const res = await fetch('/api/canvas-assets/download', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename,items:files.map(item => ({url:item.url,name:assetDownloadName(item)}))})});
+    if(!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || '打包下载失败');
+    const url = URL.createObjectURL(await res.blob()), link = document.createElement('a');
+    link.href = url; link.download = filename; document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1200);
+    setStatus(`已下载 ${files.length} 个素材`);
+}
+function copyStorageFileItemsToCanvas(items){
+    const files = items.filter(item => item?.url).map(canvasInboxAssetFromItem);
+    if(!files.length) return;
+    localStorage.setItem(SMART_CANVAS_ASSET_INBOX_KEY, JSON.stringify({items:files,ts:Date.now()}));
+    setStatus(`已复制 ${files.length} 个素材，去智能画布按 Ctrl+V 粘贴`);
+}
+async function importStorageFileItems(items){
+    const images = items.filter(item => assetKind(item) === 'image');
+    if(!images.length){ setStatus('请先选择图片素材'); return; }
+    normalizeAssetState();
+    const category = activeAssetCategory();
+    if(!category){ setStatus('请先在“图片资产库”中创建分组'); return; }
+    const data = await apiJson('/api/asset-library/items/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({library_id:activeAssetLibraryId,category_id:category.id,items:images.map(item => ({url:item.url,name:item.name}))})});
+    assetLibrary = data.library || assetLibrary;
+    setStatus(`已加入图片资产库 ${data.items?.length || 0} 张图片`);
+}
+async function deleteStorageFileItems(kind, items){
+    if(!items.length) return;
+    if(!confirm(`确认将 ${items.length} 个素材移入回收站？被画布或历史记录引用的素材需要先移除引用。`)) return;
+    const data = await apiJson('/api/storage-files/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,items:items.map(item => item.rel)})});
+    storageFileState(kind).selectedIds.clear(); storageFileState(kind).selectedId = '';
+    await refreshStorageFileKind(kind);
+    setStatus(`已将 ${data.removed || 0} 个素材移入回收站`);
+}
+async function renameStorageFileItem(kind, item, name){
+    if(!item) return;
+    const nextName = String(name || '').trim();
+    if(!nextName || nextName === item.name) return;
+    const data = await apiJson('/api/storage-files/organize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,action:'rename',items:[item.rel],name:nextName})});
+    const nextRel = data.items?.[0]?.to;
+    if(nextRel) storageFileState(kind).selectedId = `${kind}:${nextRel}`;
+    await refreshStorageFileKind(kind);
+    setStatus(`已重命名「${nextName}」`);
+}
+async function moveStorageFileRelsToFolder(kind, rels, folder){
+    const unique = [...new Set(rels)].filter(Boolean);
+    if(!unique.length) return;
+    const target = folder || '';
+    if(target && !storageFileState(kind).folders.some(entry => entry.path === target)) throw new Error('目标文件夹不存在，请刷新后重试');
+    const data = await apiJson('/api/storage-files/organize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,action:'move',items:unique,folder:target})});
+    const state = storageFileState(kind);
+    state.selectedIds.clear(); state.selectedId = '';
+    storageFileClipboards[kind] = null;
+    await refreshStorageFileKind(kind);
+    setStatus(`已移动 ${data.moved || 0} 个素材`);
+}
+function storageFolderParentPath(path){ return String(path || '').split('/').slice(0,-1).join('/'); }
+async function reorderStorageFileFolder(kind, source, target, after){
+    if(!source || !target || source === target || storageFolderParentPath(source) !== storageFolderParentPath(target)) return;
+    const state = storageFileState(kind), parent = storageFolderParentPath(source);
+    const paths = state.folders.filter(folder => storageFolderParentPath(folder.path) === parent).map(folder => folder.path);
+    if(!paths.includes(source) || !paths.includes(target)) return;
+    paths.splice(paths.indexOf(source), 1);
+    paths.splice(paths.indexOf(target) + (after ? 1 : 0), 0, source);
+    await apiJson('/api/storage-files/folders/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,parent,paths})});
+    await refreshStorageFileKind(kind);
+    setStatus('文件夹顺序已保存');
+}
+function openStorageFileMoveDialog(kind, items){
+    if(!items.length) return;
+    const state = storageFileState(kind), dialog = document.createElement('dialog');
+    dialog.className = 'image-space-dialog';
+    const folderButtons = [{path:'',name:'根目录'},...(state.folders || [])].map(folder => `<button class="asset-btn" type="button" data-target-folder="${escapeAttr(folder.path)}"><i data-lucide="folder"></i>${escapeHtml(folder.path || folder.name)}</button>`).join('');
+    dialog.innerHTML = `<div class="detail-caption-head"><strong>移动 ${items.length} 个素材到文件夹</strong><button class="asset-btn" type="button" data-close-move>关闭</button></div><div class="local-upload-move-folders">${folderButtons}</div>`;
+    dialog.addEventListener('click', async event => {
+        if(event.target.closest('[data-close-move]')){ dialog.close(); return; }
+        const button = event.target.closest('[data-target-folder]');
+        if(!button) return;
+        button.disabled = true;
+        try {
+            await moveStorageFileRelsToFolder(kind, items.map(item => item.rel), button.dataset.targetFolder || '');
+            dialog.close();
+        } catch(error){ setStatus(error.message || '移动失败'); button.disabled = false; }
+    });
+    dialog.addEventListener('close', () => dialog.remove(), {once:true});
+    document.body.append(dialog); dialog.showModal(); refreshIcons();
+}
+async function manageStorageFileFolder(kind, action){
+    const state = storageFileState(kind), folder = state.folder || '';
+    if(action !== 'create' && !folder) return;
+    let name = '';
+    if(action !== 'delete'){
+        name = prompt(action === 'create' ? '新文件夹名称' : '重命名文件夹', action === 'create' ? '' : folder.split('/').pop());
+        if(name === null || !name.trim()) return;
+    } else if(!confirm(`将文件夹「${folder}」中的素材移入回收站？被引用的素材无法删除。`)) return;
+    const data = await apiJson('/api/storage-files/folders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,action,folder,name})});
+    if(action === 'rename') state.folder = data.folder || '';
+    if(action === 'delete') state.folder = '';
+    await refreshStorageFileKind(kind);
+    setStatus(action === 'create' ? '文件夹已创建' : action === 'rename' ? '文件夹已重命名' : '文件夹已移入回收站');
+}
+async function classifyStorageFileItems(kind, items){
+    const images = items.filter(item => assetKind(item) === 'image');
+    if(!images.length || localClassifyBusy) return;
+    normalizeLocalCaptionSettings();
+    if(!localCaptionProvider || !localCaptionModel){ setStatus('请先在 API 设置中配置可用的聊天/视觉模型'); return; }
+    localClassifyBusy = true; render(); setStatus(`正在智能分类 ${images.length} 张图片...`);
+    try {
+        const data = await apiJson('/api/storage-files/classify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,items:images.map(item => item.rel),provider:localCaptionProvider,model:localCaptionModel,prompt:localClassifyPrompt})});
+        await refreshStorageFileKind(kind);
+        const failed = (data.items || []).filter(item => !item.ok);
+        setStatus(failed.length ? `分类完成 ${data.count || 0} 张，${failed.length} 张失败：${failed[0].error}` : `已分类 ${data.count || 0} 张图片`);
+    } finally { localClassifyBusy = false; render(); }
+}
+async function captionStorageFileItems(kind, items){
+    const images = items.filter(item => assetKind(item) === 'image');
+    if(!images.length || localCaptionBusy) return;
+    normalizeLocalCaptionSettings();
+    if(!localCaptionProvider || !localCaptionModel){ setStatus('请先在 API 设置中配置可用的聊天/视觉模型'); return; }
+    localCaptionBusy = true; render(); setStatus(`正在反推 ${images.length} 张图片的提示词...`);
+    try {
+        const data = await apiJson('/api/storage-files/caption',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,items:images.map(item => item.rel),provider:localCaptionProvider,model:localCaptionModel,prompt:localCaptionPrompt})});
+        await refreshStorageFileKind(kind);
+        const failed = (data.items || []).filter(item => !item.ok);
+        setStatus(failed.length ? `反推完成 ${data.count || 0} 张，${failed.length} 张失败：${failed[0].error}` : `已反推并保存 ${data.count || 0} 张图片提示词`);
+    } finally { localCaptionBusy = false; render(); }
+}
+async function backgroundStorageFileItems(items){
+    const images = items.filter(item => assetKind(item) === 'image');
+    if(!images.length || backgroundRemovalBusy) return;
+    backgroundRemovalBusy = true; render();
+    let done = 0, failed = [];
+    try {
+        const engine = await ensureBackgroundRemovalEngine();
+        if(!engine) return;
+        for(const item of images){
+            try {
+                const data = await apiJson('/api/image/background-removal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source_url:item.url,name:item.name,auto_center:true,backend:engine.backend,model_id:engine.modelId})});
+                if(data.pending) throw new Error('抠图任务尚未完成，请在任务列表查看');
+                done++;
+            } catch(error){ failed.push(`${item.name}：${error.message || '失败'}`); }
+        }
+        setStatus(failed.length ? `已生成 ${done} 张透明底图片，${failed.length} 张失败：${failed[0]}` : `已生成 ${done} 张透明底图片，可在生成素材中查看`);
+    } finally { backgroundRemovalBusy = false; render(); }
+}
 function renderLocalUploadClipboardBar(){
     if(!localUploadClipboard?.ids?.length) return '';
     const sameFolder = String(localUploadClipboard.sourceFolder || '') === String(activeLocalUploadFolder || '');
@@ -4520,6 +4848,7 @@ async function pasteLocalUploadClipboard(){
             body:JSON.stringify({names, folder: activeLocalUploadFolder || ''})
         });
         await loadLocalAssets();
+        await loadFileFavorites();
         localUploadClipboard = null;
         selectedLocalUploadIds.clear();
         render();
@@ -4570,6 +4899,7 @@ async function moveLocalUploadsToFolder(ids, folder){
             body:JSON.stringify({names, folder})
         });
         await loadLocalAssets();
+        await loadFileFavorites();
         closeLocalUploadMoveDialog();
         selectedLocalUploadIds.clear();
         if(ids.includes(selectedLocalUploadId)) selectedLocalUploadId = '';
@@ -4699,6 +5029,7 @@ async function saveLocalUploadInlineName(id, name){
         localAssets = Array.isArray(data.items) ? data.items : localAssets;
         localUploadTree = data.tree || localUploadTree;
         selectedLocalUploadId = data.item?.id || data.item?.file || selectedLocalUploadId;
+        await loadFileFavorites();
         if(selectedLocalUploadIds.has(id)){
             selectedLocalUploadIds.delete(id);
             if(data.item?.id) selectedLocalUploadIds.add(data.item.id);
@@ -4811,6 +5142,7 @@ async function renameLocalUploadFolder(){
         localAssets = Array.isArray(data.items) ? data.items : localAssets;
         localUploadTree = data.tree || localUploadTree;
         activeLocalUploadFolder = data.folder?.path || activeLocalUploadFolder;
+        await loadFileFavorites();
         activeLocalUploadClassFilter = '';
         selectedLocalUploadId = '';
         selectedLocalUploadIds.clear();
@@ -5025,10 +5357,73 @@ async function saveLocalUploadCaption(id){
         setStatus(err.message || '保存提示词失败');
     }
 }
+async function handleStorageFileClick(event){
+    const kind = activeStorageFileKind();
+    if(!kind) return false;
+    const target = event.target, state = storageFileState(kind);
+    const action = selector => target.closest?.(selector);
+    if(action('[data-generated-upload]')){ document.getElementById('generatedUploadInput')?.click(); return true; }
+    if(action('[data-upload-library-view]')){ uploadAssetsState.view = 'library'; imageSpaceState.collectionId = ''; render(); return true; }
+    if(action('[data-upload-fav-filter]')){ state.favoritesOnly = !state.favoritesOnly; await refreshStorageFileKind(kind); return true; }
+    const uploadType = action('[data-upload-type]');
+    if(uploadType){ state.mediaType = uploadType.dataset.uploadType || 'all'; await refreshStorageFileKind(kind); return true; }
+    const folderButton = action('[data-space-folder]');
+    if(folderButton){ state.folder = folderButton.dataset.spaceFolder || ''; imageSpaceState.all[kind] = false; imageSpaceState.collectionId = ''; if(kind === 'generated') clearCanvasAssetScope(); await refreshStorageFileKind(kind); return true; }
+    for(const [selector,verb] of [['[data-space-folder-new]','create'],['[data-space-folder-rename]','rename'],['[data-space-folder-delete]','delete']]){
+        if(action(selector)){ await manageStorageFileFolder(kind, verb); return true; }
+    }
+    const favorite = action('[data-space-file-favorite]');
+    if(favorite){ const item = state.items.find(entry => entry.id === favorite.dataset.spaceFileFavorite); if(item){ await toggleFileFavorite(kind,item); if(kind === 'upload' && state.favoritesOnly || kind === 'generated' && generatedFavoritesOnly) await refreshStorageFileKind(kind); } return true; }
+    const preview = action('[data-space-file-preview]');
+    if(preview){ showDetailPreview(kind, preview.dataset.spaceFilePreview || ''); return true; }
+    const oneDownload = action('[data-space-file-download-one]');
+    if(oneDownload){ const item = state.items.find(entry => entry.id === oneDownload.dataset.spaceFileDownloadOne); if(item) await downloadStorageFileItems([item]); return true; }
+    const copyLink = action('[data-space-file-copy-link]');
+    if(copyLink){ const item = state.items.find(entry => entry.id === copyLink.dataset.spaceFileCopyLink); const ok = await copyTextToClipboard(item?.url || ''); setStatus(ok ? '已复制素材链接' : '复制失败'); return true; }
+    const backgroundOne = action('[data-space-file-background-one]');
+    if(backgroundOne){ const item = state.items.find(entry => entry.id === backgroundOne.dataset.spaceFileBackgroundOne); if(item) await backgroundStorageFileItems([item]); return true; }
+    const rename = action('[data-space-file-rename]');
+    if(rename){ const input = root.querySelector('[data-space-file-inline-name]'); input?.focus(); input?.select(); return true; }
+    const moveOne = action('[data-space-file-move-one]');
+    if(moveOne){ const item = state.items.find(entry => entry.id === moveOne.dataset.spaceFileMoveOne); if(item) openStorageFileMoveDialog(kind,[item]); return true; }
+    const deleteOne = action('[data-space-file-delete-one]');
+    if(deleteOne){ const item = state.items.find(entry => entry.id === deleteOne.dataset.spaceFileDeleteOne); if(item) await deleteStorageFileItems(kind,[item]); return true; }
+    const captionOne = action('[data-space-file-caption-one]');
+    if(captionOne){ const item = state.items.find(entry => entry.id === captionOne.dataset.spaceFileCaptionOne); if(item) await captionStorageFileItems(kind,[item]); return true; }
+    const captionCopy = action('[data-space-file-caption-copy]');
+    if(captionCopy){ const text = root.querySelector('#storageFileCaptionEdit')?.value || ''; if(!text.trim()){ setStatus('当前图片暂无可复制的提示词'); return true; } const ok = await copyTextToClipboard(text); setStatus(ok ? '已复制提示词' : '复制失败'); return true; }
+    const captionSave = action('[data-space-file-caption-save]');
+    if(captionSave){ const item = state.items.find(entry => entry.id === captionSave.dataset.spaceFileCaptionSave); if(item){ const caption = root.querySelector('#storageFileCaptionEdit')?.value || ''; await apiJson('/api/storage-files/caption',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,rel:item.rel,caption})}); item.caption = caption; setStatus('提示词已保存'); } return true; }
+    if(action('[data-space-file-manage]')){ if(kind === 'upload'){ state.manageMode = !state.manageMode; if(!state.manageMode) state.selectedIds.clear(); } else { generatedManageMode = !generatedManageMode; if(!generatedManageMode) state.selectedIds.clear(); } render(); return true; }
+    if(action('[data-space-file-select-all]')){ state.items.forEach(item => state.selectedIds.add(item.id)); render(); return true; }
+    if(action('[data-space-file-clear]')){ state.selectedIds.clear(); render(); return true; }
+    const checkbox = action('[data-space-file-check]');
+    if(checkbox){ if(checkbox.checked) state.selectedIds.add(checkbox.dataset.spaceFileCheck); else state.selectedIds.delete(checkbox.dataset.spaceFileCheck); state.selectedId = checkbox.dataset.spaceFileCheck; render(); return true; }
+    const selected = () => storageFileSelectedItems(kind);
+    if(action('[data-space-file-download]')){ await downloadStorageFileItems(selected()); return true; }
+    if(action('[data-space-file-canvas]')){ copyStorageFileItemsToCanvas(selected()); return true; }
+    if(action('[data-space-file-import]')){ await importStorageFileItems(selected()); return true; }
+    if(action('[data-space-file-cut]')){
+        const items = selected();
+        if(items.length){ storageFileClipboards[kind] = {rels:items.map(item => item.rel),folders:items.map(item => item.folder || '')}; state.selectedIds.clear(); render(); setStatus(`已剪切 ${items.length} 个素材，切换到目标文件夹后点击移动`); }
+        return true;
+    }
+    if(action('[data-space-file-cut-clear]')){ storageFileClipboards[kind] = null; render(); return true; }
+    if(action('[data-space-file-paste]')){ const clipboard = storageFileClipboards[kind]; if(clipboard) await moveStorageFileRelsToFolder(kind, clipboard.rels, state.folder || ''); return true; }
+    if(action('[data-space-file-move]')){ openStorageFileMoveDialog(kind,selected()); return true; }
+    if(action('[data-space-file-delete]')){ await deleteStorageFileItems(kind,selected()); return true; }
+    if(action('[data-space-file-classify]')){ await classifyStorageFileItems(kind,selected()); return true; }
+    if(action('[data-space-file-caption]')){ await captionStorageFileItems(kind,selected()); return true; }
+    if(action('[data-space-file-background]')){ await backgroundStorageFileItems(selected()); return true; }
+    const card = action('[data-space-file-card]');
+    if(card){ const id = card.dataset.spaceFileCard || ''; state.selectedId = id; if((kind === 'upload' && state.manageMode) || (kind === 'generated' && generatedManageMode)){ if(state.selectedIds.has(id)) state.selectedIds.delete(id); else state.selectedIds.add(id); } render(); return true; }
+    return false;
+}
 async function handleClick(event){
     const target = event.target;
     if(activeTab === 'generated' && target.closest?.('[data-space-collection]')) clearCanvasAssetScope();
     if(await handleImageSpaceClick(target)) return;
+    if(await handleStorageFileClick(event)) return;
     // ===== 资产管理：收藏星标与提示词集合（放在最前，星标点击优先于卡片选中） =====
     const favToggle = async (selector, attr, handler) => {
         const button = target.closest?.(selector);
@@ -5046,7 +5441,7 @@ async function handleClick(event){
     if(await favToggle('[data-case-favorite]', 'caseFavorite', id => toggleCaseFavorite(id))) return;
     if(target.closest?.('[data-asset-fav-filter]')){ assetFavoritesOnly = !assetFavoritesOnly; render(); return; }
     if(target.closest?.('[data-workflow-fav-filter]')){ workflowFavoritesOnly = !workflowFavoritesOnly; render(); return; }
-    if(target.closest?.('[data-generated-fav-filter]')){ clearCanvasAssetScope(); generatedFavoritesOnly = !generatedFavoritesOnly; render(); return; }
+    if(target.closest?.('[data-generated-fav-filter]')){ clearCanvasAssetScope(); generatedFavoritesOnly = !generatedFavoritesOnly; await loadGeneratedAssets(); return; }
     if(target.closest?.('[data-localup-fav-filter]')){ localFavoritesOnly = !localFavoritesOnly; render(); return; }
     if(target.closest?.('[data-generated-projects-toggle]')){
         generatedProjectsCollapsed = !generatedProjectsCollapsed;
@@ -5276,7 +5671,7 @@ async function handleClick(event){
     if(activeTab === 'local' && localUploadManageMode){
         const localUpCheck = target.closest?.('[data-localup-check]');
         const localUpCard = target.closest?.('[data-localup-card]');
-        if(localUpCheck || localUpCard){
+        if(!target.closest?.('[data-localup-preview], [data-localup-download], [data-localup-favorite], [data-localup-move-one]') && (localUpCheck || localUpCard)){
             event.preventDefault();
             event.stopPropagation();
             const id = localUpCheck?.dataset.localupCheck || localUpCard?.dataset.localupCard || '';
@@ -5370,6 +5765,35 @@ async function handleClick(event){
     const localUpPreview = target.closest?.('[data-localup-preview]');
     if(localUpPreview){ showDetailPreview('localup', localUpPreview.dataset.localupPreview || ''); return; }
     if(target.closest?.('[data-localup-upload]')){ uploadInput?.click(); return; }
+    if(target.closest?.('[data-localup-refresh]')){
+        const [, scopeResult] = await Promise.allSettled([loadLocalAssets(), apiJson('/api/canvas-assets', {cache:'no-store'})]);
+        if(scopeResult.status === 'fulfilled') setCanvasAssetsData(scopeResult.value);
+        render();
+        setStatus(scopeResult.status === 'fulfilled' ? '本地素材已刷新' : `本地素材已刷新，项目归属更新失败：${scopeResult.reason?.message || '请重试'}`);
+        return;
+    }
+    const localUpType = target.closest?.('[data-localup-type]');
+    if(localUpType){ localUploadMediaType = localUpType.dataset.localupType || 'all'; imageSpaceState.collectionId = ''; selectedLocalUploadIds.clear(); render(); return; }
+    const localUpProject = target.closest?.('[data-localup-project]');
+    if(localUpProject){
+        localUploadProjectId = localUpProject.dataset.localupProject || '';
+        localUploadCanvasId = '';
+        activeLocalUploadFolder = '';
+        activeLocalUploadClassFilter = '';
+        imageSpaceState.collectionId = '';
+        selectedLocalUploadId = '';
+        selectedLocalUploadIds.clear();
+        render();
+        return;
+    }
+    const localUpCanvas = target.closest?.('[data-localup-canvas]');
+    if(localUpCanvas){
+        localUploadCanvasId = localUpCanvas.dataset.localupCanvas || '';
+        selectedLocalUploadId = '';
+        selectedLocalUploadIds.clear();
+        render();
+        return;
+    }
     if(target.closest?.('[data-localup-folder-new]')){ beginCreateLocalUploadFolder(); return; }
     if(target.closest?.('[data-localup-folder-create-save]')){ await createLocalUploadFolder(); return; }
     if(target.closest?.('[data-localup-folder-create-cancel]')){ cancelCreateLocalUploadFolder(); return; }
@@ -5380,6 +5804,8 @@ async function handleClick(event){
         imageSpaceState.all.local = false;
         imageSpaceState.collectionId = '';
         activeLocalUploadFolder = localUpFolder.dataset.localupFolder || '';
+        localUploadProjectId = '';
+        localUploadCanvasId = '';
         activeLocalUploadClassFilter = '';
         selectedLocalUploadId = '';
         selectedLocalUploadIds.clear();
@@ -5416,12 +5842,14 @@ async function handleClick(event){
         render();
         return;
     }
-    if(target.closest?.('[data-localup-select-all]')){ localUploadItems().forEach(item => selectedLocalUploadIds.add(item.id)); render(); return; }
+    if(target.closest?.('[data-localup-select-all]')){ localUploadVisibleItems().forEach(item => selectedLocalUploadIds.add(item.id)); render(); return; }
     if(target.closest?.('[data-localup-clear]')){ selectedLocalUploadIds.clear(); render(); return; }
     if(target.closest?.('[data-localup-download-selected]')){ await downloadSelectedLocalUploads(); return; }
     if(target.closest?.('[data-localup-canvas-selected]')){ copySelectedLocalUploadsToCanvas(); return; }
     if(target.closest?.('[data-localup-cut-selected]')){ setLocalUploadClipboard(); return; }
     if(target.closest?.('[data-localup-move-selected]')){ openLocalUploadMoveDialog([...selectedLocalUploadIds]); return; }
+    if(target.closest?.('[data-localup-import-selected]')){ await importStorageFileItems([...selectedLocalUploadIds].map(id => findLocalUpload(id)).filter(Boolean)); return; }
+    if(target.closest?.('[data-localup-background-selected]')){ await backgroundStorageFileItems([...selectedLocalUploadIds].map(id => findLocalUpload(id)).filter(Boolean)); return; }
     if(target.closest?.('[data-localup-paste-clipboard]')){ await pasteLocalUploadClipboard(); return; }
     if(target.closest?.('[data-localup-clear-clipboard]')){ localUploadClipboard = null; render(); return; }
     const localUpDownload = target.closest?.('[data-localup-download]');
@@ -5442,6 +5870,8 @@ async function handleClick(event){
     if(localUpMoveOne){ event.stopPropagation(); openLocalUploadMoveDialog([localUpMoveOne.dataset.localupMoveOne || '']); return; }
     const localUpDeleteOne = target.closest?.('[data-localup-delete-one]');
     if(localUpDeleteOne){ await deleteLocalAssets([localUpDeleteOne.dataset.localupDeleteOne || '']); return; }
+    const localUpBackgroundOne = target.closest?.('[data-localup-background-one]');
+    if(localUpBackgroundOne){ const item = findLocalUpload(localUpBackgroundOne.dataset.localupBackgroundOne || ''); if(item) await backgroundStorageFileItems([item]); return; }
     const localUpCheck = target.closest?.('[data-localup-check]');
     if(localUpCheck){
         const id = localUpCheck.dataset.localupCheck || '';
@@ -6815,9 +7245,16 @@ root.addEventListener('submit', event => {
     imageSpaceRefresh().catch(err => setStatus(err.message || '筛选失败'));
 });
 root.addEventListener('change', event => {
+    const storageName = event.target.closest?.('[data-space-file-inline-name]');
+    if(storageName){
+        const kind = activeStorageFileKind();
+        const item = storageFileState(kind).items.find(entry => entry.id === storageName.dataset.spaceFileInlineName);
+        renameStorageFileItem(kind, item, storageName.value).catch(err => { setStatus(err.message || '重命名失败'); render(); });
+        return;
+    }
     if(event.target.matches('[data-space-all]')){
         imageSpaceReadFilterForm();
-        imageSpaceState.all[activeTab] = event.target.checked;
+        imageSpaceState.all[imageSpaceSource()] = event.target.checked;
         imageSpaceRefresh().catch(err => setStatus(err.message || '筛选失败'));
         return;
     }
@@ -6886,6 +7323,29 @@ document.addEventListener('change', event => {
     }
 });
 root.addEventListener('dragstart', event => {
+    const storageKind = activeStorageFileKind();
+    if(storageKind){
+        const card = event.target.closest?.('[data-space-file-card]');
+        if(card && event.dataTransfer){
+            const state = storageFileState(storageKind), id = card.dataset.spaceFileCard || '';
+            const ids = state.selectedIds.has(id) ? [...state.selectedIds] : [id];
+            storageFileCardDrag = {kind:storageKind, rels:ids.map(value => state.items.find(item => item.id === value)?.rel).filter(Boolean)};
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('application/x-xiaomei-storage-assets', JSON.stringify(storageFileCardDrag.rels));
+            event.dataTransfer.setData('text/plain', `${storageFileCardDrag.rels.length} 个素材`);
+            card.classList.add('local-asset-dragging');
+            return;
+        }
+        const folder = event.target.closest?.('[data-space-folder]');
+        const path = folder?.dataset.spaceFolder || '';
+        if(path && event.dataTransfer){
+            storageFileFolderDrag = {kind:storageKind,path};
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', path);
+            folder.classList.add('local-folder-dragging');
+            return;
+        }
+    }
     if(activeTab === 'local'){
         const card = event.target.closest?.('[data-localup-card]');
         if(card && event.dataTransfer){
@@ -6932,6 +7392,8 @@ root.addEventListener('dragstart', event => {
     card.classList.add('workflow-dragging');
 });
 root.addEventListener('dragend', event => {
+    storageFileFolderDrag = null;
+    storageFileCardDrag = null;
     localUploadFolderDragPath = '';
     localUploadCardDragIds = [];
     clearLocalUploadFolderDropTargets();
@@ -6944,6 +7406,24 @@ root.addEventListener('dragend', event => {
     root.querySelectorAll('[data-workflow-cat].workflow-drop-target').forEach(node => node.classList.remove('workflow-drop-target'));
 });
 root.addEventListener('dragover', event => {
+    const storageKind = activeStorageFileKind();
+    if(storageFileCardDrag?.kind === storageKind){
+        const folder = event.target.closest?.('[data-space-folder]');
+        root.querySelectorAll('[data-space-folder].local-asset-drop-target').forEach(node => node.classList.remove('local-asset-drop-target'));
+        if(folder){ event.preventDefault(); event.dataTransfer.dropEffect = 'move'; folder.classList.add('local-asset-drop-target'); }
+        return;
+    }
+    if(storageFileFolderDrag?.kind === storageKind){
+        const folder = event.target.closest?.('[data-space-folder]');
+        const target = folder?.dataset.spaceFolder || '', source = storageFileFolderDrag.path;
+        clearLocalUploadFolderDropTargets();
+        if(target && target !== source && storageFolderParentPath(target) === storageFolderParentPath(source)){
+            event.preventDefault(); event.dataTransfer.dropEffect = 'move';
+            const after = event.clientY > folder.getBoundingClientRect().top + folder.getBoundingClientRect().height / 2;
+            folder.classList.add(after ? 'local-folder-drop-after' : 'local-folder-drop-before');
+        }
+        return;
+    }
     if(activeTab === 'local' && localUploadCardDragIds.length){
         const folder = event.target.closest?.('[data-localup-folder]');
         root.querySelectorAll('.local-asset-drop-target').forEach(node => node.classList.remove('local-asset-drop-target'));
@@ -6966,6 +7446,31 @@ root.addEventListener('dragover', event => {
     folder.classList.add(after ? 'local-folder-drop-after' : 'local-folder-drop-before');
 });
 root.addEventListener('drop', event => {
+    const storageKind = activeStorageFileKind();
+    if(storageFileCardDrag?.kind === storageKind){
+        const folder = event.target.closest?.('[data-space-folder]');
+        if(!folder) return;
+        event.preventDefault(); event.stopImmediatePropagation();
+        const rels = storageFileCardDrag.rels;
+        storageFileCardDrag = null;
+        root.querySelectorAll('.local-asset-drop-target, .local-asset-dragging').forEach(node => node.classList.remove('local-asset-drop-target', 'local-asset-dragging'));
+        moveStorageFileRelsToFolder(storageKind, rels, folder.dataset.spaceFolder || '').catch(err => setStatus(err.message || '移动素材失败'));
+        return;
+    }
+    if(storageFileFolderDrag?.kind === storageKind){
+        const folder = event.target.closest?.('[data-space-folder]');
+        if(!folder) return;
+        event.preventDefault(); event.stopImmediatePropagation();
+        const source = storageFileFolderDrag.path, target = folder.dataset.spaceFolder || '';
+        storageFileFolderDrag = null;
+        clearLocalUploadFolderDropTargets();
+        root.querySelector('.local-folder-dragging')?.classList.remove('local-folder-dragging');
+        if(target && target !== source && storageFolderParentPath(target) === storageFolderParentPath(source)){
+            const after = event.clientY > folder.getBoundingClientRect().top + folder.getBoundingClientRect().height / 2;
+            reorderStorageFileFolder(storageKind, source, target, after).catch(err => setStatus(err.message || '调整文件夹顺序失败'));
+        }
+        return;
+    }
     if(activeTab === 'local' && localUploadCardDragIds.length){
         const folder = event.target.closest?.('[data-localup-folder]');
         if(!folder) return;
@@ -7064,20 +7569,21 @@ root.addEventListener('drop', event => {
     moveWorkflowToCategory(itemId, folder.dataset.workflowCatLib || activeWorkflowLibraryId, folder.dataset.workflowCat || '').catch(err => setStatus(err.message || '移动工作流失败'));
 });
 root.addEventListener('dragover', event => {
-    const drop = event.target.closest?.('#assetDrop, #localUploadDrop, #workflowDrop');
+    const drop = event.target.closest?.('#assetDrop, #localUploadDrop, #workflowDrop, #generatedDrop');
     if(!drop) return;
     event.preventDefault();
     drop.classList.add('drag-over');
 });
 root.addEventListener('dragleave', event => {
-    event.target.closest?.('#assetDrop, #localUploadDrop, #workflowDrop')?.classList.remove('drag-over');
+    event.target.closest?.('#assetDrop, #localUploadDrop, #workflowDrop, #generatedDrop')?.classList.remove('drag-over');
 });
 root.addEventListener('drop', event => {
-    const drop = event.target.closest?.('#assetDrop, #localUploadDrop, #workflowDrop');
+    const drop = event.target.closest?.('#assetDrop, #localUploadDrop, #workflowDrop, #generatedDrop');
     if(!drop) return;
     event.preventDefault();
     drop.classList.remove('drag-over');
     if(drop.id === 'localUploadDrop') uploadLocalAssets(event.dataTransfer.files);
+    else if(drop.id === 'generatedDrop') uploadGeneratedFiles(event.dataTransfer.files).catch(err => setStatus(err.message || '上传失败'));
     else if(drop.id === 'workflowDrop') uploadWorkflowFiles(event.dataTransfer.files).catch(err => setStatus(err.message || '上传失败'));
     else uploadFiles(event.dataTransfer.files).catch(err => setStatus(err.message || '上传失败'));
 });
@@ -7088,6 +7594,10 @@ uploadInput?.addEventListener('change', event => {
         else if(activeTab === 'workflows') uploadWorkflowFiles(files).catch(err => setStatus(err.message || '上传失败'));
         else uploadFiles(files).catch(err => setStatus(err.message || '上传失败'));
     }
+    event.target.value = '';
+});
+document.getElementById('generatedUploadInput')?.addEventListener('change', event => {
+    if(event.target.files?.length) uploadGeneratedFiles(event.target.files).catch(err => setStatus(err.message || '上传失败'));
     event.target.value = '';
 });
 document.querySelectorAll('[data-tab]').forEach(btn => {

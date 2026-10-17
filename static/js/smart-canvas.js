@@ -20,10 +20,6 @@ const createMenu = document.getElementById('createMenu');
 const promptInput = document.getElementById('promptInput');
 const promptOptimizeBtn = document.getElementById('promptOptimizeBtn');
 const promptOptimizeStatus = document.getElementById('promptOptimizeStatus');
-const promptOptimizerModelControl = document.getElementById('promptOptimizerModelControl');
-const promptOptimizerModelButton = document.getElementById('promptOptimizerModelButton');
-const promptOptimizerModelLabel = document.getElementById('promptOptimizerModelLabel');
-const promptOptimizerModelMenu = document.getElementById('promptOptimizerModelMenu');
 const promptOptimizeModal = document.getElementById('promptOptimizeModal');
 const promptOptimizeModalClose = document.getElementById('promptOptimizeModalClose');
 const promptOptimizeOriginal = document.getElementById('promptOptimizeOriginal');
@@ -239,6 +235,8 @@ let createMenuPoint = {x:0, y:0};
 let createMenuGroupId = '';
 let createMenuCloseTimer = 0;
 let createMenuDismissClickGuard = null;
+const detailStitchInFlight = new Set();
+let detailStitchManualItems = [];
 const SMART_NODE_CLIPBOARD_STORAGE_KEY = 'smart_canvas_node_clipboard_v1';
 const SMART_NODE_CLIPBOARD_MARKER_PREFIX = 'x-smart-canvas-nodes:';
 const SMART_NODE_CLIPBOARD_MAX_AGE = 24 * 60 * 60 * 1000;
@@ -506,18 +504,26 @@ function smartCanvasRenderBounds(extraMarginScreen=0){
     return {left:left - margin, top:top - margin,
         right:left + width / scale + margin, bottom:top + height / scale + margin};
 }
-function smartCanvasNodeIntersectsBounds(node, bounds){
+function smartCanvasNodeIntersectsBounds(node, bounds, rectCache=null){
     if(!node || !bounds) return false;
-    const rect = nodeRect(node);
+    if(Number(node.x || 0) >= bounds.right || Number(node.y || 0) >= bounds.bottom) return false;
+    let rect = rectCache?.get(node.id);
+    if(!rect){
+        rect = nodeRect(node);
+        rectCache?.set(node.id, rect);
+    }
     return rect.x < bounds.right && rect.x + rect.width > bounds.left
         && rect.y < bounds.bottom && rect.y + rect.height > bounds.top;
 }
-function smartCanvasRenderNodes(bounds=smartCanvasRenderBounds()){
+function smartCanvasRenderNodes(bounds=smartCanvasRenderBounds(), rectCache=null){
     const selected = new Set([
         ...selectedNodeIds(), ...(dragState?.groupIds || []), dragState?.id
     ].filter(Boolean));
-    const visible = new Set(nodes.filter(node => node.id !== SMART_LOG_PREVIEW_NODE_ID
-        && (selected.has(node.id) || smartCanvasNodeIntersectsBounds(node, bounds))).map(node => node.id));
+    const visible = new Set(nodes.filter(node => {
+        if(node.id === SMART_LOG_PREVIEW_NODE_ID) return false;
+        if(selected.has(node.id)) return true;
+        return smartCanvasNodeIntersectsBounds(node, bounds, rectCache);
+    }).map(node => node.id));
     // 分组背板和成员必须成套保留，否则平移时会出现成员没有容器的闪烁。
     const groupOwnerByMember = new Map();
     nodes.filter(node => isSmartGroupNode(node)).forEach(group => {
@@ -2573,7 +2579,6 @@ function setCanvasZoom(nextScale, {save=false} = {}){
     viewport.x = shell.clientWidth / 2 - center.x * scale;
     viewport.y = shell.clientHeight / 2 - center.y * scale;
     applyViewport();
-    scheduleConnectionLayerRefresh();
     scheduleCanvasViewportRender();
     if(save) scheduleSave();
 }
@@ -3940,7 +3945,10 @@ function promptNodeInputImages(node){
     return promptNodeInputMediaForLLM(node).filter(img => img?.url);
 }
 function promptNodeInputMediaForLLM(node){
-    const refs = node?.type === 'smart-agent' || smartImageUsesWorkflowInput(node) ? workflowInputImagesFor(node) : inputImagesFor(node);
+    // Agent-to-Agent connections pass the upstream answer as text, not its reference media.
+    const refs = node?.type === 'smart-agent'
+        ? workflowInputNodesFor(node).filter(input => input.type !== 'smart-agent').flatMap(input => outputImagesForNode(input))
+        : smartImageUsesWorkflowInput(node) ? workflowInputImagesFor(node) : inputImagesFor(node);
     return orderedSmartInputReferences(node, [...(refs || []), ...manualReferenceImagesFor(node)]
         .filter(ref => ref?.url && !isInputRefBlocked(node, ref)));
 }
@@ -4002,7 +4010,7 @@ function promptTextItemsForNode(node, ctx=smartLoopContext){
     }
     if(node.type === 'smart-group') return smartGroupMembers(node).flatMap(member => promptTextItemsForNode(member, ctx));
     if(node.type === 'smart-agent') {
-        const text = String(node.outputText || node.userPrompt || '').trim();
+        const text = String(node.outputText || '').trim();
         return text ? [text] : [];
     }
     return [];
@@ -4045,6 +4053,12 @@ function promptNodeLayoutSize(node){
     const explicitH = Number(node?.h);
     if(isSmartGroupCompactMember(node) && Number.isFinite(explicitW) && explicitW > 24 && Number.isFinite(explicitH) && explicitH > 24){
         return {width:Math.round(explicitW), height:Math.round(explicitH)};
+    }
+    if(node?.promptManualSize === true){
+        return {
+            width:Math.round(Math.max(260, Number.isFinite(explicitW) ? explicitW : 316)),
+            height:Math.round(Math.max(promptNodeMinHeight(node), Number.isFinite(explicitH) ? explicitH : 0))
+        };
     }
     const width = !Number.isFinite(explicitW) || explicitW === 360 ? 316 : explicitW;
     const fallbackH = promptNodeMinHeight(node);
@@ -4687,11 +4701,27 @@ function scheduleMinimapViewportRender(){
     }
     updateMinimapViewport();
 }
+let lastCanvasRenderBounds = null;
+let lastCanvasRenderedNodeCount = 0;
+let lastCanvasRenderedConnectionCount = 0;
+function canvasViewportFitsRenderedBounds(){
+    if(!lastCanvasRenderBounds) return false;
+    if(world.querySelectorAll('.image-node').length !== lastCanvasRenderedNodeCount
+        || world.querySelectorAll('.conn-group').length !== lastCanvasRenderedConnectionCount) return false;
+    const scale = safeScale(viewport.scale);
+    const left = -Number(viewport.x || 0) / scale;
+    const top = -Number(viewport.y || 0) / scale;
+    const right = left + Math.max(1, shell?.clientWidth || window.innerWidth || 1200) / scale;
+    const bottom = top + Math.max(1, shell?.clientHeight || window.innerHeight || 800) / scale;
+    return left >= lastCanvasRenderBounds.left && top >= lastCanvasRenderBounds.top
+        && right <= lastCanvasRenderBounds.right && bottom <= lastCanvasRenderBounds.bottom;
+}
 function scheduleCanvasViewportRender(){
+    if(canvasViewportFitsRenderedBounds()) return;
     if(canvasViewportRenderRaf) return;
     canvasViewportRenderRaf = requestAnimationFrame(() => {
         canvasViewportRenderRaf = 0;
-        render();
+        if(!canvasViewportFitsRenderedBounds()) render();
     });
 }
 function applyViewport(options={}){
@@ -4811,7 +4841,6 @@ function beginViewportInteraction(){
         shell.classList.remove('canvas-zooming');
         // 同步最终视口。
         applyViewport({scheduleMinimap:false});
-        scheduleConnectionLayerRefresh();
         scheduleCanvasViewportRender();
         if(viewportSaveQueued){
             viewportSaveQueued = false;
@@ -4917,9 +4946,9 @@ function nodePortWorldPoint(nodeOrId, port='out', clientToWorld=null, inputSlot=
     const toWorld = clientToWorld || createClientToWorldMapper();
     return toWorld(portRect.left + portRect.width / 2, portRect.top + portRect.height / 2);
 }
-function nodeConnectionWorldPoint(nodeOrId, port='out', clientToWorld=null, inputSlot=''){
+function nodeConnectionWorldPoint(nodeOrId, port='out', clientToWorld=null, inputSlot='', knownRect=null){
     const node = typeof nodeOrId === 'string' ? nodes.find(item => item.id === nodeOrId) : nodeOrId;
-    const rect = node ? nodeRect(node) : null;
+    const rect = node ? (knownRect || nodeRect(node)) : null;
     if(!rect) return null;
     const colorSlot = isSmartColorNode(node) && port === 'in' ? normalizeSmartColorInputSlot(inputSlot) : '';
     const inputRatio = colorSlot === 'reference' ? .67 : .33;
@@ -6483,8 +6512,7 @@ function readPromptOptimizerPreference(){
     }
 }
 function promptOptimizerApiProviders(){
-    // 提示词优化只使用用户配置的 API 网站；本地/CLI 模型不混入这里，
-    // 避免把“优化模型”误当成所有本机可用聊天模型。
+    // 提示词优化只使用用户配置的 API 网站；本地/CLI 模型不混入这里。
     const excluded = new Set(['codex', 'gpt-cli', 'jimeng-cli', 'jimeng']);
     return chatApiProviders().filter(provider => !excluded.has(String(provider.id || '').toLowerCase()));
 }
@@ -6502,49 +6530,6 @@ function promptOptimizerSelection(){
     const provider = resolvePromptOptimizerProviderId(saved.provider);
     const models = promptOptimizerProviderModels(provider);
     return {provider, model:models.includes(saved.model) ? saved.model : (models[0] || '')};
-}
-function promptOptimizerOptionValue(provider, model){
-    return `${encodeURIComponent(provider || '')}|${encodeURIComponent(model || '')}`;
-}
-function parsePromptOptimizerOptionValue(value=''){
-    const [provider='', model=''] = String(value || '').split('|', 2);
-    try { return {provider:decodeURIComponent(provider), model:decodeURIComponent(model)}; }
-    catch(e) { return {provider, model}; }
-}
-function refreshPromptOptimizerModelSelect(){
-    if(!promptOptimizerModelMenu || !promptOptimizerModelButton || !promptOptimizerModelLabel) return;
-    const providers = promptOptimizerApiProviders();
-    const selected = promptOptimizerSelection();
-    if(!providers.length){
-        promptOptimizerModelLabel.textContent = '未配置聊天模型';
-        promptOptimizerModelMenu.innerHTML = '<div class="prompt-optimizer-model-empty">请先在 API 设置中拉取聊天模型</div>';
-        promptOptimizerModelButton.disabled = true;
-        return;
-    }
-    promptOptimizerModelButton.disabled = false;
-    promptOptimizerModelLabel.textContent = selected.model || '请选择';
-    promptOptimizerModelMenu.innerHTML = providers.map(provider => {
-        const models = promptOptimizerProviderModels(provider.id);
-        return `<section class="prompt-optimizer-model-group"><div class="prompt-optimizer-model-group-title">${escapeHtml(provider.name || provider.id)}</div>${models.map(model => {
-            const active = provider.id === selected.provider && model === selected.model;
-            return `<button type="button" class="prompt-optimizer-model-option ${active ? 'active' : ''}" role="option" aria-selected="${active ? 'true' : 'false'}" data-provider="${escapeAttr(provider.id)}" data-model="${escapeAttr(model)}"><span>${escapeHtml(model)}</span>${active ? '<i data-lucide="check"></i>' : ''}</button>`;
-        }).join('')}</section>`;
-    }).join('');
-    if(selected.provider && selected.model){
-        localStorage.setItem(PROMPT_OPTIMIZER_MODEL_KEY, JSON.stringify(selected));
-    }
-    refreshIcons();
-}
-function closePromptOptimizerModelMenu(){
-    if(!promptOptimizerModelControl || !promptOptimizerModelButton) return;
-    promptOptimizerModelControl.classList.remove('open');
-    promptOptimizerModelButton.setAttribute('aria-expanded', 'false');
-}
-function togglePromptOptimizerModelMenu(){
-    if(!promptOptimizerModelControl || !promptOptimizerModelButton || promptOptimizerModelButton.disabled) return;
-    const open = !promptOptimizerModelControl.classList.contains('open');
-    promptOptimizerModelControl.classList.toggle('open', open);
-    promptOptimizerModelButton.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 function renderRatioControl(prefix='', includeSource=false){
     const ratioKey = prefix ? `${prefix}Ratio` : 'ratio';
@@ -7755,7 +7740,6 @@ async function loadConfig(){
         // 提供商配置已就绪即先渲染参数面板；本地 ComfyUI 工作流按独立节点需要读取。
         sanitizeSmartApiSelection(settings);
         updateProviderModels();
-        refreshPromptOptimizerModelSelect();
         const workflowRequest = fetch('/api/workflows', {cache:'no-store'})
             .then(r => r.ok ? r.json() : ({workflows:[]})).catch(() => ({workflows:[]}));
         const catalogRequest = fetch('/api/comfy-apps/catalog', {cache:'no-store'})
@@ -7774,7 +7758,6 @@ async function loadConfig(){
         lastConfigRefreshAt = Date.now();
         sanitizeSmartApiSelection(settings);
         updateProviderModels();
-        refreshPromptOptimizerModelSelect();
         // 工作流列表是节点顶部切换器的数据源。配置接口异步返回时，
         // 需要同步重绘已有节点，否则节点会一直只显示创建时的那一个工作流。
         if(nodes.length) render();
@@ -8804,6 +8787,7 @@ function clearCompletedNodeBusyStates(){
 function clearInterruptedSmartNodeStates(){
     let changed = false;
     (nodes || []).forEach(node => {
+        if(window.SmartExpertWorkflow?.is(node)) return;
         if(node?.type === 'smart-agent' && node.running){
             node.running = false;
             node.runFinishedAt = nowMs();
@@ -10328,6 +10312,7 @@ async function loadCanvas(){
         updateProviderModels();
         applyViewport();
         render();
+        if(!sharedCanvasMode) void window.SmartExpertWorkflow?.restore?.(nodes);
         window.ProjectAgent?.openCanvas(canvas);
         if(migratedLegacySmartUploadNodes || migratedInvalidImageTaskRecoveries || cleanedDetachedInputs || interruptedRunState || cleanedCompletedState || recoveredLoggedOutputs || hiddenCompletedTimers || protectedConnectionsRemovedOnLoad) scheduleSave();
         startCanvasMetaPoll();
@@ -10554,13 +10539,21 @@ function createAgentNode(x, y, options={}){
     if(!collabCanMutateCanvas()) return null;
     if(!options.skipUndo) pushUndo();
     const providerId = resolveAgentProviderId();
+    const expertWorkflow = options.mode === 'expert-workflow';
     const node = {
-        id:uid('agent'), type:'smart-agent', x, y, w:SMART_AGENT_DEFAULT_WIDTH, h:SMART_AGENT_DEFAULT_HEIGHT, title:'智能对话',
+        id:uid('agent'), type:'smart-agent', x, y,
+        w:expertWorkflow ? 370 : SMART_AGENT_DEFAULT_WIDTH,
+        h:expertWorkflow ? 360 : SMART_AGENT_DEFAULT_HEIGHT,
+        title:expertWorkflow ? '专家协作' : '智能对话',
         systemPrompt:'',
         userPrompt:'', outputText:'', agentProvider:providerId,
         agentModel:resolveAgentModel('', providerId),
         installedSkills:[], created_at:Date.now()
     };
+    if(expertWorkflow){
+        node.agentMode = 'expert-workflow';
+        node.expertWorkflow = window.SmartExpertWorkflow?.newWorkflow?.() || {version:1, name:'专家协作', experts:[], edges:[]};
+    }
     nodes.push(node);
     if(options.select !== false) selectedId = node.id;
     render(); scheduleSave();
@@ -11050,7 +11043,7 @@ function connectionSemanticLabel(fromNode, kind='input', pending=false){
     }
     return kind === 'flow' ? '分析结果' : '参考图';
 }
-function renderConnections(){
+function renderConnections(rectCache=new Map()){
     // 只将与当前拖动节点（或多选节点）相连的线临时拉直，其他连线继续保持曲线。
     const draggedNodeIds = new Set(dragState ? [...(dragState.groupIds || []), dragState.id].filter(Boolean) : []);
     // 连接较多时，逐条调用 nodes.some()/nodes.find() 会把一次重绘放大成 O(E×N)。
@@ -11063,7 +11056,6 @@ function renderConnections(){
         (Array.isArray(node.items) ? node.items : []).forEach(memberId => scopeMap.set(memberId, node.id));
     });
     const scopeFor = id => scopeMap.get(id) || '';
-    const rectCache = new Map();
     const conns = (canvas?.connections || []).map((conn, index) => ({...conn, index})).filter(c => nodeMap.has(c.from) && nodeMap.has(c.to));
     const cascadeKeys = cascadeConnectionKeys();
     const activeCascadeCount = (smartCascadeRunPath?.states && Object.values(smartCascadeRunPath.states).filter(state => state && state !== 'done').length) || 0;
@@ -11100,6 +11092,7 @@ function renderConnections(){
         }
     });
     const renderBounds = smartCanvasRenderBounds(240);
+    const portCache = new Map();
     const focusedNodeIds = new Set(selectedNodeIds());
     const visibleItems = items.filter(item => {
         if(focusedNodeIds.has(item.from) || focusedNodeIds.has(item.toId)
@@ -11136,7 +11129,7 @@ function renderConnections(){
         const isCascade = !isHistory && (edgeKeys.some(k => cascadeKeys.has(k)) || Boolean(cascadeState) || isInsertPreview);
         const isPendingLine = !isCascade && item.targets.some(t => nodeMap.get(t)?.pending);
         const isFocusedLine = item.indices.some(index => focusedConnectionIndices.has(index));
-        const {curve, tx, ty, mx, my} = connectionGeometryForItem(item, draggedNodeIds, nodeMap, rectCache);
+        const {curve, tx, ty, mx, my} = connectionGeometryForItem(item, draggedNodeIds, nodeMap, rectCache, portCache);
         const cls = [
             isPendingLine ? 'conn-pending' : '',
             isCascade ? 'conn-cascade' : '',
@@ -11168,7 +11161,7 @@ function renderConnections(){
     }).join('');
     return `<svg class="connection-layer ${reduceMotion ? 'conn-reduce-motion' : ''}" width="6000" height="4000" viewBox="0 0 6000 4000" xmlns="http://www.w3.org/2000/svg">${paths}</svg>`;
 }
-function connectionGeometryForItem(item, draggedNodeIds=new Set(), nodeMap=null, rectCache=null){
+function connectionGeometryForItem(item, draggedNodeIds=new Set(), nodeMap=null, rectCache=null, portCache=null){
     const findNode = id => nodeMap?.get(id) || nodes.find(node => node.id === id);
     const fromNode = findNode(item?.from);
     const toNode = findNode(item?.toId);
@@ -11184,8 +11177,14 @@ function connectionGeometryForItem(item, draggedNodeIds=new Set(), nodeMap=null,
     const isHistory = kind === 'history';
     const colorSlot = isSmartColorNode(toNode) ? normalizeSmartColorInputSlot(item.inputSlot) : '';
     const inputRatio = colorSlot === 'reference' ? .67 : .33;
-    const fromPort = isHistory ? null : nodeConnectionWorldPoint(fromNode, 'out');
-    const toPort = isHistory ? null : nodeConnectionWorldPoint(toNode, 'in', null, item.inputSlot);
+    const readPort = (node, port, slot, rect) => {
+        if(!portCache) return nodeConnectionWorldPoint(node, port, null, slot, rect);
+        const key = `${node.id}|${port}|${slot || ''}`;
+        if(!portCache.has(key)) portCache.set(key, nodeConnectionWorldPoint(node, port, null, slot, rect));
+        return portCache.get(key);
+    };
+    const fromPort = isHistory ? null : readPort(fromNode, 'out', '', fr);
+    const toPort = isHistory ? null : readPort(toNode, 'in', item.inputSlot, tr);
     const fx = isHistory ? fr.x + fr.width / 2 : (fromPort?.x ?? fr.x + fr.width);
     const fy = isHistory ? fr.y + fr.height : (fromPort?.y ?? fr.y + fr.height / 2);
     const tx = isHistory ? tr.x + tr.width / 2 : (toPort?.x ?? tr.x);
@@ -11227,6 +11226,7 @@ function refreshConnectionLayerGeometry(dirtyNodeIds=null){
     if(smartConnectionGroupIndexSvg !== svg) indexSmartConnectionGroups(svg);
     const nodeMap = new Map(nodes.map(node => [node.id, node]));
     const rectCache = new Map();
+    const portCache = new Map();
     const draggedNodeIds = new Set(dragState ? [...(dragState.groupIds || []), dragState.id].filter(Boolean) : []);
     const hasDirtyFilter = dirtyNodeIds instanceof Set && dirtyNodeIds.size > 0;
     let hasMetadata = true;
@@ -11255,7 +11255,7 @@ function refreshConnectionLayerGeometry(dirtyNodeIds=null){
             indices,
             targets:(group.dataset.connTargets || '').split('|').filter(Boolean)
         };
-        const geometry = connectionGeometryForItem(item, draggedNodeIds, nodeMap, rectCache);
+        const geometry = connectionGeometryForItem(item, draggedNodeIds, nodeMap, rectCache, portCache);
         if(!geometry){
             hasMetadata = false;
             return;
@@ -12492,7 +12492,6 @@ function closeSmartCanvasFeaturePanels(except=''){
             document.getElementById('canvasAgentToggle')?.classList.remove('active');
         }
     }
-    closePromptOptimizerModelMenu();
 }
 window.closeSmartCanvasFeaturePanels = closeSmartCanvasFeaturePanels;
 
@@ -12780,6 +12779,175 @@ function smartLoopDetailPaintNodes(node){
         if(target.type === SMART_PAINT_NODE_TYPE || target.batchDetailOwnerId === node.id) unique.push(target);
     });
     return unique;
+}
+function detailStitchImageForNode(node){
+    if(!node || node.runError || smartNodeInFlight(node)) return null;
+    const images = nonPreviewOutputImages(node?.images || [])
+        .filter(image => image?.url && mediaKindForItem(imageForDisplay(image)) === 'image');
+    return images.length === 1 ? images[0] : null;
+}
+function detailStitchOutputForLoop(loop){
+    return nodes.find(node => node.detailStitchOwnerId === loop?.id && (node.images || []).some(image => image?.url)) || null;
+}
+function detailStitchOutputBusy(output){
+    return detailStitchInFlight.has(output?.detailStitchOwnerId || output?.id)
+        || detailStitchInFlight.has(output?.id);
+}
+function detailStitchStateForLoop(loop){
+    const targets = smartLoopDetailPaintNodes(loop);
+    const promptCount = smartLoopAiSplitPrompts(loop).length;
+    const count = promptCount || Math.max(0, ...targets.map(node => Number(node.batchDetailScreenIndex) || 0));
+    const byScreen = new Map();
+    targets.forEach(node => {
+        const screen = Number(node.batchDetailScreenIndex);
+        if(!Number.isInteger(screen) || screen < 1) return;
+        const matches = byScreen.get(screen) || [];
+        matches.push(node);
+        byScreen.set(screen, matches);
+    });
+    const missing = [];
+    const multiple = [];
+    const items = [];
+    for(let screen = 1; screen <= count; screen += 1){
+        const matches = byScreen.get(screen) || [];
+        if(matches.length !== 1){
+            (matches.length ? multiple : missing).push(screen);
+            continue;
+        }
+        if(matches[0].runError || smartNodeInFlight(matches[0])){
+            missing.push(screen);
+            continue;
+        }
+        const images = nonPreviewOutputImages(matches[0].images || [])
+            .filter(image => image?.url && mediaKindForItem(imageForDisplay(image)) === 'image');
+        if(images.length !== 1){
+            (images.length ? multiple : missing).push(screen);
+            continue;
+        }
+        items.push({screen, nodeId:matches[0].id, url:images[0].url});
+    }
+    const output = detailStitchOutputForLoop(loop);
+    const previous = Array.isArray(output?.detailStitchSourceUrls) ? output.detailStitchSourceUrls : [];
+    const changed = Boolean(output && (previous.length !== items.length || previous.some((url, index) => url !== items[index]?.url)));
+    return {items, targets, missing, multiple, count, output, changed,
+        ready:count >= 2 && items.length === count && !missing.length && !multiple.length};
+}
+function detailStitchStatusText(state){
+    if(state.count < 2) return tr('smart.detailStitchNeedScreens');
+    if(state.multiple.length) return trf('smart.detailStitchMultiple', {screens:state.multiple.join('、')});
+    if(state.missing.length) return trf('smart.detailStitchMissing', {screens:state.missing.join('、')});
+    if(state.changed) return tr('smart.detailStitchChanged');
+    if(state.output) return trf('smart.detailStitchCurrent', {n:state.count});
+    return trf('smart.detailStitchReady', {n:state.count});
+}
+async function stitchDetailPages(items, options={}){
+    const ownerId = options.ownerId || '';
+    const existingId = options.outputNodeId || '';
+    const key = ownerId || existingId || 'manual';
+    if(detailStitchInFlight.has(key)) return;
+    if(!collabCanMutateCanvas(true)) return;
+    if(ownerId && !collabCanEditNode(ownerId, true)) return;
+    if(items.length < 2){ toast(tr('smart.detailStitchNeedScreens')); return; }
+    detailStitchInFlight.add(key);
+    render();
+    try {
+        const response = await fetch('/api/canvas-detail-stitch', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({urls:items.map(item => item.url)})
+        });
+        if(!response.ok) throw new Error(await responseErrorMessage(response, tr('smart.detailStitchFailed')));
+        const result = await response.json();
+        if(!result?.url || !result.width || !result.height) throw new Error(tr('smart.detailStitchFailed'));
+        const unchanged = items.every(item => detailStitchImageForNode(nodes.find(node => node.id === item.nodeId))?.url === item.url);
+        if(!unchanged) throw new Error(tr('smart.detailStitchSourcesChanged'));
+        if(ownerId && !nodes.some(node => node.id === ownerId)) throw new Error(tr('smart.detailStitchSourcesChanged'));
+        const image = {url:result.url, name:result.name || tr('smart.detailStitchFileName'), kind:'image',
+            natural_w:result.width, natural_h:result.height};
+        if(result.asset_ref_id) image.asset_ref_id = result.asset_ref_id;
+        const output = (existingId && nodes.find(node => node.id === existingId))
+            || (ownerId && detailStitchOutputForLoop(nodes.find(node => node.id === ownerId)))
+            || null;
+        if(output && !collabCanEditNode(output.id, true)) return;
+        pushUndo();
+        const target = output || createImageNodeAt({x:0, y:0}, [image], {
+            select:false, skipUndo:true, skipRender:true, skipSave:true, autoAvoid:false
+        });
+        if(!target) throw new Error(tr('smart.detailStitchFailed'));
+        if(output){
+            target.images = [image];
+            if(!target.manualSize){ delete target.w; delete target.h; }
+        } else {
+            const sources = items.map(item => nodes.find(node => node.id === item.nodeId)).filter(Boolean);
+            const rects = sources.map(nodeRect);
+            target.x = Math.round(Math.max(...rects.map(rect => rect.x + rect.width)) + 220);
+            target.y = Math.round(Math.min(...rects.map(rect => rect.y)));
+            selectedId = target.id;
+            selectedIds = [];
+            selectedImage = {nodeId:target.id, index:0};
+        }
+        target.title = tr('smart.detailStitchTitle');
+        target.detailStitchOwnerId = ownerId;
+        target.detailStitchSourceNodeIds = items.map(item => item.nodeId);
+        target.detailStitchSourceUrls = items.map(item => item.url);
+        clearTimeout(saveTimer);
+        await saveCanvas();
+        if(collabNodeSnapshot.get(target.id)?.signature !== collabNodeSignature(target)){
+            throw new Error(tr('smart.detailStitchCanvasSaveFailed'));
+        }
+        render();
+        toast(trf(output ? 'smart.detailStitchUpdated' : 'smart.detailStitchSaved', {n:items.length}));
+    } catch(error){
+        toast(String(error?.message || tr('smart.detailStitchFailed')).slice(0, 240));
+    } finally {
+        detailStitchInFlight.delete(key);
+        render();
+    }
+}
+function stitchDetailPagesFromLoop(loopId){
+    const loop = nodes.find(node => node.id === loopId && node.batchDetailModeV2);
+    if(!loop) return;
+    const state = detailStitchStateForLoop(loop);
+    if(!state.ready){ toast(detailStitchStatusText(state)); return; }
+    void stitchDetailPages(state.items, {ownerId:loop.id, outputNodeId:state.output?.id || ''});
+}
+function stitchDetailPagesFromOutput(outputId){
+    const output = nodes.find(node => node.id === outputId);
+    if(!output || !Array.isArray(output.detailStitchSourceNodeIds)) return;
+    const owner = output.detailStitchOwnerId
+        ? nodes.find(node => node.id === output.detailStitchOwnerId && node.batchDetailModeV2)
+        : null;
+    if(owner){
+        const state = detailStitchStateForLoop(owner);
+        if(!state.ready || smartCascadeIsLoopRunning(owner.id)){
+            toast(state.ready ? tr('smart.detailStitchWaitForBatch') : detailStitchStatusText(state));
+            return;
+        }
+        void stitchDetailPages(state.items, {ownerId:owner.id, outputNodeId:output.id});
+        return;
+    }
+    const items = output.detailStitchSourceNodeIds.map((nodeId, index) => {
+        const image = detailStitchImageForNode(nodes.find(node => node.id === nodeId));
+        return image ? {screen:index + 1, nodeId, url:image.url} : null;
+    });
+    const missing = items.map((item, index) => item ? 0 : index + 1).filter(Boolean);
+    if(missing.length){
+        toast(trf('smart.detailStitchMissing', {screens:missing.join('、')}));
+        return;
+    }
+    void stitchDetailPages(items, {outputNodeId:output.id});
+}
+function detailStitchOutputNeedsUpdate(output){
+    const owner = output?.detailStitchOwnerId
+        ? nodes.find(node => node.id === output.detailStitchOwnerId && node.batchDetailModeV2)
+        : null;
+    if(owner){
+        const state = detailStitchStateForLoop(owner);
+        return !state.ready || state.changed;
+    }
+    const ids = output?.detailStitchSourceNodeIds || [];
+    const previous = output?.detailStitchSourceUrls || [];
+    return ids.length !== previous.length || ids.some((id, index) =>
+        detailStitchImageForNode(nodes.find(node => node.id === id))?.url !== previous[index]);
 }
 function smartLoopBatchImageProviders(){
     const providers = imageProviders().slice();
@@ -13269,6 +13437,7 @@ function smartLoopModeBodyHtml(node){
 function smartLoopPairedBodyHtml(node){
     syncSmartLoopPairedSettings(node);
     const state = smartLoopPairedState(node);
+    const stitch = node.batchDetailModeV2 ? detailStitchStateForLoop(node) : null;
     const loopRunState = smartCascadeRunForLoop(node.id);
     const loopRunning = Boolean(loopRunState);
     const loopStopping = Boolean(loopRunState?.stopRequested);
@@ -13345,6 +13514,10 @@ function smartLoopPairedBodyHtml(node){
             <button class="loop-smart-control loop-smart-run ${loopRunning ? 'is-stop' : ''}" type="button" data-loop-run="${escapeAttr(node.id)}" ${(!loopRunning && !state.ready) || loopStopping ? 'disabled' : ''}><i data-lucide="${loopRunning ? 'square' : 'workflow'}"></i><span data-loop-paired-start-label>${escapeHtml(actionLabel)}</span></button>
             <button class="loop-smart-control loop-paired-advanced" type="button" data-loop-switch-advanced="1"><i data-lucide="sliders-horizontal"></i><span>${escapeHtml(tr('smart.loopAdvanced'))}</span></button>
         </div>
+        ${stitch ? `<div class="loop-detail-stitch-row">
+            <button class="loop-smart-control loop-detail-stitch-button" type="button" data-loop-detail-stitch="${escapeAttr(node.id)}" ${!stitch.ready || loopRunning || detailStitchInFlight.has(node.id) ? 'disabled' : ''}><i data-lucide="${detailStitchInFlight.has(node.id) ? 'loader-2' : 'panels-top-left'}"></i><span>${escapeHtml(tr(detailStitchInFlight.has(node.id) ? 'smart.detailStitchBusy' : stitch.output ? 'smart.detailStitchUpdate' : 'smart.detailStitchCreate'))}</span></button>
+            <span class="loop-paired-help" data-loop-detail-stitch-status>${escapeHtml(detailStitchStatusText(stitch))}</span>
+        </div>` : ''}
     </div>`;
 }
 function smartLoopBodyHtml(node){
@@ -13937,6 +14110,7 @@ function normalizeSmartAgentLongTextNode(node, textValues=[]){
     return savedHeight > 720;
 }
 function agentNodeBodyHtml(node){
+    if(window.SmartExpertWorkflow?.is(node)) return window.SmartExpertWorkflow.nodeBodyHtml(node);
     const templateLibraryOpen = Boolean(
         promptTemplatePanel?.classList.contains('open')
         && promptTemplatePanel.dataset.target === 'agent'
@@ -14712,6 +14886,9 @@ function smartNodeToolbarHtml(node){
             : null;
     const actions = [
         ...(collapseAction ? [collapseAction] : []),
+        ...(Array.isArray(node.detailStitchSourceNodeIds) && node.detailStitchSourceNodeIds.length >= 2
+            ? [{key:'update-detail-stitch', icon:'refresh-cw', label:tr('smart.detailStitchUpdate'), enabled:!sharedCanvasReadOnly && !detailStitchOutputBusy(node)}]
+            : []),
         {key:'prompt-case', icon:'star', label:savedCase ? '打开收藏案例' : '收藏案例', enabled:!sharedCanvasMode && (canSaveCase || Boolean(savedCase))},
         {key:'replace', icon:'image-plus', label:'替换', enabled:canReplaceImage},
         {key:'background-remove', icon:'eraser', label:imageCount > 1 ? '批量去背景' : '去背景', enabled:canUseBackgroundRemoval},
@@ -14728,7 +14905,7 @@ function smartNodeToolbarHtml(node){
         {key:'vectorize', icon:'vector-square', label:'矢量', enabled:canUseSharedImageEditor && !sharedCanvasMode},
         {key:'download', icon:'download', label:'下载', enabled:true}
     ];
-    const primaryKeys = ['collapse', 'uncollapse', 'prompt-case', 'replace', 'crop', 'smart-edit', 'download'];
+    const primaryKeys = ['collapse', 'uncollapse', 'update-detail-stitch', 'prompt-case', 'replace', 'crop', 'smart-edit', 'download'];
     const actionHtml = action => `
         <button type="button" class="${action.key === 'prompt-case' && savedCase ? 'prompt-case-saved' : ''}" data-smart-node-action="${escapeAttr(action.key)}" data-node-id="${escapeAttr(node.id)}" ${action.enabled ? '' : 'disabled'} title="${escapeAttr(action.label)}">
             <i data-lucide="${escapeAttr(action.icon)}"></i><span>${escapeHtml(action.label)}</span>
@@ -15164,6 +15341,63 @@ function downloadSelectedToolbarImages(){
     if(items.length === 1) return downloadPreviewFile(items[0]);
     return zipDownloadImageItems('选中图片', items);
 }
+function renderDetailStitchOrderDialog(dialog){
+    const list = dialog.querySelector('[data-detail-stitch-order-list]');
+    if(!list) return;
+    list.innerHTML = detailStitchManualItems.map((item, index) => `<li>
+        <img src="${escapeAttr(smartMediaPreviewUrl(item.url, 256))}" alt="">
+        <span><strong>${escapeHtml(trf('smart.loopDetailScreen', {n:index + 1}))}</strong><small>${escapeHtml(item.name)}</small></span>
+        <div><button type="button" data-detail-stitch-move="${index}:-1" ${index === 0 ? 'disabled' : ''} aria-label="${escapeAttr(tr('smart.detailStitchMoveUp'))}"><i data-lucide="arrow-up"></i></button>
+        <button type="button" data-detail-stitch-move="${index}:1" ${index === detailStitchManualItems.length - 1 ? 'disabled' : ''} aria-label="${escapeAttr(tr('smart.detailStitchMoveDown'))}"><i data-lucide="arrow-down"></i></button></div>
+    </li>`).join('');
+    refreshIcons();
+}
+function openDetailStitchOrderDialog(){
+    const selected = selectionToolbarBounds()?.selected || [];
+    if(selected.length < 2 || selected.some(node => !detailStitchImageForNode(node))){
+        toast(tr('smart.detailStitchNeedScreens'));
+        return;
+    }
+    detailStitchManualItems = selected.map(node => {
+        const rect = nodeRect(node);
+        const image = detailStitchImageForNode(node);
+        return {nodeId:node.id, url:image.url, name:node.title || image.name || '',
+            screen:Number(node.batchDetailScreenIndex) || 0, ownerId:node.batchDetailOwnerId || '',
+            x:rect.x, y:rect.y};
+    });
+    const sameOwner = detailStitchManualItems.every(item => item.ownerId && item.ownerId === detailStitchManualItems[0].ownerId && item.screen > 0);
+    detailStitchManualItems.sort((a, b) => sameOwner ? a.screen - b.screen : a.y - b.y || a.x - b.x);
+    let dialog = document.getElementById('detailStitchOrderDialog');
+    if(!dialog){
+        dialog = document.createElement('dialog');
+        dialog.id = 'detailStitchOrderDialog';
+        dialog.className = 'detail-stitch-order-dialog';
+        dialog.innerHTML = `<div class="detail-stitch-order-head"><div><h2>${escapeHtml(tr('smart.detailStitchOrderTitle'))}</h2><p>${escapeHtml(tr('smart.detailStitchOrderHint'))}</p></div><button type="button" data-detail-stitch-close aria-label="${escapeAttr(tr('common.close'))}"><i data-lucide="x"></i></button></div>
+            <ol data-detail-stitch-order-list></ol>
+            <div class="detail-stitch-order-actions"><button type="button" data-detail-stitch-close>${escapeHtml(tr('common.cancel'))}</button><button type="button" data-detail-stitch-confirm>${escapeHtml(tr('smart.detailStitchCreate'))}</button></div>`;
+        dialog.addEventListener('click', event => {
+            if(event.target.closest('[data-detail-stitch-close]')){ dialog.close(); return; }
+            const move = event.target.closest('[data-detail-stitch-move]');
+            if(move){
+                const [index, direction] = move.dataset.detailStitchMove.split(':').map(Number);
+                const next = index + direction;
+                if(next >= 0 && next < detailStitchManualItems.length){
+                    [detailStitchManualItems[index], detailStitchManualItems[next]] = [detailStitchManualItems[next], detailStitchManualItems[index]];
+                    renderDetailStitchOrderDialog(dialog);
+                }
+                return;
+            }
+            if(event.target.closest('[data-detail-stitch-confirm]')){
+                const items = detailStitchManualItems.map((item, index) => ({screen:index + 1, nodeId:item.nodeId, url:item.url}));
+                dialog.close();
+                void stitchDetailPages(items);
+            }
+        });
+        document.body.appendChild(dialog);
+    }
+    renderDetailStitchOrderDialog(dialog);
+    if(!dialog.open) dialog.showModal();
+}
 function runSmartSelectionToolbarAction(action){
     if(action === 'collapse') collapseSelectedImageNodes();
     else if(action === 'group') groupSelectedNodes();
@@ -15174,6 +15408,7 @@ function runSmartSelectionToolbarAction(action){
         if(node && smartBackgroundRemovalItemsForNode(node).length > 1) removeSmartNodeBackgroundBatch(node);
     }
     else if(action === 'download') downloadSelectedToolbarImages();
+    else if(action === 'stitch-detail') openDetailStitchOrderDialog();
     else if(action.startsWith('arrange-')) arrangeSelectedUploadNodes(action.slice('arrange-'.length));
 }
 function renderSmartSelectionToolbar(){
@@ -15186,7 +15421,9 @@ function renderSmartSelectionToolbar(){
         return;
     }
     const imageNodes = selectedToolbarImageNodes();
-    if(!imageNodes.length){
+    const canStitch = bounds.selected.length >= 2 && bounds.selected.every(node => isSmartImageNode(node)
+        && !node.collapsed && Boolean(detailStitchImageForNode(node)));
+    if(!imageNodes.length && !canStitch){
         smartSelectionToolbarCollapsed = false;
         return;
     }
@@ -15218,7 +15455,7 @@ function renderSmartSelectionToolbar(){
     toolbar.setAttribute('role', 'toolbar');
     toolbar.setAttribute('aria-label', '多选节点操作');
     toolbar.innerHTML = `
-        <div class="smart-selection-arrange-wrap">
+        ${imageNodes.length ? `<div class="smart-selection-arrange-wrap">
             <button type="button" data-smart-selection-arrange-toggle aria-expanded="false" title="整理"><i data-lucide="layout-grid"></i><span>整理</span></button>
             <div class="smart-selection-arrange-menu" hidden role="menu">
                 <button type="button" data-smart-selection-action="arrange-grid" role="menuitem"><i data-lucide="layout-grid"></i><span>宫格排列</span></button>
@@ -15230,7 +15467,8 @@ function renderSmartSelectionToolbar(){
         <button type="button" data-smart-selection-action="collapse" title="折叠" ${canCollapse ? '' : 'disabled'}><i data-lucide="layers"></i><span>折叠</span></button>
         ${canBatchRemoveBackground ? `<button type="button" data-smart-selection-action="background-remove" title="批量去背景" ${smartBackgroundRemovalBusy ? 'disabled' : ''}><i data-lucide="eraser"></i><span>批量去背景</span></button>` : ''}
         <span class="smart-selection-toolbar-separator" aria-hidden="true"></span>
-        <button type="button" data-smart-selection-action="download" title="下载"><i data-lucide="download"></i><span>下载</span></button>
+        <button type="button" data-smart-selection-action="download" title="下载"><i data-lucide="download"></i><span>下载</span></button>` : ''}
+        ${canStitch ? `<button type="button" data-smart-selection-action="stitch-detail" title="${escapeAttr(tr('smart.detailStitchOrderTitle'))}"><i data-lucide="panels-top-left"></i><span>${escapeHtml(tr('smart.detailStitchCreate'))}</span></button>` : ''}
         <button type="button" class="smart-selection-toolbar-toggle" data-smart-selection-toolbar-toggle aria-expanded="${String(!smartSelectionToolbarCollapsed)}" title="${smartSelectionToolbarCollapsed ? '展开操作栏' : '折叠操作栏'}" aria-label="${smartSelectionToolbarCollapsed ? '展开操作栏' : '折叠操作栏'}"><i data-lucide="chevron-left"></i></button>`;
     toolbar.addEventListener('mousedown', event => {
         event.preventDefault();
@@ -15611,6 +15849,10 @@ function runSmartNodeToolbarAction(nodeId, action, anchorElement=null){
     }
     if(action === 'delete-collapsed'){
         deleteNodeFromButton(nodeId);
+        return;
+    }
+    if(action === 'update-detail-stitch'){
+        stitchDetailPagesFromOutput(nodeId);
         return;
     }
     const index = smartNodeToolbarImageIndex(node);
@@ -15995,7 +16237,9 @@ function render(options={}){
     // 首次渲染可能发生在共享会话回调、旧数据迁移或协作快照的任一时序；
     // 在生成 DOM 前再兜底一次，确保编辑者看到与本地画布相同的选中状态。
     ensureSharedEditorInitialSelection();
-    const renderNodes = smartCanvasRenderNodes();
+    const renderBounds = smartCanvasRenderBounds();
+    const rectCache = new Map();
+    const renderNodes = smartCanvasRenderNodes(renderBounds, rectCache);
     rememberInlineVideoActivations();
     const selectedForToolbar = selectedNodeIds().map(id => nodes.find(node => node.id === id)).filter(Boolean);
     // 智能分组使用自己的 smart-group-menu，不能被普通多图的选择态规则隐藏。
@@ -16034,7 +16278,7 @@ function render(options={}){
             node.h = SMART_AGENT_DEFAULT_HEIGHT;
         }
         const imgs = node.images || [];
-        const title = isSmartComfyWorkflowNode(node) ? escapeHtml(node.workflowTitle || 'ComfyUI 工作流') : node.type === SMART_DRAWING_BOARD_NODE_TYPE ? escapeHtml(tr('smart.createDrawingBoardNode')) : isSmartTableNode(node) ? '多维表格' : isSmartTimelineNode(node) ? '视频时间线' : node.type === 'smart-group' ? (node.title === '万能分组' ? '智能分组' : (node.title || '智能分组')) : node.type === 'smart-prompt' ? escapeHtml(node.title || 'Prompt') : node.type === 'smart-agent' ? '智能对话' : node.type === 'smart-loop' ? escapeHtml(node.title || tr('smart.createLoopNode')) : isSmartCameraNode(node) ? '视角控制' : isSmartCompareNode(node) ? smartCompareText('smart.createCompareNode', '对比') : isSmartColorNode(node) ? '色彩还原' : (imgs.length ? escapeHtml(uploadTitleForItems(imgs)) : escapeHtml(isSmartPaintNode(node) ? tr('smart.createPaintNode') : tr('smart.createImportNode')));
+        const title = isSmartComfyWorkflowNode(node) ? escapeHtml(node.workflowTitle || 'ComfyUI 工作流') : node.type === SMART_DRAWING_BOARD_NODE_TYPE ? escapeHtml(tr('smart.createDrawingBoardNode')) : isSmartTableNode(node) ? '多维表格' : isSmartTimelineNode(node) ? '视频时间线' : node.type === 'smart-group' ? (node.title === '万能分组' ? '智能分组' : (node.title || '智能分组')) : node.type === 'smart-prompt' ? escapeHtml(node.title || 'Prompt') : window.SmartExpertWorkflow?.is(node) ? '专家协作' : node.type === 'smart-agent' ? '智能对话' : node.type === 'smart-loop' ? escapeHtml(node.title || tr('smart.createLoopNode')) : isSmartCameraNode(node) ? '视角控制' : isSmartCompareNode(node) ? smartCompareText('smart.createCompareNode', '对比') : isSmartColorNode(node) ? '色彩还原' : (imgs.length ? escapeHtml(uploadTitleForItems(imgs)) : escapeHtml(isSmartPaintNode(node) ? tr('smart.createPaintNode') : tr('smart.createImportNode')));
         const scale = nodeScale(node);
         const layout = imageLayout(imgs, scale, node);
         const isPrompt = node.type === 'smart-prompt';
@@ -16055,6 +16299,8 @@ function render(options={}){
         const isPaint = !isFidelity && (node.type === SMART_PAINT_NODE_TYPE || isComfyWorkflow);
         const detailScreenIndex = Number(node.batchDetailScreenIndex) > 0 ? Math.round(Number(node.batchDetailScreenIndex)) : 0;
         const isDetailPaint = detailScreenIndex > 0 && Boolean(node.batchDetailOwnerId);
+        const isDetailStitch = Array.isArray(node.detailStitchSourceNodeIds) && node.detailStitchSourceNodeIds.length >= 2;
+        const detailStitchStale = isDetailStitch && detailStitchOutputNeedsUpdate(node);
         const detailScreenTitle = String(node.batchDetailScreenTitle || '').trim();
         const isJimengPending = Boolean(node.jimengPending && node.jimengPending.submitId && imgs.length === 0);
         const isFailed = Boolean(node.runError && imgs.length === 0);
@@ -16069,8 +16315,9 @@ function render(options={}){
         // 非空节点使用悬浮删除按钮；标题栏按钮只给空上传节点，避免产生重复图标。
         const deleteBtn = isGroup || !isEmpty ? '' : `<button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button>`;
         const hint = isFidelity ? '' : isTable ? '可接收文本或表格数据' : isTimeline ? '连接图片、视频和音频后导出成片' : isComfyWorkflow ? (isFailed ? '运行失败 · 可检查依赖或重新运行' : isPending ? escapeHtml(tr('smart.hintPending')) : '选中节点编辑参数，连接素材后运行') : isDrawingBoard ? escapeHtml(tr('smart.drawingBoardHint')) : isLoop ? '' : isSmartGroup ? '双击添加 · 拖入归组' : isCamera ? '连接参考图像 → 下游绘画节点' : isCompare ? escapeHtml(smartCompareText('smart.compareNodeConnectHint', '连接两张图片后开始对比')) : isColor ? '连接待修复图片和参考图' : isFailed ? '生成失败 · 可修改参数后重新运行' : isPending ? escapeHtml(tr('smart.hintPending')) : isPaint && !imgs.length ? (isProductFidelityNode(node) ? '连接产品参考图，设置蒙版与细节保护' : escapeHtml(tr('smart.createPaintNodeSub'))) : isUpload && !imgs.length ? escapeHtml(tr('smart.uploadHint')) : (imgs.length > 1 ? escapeHtml(tr('smart.hintMulti')) : imgs.length ? escapeHtml(tr('smart.hintSingle')) : escapeHtml(tr('smart.hintEmpty')));
-        const html = `<div class="image-node ${isFidelity ? 'product-fidelity-smart-node' : ''} ${isComfyWorkflow ? 'comfy-workflow-smart-node' : ''} ${isDrawingBoard ? 'drawing-board-node' : ''} ${isTable ? 'smart-table-node' : ''} ${isTimeline ? 'smart-timeline-node' : ''} ${isEmpty ? 'empty-node' : ''} ${isUpload ? 'upload-node' : ''} ${isPaint ? 'painting-node' : ''} ${isDetailPaint ? 'smart-detail-paint-node' : ''} ${isFailed ? 'node-failed' : ''} ${isGroup ? 'group-node' : ''} ${node.collapsed ? 'collapsed-stack-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isAgent ? 'agent-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isCompare ? 'smart-compare-node' : ''} ${isColor ? 'color-smart-node' : ''} ${isSmartGroup ? 'smart-group-node' : ''} ${isCompactMember ? 'smart-group-member-node' : ''} ${collabLockedByOther ? 'collab-locked-by-other' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''}" data-id="${escapeHtml(node.id)}" style="left:${node.x || 0}px;top:${node.y || 0}px;${collabLockedByOther ? `--member-color:${escapeAttr(collabSafeColor(collabLock.member.color, collabLock.member.id))};` : ''}${node.collapsed ? 'background:transparent!important;border-color:transparent!important;box-shadow:none!important;backdrop-filter:none!important;' : ''}width:${layout.width}px;height:${layout.height}px">
+        const html = `<div class="image-node ${isFidelity ? 'product-fidelity-smart-node' : ''} ${isComfyWorkflow ? 'comfy-workflow-smart-node' : ''} ${isDrawingBoard ? 'drawing-board-node' : ''} ${isTable ? 'smart-table-node' : ''} ${isTimeline ? 'smart-timeline-node' : ''} ${isEmpty ? 'empty-node' : ''} ${isUpload ? 'upload-node' : ''} ${isPaint ? 'painting-node' : ''} ${isDetailPaint ? 'smart-detail-paint-node' : ''} ${isDetailStitch ? 'smart-detail-stitch-node' : ''} ${isFailed ? 'node-failed' : ''} ${isGroup ? 'group-node' : ''} ${node.collapsed ? 'collapsed-stack-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isAgent ? 'agent-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isCompare ? 'smart-compare-node' : ''} ${isColor ? 'color-smart-node' : ''} ${isSmartGroup ? 'smart-group-node' : ''} ${isCompactMember ? 'smart-group-member-node' : ''} ${collabLockedByOther ? 'collab-locked-by-other' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''}" data-id="${escapeHtml(node.id)}" style="left:${node.x || 0}px;top:${node.y || 0}px;${collabLockedByOther ? `--member-color:${escapeAttr(collabSafeColor(collabLock.member.color, collabLock.member.id))};` : ''}${node.collapsed ? 'background:transparent!important;border-color:transparent!important;box-shadow:none!important;backdrop-filter:none!important;' : ''}width:${layout.width}px;height:${layout.height}px">
             ${isDetailPaint ? `<div class="smart-detail-screen-marker" aria-label="${escapeAttr(`第 ${detailScreenIndex} 屏${detailScreenTitle ? `：${detailScreenTitle}` : ''}`)}"><strong>第 ${detailScreenIndex} 屏</strong>${detailScreenTitle ? `<span>${escapeHtml(detailScreenTitle)}</span>` : ''}</div>` : ''}
+            ${isDetailStitch ? `<div class="smart-detail-stitch-marker ${detailStitchStale ? 'is-stale' : ''}"><strong>${escapeHtml(tr('smart.detailStitchTitle'))}</strong>${detailStitchStale ? `<span>${escapeHtml(tr('smart.detailStitchNeedsUpdate'))}</span>` : ''}</div>` : ''}
             ${smartNodeRunBorderHtml(node)}
             <div class="node-head"><div class="node-title">${isProductFidelityNode(node) ? '产品保护' : title}</div><div class="node-actions">${deleteBtn}</div></div>
             ${collabNodePresenceMarkup(node.id)}
@@ -16137,7 +16384,9 @@ function render(options={}){
         child.remove();
     });
     const canPatchConnectionGeometry = Boolean(dirtyNodeIds && existingConnectionEl && options.connectionsChanged !== true);
-    const connectionMarkup = canPatchConnectionGeometry ? '' : renderConnections().trim();
+    // Visible nodes may have been normalized while building their markup.
+    renderNodes.forEach(node => rectCache.delete(node.id));
+    const connectionMarkup = canPatchConnectionGeometry ? '' : renderConnections(rectCache).trim();
     let connectionEl = existingConnectionEl;
     const connectionMarkupChanged = !canPatchConnectionGeometry && (!connectionEl || existingConnectionMarkup !== connectionMarkup);
     if(connectionMarkupChanged){
@@ -16190,6 +16439,9 @@ function render(options={}){
     // 首次绘制可能发生在新节点插入前；结构变化时下一帧以最终 DOM 外边缘对齐线端。
     if(connectionMarkupChanged) scheduleConnectionLayerRefresh();
     scheduleLinkPortProximityRefresh();
+    lastCanvasRenderBounds = renderBounds;
+    lastCanvasRenderedNodeCount = renderNodes.length;
+    lastCanvasRenderedConnectionCount = world.querySelectorAll('.conn-group').length;
     return;
     world.innerHTML = '';
     world.insertAdjacentHTML('beforeend', renderConnections());
@@ -16721,6 +16973,10 @@ function bindNodeSkillControls(el, node){
     });
 }
 function bindAgentNodeControls(el, node){
+    if(window.SmartExpertWorkflow?.is(node)){
+        window.SmartExpertWorkflow.bindNode(el, node);
+        return;
+    }
     // Agent 节点是可交互且可滚动的内容区；滚轮在这里应交给节点内部，
     // 不能继续冒泡到 shell 的无限画布缩放处理。
     if(el.dataset.agentWheelGuard !== '1'){
@@ -17293,6 +17549,13 @@ function bindLoopNodeControls(el, node){
             runSmartCascadeFromLoop(loopId);
         };
     });
+    el.querySelectorAll('[data-loop-detail-stitch]').forEach(btn => {
+        btn.onclick = e => {
+            e.preventDefault();
+            e.stopPropagation();
+            stitchDetailPagesFromLoop(btn.dataset.loopDetailStitch || node.id);
+        };
+    });
 }
 function bindScrollableText(el){
     if(!el || el.dataset.scrollBound === '1') return;
@@ -17333,10 +17596,12 @@ function bindScrollableText(el){
     el.addEventListener('wheel', stop, {passive:true});
     el.addEventListener('mousedown', beginSelection);
     el.addEventListener('mousemove', e => {
+        if(resizeState || llmInstructionResizeState) return;
         e.stopPropagation();
         if(textSelectionGuard?.el === el) textSelectionGuard.clientY = e.clientY;
     });
     el.addEventListener('mouseup', e => {
+        if(resizeState || llmInstructionResizeState) return;
         e.stopPropagation();
         if(textSelectionGuard?.el === el) textSelectionGuard.active = false;
     });
@@ -18636,7 +18901,8 @@ function bindNodeEvents(nodeEls=world.querySelectorAll('.image-node')){
             const node = nodes.find(n => n.id === id);
             if(!node) return;
             const rect = nodeRect(node);
-            resizeState = {id, startX:e.clientX, startY:e.clientY, startW:rect.width, startH:rect.height};
+            resizeState = {id, startX:e.clientX, startY:e.clientY, startW:rect.width, startH:rect.height,
+                promptMinH:node.type === 'smart-prompt' ? promptNodeMinHeight(node) : 0};
             if(isSmartDrawingBoardNode(node) && window.SmartDrawingBoard?.measureLayout){
                 resizeState.drawingElement = el;
                 resizeState.drawingLayout = window.SmartDrawingBoard.measureLayout(el);
@@ -18954,7 +19220,7 @@ function isConnectionEraseGesture(event, button = event?.button){
     return Boolean(event && (resolvedButton === 2 || resolvedButton === 1) && connectionEraseModifierActive(event));
 }
 function connectionEraseTargetExcluded(target){
-    return Boolean(target?.closest?.('.image-node,.composer,.smart-back,.asset-panel,.asset-toggle,.smart-log-toggle,.smart-shortcut-toggle,.smart-workflow-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.create-menu,.smart-minimap,.canvas-nav-panel'));
+    return Boolean(target?.closest?.('.image-node,.composer,.smart-back,.asset-panel,.asset-toggle,.smart-log-toggle,.smart-shortcut-toggle,.smart-workflow-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.prompt-optimize-modal,.create-menu,.smart-minimap,.canvas-nav-panel'));
 }
 function beginConnectionErase(event, button = event?.button){
     if(!isConnectionEraseGesture(event, button) || connectionEraseTargetExcluded(event.target)) return false;
@@ -23056,6 +23322,10 @@ function shouldRestorePromptDraft(node, draftText, ctx=smartLoopContext){
     return !upstream || draft !== upstream;
 }
 function loadPromptDraft(subject){
+    if(subject?.promptDraftTouched && !subject.promptDraftHtml){
+        setPromptText('');
+        return;
+    }
     if(subject?.promptDraftHtml){
         const draftText = subject.promptDraftText || subject.runPrompt || '';
         if(!shouldRestorePromptDraft(subject, draftText)){
@@ -23065,7 +23335,7 @@ function loadPromptDraft(subject){
         const hasToken = String(subject.promptDraftHtml || '').includes('mention-image-token');
         promptInput.innerHTML = hasToken
             ? subject.promptDraftHtml
-            : (promptHtmlWithMentionTokens(subject.runPrompt || subject.promptDraftText || '', subject.runPromptRefs || []) || subject.promptDraftHtml);
+            : (promptHtmlWithMentionTokens(subject.promptDraftText || '', subject.runPromptRefs || []) || subject.promptDraftHtml);
     } else if(typeof subject?.runPrompt === 'string'){
         if(!shouldRestorePromptDraft(subject, subject.runPrompt)){
             setPromptText('');
@@ -23195,6 +23465,7 @@ function updateComposer(){
             ? `已优化并替换当前提示词 · ${subject.promptLastOptimizerModel || '聊天模型'}`
             : '', subject.promptLastOptimizedAt ? 'success' : '');
     }
+    syncPromptOptimizeRestoreButton(subject);
     setPromptInputLocked(false);
     syncCascadeRunButton(node);
     positionComposerForNode(node);
@@ -25282,7 +25553,7 @@ function textForNode(node, ctx=smartLoopContext){
         return String(node.cameraPrompt || '').trim();
     }
     if(node.type === 'smart-prompt') return promptTextItemsForNode(node, ctx).join('\n\n');
-    if(node.type === 'smart-agent') return String(node.outputText || node.userPrompt || '').trim();
+    if(node.type === 'smart-agent') return String(node.outputText || '').trim();
     if(node.type === 'smart-loop') return smartLoopPrompt(node, ctx);
     if(node.type === 'smart-group') return smartGroupMembers(node).map(member => textForNode(member, ctx)).filter(Boolean).join('\n\n');
     return '';
@@ -25581,7 +25852,7 @@ function upstreamLineNodeIds(node){
     return [...upstream, node.id];
 }
 function lineImagesFor(node){
-    const ids = upstreamLineNodeIds(node);
+    const ids = upstreamLineNodeIds(node).filter(id => id !== node?.id);
     return ids.flatMap(id => {
         const source = nodes.find(n => n.id === id);
         return imagesForNode(source);
@@ -25926,7 +26197,7 @@ function positionMentionPickerAtCaret(){
 function maybeOpenMentionPicker(){
     saveMentionRange();
     const before = textBeforeCaret();
-    if(/@$/.test(before)) showMentionPicker();
+    if(/[@＠]$/.test(before)) showMentionPicker();
     else closeMentionPicker();
 }
 function insertMentionToken(img){
@@ -25941,7 +26212,7 @@ function insertMentionToken(img){
     let removedAt = false;
     if(range.startContainer?.nodeType === Node.TEXT_NODE && range.startOffset > 0){
         const text = range.startContainer.textContent || '';
-        if(text[range.startOffset - 1] === '@'){
+        if(['@', '＠'].includes(text[range.startOffset - 1])){
             range.setStart(range.startContainer, range.startOffset - 1);
             range.deleteContents();
             removedAt = true;
@@ -25951,7 +26222,7 @@ function insertMentionToken(img){
         const walker = document.createTreeWalker(promptInput, NodeFilter.SHOW_TEXT);
         let lastText = null;
         while(walker.nextNode()) lastText = walker.currentNode;
-        if(lastText && /@$/.test(lastText.textContent || '')) {
+        if(lastText && /[@＠]$/.test(lastText.textContent || '')) {
             lastText.textContent = lastText.textContent.slice(0, -1);
             range.selectNodeContents(promptInput);
             range.collapse(false);
@@ -27036,6 +27307,10 @@ function syncCascadeRunButton(node=selectedNode()){
     refreshIcons();
 }
 function loadNodePromptDraftToInput(node){
+    if(node?.promptDraftTouched && !node.promptDraftHtml){
+        setPromptText('');
+        return;
+    }
     if(node?.promptDraftHtml) {
         const draftText = node.promptDraftText || node.runPrompt || '';
         if(!shouldRestorePromptDraft(node, draftText)) {
@@ -27045,7 +27320,7 @@ function loadNodePromptDraftToInput(node){
         const hasToken = String(node.promptDraftHtml || '').includes('mention-image-token');
         promptInput.innerHTML = hasToken
             ? node.promptDraftHtml
-            : (promptHtmlWithMentionTokens(node.runPrompt || node.promptDraftText || '', node.runPromptRefs || []) || node.promptDraftHtml);
+            : (promptHtmlWithMentionTokens(node.promptDraftText || '', node.runPromptRefs || []) || node.promptDraftHtml);
     } else {
         if(!shouldRestorePromptDraft(node, node?.runPrompt || '')) {
             setPromptText('');
@@ -27946,7 +28221,11 @@ function smartDependencySignature(node){
     let request;
     if(node.type === 'smart-agent'){
         const provider = node.agentProvider || resolveAgentProviderId();
-        request = {
+        request = window.SmartExpertWorkflow?.is(node) ? {
+            message:[window.SmartExpertWorkflow.inputText(node), String(node.userPrompt || '').trim()].filter(Boolean).join('\n\n'),
+            workflow:window.SmartExpertWorkflow.executionSignature(node.expertWorkflow),
+            refs:promptNodeInputMediaForLLM(node)
+        } : {
             message:[agentNodeUpstreamText(node), String(node.userPrompt || '').trim()].filter(Boolean).join('\n\n'),
             system:String(node.systemPrompt || '').trim(), skills:agentSkills(node),
             provider,
@@ -27977,6 +28256,7 @@ function smartDependencySignature(node){
     return JSON.stringify(stable({type:node.type, request, inputs:smartDependencyInputs(node).map(input => input.id)}));
 }
 function smartDependencyHasResult(node){
+    if(window.SmartExpertWorkflow?.is(node)) return !node.runError && node.expertRunStatus === 'completed' && Boolean(String(node.outputText || '').trim());
     if(node.type === 'smart-agent') return Boolean(String(node.outputText || '').trim());
     if(node.runError || node.promptRunError) return false;
     if(node.type === 'smart-prompt') return Boolean(node.promptRunAt && String(node.text || '').trim());
@@ -28050,7 +28330,8 @@ async function runSmartNodeWithDependencies(target, executeTarget){
             active.owners?.add(target.id);
             return active.promise;
         }
-        if(!force && ((source.type === 'smart-agent' && smartDependencyHasResult(source))
+        if(!force && ((source.type === 'smart-agent' && smartDependencyHasResult(source)
+            && (!window.SmartExpertWorkflow?.is(source) || source.dependencyRunSignature === smartDependencySignature(source)))
             || (isSmartImageNode(source) && smartNodeHasDisplayResult(source)))
             && !(source.running || source.pending || source.queued || source.jimengPending || smartPendingTasks(source).length)){
             return Promise.resolve({ok:true, reused:true});
@@ -28092,6 +28373,7 @@ async function runSmartNodeWithDependencies(target, executeTarget){
                 const previousAgentOutput = node.type === 'smart-agent' ? node.outputText : null;
                 const result = await smartDependencyAwait(force ? executeTarget(node, signal) : executeSmartDependencyNode(node, signal), signal);
                 if(signal.aborted) throw smartDependencyAbortError();
+                if(result?.paused) return result;
                 if(result?.ok === false) throw new Error(result.error || '节点运行失败');
                 node = currentNode(node);
                 if(node.runError || node.promptRunError) throw new Error(node.runError || node.promptRunError);
@@ -28468,6 +28750,7 @@ async function runAgentNode(nodeId){
 }
 async function runAgentNodeDirect(nodeId, signal=null){
     const node = nodes.find(n => n.id === nodeId);
+    if(window.SmartExpertWorkflow?.is(node)) return window.SmartExpertWorkflow.runNode(node, signal);
     if(!node || node.type !== 'smart-agent' || node.running) return;
     const upstreamText = agentNodeUpstreamText(node);
     const message = [upstreamText, String(node.userPrompt || '').trim()].filter(Boolean).join('\n\n').trim();
@@ -28584,27 +28867,36 @@ function openPromptOptimizeModal(draft){
     references.replaceChildren();
     draft.images.slice(0, PROMPT_OPTIMIZER_IMAGE_MAX).forEach((url, index) => {
         const item = document.createElement('div');
+        item.className = 'prompt-optimize-reference';
         const link = document.createElement('a');
+        link.className = 'prompt-optimize-reference-image';
         link.href = url; link.target = '_blank'; link.rel = 'noopener';
         const img = document.createElement('img');
         img.src = url; img.alt = `查看图${index + 1}`;
         link.appendChild(img);
+        const fields = document.createElement('div');
+        fields.className = 'prompt-optimize-reference-fields';
+        const name = document.createElement('span');
+        name.className = 'prompt-optimize-reference-name';
+        name.textContent = `图${index + 1}`;
         const role = document.createElement('select');
         role.dataset.referenceIndex = index;
         role.setAttribute('aria-label', `图${index + 1}用途`);
         ['按原文理解','产品图','风格参考','版式参考'].forEach(value => role.add(new Option(value, value)));
-        item.append(link, document.createTextNode(`图${index + 1}`), role);
+        fields.append(name, role);
+        item.append(link, fields);
         references.appendChild(item);
     });
     if(promptOptimizeOriginal) promptOptimizeOriginal.value = draft.original || '';
     if(promptOptimizeCandidate) promptOptimizeCandidate.value = '';
     const totalImages = (draft.images || []).length;
     const imageCount = Math.min(totalImages, PROMPT_OPTIMIZER_IMAGE_MAX);
+    document.getElementById('promptOptimizeReferenceGroup').hidden = imageCount === 0;
     const imageLabel = totalImages > imageCount ? `${imageCount}/${totalImages}张参考图` : `${imageCount}张参考图`;
     if(promptOptimizeModalModel) promptOptimizeModalModel.textContent = `${draft.selection.provider} · ${draft.selection.model}${imageCount ? ` · ${imageLabel}` : ''}`;
-    if(promptOptimizeModalStatus) promptOptimizeModalStatus.textContent = imageCount ? `正在识别 ${imageLabel}并优化…` : '正在根据文字生成优化提示词…';
+    if(promptOptimizeModalStatus) promptOptimizeModalStatus.textContent = imageCount ? `已准备 ${imageLabel}，点击“开始优化”后发送` : '点击“开始优化”后发送提示词';
     if(promptOptimizeApply) promptOptimizeApply.disabled = true;
-    if(promptOptimizeRegenerate) promptOptimizeRegenerate.disabled = true;
+    if(promptOptimizeRegenerate){ promptOptimizeRegenerate.disabled = false; promptOptimizeRegenerate.textContent = '开始优化'; }
     promptOptimizeModal?.classList.add('open');
     refreshIcons();
 }
@@ -28711,7 +29003,6 @@ async function requestPromptOptimization(sourceText, draft=promptOptimizeDraft){
     const selectedModel = document.getElementById('promptOptimizeModel').value;
     if(selectedModel) draft.selection = JSON.parse(selectedModel);
     localStorage.setItem(PROMPT_OPTIMIZER_MODEL_KEY, JSON.stringify(draft.selection));
-    refreshPromptOptimizerModelSelect();
     const message = promptOptimizeMessage(sourceText, draft);
     stopPromptOptimizeRequest(draft);
     const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -28783,7 +29074,7 @@ async function requestPromptOptimization(sourceText, draft=promptOptimizeDraft){
         if(promptOptimizeCandidate){ promptOptimizeCandidate.value = optimized; promptOptimizeCandidate.disabled = false; promptOptimizeCandidate.focus(); }
         if(promptOptimizeModalStatus) promptOptimizeModalStatus.textContent = '优化完成，可编辑结果或填写意见继续优化。版本仅保留至关闭弹窗。';
         if(promptOptimizeApply) promptOptimizeApply.disabled = false;
-        if(promptOptimizeRegenerate) promptOptimizeRegenerate.disabled = false;
+        if(promptOptimizeRegenerate){ promptOptimizeRegenerate.disabled = false; promptOptimizeRegenerate.textContent = '从原文换一版'; }
         setPromptOptimizeStatus('优化结果待确认，原提示词未修改', 'loading');
     } catch(e) {
         if(!promptOptimizeDraft || promptOptimizeDraft.requestId !== requestId) return;
@@ -28792,7 +29083,7 @@ async function requestPromptOptimization(sourceText, draft=promptOptimizeDraft){
             ? '优化超过 180 秒，已自动停止。可以减少参考图或更换模型后重新生成。'
             : (e?.name === 'AbortError' ? '优化已取消，原提示词未修改' : String(e?.message || '优化失败').slice(0, 180));
         if(promptOptimizeModalStatus) promptOptimizeModalStatus.textContent = message;
-        if(promptOptimizeRegenerate) promptOptimizeRegenerate.disabled = false;
+        if(promptOptimizeRegenerate){ promptOptimizeRegenerate.disabled = false; promptOptimizeRegenerate.textContent = draft.versions.length ? '从原文换一版' : '开始优化'; }
         setPromptOptimizeStatus(draft.timeoutTriggered ? '优化超时，原提示词未修改' : '优化失败，原提示词未修改', 'error');
     } finally {
         if(promptOptimizeDraft && promptOptimizeDraft.requestId === requestId){
@@ -28813,7 +29104,7 @@ async function optimizeCurrentPrompt(){
     const current = String(request.displayPrompt || request.prompt || promptPlainText() || '').trim();
     if(!current){ toast('请先输入需要优化的提示词'); return; }
     const selection = promptOptimizerSelection();
-    if(!selection.provider || !selection.model){ toast('请先在右上角选择优化模型'); return; }
+    if(!selection.provider || !selection.model){ toast('请先在 API 设置中配置聊天模型'); return; }
     const optimizerImages = imageRefsOnly(request.refs || []).map(item => item.url).filter(Boolean);
     const optimizerVideos = videoRefsOnly(request.refs || []).map(item => item.url).filter(Boolean);
     const sentImageCount = Math.min(optimizerImages.length, PROMPT_OPTIMIZER_IMAGE_MAX);
@@ -28827,10 +29118,7 @@ async function optimizeCurrentPrompt(){
         referenceNote:sentImageCount ? `\n\n本次请求实际附带前 ${sentImageCount} 张参考图片。请逐张识别图片内容，严格保留提示词中的图1、图2等编号和对应关系，不要删除、猜测或重新编号。` : ''
     };
     openPromptOptimizeModal(draft);
-    setPromptOptimizeStatus(draft.images.length
-        ? `正在识别 ${draft.images.length} 张参考图并优化，原提示词未修改`
-        : `正在用 ${selection.model} 优化，原提示词未修改`, 'loading');
-    requestPromptOptimization(current, draft);
+    setPromptOptimizeStatus('等待确认优化，原提示词未修改', '');
 }
 function applyPromptOptimizeCandidate(){
     const draft = promptOptimizeDraft;
@@ -28838,7 +29126,11 @@ function applyPromptOptimizeCandidate(){
     if(!draft || draft.abortController || !optimized){ toast('请先生成或填写优化后的提示词'); return; }
     const node = nodes.find(item => item.id === draft.nodeId);
     if(!node){ toast('原生图节点已不存在'); return; }
+    if(activeComposerNode()?.id === node.id) savePromptDraftForCurrent();
     capturePendingUndo();
+    node.promptBeforeLastOptimizationSaved = true;
+    node.promptBeforeLastOptimizationHtml = node.promptDraftHtml || '';
+    node.promptBeforeLastOptimizationText = node.promptDraftText || '';
     if(activeComposerNode()?.id === node.id){
         setPromptText(optimized);
         restorePromptMentionTokens(draft.mentionTokens || []);
@@ -28846,17 +29138,46 @@ function applyPromptOptimizeCandidate(){
     } else {
         setPromptDraftForNode(node, optimized);
     }
+    node.promptDraftTouched = true;
     node.promptLastOptimizedAt = Date.now();
     const appliedVersion = draft.versions[draft.versionIndex] || draft.selection;
     node.promptLastOptimizerProvider = appliedVersion.provider;
     node.promptLastOptimizerModel = appliedVersion.model;
     commitPendingUndo();
     scheduleSave();
+    syncPromptOptimizeRestoreButton(node);
+    syncComposerPromptCompactPreview(node);
     promptInput?.classList.remove('prompt-optimized-highlight');
     if(promptInput){ void promptInput.offsetWidth; promptInput.classList.add('prompt-optimized-highlight'); promptInput.scrollTop = 0; }
     setPromptOptimizeStatus(`已确认替换当前提示词 · ${appliedVersion.model}`, 'success');
     closePromptOptimizeModal(false);
     toast('已替换当前提示词');
+}
+function syncPromptOptimizeRestoreButton(node=activeComposerNode()){
+    const button = document.getElementById('promptOptimizeRestore');
+    if(button) button.hidden = !node?.promptBeforeLastOptimizationSaved;
+}
+function restorePromptBeforeLastOptimization(){
+    const node = activeComposerNode();
+    if(!node?.promptBeforeLastOptimizationSaved) return;
+    savePromptDraftForCurrent();
+    capturePendingUndo();
+    node.promptDraftHtml = node.promptBeforeLastOptimizationHtml || escapeHtml(node.promptBeforeLastOptimizationText || '');
+    node.promptDraftText = node.promptBeforeLastOptimizationText || '';
+    node.promptDraftTouched = true;
+    delete node.promptBeforeLastOptimizationHtml;
+    delete node.promptBeforeLastOptimizationText;
+    delete node.promptBeforeLastOptimizationSaved;
+    delete node.promptLastOptimizedAt;
+    delete node.promptLastOptimizerProvider;
+    delete node.promptLastOptimizerModel;
+    promptInput.innerHTML = node.promptDraftHtml;
+    commitPendingUndo();
+    scheduleSave();
+    syncPromptOptimizeRestoreButton(node);
+    syncComposerPromptCompactPreview(node);
+    setPromptOptimizeStatus('已恢复替换前的提示词', 'success');
+    toast('已恢复替换前的提示词');
 }
 function smartPromptRequestsCompositeLayout(prompt){
     const text=String(prompt||'').trim();
@@ -30195,6 +30516,7 @@ function createNodeFromMenu(type){
     if(type === 'group') created = createSmartGroupNode(p.x - 170, p.y - 110);
     else if(type === 'prompt') created = createPromptNode(p.x - 158, p.y - 97);
     else if(type === 'agent') created = createAgentNode(p.x - SMART_AGENT_DEFAULT_WIDTH / 2, p.y - SMART_AGENT_DEFAULT_HEIGHT / 2);
+    else if(type === 'expert-workflow') created = createAgentNode(p.x - 185, p.y - 180, {mode:'expert-workflow'});
     else if(type === 'table') created = createTableNode(p.x - 250, p.y - 180);
     else if(type === 'timeline') created = createTimelineNode(p.x - 260, p.y - 280);
     else if(type === 'loop') created = createLoopNode(p.x - 190, p.y - 270, {batchUiMode:'paired'});
@@ -30488,7 +30810,7 @@ window.onmousemove = e => {
     }
     // 普通悬停只保留一帧一次的世界坐标，避免高刷新率鼠标在空闲状态下
     // 连续读取 world 的屏幕矩形；正在进行画布手势时仍即时更新。
-    if(smartMinimapDrag || portDragState || selectionState || resizeState || thumbDragState || dragState){
+    if(smartMinimapDrag || portDragState || selectionState || thumbDragState || dragState){
         lastMouseWorld = screenToWorld(e);
     } else {
         scheduleLastMouseWorld(e);
@@ -30586,7 +30908,7 @@ window.onmousemove = e => {
         const dx = (e.clientX - resizeState.startX) / viewport.scale;
         const dy = (e.clientY - resizeState.startY) / viewport.scale;
         const minW = isProductFidelityNode(node) ? 760 : node.type === 'smart-agent' ? 360 : node.type === 'smart-prompt' ? 260 : node.type === 'smart-loop' ? 252 : node.type === SMART_COMFY_WORKFLOW_NODE_TYPE ? 340 : node.type === 'smart-group' ? SMART_GROUP_MIN_WIDTH : isSmartColorNode(node) ? 320 : isSmartTableNode(node) ? 380 : isSmartTimelineNode(node) ? 420 : 48;
-        const minH = isProductFidelityNode(node) ? 650 : node.type === 'smart-agent' ? 360 : node.type === 'smart-prompt' ? 170 : node.type === 'smart-loop' ? 132 : node.type === SMART_COMFY_WORKFLOW_NODE_TYPE ? 320 : node.type === 'smart-group' ? SMART_GROUP_MIN_HEIGHT : isSmartColorNode(node) ? 360 : isSmartTableNode(node) ? 280 : isSmartTimelineNode(node) ? 360 : 48;
+        const minH = isProductFidelityNode(node) ? 650 : node.type === 'smart-agent' ? 360 : node.type === 'smart-prompt' ? resizeState.promptMinH : node.type === 'smart-loop' ? 132 : node.type === SMART_COMFY_WORKFLOW_NODE_TYPE ? 320 : node.type === 'smart-group' ? SMART_GROUP_MIN_HEIGHT : isSmartColorNode(node) ? 360 : isSmartTableNode(node) ? 280 : isSmartTimelineNode(node) ? 360 : 48;
         if(isSmartDrawingBoardNode(node) && resizeState.drawingLayout && window.SmartDrawingBoard?.resizeNode){
             const widthDelta = Math.abs(dx / resizeState.startW) >= Math.abs(dy / resizeState.startH)
                 ? dx : dy * resizeState.startW / resizeState.startH;
@@ -30652,6 +30974,7 @@ window.onmousemove = e => {
             scheduleNodeElementResizeUpdate(node);
             return;
         }
+        if(node.type === 'smart-prompt') node.promptManualSize = true;
         node.w = Math.max(minW, Math.round(resizeState.startW + dx));
         node.h = Math.max(minH, Math.round(resizeState.startH + dy));
         if(isSmartImageNode(node)) node.manualSize = true;
@@ -30861,7 +31184,6 @@ window.onmouseup = e => {
         setSmartCanvasPanningMediaMode(false);
         // 松手后同步最终平移位置。
         applyViewport({scheduleMinimap:false});
-        scheduleConnectionLayerRefresh();
         scheduleCanvasViewportRender();
         if(Number.isFinite(e.clientX) && Number.isFinite(e.clientY)){
             linkPortPointer = {x:e.clientX, y:e.clientY};
@@ -31692,30 +32014,17 @@ if(promptOptimizeBtn) promptOptimizeBtn.addEventListener('click', event => {
     event.stopPropagation();
     optimizeCurrentPrompt();
 });
+document.getElementById('promptOptimizeRestore')?.addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    restorePromptBeforeLastOptimization();
+});
 // Keep text selection, native scrolling and control clicks inside the overlay from
 // becoming canvas pan/zoom gestures. The canvas itself keeps its normal handlers.
 ['pointerdown', 'mousedown', 'dblclick', 'click'].forEach(type => {
     composer?.addEventListener(type, event => event.stopPropagation());
 });
 composer?.addEventListener('wheel', event => event.stopPropagation(), {capture:true, passive:true});
-if(promptOptimizerModelButton) promptOptimizerModelButton.addEventListener('click', event => {
-    event.preventDefault();
-    event.stopPropagation();
-    togglePromptOptimizerModelMenu();
-});
-if(promptOptimizerModelMenu) promptOptimizerModelMenu.addEventListener('click', event => {
-    const option = event.target.closest?.('.prompt-optimizer-model-option');
-    if(!option) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const selected = {provider:String(option.dataset.provider || ''), model:String(option.dataset.model || '')};
-    if(selected.provider && selected.model){
-        localStorage.setItem(PROMPT_OPTIMIZER_MODEL_KEY, JSON.stringify(selected));
-        refreshPromptOptimizerModelSelect();
-        closePromptOptimizerModelMenu();
-        toast(`优化模型：${selected.model}`);
-    }
-});
 if(promptOptimizeModalClose) promptOptimizeModalClose.onclick = () => closePromptOptimizeModal(true);
 if(promptOptimizeCancel) promptOptimizeCancel.onclick = () => closePromptOptimizeModal(true);
 if(promptOptimizeApply) promptOptimizeApply.onclick = applyPromptOptimizeCandidate;
@@ -31732,19 +32041,18 @@ document.getElementById('promptOptimizeCopy').onclick = async () => {
     catch(error){ toast('复制失败，请选中结果手动复制'); }
 };
 promptOptimizeCandidate?.addEventListener('input', () => syncPromptOptimizeControls(Boolean(promptOptimizeDraft?.abortController)));
-if(promptOptimizeModal) promptOptimizeModal.addEventListener('mousedown', event => {
+promptOptimizeModal?.addEventListener('mousedown', event => event.stopPropagation());
+promptOptimizeModal?.addEventListener('pointerdown', event => event.stopPropagation());
+promptOptimizeModal?.addEventListener('click', event => {
+    event.stopPropagation();
     if(event.target === promptOptimizeModal) closePromptOptimizeModal(true);
 });
 if(promptOptimizeModal) promptOptimizeModal.addEventListener('wheel', event => {
     // 弹窗内的文本区独立滚动，禁止滚轮继续冒泡到画布缩放层。
     event.stopPropagation();
 }, {passive:true});
-document.addEventListener('mousedown', event => {
-    if(promptOptimizerModelControl && !promptOptimizerModelControl.contains(event.target)) closePromptOptimizerModelMenu();
-});
 document.addEventListener('keydown', event => {
     if(event.key === 'Escape'){
-        closePromptOptimizerModelMenu();
         if(promptOptimizeModal?.classList.contains('open')) closePromptOptimizeModal(true);
     }
 });
@@ -31753,8 +32061,13 @@ promptInput.addEventListener('mouseover', event => {
     if(!token) return;
     // 音频没有可预览的图像，不能把音频 URL 塞进 <img>（会显示破损图标），直接不弹悬浮预览。
     if(token.dataset.kind === 'audio'){ mentionPreview.style.display = 'none'; return; }
-    let media = mentionPreview.querySelector('img,video');
     const isVideo = token.dataset.kind === 'video' || isVideoMediaItem({url:token.dataset.url, kind:token.dataset.kind});
+    if(!isVideo){
+        mentionPreview.style.display = 'none';
+        showPaintInputRefHover(token, {url:token.dataset.url});
+        return;
+    }
+    let media = mentionPreview.querySelector('img,video');
     if(isVideo && media?.tagName?.toLowerCase() !== 'video'){
         media?.replaceWith(document.createElement('video'));
         media = mentionPreview.querySelector('video');
@@ -31783,6 +32096,7 @@ promptInput.addEventListener('mouseover', event => {
 });
 promptInput.addEventListener('mouseout', event => {
     if(event.target.closest?.('.mention-image-token')){
+        hidePaintInputRefHover();
         mentionPreview.style.display = 'none';
         const media = mentionPreview.querySelector('img,video');
         media?.pause?.();

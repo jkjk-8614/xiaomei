@@ -2,7 +2,7 @@
 function imageSpaceMatches(item, filters){
     const c = item.classification || {}, categories = c.categories || {}, tags = c.tags || [];
     const ext = String(item.url || item.name || '').split('?')[0].split('.').pop().toLowerCase();
-    const kind = ['image','video','audio','text'].includes(item.kind) ? item.kind : (/^(mp4|webm|mov|m4v|avi|mkv)$/.test(ext) ? 'video' : 'image');
+    const kind = ['image','video','audio','text'].includes(item.kind) ? item.kind : (/^(mp4|webm|mov|m4v|avi|mkv|flv)$/.test(ext) ? 'video' : /^(mp3|wav|flac|ogg|m4a|aac)$/.test(ext) ? 'audio' : 'image');
     if(filters.kind && filters.kind !== kind) return false;
     if(filters.format && !filters.format.toLowerCase().split(',').includes(ext)) return false;
     for(const dimension of ['color','materials','style','use_case','tags']){
@@ -19,10 +19,10 @@ function imageSpaceMatches(item, filters){
     const text = [item.name,item.url,item.folder,item.rel,item.file,c.summary,...tags,...Object.values(categories).flat()].join(' ').toLowerCase();
     return String(filters.query || '').trim().toLowerCase().split(/\s+/).every(word => text.includes(word));
 }
-const imageSpaceState = {filters:{assets:{},local:{},generated:{}}, all:{assets:false,local:false,generated:false}, open:false, collections:[], collectionId:'', editor:null};
+const imageSpaceState = {filters:{assets:{},upload:{},local:{},generated:{}}, all:{assets:false,upload:false,local:false,generated:false}, open:false, collections:[], collectionId:'', editor:null};
 const imageSpaceDimensions = {environment:'环境',scene:'场景',space:'空间',subject:'主体',model:'模特',people:'人物',style:'风格',lighting:'光影',color:'色彩',composition:'构图',mood:'氛围',use_case:'用途',objects:'物体',materials:'材质',quality:'质量'};
-function imageSpaceSource(){ return ['assets','local','generated'].includes(activeTab) ? activeTab : ''; }
-function imageSpaceQuery(){ return activeTab === 'assets' ? assetQuery : activeTab === 'local' ? localUploadQuery : generatedAssetsState.query; }
+function imageSpaceSource(){ return activeTab === 'assets' && uploadAssetsState.view === 'disk' ? 'upload' : ['assets','local','generated'].includes(activeTab) ? activeTab : ''; }
+function imageSpaceQuery(){ return imageSpaceSource() === 'upload' ? uploadAssetsState.query : activeTab === 'assets' ? assetQuery : activeTab === 'local' ? localUploadQuery : generatedAssetsState.query; }
 function imageSpaceFilters(){ return {...imageSpaceState.filters[imageSpaceSource()],query:imageSpaceQuery()}; }
 function imageSpaceReadFilterForm(){
     const form = root.querySelector('[data-space-form]');
@@ -44,15 +44,17 @@ function imageSpaceAskCollectionName(value=''){
     });
 }
 function imageSpaceSetQuery(value){
-    if(activeTab === 'assets') assetQuery = value;
+    if(imageSpaceSource() === 'upload') uploadAssetsState.query = value;
+    else if(activeTab === 'assets') assetQuery = value;
     else if(activeTab === 'local') localUploadQuery = value;
     else generatedAssetsState.query = value;
 }
 function imageSpaceCollectionPayload(name){
     const source = imageSpaceSource(), all = imageSpaceState.all[source];
     const filters = imageSpaceFilters();
-    if(source === 'generated' && generatedAssetsState.mediaType !== 'all') filters.kind = generatedAssetsState.mediaType;
-    return {name,source,library_id:source === 'assets' ? activeAssetLibraryId : '',category_id:source === 'assets' && !all ? activeAssetCategoryId : '',folder:all ? '' : source === 'local' ? activeLocalUploadFolder : source === 'generated' ? generatedAssetsState.folder : '',filters};
+    const mediaType = source === 'upload' ? uploadAssetsState.mediaType : source === 'generated' ? generatedAssetsState.mediaType : source === 'local' ? localUploadMediaType : 'all';
+    if(mediaType !== 'all') filters.kind = mediaType;
+    return {name,source,library_id:source === 'assets' ? activeAssetLibraryId : '',category_id:source === 'assets' && !all ? activeAssetCategoryId : '',folder:all ? '' : source === 'local' ? activeLocalUploadFolder : source === 'generated' ? generatedAssetsState.folder : source === 'upload' ? uploadAssetsState.folder || '' : '',project_id:source === 'upload' && !all ? uploadAssetsState.projectId : '',canvas_id:source === 'upload' && !all ? uploadAssetsState.canvasId : '',filters};
 }
 function renderImageSpaceCollections(){
     const source = imageSpaceSource();
@@ -62,7 +64,7 @@ function renderImageSpaceFilterBar(){
     const source = imageSpaceSource(), f = imageSpaceState.filters[source];
     const option = (value,label,current) => `<option value="${value}" ${String(current || '') === value ? 'selected' : ''}>${label}</option>`;
     const select = (key,label,values) => `<label>${label}<select data-space-filter="${key}">${values.map(([v,l]) => option(v,l,f[key])).join('')}</select></label>`;
-    const available = source === 'assets' ? assetCategories().flatMap(c => c.items || []) : source === 'local' ? localAssets : generatedAssetsState.items;
+    const available = source === 'assets' ? assetCategories().flatMap(c => c.items || []) : source === 'upload' ? uploadAssetsState.items : source === 'local' ? localAssets : generatedAssetsState.items;
     const field = (key,label) => {
         const tags = [...new Set(available.flatMap(item => key === 'tags' ? item.classification?.tags || [] : item.classification?.categories?.[key] || []))].sort();
         return `<label>${label}<input data-space-filter="${key}" list="space-${key}" value="${escapeAttr(f[key] || '')}" placeholder="不限"><datalist id="space-${key}">${tags.map(tag => `<option value="${escapeAttr(tag)}"></option>`).join('')}</datalist></label>`;
@@ -85,16 +87,16 @@ function renderImageSpaceFilterBar(){
     ${select('min_edge','图片尺寸',[['','不限尺寸'],['1000','短边至少 1000 px'],['2000','短边至少 2000 px'],['4000','短边至少 4000 px']])}
     ${select('format','文件格式',[['','全部格式'],['png','PNG'],['jpg,jpeg','JPG / JPEG'],['webp','WebP'],['gif','GIF'],['mp4','MP4']])}
     ${select('annotated','分类情况',[['','全部素材'],['manual','手动编辑过'],['missing','尚未分类']])}</div><p class="image-space-note">文字条件可输入多个词，用逗号隔开，匹配其中任意一个。</p></details>
-    <div class="space-filter-footer"><label class="image-space-scope"><input type="checkbox" data-space-all ${imageSpaceState.all[source] ? 'checked' : ''}>${source === 'assets' ? '整个资产库' : '全部文件夹'}</label><button class="asset-btn primary" type="submit">应用</button></div></form>` : ''}</div>`;
+    <div class="space-filter-footer"><label class="image-space-scope"><input type="checkbox" data-space-all ${imageSpaceState.all[source] ? 'checked' : ''}>${source === 'assets' ? '整个资产库' : source === 'upload' ? '全部项目与文件夹' : '全部文件夹'}</label><button class="asset-btn primary" type="submit">应用</button></div></form>` : ''}</div>`;
 }
 function renderImageSpaceClassification(item){
     const c = item.classification || {}, manual = Object.keys(c.manual || {}).length;
     return `<div class="detail-caption-card image-space-classification"><div class="detail-caption-head"><strong>分类与标签</strong><button class="asset-btn" type="button" data-space-edit="${escapeAttr(item.id)}">编辑</button></div><div class="detail-classification-body">${c.summary ? `<p>${escapeHtml(c.summary)}</p>` : ''}${(c.flat || []).map(t => `<span class="classification-chip">${escapeHtml(t.label)} · ${escapeHtml(t.tag)}</span>`).join('') || '<span class="classification-empty">暂无分类，可手动填写或使用智能分类。</span>'}<p class="image-space-note">${manual ? '人工修订已保留' : ''}</p></div></div>`;
 }
-function imageSpaceCurrentItem(id){ return activeTab === 'assets' ? findAssetItem(id) : activeTab === 'local' ? findLocalUpload(id) : findGeneratedAsset(id); }
+function imageSpaceCurrentItem(id){ return imageSpaceSource() === 'upload' ? findUploadAsset(id) : activeTab === 'assets' ? findAssetItem(id) : activeTab === 'local' ? findLocalUpload(id) : findGeneratedAsset(id); }
 function openImageSpaceEditor(item){
     const c = item.classification || {}, manual = c.manual || {};
-    imageSpaceState.editor = {item,source:activeTab};
+    imageSpaceState.editor = {item,source:imageSpaceSource()};
     document.getElementById('imageSpaceEditor')?.remove();
     const dialog = document.createElement('dialog');
     dialog.id = 'imageSpaceEditor';
@@ -138,13 +140,14 @@ function openImageSpaceEditor(item){
     document.body.append(dialog); dialog.showModal();
 }
 async function imageSpaceRefresh(){
-    selectedAssetIds.clear(); selectedLocalUploadIds.clear(); generatedAssetsState.selectedIds.clear();
-    if(activeTab === 'generated') await loadGeneratedAssets();
+    selectedAssetIds.clear(); selectedLocalUploadIds.clear(); generatedAssetsState.selectedIds.clear(); uploadAssetsState.selectedIds?.clear();
+    if(imageSpaceSource() === 'upload') await loadUploadAssets();
+    else if(activeTab === 'generated') await loadGeneratedAssets();
     else render();
 }
 async function handleImageSpaceClick(target){
     if(target.closest('[data-space-toggle]')){ imageSpaceState.open = !imageSpaceState.open; render(); return true; }
-    if(target.closest('[data-space-clear]')){ imageSpaceState.filters[activeTab] = {}; imageSpaceSetQuery(''); imageSpaceState.collectionId = ''; if(activeTab === 'generated') generatedAssetsState.mediaType = 'all'; await imageSpaceRefresh(); return true; }
+    if(target.closest('[data-space-clear]')){ imageSpaceState.filters[imageSpaceSource()] = {}; imageSpaceSetQuery(''); imageSpaceState.collectionId = ''; if(activeTab === 'generated') generatedAssetsState.mediaType = 'all'; else if(imageSpaceSource() === 'upload') uploadAssetsState.mediaType = 'all'; else if(activeTab === 'local') localUploadMediaType = 'all'; await imageSpaceRefresh(); return true; }
     const edit = target.closest('[data-space-edit]');
     if(edit){ const item = imageSpaceCurrentItem(edit.dataset.spaceEdit); if(item) openImageSpaceEditor(item); return true; }
     const collection = target.closest('[data-space-collection]');
@@ -153,11 +156,12 @@ async function handleImageSpaceClick(target){
         if(!c) return true;
         if(c.source === 'assets' && (!assetLibraries().some(l => l.id === c.library_id) || c.category_id && !assetLibraries().find(l => l.id === c.library_id)?.categories?.some(cat => cat.id === c.category_id))) throw new Error('该合集的资产库或分组已被删除，请重新保存筛选条件。');
         imageSpaceState.collectionId = c.id;
-        imageSpaceState.filters[activeTab] = {...c.filters}; delete imageSpaceState.filters[activeTab].query;
+        imageSpaceState.filters[imageSpaceSource()] = {...c.filters}; delete imageSpaceState.filters[imageSpaceSource()].query;
         imageSpaceSetQuery(c.filters.query || '');
-        imageSpaceState.all[activeTab] = activeTab === 'assets' ? !c.category_id : !c.folder;
-        if(activeTab === 'assets'){ activeAssetLibraryId = c.library_id; activeAssetCategoryId = c.category_id; }
-        else if(activeTab === 'local') activeLocalUploadFolder = c.folder;
+        imageSpaceState.all[imageSpaceSource()] = c.source === 'assets' ? !c.category_id : c.source === 'upload' ? !(c.project_id || c.canvas_id || c.folder) : !c.folder;
+        if(c.source === 'assets'){ activeAssetLibraryId = c.library_id; activeAssetCategoryId = c.category_id; }
+        if(c.source === 'upload'){ uploadAssetsState.projectId = c.project_id || ''; uploadAssetsState.canvasId = c.canvas_id || ''; uploadAssetsState.folder = c.folder || ''; uploadAssetsState.mediaType = 'all'; }
+        else if(activeTab === 'local'){ activeLocalUploadFolder = c.folder; localUploadMediaType = 'all'; }
         else { generatedAssetsState.folder = c.folder; generatedAssetsState.mediaType = 'all'; }
         imageSpaceState.open = false;
         await imageSpaceRefresh(); return true;

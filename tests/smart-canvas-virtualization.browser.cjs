@@ -74,16 +74,30 @@ test('smart canvas keeps only nearby nodes and connections in the DOM', { timeou
     })), { nearPreserved: true, otherPreserved: true, nearPending: true });
 
     await page.evaluate(() => {
+        window.viewportRenderCalls = 0;
+        const originalRender = render;
+        window.render = (...args) => {
+            window.viewportRenderCalls++;
+            return originalRender(...args);
+        };
+        viewport = { x: -120, y: 0, scale: 1 };
+        applyViewport();
+        scheduleCanvasViewportRender();
+    });
+    await page.waitForTimeout(80);
+    assert.equal(await page.evaluate(() => window.viewportRenderCalls), 0);
+    await page.evaluate(() => {
         viewport = { x: -9700, y: 0, scale: 1 };
         applyViewport();
-        render();
+        scheduleCanvasViewportRender();
     });
     await page.waitForTimeout(80);
     result = await page.evaluate(() => ({
         nodeIds: [...world.querySelectorAll('.image-node')].map(el => el.dataset.id),
         connectionCount: world.querySelectorAll('.conn-group').length,
-        dataCount: nodes.length
+        dataCount: nodes.length,
+        viewportRenderCalls: window.viewportRenderCalls
     }));
-    assert.deepEqual(result, { nodeIds: ['far'], connectionCount: 1, dataCount: 3 });
+    assert.deepEqual(result, { nodeIds: ['far'], connectionCount: 1, dataCount: 3, viewportRenderCalls: 1 });
     assert.deepEqual(errors, []);
 });

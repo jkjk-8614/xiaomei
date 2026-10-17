@@ -39,7 +39,7 @@ def build_app(directory):
     assert len(selected) == len(names)
     ns = dict(globals(), app=app, DATA_DIR=str(root), now_ms=lambda: int(time.time()*1000),
               _IMAGE_SPACE_DIMENSIONS={}, ASSET_CLASSIFICATION_DIMENSION_NAMES={'color':'色彩','materials':'材质','subject':'主体','style':'风格','use_case':'用途'},
-              STORAGE_MEDIA_EXTS={'.png'}, STORAGE_VIDEO_EXTS={'.mp4'}, Request=Any)
+              STORAGE_MEDIA_EXTS={'.png'}, STORAGE_VIDEO_EXTS={'.mp4'}, STORAGE_AUDIO_EXTS={'.mp3'}, Request=Any)
     library = {'libraries':[{'id':'default','name':'默认资产库','categories':[{'id':'frames','name':'相框','type':'image','items':[]}]}]}
     ns['load_asset_library'] = lambda: copy.deepcopy(library)
     def save_library(value):
@@ -57,6 +57,8 @@ def build_app(directory):
     ns['_local_upload_classification_path'] = lambda name: str(pathlib.Path(safe_path(name)).with_suffix('.classification.json'))
     ns['storage_kind_roots'] = lambda kind: [str(root)]
     ns['storage_file_path'] = lambda kind, rel: safe_path(rel)
+    ns['_storage_folder_orders'] = lambda kind: {}
+    ns['_storage_folder_sort_key'] = lambda path, orders: path.casefold()
     ns['output_file_from_url'] = lambda url: safe_path(url.removeprefix('/fixtures/'))
     def storage_item(kind, source_root, path, include_dimensions=False):
         rel = pathlib.Path(path).relative_to(root).as_posix()

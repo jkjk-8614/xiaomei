@@ -546,14 +546,12 @@ html[data-studio-skin] body .asset-toggle { right: 22px; }
 html[data-studio-skin] body .smart-log-toggle { right: 130px; }
 html[data-studio-skin] body .smart-shortcut-toggle { right: 238px; }
 html[data-studio-skin] body .smart-workflow-toggle { right: 346px; }
-html[data-studio-skin] body .prompt-optimizer-model-control { right: 454px; }
 
 @media (max-width: 900px) {
     html[data-studio-skin] body .asset-toggle { right: 14px; }
     html[data-studio-skin] body .smart-log-toggle { right: 62px; }
     html[data-studio-skin] body .smart-shortcut-toggle { right: 110px; }
     html[data-studio-skin] body .smart-workflow-toggle { right: 158px; }
-    html[data-studio-skin] body .prompt-optimizer-model-control { right: 14px; }
 }
 
 /* 共享画布模式仍由原有规则控制，不让固定定位覆盖访客只读界面。 */

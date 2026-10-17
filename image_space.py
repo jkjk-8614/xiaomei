@@ -30,7 +30,8 @@ def matches_filters(item, filters):
     ext = os.path.splitext(str(item.get("url") or item.get("name") or "").split("?")[0])[1].lower().lstrip(".")
     kind = item.get("kind")
     if kind not in {"image", "video", "audio", "text"}:
-        kind = "video" if ext in {"mp4", "webm", "mov", "m4v", "avi", "mkv"} else "image"
+        kind = ("video" if ext in {"mp4", "webm", "mov", "m4v", "avi", "mkv", "flv"}
+                else "audio" if ext in {"mp3", "wav", "flac", "ogg", "m4a", "aac"} else "image")
     if filters.get("kind") and kind != filters["kind"]:
         return False
     if filters.get("format") and ext not in filters["format"].lower().split(","):

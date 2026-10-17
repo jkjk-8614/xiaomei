@@ -1731,6 +1731,16 @@ body.detail-long-preview-open { overflow: hidden; }
 .page-context-heading button { width: 25px; height: 25px; border: 1px solid #dce6f2; border-radius: 7px; background: #fff; color: #5377af; font-size: 16px; line-height: 1; }
 .page-context-heading button:hover { border-color: #b7cbf3; background: #f4f8ff; color: #2468d7; }
 .page-context-card p { margin: 8px 0 0; color: #5c6f87; font-size: 11px; line-height: 1.55; }
+.product-info-content.has-data.is-marketplace { display: grid; margin-bottom: 10px; }
+.info-body.is-marketplace:not(.is-hidden) { display: flex; flex-direction: column; }
+.info-body.is-marketplace .product-summary { order: 1; }
+.info-body.is-marketplace .resource-list { order: 2; padding-top: 0; border-top: 0; }
+.info-body.is-marketplace .product-info-content { order: 3; margin-top: 10px; }
+.is-marketplace .info-kv strong { white-space: normal; overflow-wrap: anywhere; }
+.marketplace-image-preview { display: grid; grid-template-columns: repeat(auto-fill, minmax(66px, 1fr)); gap: 7px; margin-top: 10px; }
+.marketplace-image-preview img { width: 100%; height: 72px; object-fit: contain; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
+.marketplace-review-preview { display: grid; gap: 6px; margin-top: 10px; }
+.marketplace-review-preview p { margin: 0; padding: 8px 10px; border-radius: 7px; background: var(--assistant-surface, #f7f9fc); color: var(--assistant-ink, #263c59); font-size: 12px; line-height: 1.5; }
 .page-context-references { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
 .page-context-reference { padding: 4px 7px; border: 1px solid #d7e3f7; border-radius: 10px; background: #f7faff; color: #3d6fbd; font-size: 10px; }
 .site-quick-grid { margin-top: 0; }

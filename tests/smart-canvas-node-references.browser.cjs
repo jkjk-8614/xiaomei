@@ -183,3 +183,43 @@ test('Prompt references share smooth sorting and model input order; sorting supp
     await page.screenshot({path:path.join(artifacts,'references.png')});
     console.log(`Preview image: ${path.join(artifacts,'references.png')}`);
 });
+
+test('@ input images exclude the current generated result and preview at input thumbnail size', {timeout:40000}, async t => {
+    const {page} = await fixture(t, 'smart-paint');
+    await page.addStyleTag({content:'#canvasNavPanel {display:none !important}'});
+    await page.evaluate(() => {
+        const target = nodes.find(node => node.id === 'target');
+        target.images = [{url:'/fixture-images/generated.png',name:'Generated',kind:'image'}];
+        target.runAt = Date.now();
+        selectedId = target.id;
+        updateComposer();
+    });
+    await page.locator('#promptInput').fill('＠');
+    await page.locator('#mentionPicker.open').waitFor({state:'visible'});
+    const candidates = await page.evaluate(() => mentionPicker._items.map(item => item.url));
+    assert.deepEqual(candidates, originalUrls);
+    await page.evaluate(() => insertMentionToken(mentionPicker._items[2]));
+    assert.ok(!(await page.locator('#promptInput').innerText()).includes('＠'), 'the full-width trigger is replaced by the image token');
+    const token = page.locator('#promptInput .mention-image-token').last();
+    await token.hover();
+    await page.locator('.paint-input-ref-hover').waitFor({state:'visible'});
+    const size = await page.locator('.paint-input-ref-hover img').evaluate(image => ({width:image.getBoundingClientRect().width,height:image.getBoundingClientRect().height}));
+    assert.ok(size.width >= 400 && size.height >= 400, `@ preview matches the large input reference preview: ${JSON.stringify(size)}`);
+    await page.mouse.move(10, 10);
+    await page.locator('.paint-input-ref-hover').waitFor({state:'hidden'});
+    const submission = await page.evaluate(async () => {
+        const target = nodes.find(node => node.id === 'target');
+        savePromptDraftForCurrent();
+        const request = buildPromptRequestForNode(target, null);
+        let payload;
+        const original = XiaomeiImageTaskClient.createImageTask;
+        XiaomeiImageTaskClient.createImageTask = async value => { payload = value; return {task_id:'mention-test-task'}; };
+        try { await runApiGeneration(request.prompt, request.refs, {provider_id:'fixture',model:'fixture-image',count:1}); }
+        finally { XiaomeiImageTaskClient.createImageTask = original; }
+        return {prompt:payload.prompt,refs:payload.reference_images.map(ref => ref.url)};
+    });
+    assert.deepEqual(submission.refs, originalUrls, 'the selected @ image reaches the model in the visible input order');
+    assert.match(submission.prompt, /图3：C/);
+    assert.match(submission.prompt, /图3/);
+    assert.ok(!submission.refs.includes('/fixture-images/generated.png'));
+});

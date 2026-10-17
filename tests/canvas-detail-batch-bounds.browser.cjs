@@ -49,12 +49,12 @@ test('detail batch outer frame follows all sections and resized copy fields', { 
                 sourceHeight:el.querySelector('[data-loop-detail-text]').offsetHeight, sourceStyle:el.querySelector('[data-loop-detail-text]').style.height,
                 manualOpen:el.querySelector('.loop-detail-manual').open,
                 contained:blocks.every(box => box.top >= outer.top && box.bottom <= outer.bottom),
-                footerGap:outer.bottom - el.querySelector('.loop-paired-actions').getBoundingClientRect().bottom};
+                footerGap:outer.bottom - (el.querySelector('.loop-detail-stitch-row') || el.querySelector('.loop-paired-actions')).getBoundingClientRect().bottom};
         });
     };
     const initial = await bounds();
     assert.ok(initial.contained, 'all sections must fit inside the frame, including the failed split state');
-    assert.ok(initial.footerGap > 0 && initial.footerGap < 30, 'frame ends just below the action buttons');
+    assert.ok(initial.footerGap > 0 && initial.footerGap < 30, 'frame ends just below the final detail control');
     assert.equal(initial.modelHeight, initial.height, 'connection and minimap geometry matches the visible frame');
     await page.evaluate(() => {
         const el = world.querySelector('[data-id="loop-bounds"]');

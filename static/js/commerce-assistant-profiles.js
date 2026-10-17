@@ -8,9 +8,27 @@
     xiaohongshu: '小红书',
     douyin: '抖音',
     '1688': '1688',
+    amazon: '亚马逊',
+    aliexpress: '速卖通',
+    shopee: '虾皮 Shopee',
+    temu: 'Temu',
+    ozon: 'Ozon',
+    ebay: 'eBay',
+    shein: 'SHEIN',
+    'tiktok-shop': 'TikTok Shop',
   });
 
-  const SAFE_QUERY_KEYS = new Set(['keyword', 'keywords', 'q', 'query', 'type', 'tab', 'showTab', 'showSubTab']);
+  const SAFE_QUERY_KEYS = new Set(['keyword', 'keywords', 'q', 'query', 'type', 'tab', 'showTab', 'showSubTab', 'goods_id', 'product_id', 'item_id']);
+  const MARKETPLACE_HOSTS = Object.freeze({
+    amazon: ['amazon.com', 'amazon.cn', 'amazon.co.uk', 'amazon.de', 'amazon.fr', 'amazon.it', 'amazon.es', 'amazon.ca', 'amazon.com.au', 'amazon.co.jp', 'amazon.in', 'amazon.com.mx', 'amazon.com.br', 'amazon.nl', 'amazon.pl', 'amazon.se', 'amazon.sg', 'amazon.ae', 'amazon.sa', 'amazon.tr', 'amazon.eg'],
+    aliexpress: ['aliexpress.com', 'aliexpress.ru', 'aliexpress.us'],
+    shopee: ['shopee.com', 'shopee.co.id', 'shopee.sg', 'shopee.co.th', 'shopee.co.my', 'shopee.vn', 'shopee.ph', 'shopee.tw', 'shopee.com.br', 'shopee.cl', 'shopee.pl'],
+    temu: ['temu.com', 'temu.co.uk', 'temu.de', 'temu.fr', 'temu.it', 'temu.es', 'temu.nl', 'temu.pl', 'temu.se', 'temu.au', 'temu.ca', 'temu.mx', 'temu.cl', 'temu.co', 'temu.com.br', 'temu.jp', 'temu.kr'],
+    ozon: ['ozon.ru', 'ozon.com'],
+    ebay: ['ebay.com', 'ebay.co.uk', 'ebay.de', 'ebay.fr', 'ebay.it', 'ebay.es', 'ebay.ca', 'ebay.com.au', 'ebay.at', 'ebay.be', 'ebay.ch', 'ebay.ie', 'ebay.nl', 'ebay.pl', 'ebay.com.sg', 'ebay.com.my', 'ebay.ph', 'ebay.in'],
+    shein: ['shein.com', 'shein.co.uk', 'shein.de', 'shein.fr', 'shein.it', 'shein.es'],
+    'tiktok-shop': ['tiktok.com', 'tiktokshop.com'],
+  });
 
   function compactText(value, limit = 1200) {
     return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
@@ -100,6 +118,42 @@
       if ((host === '1688.com' || host === 'www.1688.com') && path === '/') return profile('1688', '1688-home', 'other', '1688首页');
       return profile('1688', '1688-page', 'other', '1688');
     }
+    for (const [site, hosts] of Object.entries(MARKETPLACE_HOSTS)) {
+      if (!hosts.some((suffix) => hostIs(host, suffix))) continue;
+      const product = {
+        amazon: /\/(?:dp|gp\/product)\/[A-Z0-9]{10}(?:[/?]|$)/i,
+        aliexpress: /\/item\/[^/]+\.html$/i,
+        shopee: /(?:-i\.\d+\.\d+|\/product\/\d+\/\d+)(?:\/|$)/i,
+        temu: /(?:\/goods\.html|\/[^/]+-g-\d+\.html)$/i,
+        ozon: /\/product\/[^/?]+-\d+(?:\/|$)/i,
+        ebay: /\/itm\/(?:[^/?]+\/)?\d+(?:\/|$)/i,
+        shein: /-p-\d+\.html$/i,
+        'tiktok-shop': /\/(?:view\/)?product\/\d+(?:\/|$)/i,
+      }[site].test(path);
+      const search = {
+        amazon: /^\/s(?:\/|$)/i,
+        aliexpress: /^\/(?:w\/wholesale[^/]*|af|category|search)(?:\/|$)/i,
+        shopee: /^\/(?:search|search_result)(?:\/|$)/i,
+        temu: /^\/(?:search|search_result)(?:\.html|\/|$)/i,
+        ozon: /^\/(?:search|category)(?:\/|$)/i,
+        ebay: /^\/(?:sch|b)(?:\/|$)/i,
+        shein: /^\/(?:pdsearch|search|category)(?:\/|$)/i,
+        'tiktok-shop': /^\/(?:search|search_result)(?:\/|$)/i,
+      }[site].test(path);
+      const shop = {
+        amazon: /^\/(?:stores|sp)(?:\/|$)/i,
+        aliexpress: /^\/(?:store|shop)(?:\/|$)/i,
+        shopee: /^\/(?:shop|mall)(?:\/|$)/i,
+        temu: /^\/(?:shop|store)(?:\/|$)/i,
+        ozon: /^\/(?:seller|shop)(?:\/|$)/i,
+        ebay: /^\/(?:str|shop)(?:\/|$)/i,
+        shein: /^\/(?:store|brand)(?:\/|$)/i,
+        'tiktok-shop': /^\/(?:shop|store)(?:\/|$)/i,
+      }[site].test(path) || site === 'aliexpress' && /^store\./i.test(host);
+      const pageType = product ? 'product'
+        : search ? 'search' : shop ? 'shop' : 'other';
+      return profile(site, `${site}-${pageType}`, pageType, `${SITE_LABELS[site]}${product ? '商品' : pageType === 'search' ? '搜索' : pageType === 'shop' ? '店铺' : ''}`);
+    }
     return null;
   }
 
@@ -129,6 +183,10 @@
       if (kind === '1688-detail') return profile('1688', '1688-detail', 'product', '1688 商品详情');
       if (kind === '1688-search' && base.id === '1688-page') return profile('1688', '1688-search', 'search', '1688 商品搜索');
       if (kind === '1688-shop' && base.id === '1688-page') return profile('1688', '1688-shop', 'shop', '1688 店铺');
+    }
+    if (MARKETPLACE_HOSTS[base.site] && ['product', 'search', 'shop', 'other'].some((type) => kind === `${base.site}-${type}`)) {
+      const pageType = kind.slice(base.site.length + 1);
+      return profile(base.site, kind, pageType, `${SITE_LABELS[base.site]}${pageType === 'product' ? '商品' : pageType === 'search' ? '搜索' : pageType === 'shop' ? '店铺' : ''}`);
     }
     return base;
   }
@@ -217,6 +275,16 @@
         facts,
         resources: capturedResources,
         excerpt: compactText(rawStructured.excerpt || '', 600),
+        marketplace: rawStructured.marketplace && typeof rawStructured.marketplace === 'object' ? {
+          productId: compactText(rawStructured.marketplace.productId || '', 80),
+          mainImage: /^https?:/i.test(rawStructured.marketplace.mainImage || '') ? rawStructured.marketplace.mainImage : '',
+          mainImageCount: Math.max(0, Number(rawStructured.marketplace.mainImageCount) || 0),
+          skuImageCount: Math.max(0, Number(rawStructured.marketplace.skuImageCount) || 0),
+          detailImageCount: Math.max(0, Number(rawStructured.marketplace.detailImageCount) || 0),
+          reviewSampleCount: Math.max(0, Number(rawStructured.marketplace.reviewSampleCount) || 0),
+          captureMode: compactText(rawStructured.marketplace.captureMode || 'base', 20),
+          reason: compactText(rawStructured.marketplace.reason || '', 240),
+        } : null,
       },
       headings: normalizedArray(snapshot.headings, 80, (value) => compactText(value, 240)),
       metrics: normalizedArray(snapshot.metrics, 80, (value) => compactText(typeof value === 'object' ? `${value.label || value.name || ''} ${value.value || value.text || ''}` : value, 320)),
@@ -230,6 +298,7 @@
       capturedAt: Number(snapshot.capturedAt || Date.now()) || Date.now(),
       resources: [],
     };
+    context.marketplace = context.structured.marketplace;
     return context;
   }
 
@@ -289,6 +358,20 @@
     const title = compactText(context?.title || item?.moduleTitle || item?.title || '当前页面', 80);
     const keyword = keywordFromContext(context);
     const getResource = (id) => resourceById(resources, id);
+    if (MARKETPLACE_HOSTS[item.site]) {
+      if (item.pageType === 'product') {
+        const product = getResource(`${item.site}-product-info`);
+        const detail = getResource(`${item.site}-detail-images`);
+        const reviews = getResource(`${item.site}-reviews`);
+        return [
+          product ? action(`${item.site}-product-analysis`, '分析商品资料', `只依据当前${SITE_LABELS[item.site]}商品页已经读取的字段，归纳卖点、规格和需要核实的信息。价格、配送与评价缺失时明确说明。 ${product.token}`, ['page']) : null,
+          detail ? action(`${item.site}-detail-analysis`, '分析详情图片', `结合当前商品页已读取的详情图片及可见文字分析信息表达；未获得图片像素时明确说明。 ${detail.token}`, ['page']) : null,
+          reviews ? action(`${item.site}-review-analysis`, '分析用户评价', `仅依据已读取的当前商品评价样本归纳用户关注点和风险，不把样本推断成全部评价。 ${reviews.token}`, ['page']) : null,
+        ].filter(Boolean);
+      }
+      const listing = getResource(`${item.site}-${item.pageType}-items`);
+      return listing ? [action(`${item.site}-listing-analysis`, '分析当前商品列表', `只依据当前${SITE_LABELS[item.site]}页面已显示的商品列表，归纳可见商品特点；不要推断全站销量或排行。 ${listing.token}`, ['search'])] : [];
+    }
     switch (item.id) {
       case 'qianniu-service':
       case 'qianniu-page': {
@@ -464,6 +547,10 @@
     // 每个页面只能显示桌面端站点采集器已经确认的对应资源。这里不用
     // “有图片/有表格/有正文”作跨站点兜底，防止出现用户指出的把小红书
     // 标准套到千牛、生意参谋、达摩盘或 1688 的问题。
+    if (MARKETPLACE_HOSTS[item.site]) return capturedResources(context, [
+      `${item.site}-product-info`, `${item.site}-main-images`, `${item.site}-sku-images`, `${item.site}-variants`, `${item.site}-video`,
+      `${item.site}-detail-images`, `${item.site}-reviews`, `${item.site}-${item.pageType}-items`,
+    ]);
     switch (item.id) {
       case 'qianniu-service':
       case 'qianniu-page': return capturedResources(context, ['qianniu-chat-records']);
