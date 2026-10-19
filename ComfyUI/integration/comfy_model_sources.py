@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 from pathlib import PurePosixPath
 from urllib.parse import quote, unquote, urlparse
 import requests
+from ComfyUI.integration.comfy_model_links import model_metadata
 
 CATEGORIES = {'checkpoints', 'diffusion_models', 'text_encoders', 'vae', 'loras', 'controlnet', 'clip_vision', 'upscale_models', 'SEEDVR2'}
 CATALOG_URL = 'https://raw.githubusercontent.com/Comfy-Org/ComfyUI-Manager/main/model-list.json'
@@ -24,10 +25,11 @@ def public_url(url, hosts):
 
 
 class ModelSourceResolver:
-    def __init__(self, cancel, progress=lambda message: None):
+    def __init__(self, cancel, progress=lambda message: None, client=None):
         self.cancel = cancel
         self.progress = progress
         self.catalog = None
+        self.client = client
 
     def check(self):
         if self.cancel.is_set():
@@ -38,7 +40,8 @@ class ModelSourceResolver:
     def request(self, method, url, **kwargs):
         self.check()
         remaining = max(1, min(12, self.deadline - time.monotonic()))
-        response = requests.request(method, url, timeout=(min(5, remaining), remaining), **kwargs)
+        request = self.client.request if self.client else requests.request
+        response = request(method, url, timeout=(min(5, remaining), remaining), **kwargs)
         response.raise_for_status()
         return response
 
@@ -61,7 +64,7 @@ class ModelSourceResolver:
             if not any(x['url'] == url for x in self.links):
                 self.links.append({'url': url, 'label': label})
 
-    def add(self, url, sha256, size, source, file_name, category=None, explicit=False):
+    def add(self, url, sha256, size, source, file_name, category=None, explicit=False, metadata=None):
         if PurePosixPath(str(file_name)).suffix.lower() != PurePosixPath(self.name).suffix.lower():
             return
         digest = str(sha256 or '').lower()
@@ -80,9 +83,12 @@ class ModelSourceResolver:
         size = int(size or 0)
         if size <= 0:
             return
-        self.candidates.append({'name': self.name, 'category': self.category, 'url': url,
+        candidate = {'name': self.name, 'category': self.category, 'url': url,
             'sha256': digest, 'size_bytes': size, 'source': source,
-            'size_note': f'{size / 1024**3:.2f} GiB；下载后校验 SHA-256', 'discovered': True})
+            'size_note': f'{size / 1024**3:.2f} GiB；下载后校验 SHA-256', 'discovered': True}
+        if metadata:
+            candidate['metadata'] = metadata
+        self.candidates.append(candidate)
 
     def huggingface(self, url, explicit=False):
         if not public_url(url, {'huggingface.co'}):
@@ -117,7 +123,9 @@ class ModelSourceResolver:
             lfs = file.get('lfs') or {}
             category = next((c for c in CATEGORIES if c in filename.split('/')[:-1]), None)
             download = f'https://huggingface.co/{repo}/resolve/{commit}/' + quote(filename, safe='/')
-            self.add(download, lfs.get('sha256'), file.get('size') or lfs.get('size'), source, filename, category, explicit)
+            self.add(download, lfs.get('sha256'), file.get('size') or lfs.get('size'), source, filename, category, explicit,
+                     {'display_name': repo, 'version': commit[:8], 'revision': commit,
+                      'source_url': source, 'platform': 'huggingface', 'trigger_words': []})
 
     def civitai_version(self, data):
         model = data.get('model') or {}
@@ -130,7 +138,8 @@ class ModelSourceResolver:
         for file in data.get('files', []):
             if file.get('type') != 'Model' or not str(file.get('name', '')).lower().endswith(('.safetensors', '.gguf')):
                 continue
-            self.add(file.get('downloadUrl', ''), (file.get('hashes') or {}).get('SHA256'), round(float(file.get('sizeKB') or 0)*1024), source, file.get('name'), category)
+            self.add(file.get('downloadUrl', ''), (file.get('hashes') or {}).get('SHA256'), round(float(file.get('sizeKB') or 0)*1024), source, file.get('name'), category,
+                     metadata=model_metadata(data))
 
     def runninghub(self):
         data = self.request('POST', 'https://www.runninghub.cn/api/portal/model/list', json={

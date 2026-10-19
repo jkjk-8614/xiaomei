@@ -60,4 +60,7 @@ test('canvas polling starts immediately and bounds each read without resubmittin
     assert.equal(received.timeoutMs, 15000);
     assert.ok(received.maxNetworkFailures > 0);
     assert.equal(ctx.activeSmartTaskPolls.size, 0);
+    const cancelled = received.classifyTask({status:'cancelled', error:'生图已取消'});
+    assert.equal(cancelled.action, 'reject');
+    assert.equal(cancelled.error.cancelledTask, true);
 });

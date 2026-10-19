@@ -10,7 +10,7 @@ const forbidden = [
   /(?:^|\/)(?:\.env(?:\.[^/]+)?|global_config\.json|history\.json|asset_library\.json|projects\.json|prompt_cases\.json|prompt_libraries\.json)$/i,
   /(?:^|\/)(?:\.cache|__pycache__|\.pytest_cache|\.venv)(?:\/|$)/i,
   /^cache(?:\/|$)/i,
-  /(?:^|\/)(?:assets|ComfyUI)\/(?:input|uploads|output|library|models|user|temp|图片空间|canvases|conversations|media_previews)(?:\/|$)/i,
+  /(?:^|\/)(?:assets|ComfyUI)\/(?:input|uploads|output|library|models|model_downloads|model-downloads|user|temp|图片空间|canvases|conversations|media_previews)(?:\/|$)/i,
 ];
 const secretPatterns = [
   /\bsk-[A-Za-z0-9_-]{24,}\b/g,

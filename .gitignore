@@ -75,6 +75,7 @@ ComfyUI/input/
 ComfyUI/user/
 ComfyUI/temp/
 ComfyUI/model-downloads/
+ComfyUI/model_downloads/
 ComfyUI/*-*.log
 ComfyUI/comfy_apps/
 ComfyUI/comfy_apps_deleted/

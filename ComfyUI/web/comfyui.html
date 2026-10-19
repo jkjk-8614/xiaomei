@@ -6,7 +6,8 @@
   <script src="/static/js/theme.js?v=2026.09.23.1"></script>
   <link rel="stylesheet" href="/static/css/theme.css?v=2026.08.20.1785985827">
   <link rel="stylesheet" href="/static/css/comfyui-workspace.css?v=2026.08.20.1789715595">
-    <link rel="stylesheet" href="/static/css/comfy-apps.css?v=2026.10.07.dark-layers1">
+    <link rel="stylesheet" href="/static/css/comfy-apps.css?v=2026.10.19.models1">
+    <link rel="stylesheet" href="/static/css/comfy-models.css?v=2026.10.19.1">
     <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.09.21.1">
     <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.09.23.1">
     <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.09.23.1"></script>
@@ -71,8 +72,13 @@
           <h2>本地模型</h2>
           <p>查看模型位置、大小和引用关系。未被引用且未手动保留的模型可以直接删除；勾选“手动保留”后，删除工作流也不会删除这个模型。</p>
         </div>
-        <button id="model-refresh" class="nav-action" type="button">刷新扫描</button>
+        <div class="model-hero-actions"><button id="model-add-download" class="nav-action" type="button">添加下载</button><button id="model-refresh" type="button">刷新扫描</button></div>
       </div>
+      <nav class="model-view-tabs" aria-label="模型管理">
+        <button id="model-view-local" type="button" aria-pressed="true">模型列表</button>
+        <button id="model-view-downloads" type="button" aria-pressed="false">下载管理 <span id="model-download-count"></span></button>
+      </nav>
+      <div id="model-local-panel">
       <div id="model-notice" role="status" aria-live="polite"></div>
       <div id="model-summary" class="model-summary"></div>
       <div class="model-toolbar">
@@ -85,6 +91,46 @@
         </select>
       </div>
       <div id="model-list" class="model-list"></div>
+      </div>
+      <section id="model-download-panel" hidden aria-label="模型下载管理">
+        <div class="model-download-intake">
+          <div class="model-download-heading"><div><h3>从链接添加模型</h3><p>支持 Civitai 和 Hugging Face。先解析版本与文件，再选择 ComfyUI 保存目录。</p></div></div>
+          <form id="model-link-form">
+            <label for="model-link-input">模型页面或文件链接</label>
+            <textarea id="model-link-input" rows="2" placeholder="粘贴模型链接；多个链接每行一个" autocomplete="off" required></textarea>
+            <div class="model-intake-actions"><button id="model-link-resolve" class="nav-action" type="submit">解析链接</button><span>只下载选中的文件，保留原文件名</span></div>
+          </form>
+          <div id="model-link-notice" role="status" aria-live="polite"></div>
+          <div id="model-link-results"></div>
+          <button id="model-download-selected" class="nav-action" type="button" hidden>下载所选文件</button>
+        </div>
+        <div class="model-download-heading model-queue-heading"><div><h3>下载队列</h3><p id="model-queue-summary">正在读取下载记录…</p></div>
+          <div class="model-queue-actions"><button id="model-download-pause-all" type="button">暂停全部</button><button id="model-download-resume-all" type="button">继续未完成</button>
+            <select id="model-download-filter" aria-label="筛选下载任务"><option value="all">全部任务</option><option value="active">正在下载</option><option value="paused">已暂停</option><option value="failed">失败</option><option value="succeeded">已完成</option></select>
+          </div>
+        </div>
+        <div id="model-queue-notice" role="status"></div>
+        <div id="model-download-list" class="model-download-list"></div>
+        <div class="model-download-options">
+          <details id="model-browser-help"><summary>浏览器发送模型链接</summary>
+            <p>下载扩展并解压，在 Chrome 或 Edge 的扩展管理页开启开发者模式，加载已解压的文件夹。</p>
+            <p>打开模型页面，点击扩展图标，再点击“发送并选择文件”。保持小美画布运行。</p>
+            <a href="/api/comfy-apps/models/browser-extension.zip" download>下载 Chrome / Edge 扩展</a>
+            <label for="model-browser-receiver">本机接收地址</label><div class="model-receiver-row"><input id="model-browser-receiver" readonly><button id="model-copy-receiver" type="button">复制地址</button></div>
+          </details>
+          <details id="model-download-settings"><summary>下载账号与网络设置</summary>
+            <form id="model-settings-form">
+              <p id="model-settings-status" role="status"></p>
+              <label for="model-civitai-key">Civitai API Key</label><input id="model-civitai-key" type="password" autocomplete="new-password" placeholder="留空保留已保存的值">
+              <label for="model-hf-token">Hugging Face Token</label><input id="model-hf-token" type="password" autocomplete="new-password" placeholder="公开文件可留空；受限文件需要账号授权">
+              <label for="model-download-proxy">下载代理</label><input id="model-download-proxy" type="password" autocomplete="off" placeholder="例如 http://127.0.0.1:7890；未设置时使用系统环境代理">
+              <label for="model-download-concurrency">同时下载</label><select id="model-download-concurrency"><option value="1">1 个文件</option><option value="2">2 个文件</option><option value="3">3 个文件</option><option value="4">4 个文件</option></select>
+              <label class="model-clear-accounts"><input id="model-clear-download-credentials" type="checkbox">清除已保存的账号和代理</label>
+              <button type="submit">保存下载设置</button>
+            </form>
+          </details>
+        </div>
+      </section>
     </section>
     <section id="offline" class="offline-panel" hidden>
       <div class="offline-mark" aria-hidden="true">C</div>
@@ -116,8 +162,9 @@
   <input id="file" type="file" accept=".json,application/json" hidden>
   <input id="app-file" type="file" accept=".json,application/json" hidden>
   <iframe id="converter" title="工作流原生转换桥接" hidden></iframe>
-  <script src="/static/js/comfyui-workspace.js?v=2026.09.23.workflow-selection2"></script>
-  <script src="/static/js/comfy-apps.js?psd=2026.09.22.1&v=2026.09.23.workflow-selection2"></script>
+  <script src="/static/js/comfy-models.js?v=2026.10.19.1"></script>
+  <script src="/static/js/comfyui-workspace.js?v=2026.10.19.models1"></script>
+  <script src="/static/js/comfy-apps.js?psd=2026.09.22.1&v=2026.10.19.models1"></script>
   <script src="/static/vendor/js/ag-psd-seethrough.bundle.js?readback=2026.09.22.1&v=2026.08.20.1789623403&layers=2026.09.22.3"></script>
 </body>
 </html>

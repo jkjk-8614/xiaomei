@@ -15,6 +15,7 @@ import subprocess
 import threading
 import time
 import uuid
+import zipfile
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote, urlparse
 
@@ -22,12 +23,14 @@ import requests
 import websockets
 from websockets.exceptions import WebSocketException
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
+from fastapi.responses import FileResponse, StreamingResponse
 from PIL import Image
 
 from ComfyUI.integration.comfy_workflow_inspection import inspect_workflow
 from ComfyUI.integration.comfy_node_registry import NODE_TYPE_ALIASES, NodeSourceResolver
 from ComfyUI.integration.comfy_app_runtime import ManagedRuntime, SOURCE, MODELS
 from ComfyUI.integration.comfy_model_sources import ModelSourceResolver
+from ComfyUI.integration.comfy_model_downloads import ModelDownloads
 
 
 MODEL_INPUT_NAMES = {
@@ -688,6 +691,8 @@ class AppLibrary:
         self.serial = asyncio.Lock()
         self.workers = set()
         self.runtime = ManagedRuntime(host.BASE_DIR)
+        self.downloads = ModelDownloads(self.runtime)
+        self.runtime.download_manager = self.downloads
         self.node_sources = NodeSourceResolver(self.runtime.root / 'node-source-cache.json')
         self.delete_confirmations = {}
         self.deleting = set()
@@ -1925,7 +1930,7 @@ class AppLibrary:
         return None
 
     def find_missing_models(self, app_id, progress):
-        resolver = ModelSourceResolver(self.runtime.cancel, progress)
+        resolver = ModelSourceResolver(self.runtime.cancel, progress, client=self.downloads.remote)
         item = self.read(app_id)
         report = self._refresh_static_report(item)
         requirements = {entry['name']: entry for entry in report.get('model_requirements', [])}
@@ -2012,6 +2017,11 @@ class AppLibrary:
 
         usage = self._all_model_usage('', '', candidates)
         preferences = self._read_model_preferences()
+        try:
+            metadata_records = self.downloads._metadata_records()
+        except ValueError as exc:
+            metadata_records = {}
+            warnings.append(str(exc))
         models = []
         for candidate in candidates:
             users = sorted(set(str(value) for value in usage.get(candidate['key'], {}).values() if value))
@@ -2023,6 +2033,9 @@ class AppLibrary:
             elif user_protected:
                 delete_reason = (f"不能删除模型“{candidate['name']}”：它已被手动保留。"
                                  '请先取消“手动保留”后再删除。')
+            metadata = self.downloads.read_metadata(candidate['path'], records=metadata_records)
+            if self.downloads.cover_path(candidate['path']).is_file():
+                metadata['cover_url'] = '/api/comfy-apps/models/metadata/' + self._model_id(candidate['path']) + '/cover'
             models.append({
                 'id': self._model_id(candidate['path']),
                 'name': candidate['name'], 'category': candidate['category'],
@@ -2034,6 +2047,7 @@ class AppLibrary:
                 'protected': bool(users) or user_protected,
                 'can_delete': not users and not user_protected,
                 'delete_reason': delete_reason,
+                'metadata': metadata,
             })
         models.sort(key=lambda item: (not item['protected'], item['category'].casefold(), item['name'].casefold()))
         return {
@@ -2745,6 +2759,109 @@ def install_comfy_apps(app, host):
     @router.get('/models')
     def models():
         return service.model_catalog()
+
+    async def model_payload(request):
+        try:
+            payload = await request.json()
+        except ValueError as exc:
+            raise HTTPException(400, '请求内容无效，请刷新页面后重试') from exc
+        if not isinstance(payload, dict):
+            raise HTTPException(400, '请求内容需为 JSON 对象')
+        return payload
+
+    @router.get('/models/download-settings')
+    def download_settings():
+        try:
+            return service.downloads.public_settings()
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @router.put('/models/download-settings')
+    async def save_download_settings(request: Request):
+        payload = await model_payload(request)
+        try:
+            return service.downloads.save_settings(payload)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @router.post('/models/resolve')
+    async def resolve_model_link(request: Request):
+        payload = await model_payload(request)
+        try:
+            return await asyncio.to_thread(service.downloads.resolve, payload.get('url'), payload.get('version', ''))
+        except (ValueError, TypeError, KeyError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @router.get('/models/downloads')
+    def model_downloads():
+        return service.downloads.snapshot()
+
+    @router.post('/models/downloads')
+    async def enqueue_model_downloads(request: Request):
+        payload = await model_payload(request)
+        try:
+            return service.downloads.enqueue_selected(payload.get('files'))
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @router.post('/models/downloads/{task_id}/{action}')
+    async def model_download_action(task_id: str, action: str, request: Request):
+        payload = await model_payload(request)
+        restart = payload.get('restart', False)
+        if not isinstance(restart, bool):
+            raise HTTPException(400, '重新下载选项无效')
+        try:
+            return service.downloads.action(task_id, action, restart)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    def local_model(model_id):
+        if not re.fullmatch('[a-f0-9]{32}', model_id):
+            raise HTTPException(400, '模型标识无效，请刷新本地模型列表')
+        candidate, model = service._model_catalog_candidate(model_id)
+        if not candidate:
+            raise HTTPException(404, '模型文件已移动或删除，请刷新列表')
+        return candidate
+
+    @router.patch('/models/metadata/{model_id}')
+    async def edit_model_metadata(model_id: str, request: Request):
+        payload = await model_payload(request)
+        try:
+            candidate = await asyncio.to_thread(local_model, model_id)
+            return service.downloads.edit_metadata(candidate['path'], payload)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @router.post('/models/metadata/{model_id}/identify')
+    async def identify_model(model_id: str):
+        try:
+            candidate = await asyncio.to_thread(local_model, model_id)
+            return await asyncio.to_thread(service.downloads.identify, candidate['path'])
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @router.get('/models/metadata/{model_id}/cover')
+    def model_cover(model_id: str):
+        candidate = local_model(model_id)
+        cover = service.downloads.cover_path(candidate['path'])
+        if not cover.is_file():
+            raise HTTPException(404, '本地尚未保存该模型封面')
+        return FileResponse(cover, media_type='image/jpeg')
+
+    @router.get('/models/browser-extension.zip')
+    def model_browser_extension(request: Request):
+        directory = Path(host.BASE_DIR) / 'tools' / 'chrome-model-downloader'
+        content = io.BytesIO()
+        with zipfile.ZipFile(content, 'w', zipfile.ZIP_DEFLATED) as archive:
+            for name in ('manifest.json', 'popup.html', 'popup.js', 'popup.css', 'README.md'):
+                source = directory / name
+                if not source.is_file():
+                    raise HTTPException(503, '浏览器扩展文件不完整，请重新安装小美画布')
+                archive.writestr(name, source.read_bytes())
+            archive.writestr('receiver-default.js', 'window.MODEL_RECEIVER_DEFAULT = ' + json.dumps(str(request.base_url).rstrip('/')) + ';\n')
+        content.seek(0)
+        return StreamingResponse(content, media_type='application/zip',
+                                 headers={'Content-Disposition': 'attachment; filename="xiaomei-model-downloader.zip"'})
 
     @router.post('/models/protection')
     async def model_protection(request: Request):

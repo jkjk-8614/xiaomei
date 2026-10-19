@@ -23,7 +23,7 @@ function fixture() {
         mediaKindForItem: () => 'image',
         pushUndo() {}, scheduleSave() {}, inputThumbsRow: { dataset: {} },
     });
-    const names = ['inputRefKey', 'uniqueReferenceImages', 'orderedSmartInputReferences',
+    const names = ['referenceMaterialKey', 'inputRefKey', 'uniqueReferenceImages', 'orderedSmartInputReferences',
         'visibleReferenceImagesFor', 'canvasTaskScopeReferenceImages', 'movedBeforeAfterIds',
         'sameOrderedIds', 'inputRefOrderForItems', 'reorderInputThumb'];
     vm.runInContext(names.map(extract).join('\n'), context);
@@ -89,7 +89,7 @@ test('more than twenty references keep their order in both composers, request an
     f.context.stableReferenceImagesFor = () => [...refs, refs[0], { url: '' }];
     f.context.collectMentionedImagesFromPrompt = () => [];
     const agentSource = fs.readFileSync(path.join(__dirname, '../static/js/canvas-agent.js'), 'utf8');
-    const names = ['composerAttachmentReferences', 'planReferenceImages', 'scopeWithComposerReferences', 'snapshotReferenceImages', 'messageReferenceImages'];
+    const names = ['cloneAgentTaskScope', 'composerAttachmentReferences', 'planReferenceImages', 'scopeWithComposerReferences', 'snapshotReferenceImages', 'messageReferenceImages'];
     const agentFunctions = names.map(name => {
         const start = agentSource.indexOf(`    function ${name}(`);
         const end = agentSource.indexOf('\n    function ', start + 1);
@@ -97,6 +97,11 @@ test('more than twenty references keep their order in both composers, request an
         return agentSource.slice(start, end);
     });
     f.context.composerFileReferences = [];
+    f.context.composerCanvasReferences = [];
+    f.context.composerReferenceOrder = [];
+    f.context.composerPickerScope = null;
+    f.context.composerRemovedReferenceIds = new Set();
+    f.context.syncComposerReferenceContext = () => {};
     vm.runInContext(agentFunctions.join('\n'), f.context);
     f.context.reorderInputThumb(f.target, refs, 24, 1);
     const left = Array.from(f.context.visibleReferenceImagesFor(f.target), ref => ref.url);

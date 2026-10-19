@@ -6,7 +6,7 @@ const { test } = require('node:test');
 
 const root = path.resolve(__dirname, '..');
 
-test('smart canvas modifier selection and Alt copying preserve selected connections', { timeout: 40000 }, async t => {
+test('smart canvas modifier selection and Alt copying preserve upstream and internal connections', { timeout: 40000 }, async t => {
     const browser = await chromium.launch({
         channel: 'msedge',
         headless: true
@@ -14,6 +14,9 @@ test('smart canvas modifier selection and Alt copying preserve selected connecti
     t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     page.setDefaultTimeout(10000);
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.routeWebSocket('**/*', socket => socket.close());
 
     await page.route('**/*', async route => {
         const request = route.request();
@@ -25,6 +28,9 @@ test('smart canvas modifier selection and Alt copying preserve selected connecti
             if (!fs.existsSync(file)) file = path.resolve(root, 'ComfyUI/web', pathname.slice('/static/'.length));
             if (!fs.existsSync(file) || !file.startsWith(root + path.sep)) return route.fulfill({ status: 404, body: '' });
             return route.fulfill({ path: file });
+        }
+        if (pathname.startsWith('/output/') || pathname === '/api/media-preview') {
+            return route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7v8AAAAASUVORK5CYII=', 'base64') });
         }
         if (pathname === '/api/canvases/selection-fixture') {
             return route.fulfill({ json: {
@@ -124,12 +130,16 @@ test('smart canvas modifier selection and Alt copying preserve selected connecti
         const second = createNode(100, 450, [], {nodeType:SMART_UPLOAD_NODE_TYPE, select:false, skipUndo:true});
         const target = createPaintNodeAt({x:600, y:220}, {select:false, skipUndo:true});
         const outside = createPaintNodeAt({x:1100, y:700}, {select:false, skipUndo:true});
+        const external = createNode(1100, 100, [], {nodeType:SMART_UPLOAD_NODE_TYPE, select:false, skipUndo:true});
         addConnection(first.id, target.id, 'input');
         addConnection(second.id, target.id, 'input');
+        addConnection(external.id, target.id, 'input');
         addConnection(first.id, outside.id, 'input');
-        target.inputNodeIds = [first.id, second.id];
-        target.inputRefOrder = [`${first.id}|0`, `${second.id}|0`];
+        addConnection(target.id, outside.id, 'flow');
+        target.inputNodeIds = [first.id, second.id, external.id];
+        target.inputRefOrder = [`${second.id}|0`, `${external.id}|0`, `${first.id}|0`];
         outside.inputNodeIds = [first.id];
+        const originalConnections = JSON.stringify(canvas.connections);
         viewport = {x:0, y:0, scale:1};
         applyViewport();
         render();
@@ -139,32 +149,128 @@ test('smart canvas modifier selection and Alt copying preserve selected connecti
         duplicateForAltDrag(target);
         const copies = selectedNodeIds();
         const copiedTarget = nodes.find(node => node.id === copies[2]);
-        const internalLinks = canvas.connections.filter(conn => copies.includes(conn.from) && conn.to === copiedTarget.id);
+        const copiedLinks = canvas.connections.filter(conn => copies.includes(conn.from) || copies.includes(conn.to));
         const visibleLinks = [...world.querySelectorAll('.connection-layer .conn-group')]
-            .filter(group => copies.includes(group.dataset.connFrom) && group.dataset.connTo === copiedTarget.id);
-        const externalLink = canvas.connections.some(conn => copies.includes(conn.from) && conn.to === outside.id);
+            .filter(group => copies.includes(group.dataset.connFrom) || copies.includes(group.dataset.connTo));
         selectedId = first.id;
         selectedIds = [];
         const beforeSingle = canvas.connections.length;
-        duplicateForAltDrag(first);
+        const singleUploadCopy = duplicateForAltDrag(first);
+        const singleUploadLinks = canvas.connections.filter(conn => conn.from === singleUploadCopy.id);
+        const singleUploadVisibleLinks = [...world.querySelectorAll('.connection-layer .conn-group')]
+            .filter(group => group.dataset.connFrom === singleUploadCopy.id);
         return {
             selectedBefore,
             originals:[first.id, second.id, target.id],
             copies,
-            internalLinks:internalLinks.map(conn => [conn.from, conn.to, conn.kind]),
+            external:external.id,
+            originalConnections,
+            originalsAfter:JSON.stringify(canvas.connections.filter(conn => !copies.includes(conn.from) && !copies.includes(conn.to))),
+            copiedLinks:copiedLinks.length,
             visibleLinks:visibleLinks.length,
             copiedInputs:copiedTarget.inputNodeIds,
             copiedInputOrder:copiedTarget.inputRefOrder,
-            externalLink,
-            singleUploadAddedLinks:canvas.connections.length - beforeSingle
+            copiedSources:copiedLinks.map(conn => conn.from),
+            copiedTargets:copiedLinks.map(conn => conn.to),
+            singleUploadAddedLinks:canvas.connections.length - beforeSingle,
+            singleUploadLinks:singleUploadLinks.length,
+            singleUploadVisibleLinks:singleUploadVisibleLinks.length,
+            targetInputs:target.inputNodeIds,
+            outsideInputs:outside.inputNodeIds
         };
     });
     assert.deepEqual(altCopy.selectedBefore, altCopy.originals);
-    assert.equal(altCopy.internalLinks.length, 2);
-    assert.equal(altCopy.visibleLinks, 2);
-    assert.deepEqual(new Set(altCopy.internalLinks.map(link => link[0])), new Set(altCopy.copies.slice(0, 2)));
-    assert.deepEqual(new Set(altCopy.copiedInputs), new Set(altCopy.copies.slice(0, 2)));
-    assert.deepEqual(altCopy.copiedInputOrder, altCopy.copies.slice(0, 2).map(id => `${id}|0`));
-    assert.equal(altCopy.externalLink, false);
+    assert.equal(altCopy.copiedLinks, 3);
+    assert.equal(altCopy.visibleLinks, 3);
+    assert.deepEqual(altCopy.copiedInputs, [...altCopy.copies.slice(0, 2), altCopy.external]);
+    assert.deepEqual(altCopy.copiedInputOrder, [`${altCopy.copies[1]}|0`, `${altCopy.external}|0`, `${altCopy.copies[0]}|0`]);
+    assert.deepEqual(altCopy.copiedSources, [...altCopy.copies.slice(0, 2), altCopy.external]);
+    assert.deepEqual(altCopy.copiedTargets, Array(3).fill(altCopy.copies[2]));
     assert.equal(altCopy.singleUploadAddedLinks, 0);
+    assert.equal(altCopy.singleUploadLinks, 0);
+    assert.equal(altCopy.singleUploadVisibleLinks, 0);
+    assert.equal(altCopy.originalsAfter, altCopy.originalConnections);
+    assert.deepEqual(altCopy.targetInputs, [...altCopy.originals.slice(0, 2), altCopy.external]);
+    assert.deepEqual(altCopy.outsideInputs, [altCopy.originals[0]]);
+
+    const single = await page.evaluate(() => {
+        nodes = [];
+        canvas.connections = [];
+        selectedId = '';
+        selectedIds = [];
+        selectedImage = {nodeId:'', index:-1};
+        undoStack.length = 0;
+        redoStack.length = 0;
+        discardPendingUndo();
+        canvasViewPrefs.snap = false;
+        canvasViewPrefs.follow = false;
+        viewport = {x:0, y:0, scale:1};
+        applyViewport();
+        const first = createNode(40, 100, [{url:'/output/ref-1.png', kind:'image'}], {nodeType:SMART_UPLOAD_NODE_TYPE, select:false, skipUndo:true});
+        const second = createNode(40, 450, [{url:'/output/ref-2.png', kind:'image'}], {nodeType:SMART_UPLOAD_NODE_TYPE, select:false, skipUndo:true});
+        const target = createPaintNodeAt({x:450, y:120}, {select:false, skipUndo:true});
+        const outside = createPaintNodeAt({x:1100, y:700}, {select:false, skipUndo:true});
+        connectInputNode(first.id, target.id);
+        connectInputNode(second.id, target.id);
+        addConnection(target.id, outside.id, 'flow');
+        target.inputRefOrder = [`${second.id}|0`, `${first.id}|0`];
+        target.promptDraftText = '生成商品主图';
+        target.runSettings = {engine:'api', provider_id:'fixture', model:'fixture-image', count:4, ratio:'story'};
+        target.images = [{url:'/output/completed.png', kind:'image', generatedResult:true}];
+        target.running = true;
+        target.pending = 2;
+        render();
+        return {target:target.id, inputs:[first.id, second.id], originalConnections:JSON.stringify(canvas.connections)};
+    });
+    const box = await page.locator(`.image-node[data-id="${single.target}"]`).boundingBox();
+    assert.ok(box);
+    await page.mouse.move(box.x + 3, box.y + 45);
+    await page.keyboard.down('Alt');
+    await page.mouse.down();
+    await page.mouse.move(box.x + 483, box.y + 75, {steps:8});
+    await page.mouse.up();
+    await page.keyboard.up('Alt');
+    const singleCopy = await page.evaluate(originalId => {
+        const original = nodes.find(node => node.id === originalId);
+        const copy = nodes.find(node => node.id === selectedId && node.id !== originalId);
+        if(!copy) return null;
+        return {
+            id:copy.id, x:copy.x, originalX:original.x, images:copy.images,
+            inputs:copy.inputNodeIds, order:copy.inputRefOrder,
+            references:referenceImagesFor(copy).map(image => image.url),
+            prompt:copy.promptDraftText, settings:copy.runSettings,
+            running:copy.running, pending:copy.pending,
+            originalImages:original.images.length, originalPending:original.pending,
+            visibleLines:world.querySelectorAll(`.conn-group[data-conn-to="${copy.id}"]`).length,
+            outgoing:canvas.connections.filter(conn => conn.from === copy.id).length
+        };
+    }, single.target);
+    assert.ok(singleCopy, 'Alt dragging creates a drawing node');
+    assert.ok(singleCopy.x > singleCopy.originalX + 400);
+    assert.deepEqual(singleCopy.inputs, single.inputs);
+    assert.deepEqual(singleCopy.order, [`${single.inputs[1]}|0`, `${single.inputs[0]}|0`]);
+    assert.deepEqual(singleCopy.references, ['/output/ref-2.png', '/output/ref-1.png']);
+    assert.equal(singleCopy.visibleLines, 2);
+    assert.equal(singleCopy.outgoing, 0);
+    assert.equal(singleCopy.prompt, '生成商品主图');
+    assert.equal(singleCopy.settings.count, 4);
+    assert.equal(singleCopy.settings.ratio, 'story');
+    assert.deepEqual(singleCopy.images, []);
+    assert.equal(singleCopy.running, false);
+    assert.equal(singleCopy.pending, 0);
+    assert.equal(singleCopy.originalImages, 1);
+    assert.equal(singleCopy.originalPending, 2);
+    const afterUndo = await page.evaluate(() => {
+        performUndo();
+        return {nodes:nodes.length, connections:JSON.stringify(canvas.connections)};
+    });
+    assert.equal(afterUndo.nodes, 4);
+    assert.equal(afterUndo.connections, single.originalConnections);
+    const afterRedo = await page.evaluate(copyId => {
+        performRedo();
+        return {nodes:nodes.length, inputs:inputNodesFor(nodes.find(node => node.id === copyId)).map(node => node.id)};
+    }, singleCopy.id);
+    assert.equal(afterRedo.nodes, 5);
+    assert.deepEqual(afterRedo.inputs, single.inputs);
+    assert.deepEqual(errors, []);
 });

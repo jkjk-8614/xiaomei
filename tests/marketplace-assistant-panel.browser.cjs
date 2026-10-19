@@ -39,7 +39,8 @@ const root = path.resolve(__dirname, '..');
           if (mode === 'detail' && hasSample) resources.push({ id: `${site}-detail-images`, token: '@详情图片', label: '详情图片' });
           if (mode === 'reviews' && hasSample) resources.push({ id: `${site}-reviews`, token: '@用户评价', label: '用户评价' });
           return { ok: true, url, page_context: {
-            url, title: facts[2].value, structured: { kind: `${site}-product`, title: facts[2].value, facts, resources, marketplace: {
+            url, title: facts[2].value, structured: { kind: `${site}-product`, title: facts[2].value, facts, resources,
+              excerpt: mode === 'detail' && hasSample ? '三档亮度，可折叠灯臂。' : '', marketplace: {
               productId, mainImage: 'https://images.example.test/main.jpg', mainImageCount: 1,
               detailImageCount: mode === 'detail' && hasSample ? 1 : 0, reviewSampleCount: mode === 'reviews' && hasSample ? 1 : 0, captureMode: mode,
             } },
@@ -72,6 +73,13 @@ const root = path.resolve(__dirname, '..');
     assert.equal(await page.locator('#productInfoBody').isVisible(), true);
     assert.equal(await page.locator('#productSummaryIdLabel').innerText(), 'ASIN');
     assert.equal(await page.locator('#productSummaryId').innerText(), 'B012345678');
+    assert.equal(await page.locator('.site-page-context-title').innerText(), '已帮你看了这个商品');
+    assert.ok((await page.locator('.site-page-context-preview').innerText()).includes('价格：US $29.99'));
+    assert.ok((await page.locator('.site-page-context-resources').innerText()).includes('@商品信息'));
+    assert.equal(await page.locator('#siteQuickGrid').getByText('检查品牌、卖点与配送').count(), 1);
+    await page.evaluate(() => document.getElementById('commerceWorkbench').style.setProperty('--assistant-width', '390px'));
+    assert.equal(await page.locator('.assistant-panel').evaluate((node) => node.scrollWidth <= node.clientWidth + 1), true, 'marketplace summary fits the normal assistant width');
+    await page.evaluate(() => document.getElementById('commerceWorkbench').style.setProperty('--assistant-width', '880px'));
     assert.equal(await page.locator('.marketplace-review-preview p').count(), 0);
     assert.equal(await page.locator('.marketplace-image-preview img').count(), 0);
     assert.deepEqual(await page.evaluate(() => window.__captureModes), ['base']);
@@ -80,6 +88,8 @@ const root = path.resolve(__dirname, '..');
     await page.locator('.marketplace-image-preview img').waitFor();
     await page.locator('[data-marketplace-read="reviews"]').click();
     await page.locator('.marketplace-review-preview p').waitFor();
+    assert.equal(await page.locator('#siteQuickGrid').getByText('检查商品描述结构').count(), 1, 'the clicked detail copy enables text structure analysis');
+    assert.equal(await page.locator('#siteQuickGrid').getByText('分析买家评价').count(), 1, 'the clicked review sample enables review analysis');
     assert.deepEqual(await page.evaluate(() => window.__captureModes), ['base', 'detail', 'reviews']);
     await page.evaluate(() => { window.__heldCaptureModes.add('detail'); window.__heldCaptureModes.add('base'); });
     await page.locator('[data-marketplace-read="detail"]').click();
@@ -101,6 +111,12 @@ const root = path.resolve(__dirname, '..');
     assert.equal(payload.page_context.images.length, 1, 'clicked detail image signal remains in the current context');
     assert.deepEqual(payload.link_job_ids, [], 'marketplace chat cannot attach a previous Taobao job');
     assert.deepEqual(await page.evaluate(() => window.__captureModes), ['base', 'detail', 'reviews', 'detail', 'base'], 'sending must preserve deferred samples');
+    assert.equal(await page.locator('[data-marketplace-read="detail"]').count(), 1, 'sending keeps the marketplace resource cards');
+    await page.evaluate(() => window.__failedCaptureModes.add('detail'));
+    await page.locator('[data-marketplace-read="detail"]').click();
+    await page.locator('[data-marketplace-read="detail"] .resource-count').getByText('读取失败，点击重试').waitFor();
+    assert.equal(await page.locator('#siteQuickGrid').getByText('检查商品描述结构').count(), 0, 'failed detail retry removes its old text analysis');
+    await page.evaluate(() => window.__failedCaptureModes.clear());
     await open('market-ebay', 'https://www.ebay.com/itm/123456789012');
     await page.locator('#productSummaryTitle').getByText('eBay 阅读灯').waitFor();
     assert.equal(await page.locator('#productSummaryIdLabel').innerText(), '刊登编号');
@@ -111,7 +127,7 @@ const root = path.resolve(__dirname, '..');
     await page.evaluate(() => window.__failedCaptureModes.add('reviews'));
     await page.locator('[data-marketplace-read="reviews"]').click();
     await page.locator('[data-marketplace-read="reviews"] .resource-count').getByText('读取失败，点击重试').waitFor();
-    assert.equal(await page.locator('#siteQuickGrid').getByText('分析用户评价').count(), 0, 'a failed retry cannot keep an old review sample available for analysis');
+    assert.equal(await page.locator('#siteQuickGrid').getByText('分析商品评价').count(), 0, 'a failed retry cannot keep an old review sample available for analysis');
     await page.evaluate(() => window.__failedCaptureModes.clear());
     await page.locator('[data-marketplace-read="reviews"]').click();
     await page.locator('.marketplace-review-preview p').waitFor();
@@ -119,7 +135,7 @@ const root = path.resolve(__dirname, '..');
     await page.locator('[data-marketplace-read="reviews"]').click();
     await page.locator('[data-marketplace-read="reviews"] .resource-count').getByText('当前页未读取到').waitFor();
     assert.equal(await page.locator('.marketplace-review-preview p').count(), 0, 'an empty retry removes the previous review preview');
-    assert.equal(await page.locator('#siteQuickGrid').getByText('分析用户评价').count(), 0, 'an empty retry removes the review analysis action');
+    assert.equal(await page.locator('#siteQuickGrid').getByText('分析商品评价').count(), 0, 'an empty retry removes the review analysis action');
     await page.evaluate(() => window.__emptyCaptureModes.clear());
     await page.evaluate(() => window.__heldCaptureModes.add('reviews'));
     await page.locator('[data-marketplace-read="reviews"]').click();

@@ -69,9 +69,14 @@ const result = {status:'ready', productId:'123456789012', normalizedUrl:fixtureU
   await page.locator('#reportClose').click();
   const toggle=page.locator('[data-toggle="productInfoBody"]');
   if(await toggle.getAttribute('aria-expanded')!=='true')await toggle.click();
-  await page.waitForFunction(()=>document.querySelectorAll('#resourceList .resource-card').length===11);
+  await page.waitForFunction(()=>document.querySelectorAll('#resourceList .resource-card').length===9);
   await page.evaluate(()=>document.getElementById('commerceWorkbench').style.setProperty('--assistant-width','900px'));
-  assert.equal(await page.locator('#resourceList .resource-icon svg').count(), 11);
+  assert.equal(await page.locator('#resourceList .resource-icon svg').count(), 9);
+  assert.deepEqual(await page.locator('#resourceList .research-resource-group h3').allTextContents(), ['商品素材', '用户反馈']);
+  assert.equal(await page.locator('#resourceList [data-resource-id="operations"], #resourceList [data-resource-id="people"]').count(), 0);
+  assert.equal(await page.locator('#resourcePickerList [data-resource-picker-id="operations"], #resourcePickerList [data-resource-picker-id="people"]').count(), 0);
+  assert.equal(await page.locator('#quickOperations').count(), 0);
+  assert.equal(await page.locator('#productQuickGrid [data-module]').count(), 4);
   assert.equal(await page.locator('#resourceList .resource-download[download]').count() > 0, true);
   assert.equal(await page.locator('#resourceList [data-preview-resource-id="detail"]').count(), 1);
   await toggle.click();

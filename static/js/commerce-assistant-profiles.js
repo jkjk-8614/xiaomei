@@ -30,6 +30,65 @@
     'tiktok-shop': ['tiktok.com', 'tiktokshop.com'],
   });
 
+  const MARKETPLACE_GUIDES = Object.freeze({
+    amazon: {
+      fields: ['ASIN', '价格', '品牌', '店铺', '配送', '规格', '评分', '评价数'],
+      product: ['检查品牌、卖点与配送', '核对品牌、关键规格、价格和配送承诺是否足以支持购买决定；逐项指出页面未提供的证据。'],
+      detail: ['检查商品描述结构', '根据已读取的详情区可见文字检查卖点、规格和使用说明；图片只有数量和链接，不评价构图。'],
+      reviews: ['分析买家评价', '归纳已读取评价中的购买动机、使用问题与预期落差，区分样本观察和整体结论。'],
+      listing: '从可见商品标题比较品牌、规格与卖点表达',
+    },
+    aliexpress: {
+      fields: ['价格', '规格', '店铺', '配送', '评分', '评价数'],
+      product: ['检查规格与跨境配送', '核对规格选择、店铺、价格和跨境配送说明，指出下单前仍需核实的信息。'],
+      detail: ['检查规格说明与详情文案', '根据已读取的详情区可见文字核对规格和使用说明；图片只有数量和链接，不评价画面。'],
+      reviews: ['分析跨境买家反馈', '从已读取评价样本归纳规格、物流及商品体验反馈，不推断全站评价。'],
+      listing: '从可见商品标题比较规格与商品卖点表达',
+    },
+    shopee: {
+      fields: ['价格', '销量信号', '规格', '店铺', '配送', '评分', '评价数'],
+      product: ['检查本地卖点与履约', '核对当前站点可见价格、规格、店铺、配送与销量信号；不要把页面信号推断成实际成交数据。'],
+      detail: ['检查详情信息完整度', '根据已读取的详情区可见文字检查规格、使用场景和配送说明；不描述未读取的图片画面。'],
+      reviews: ['分析本地买家评价', '归纳已读取评价样本中的规格、配送与使用体验，不扩大样本结论。'],
+      listing: '从可见商品标题比较本地商品卖点与规格表达',
+    },
+    temu: {
+      fields: ['价格', '划线价', '规格', '销量信号', '配送', '评分', '评价数'],
+      product: ['检查价格与规格表达', '并列核对现价、划线价、规格与配送信息；不自行计算折扣或推断促销期限。'],
+      detail: ['检查详情承诺与规格', '根据已读取的详情区可见文字核对规格和履约承诺；不评价未传入的图片画面。'],
+      reviews: ['分析商品评价风险', '归纳已读取评价样本中的质量、规格和履约问题，说明样本范围。'],
+      listing: '从可见商品标题比较价格诉求与规格表达；未读取价格时只比较文字',
+    },
+    ozon: {
+      fields: ['价格', '店铺', '规格', '配送', '评分', '评价数'],
+      product: ['检查参数与配送', '核对当前站点可见价格、卖家、商品参数和配送信息，列出购买前需要确认的缺项。'],
+      detail: ['检查参数说明结构', '根据已读取的详情区可见文字检查参数、用途和说明是否清楚；不推断图片内容。'],
+      reviews: ['分析买家使用反馈', '归纳已读取评价样本中的参数符合度、质量和配送反馈。'],
+      listing: '从可见商品标题比较参数和用途表达',
+    },
+    ebay: {
+      fields: ['刊登编号', '价格', '成色', '交易方式', '配送', '退货', '店铺', '卖家反馈', '评价数'],
+      product: ['检查成色与交易风险', '核对成色、拍卖或一口价、配送、退货和卖家反馈；商品评价与卖家反馈必须分开。'],
+      detail: ['检查刊登说明', '根据已读取的详情区可见文字核对成色、配件和交易条件；不描述未读取的商品图片。'],
+      reviews: ['分析商品评价', '只分析已读取的商品评价样本，不把卖家反馈当成商品评价。'],
+      listing: '从可见刊登标题比较成色和交易条件表达；未读取交易信息时标明缺失',
+    },
+    shein: {
+      fields: ['价格', '规格', '尺码表', '面料', '配送', '评分', '评价数'],
+      product: ['检查尺码与面料', '核对颜色尺码、尺码表、面料及配送说明，指出影响选码和预期的缺失信息。'],
+      detail: ['检查尺码材质说明', '根据已读取的详情区可见文字核对尺码、材质和护理信息；不推断图片中的版型。'],
+      reviews: ['分析尺码与穿着反馈', '归纳已读取评价样本中的尺码、面料与穿着体验，说明样本范围。'],
+      listing: '从可见商品标题比较款式、材质与尺码表达',
+    },
+    'tiktok-shop': {
+      fields: ['价格', '店铺', '销量信号', '规格', '配送', '评分', '评价数'],
+      product: ['检查商品卖点与视频线索', '核对商品卖点、店铺、价格、规格和可见销量信号；如页面有视频，只说明视频存在，不评价未读取的画面。'],
+      detail: ['检查商品说明', '根据已读取的详情区可见文字检查规格、使用场景与配送说明；不把视频或图片存在信号当成画面内容。'],
+      reviews: ['分析买家评价', '归纳已读取评价样本中的购买顾虑和使用反馈，不推断视频转化效果。'],
+      listing: '从可见商品标题比较短视频商品的卖点表达',
+    },
+  });
+
   function compactText(value, limit = 1200) {
     return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
   }
@@ -359,18 +418,21 @@
     const keyword = keywordFromContext(context);
     const getResource = (id) => resourceById(resources, id);
     if (MARKETPLACE_HOSTS[item.site]) {
+      const guide = MARKETPLACE_GUIDES[item.site];
       if (item.pageType === 'product') {
         const product = getResource(`${item.site}-product-info`);
         const detail = getResource(`${item.site}-detail-images`);
         const reviews = getResource(`${item.site}-reviews`);
         return [
-          product ? action(`${item.site}-product-analysis`, '分析商品资料', `只依据当前${SITE_LABELS[item.site]}商品页已经读取的字段，归纳卖点、规格和需要核实的信息。价格、配送与评价缺失时明确说明。 ${product.token}`, ['page']) : null,
-          detail ? action(`${item.site}-detail-analysis`, '分析详情图片', `结合当前商品页已读取的详情图片及可见文字分析信息表达；未获得图片像素时明确说明。 ${detail.token}`, ['page']) : null,
-          reviews ? action(`${item.site}-review-analysis`, '分析用户评价', `仅依据已读取的当前商品评价样本归纳用户关注点和风险，不把样本推断成全部评价。 ${reviews.token}`, ['page']) : null,
+          product ? action(`${item.site}-product-analysis`, guide.product[0], `请基于当前${SITE_LABELS[item.site]}商品页实际读取的字段，${guide.product[1]}按“已看到的信息、缺失信息、可执行建议”回答，不猜测未返回的指标。 ${product.token}`, ['page']) : null,
+          detail && context.excerpt ? action(`${item.site}-detail-analysis`, guide.detail[0], `请基于当前${SITE_LABELS[item.site]}商品页点击后读取的详情资料，${guide.detail[1]}给出可验证的文案改进建议。 ${detail.token}`, ['page']) : null,
+          reviews ? action(`${item.site}-review-analysis`, guide.reviews[0], `请基于当前${SITE_LABELS[item.site]}商品页点击后读取的评价正文，${guide.reviews[1]}区分正面反馈、问题与待核实事项。 ${reviews.token}`, ['page']) : null,
         ].filter(Boolean);
       }
+      if (!['search', 'shop'].includes(item.pageType)) return [];
       const listing = getResource(`${item.site}-${item.pageType}-items`);
-      return listing ? [action(`${item.site}-listing-analysis`, '分析当前商品列表', `只依据当前${SITE_LABELS[item.site]}页面已显示的商品列表，归纳可见商品特点；不要推断全站销量或排行。 ${listing.token}`, ['search'])] : [];
+      const label = item.pageType === 'shop' ? '分析当前店铺商品' : '分析当前搜索结果';
+      return listing ? [action(`${item.site}-${item.pageType}-analysis`, label, `只依据当前${SITE_LABELS[item.site]}${item.pageType === 'shop' ? '店铺' : '搜索结果'}页已显示的商品标题，${guide.listing}；不要推断未读取的价格、销量、排行或整个店铺表现。 ${listing.token}`, ['search'])] : [];
     }
     switch (item.id) {
       case 'qianniu-service':
@@ -592,27 +654,39 @@
     return item?.site === '1688' && item?.id === '1688-detail';
   }
 
-  // 读取完成后先呈现当前页“实况”资料；它不是模型结论，也不会触发网络请求。
-  // 六站点只展示采集器明确标注的业务字段，绝不把整页文字、背景卡片或
-  // 登录提示拼进面板。快捷分析会把同一份受限快照交给模型。
+  // 读取完成后呈现当前页实况资料；不把网页背景内容当成商品结论。
   function pagePreview(view = {}) {
     const item = view?.profile;
     const context = view?.context;
     if (!item || !context) return null;
-    const facts = normalizedArray(context.facts, 12, (entry) => {
+    const sourceFacts = normalizedArray(context.facts, 16, (entry) => {
       const label = compactText(entry?.label || '', 80);
       const value = compactText(entry?.value || '', 420);
       return label && value ? { label, value } : null;
     });
+    const marketplaceProduct = Boolean(MARKETPLACE_GUIDES[item.site] && item.pageType === 'product');
+    const facts = marketplaceProduct
+      ? ['标题', '站点', ...MARKETPLACE_GUIDES[item.site].fields].map((label) => sourceFacts.find((entry) => entry.label === label)).filter(Boolean).slice(0, 11)
+      : sourceFacts.slice(0, 12);
+    if (marketplaceProduct) {
+      const marketplace = context.marketplace || {};
+      if (marketplace.mainImageCount) facts.push({ label: '主图', value: `页面可见 ${marketplace.mainImageCount} 张` });
+      if (marketplace.detailImageCount) facts.push({ label: '详情图片', value: `点击后读取 ${marketplace.detailImageCount} 张` });
+      if (marketplace.reviewSampleCount) facts.push({ label: '评价样本', value: `点击后读取 ${marketplace.reviewSampleCount} 条` });
+    }
     if (!facts.length) {
       facts.push({ label: '资料状态', value: '当前页面未读取到可展示的关键字段；请等待页面加载完成后重试。' });
     }
     const baseTitle = compactText(context.structuredTitle || item.title || SITE_LABELS[item.site] || '当前页面', 160);
-    const title = `${baseTitle} · 实况`;
+    const title = marketplaceProduct ? '已帮你看了这个商品' : `${baseTitle} · 实况`;
+    const resources = (Array.isArray(view.resources) ? view.resources : []).filter((entry) => entry?.available !== false).map((entry) => ({ token: entry.token, label: entry.label }));
+    const note = marketplaceProduct ? '资料来自当前商品页；图片和视频画面未送入模型' : '仅当前已渲染、可见的页面资料';
     return {
       title,
-      facts: facts.slice(0, 12),
-      copyText: [title, ...facts.slice(0, 12).map((entry) => `${entry.label}：${entry.value}`), '资料仅来自当前已渲染且可见的页面内容。'].join('\n'),
+      facts,
+      resources,
+      note,
+      copyText: [title, ...facts.map((entry) => `${entry.label}：${entry.value}`), resources.length ? `可引用资料：${resources.map((entry) => entry.token).join('、')}` : '', note].filter(Boolean).join('\n'),
     };
   }
 
@@ -634,6 +708,7 @@
 
   window.XiaomeiCommerceAssistantProfiles = Object.freeze({
     siteLabels: SITE_LABELS,
+    marketplaceFieldOrder: (site) => MARKETPLACE_GUIDES[site]?.fields || [],
     classify,
     profileForSnapshot,
     contextKey,

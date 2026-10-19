@@ -84,11 +84,73 @@ class ImageBackgroundTransportTests(unittest.IsolatedAsyncioTestCase):
                     prompt='编辑参考图', model='gpt-image-2', provider_id=provider['id'],
                     size='768x1024', reference_images=[main.AIReference(url='/output/参考图.png')]
                 )
-                with self.assertRaises(main.HTTPException):
+                with self.assertRaises(main.HTTPException) as failure:
                     await main.build_online_image_result(payload)
 
         self.assertEqual(len(requests), 1)
         self.assertNotIn('Idempotency-Key', requests[0].headers)
+        self.assertIn('Fixture 的 GPT-Image-2/2.5 编辑接口', failure.exception.detail)
+        self.assertNotIn('6789API', failure.exception.detail)
+
+    async def test_edit_failure_keeps_selected_platform_in_request_and_polled_error(self):
+        providers = [
+            ('comfly', 'comfly', 'https://ai.comfly.org', 'https://ai.comfly.org/v1/images/edits'),
+            ('custom-images', '自定义图片平台', 'https://custom-images.test/v1', 'https://custom-images.test/v1/images/edits'),
+            ('unnamed-images', '', 'https://unnamed-images.test', 'https://unnamed-images.test/v1/images/edits'),
+            ('api-6789', '6789API', 'https://6789.test', 'https://6789.test/v1/images/edits'),
+        ]
+        client_type = httpx.AsyncClient
+        with tempfile.TemporaryDirectory(prefix='image-provider-error-') as directory:
+            source = Path(directory) / '参考图.png'
+            Image.new('RGB', (32, 32), (200, 100, 50)).save(source)
+            for provider_id, name, base_url, edit_url in providers:
+                for status in (500, 503):
+                    for history_source in ('online', 'canvas', 'commerce'):
+                        with self.subTest(provider=provider_id, status=status, source=history_source):
+                            model = 'gpt-image-2' if status == 500 else 'gpt-image-2.5-flare'
+                            provider = dict(id=provider_id, name=name, base_url=base_url,
+                                            protocol='openai', image_request_mode='openai',
+                                            image_models=[model])
+                            requests = []
+
+                            async def respond(request):
+                                requests.append(request)
+                                return httpx.Response(status, text='Service temporarily unavailable',
+                                                      headers={'x-request-id': 'upstream-edit-fixture'})
+
+                            with patch.object(main, 'get_api_provider', return_value=provider), \
+                                 patch.object(main, 'api_headers', return_value={}), \
+                                 patch.object(main, 'output_file_from_url', return_value=str(source)), \
+                                 patch.object(main, 'save_to_history') as save_history, \
+                                 patch.multiple(main, DATA_DIR=directory, GLOBAL_LOOP=None,
+                                                CANVAS_TASKS_FILE=str(Path(directory) / 'tasks.json'),
+                                                CANVAS_TASKS={}, CANVAS_IMAGE_BACKGROUND_TASKS={}), \
+                                 patch.object(main.httpx, 'AsyncClient', side_effect=lambda **kw: client_type(
+                                     transport=httpx.MockTransport(respond), **kw)):
+                                payload = main.OnlineImageRequest(
+                                    prompt='编辑参考图', provider_id=provider_id, model=model,
+                                    history_source=history_source, size='768x1024',
+                                    reference_images=[main.AIReference(url='/output/参考图.png')],
+                                )
+                                created = await main.create_canvas_image_task(payload)
+                                await main.CANVAS_IMAGE_BACKGROUND_TASKS[created['task_id']]
+                                task = await main.get_canvas_image_task(created['task_id'])
+                                save_history.assert_not_called()
+
+                            self.assertEqual(len(requests), 1)
+                            self.assertEqual(str(requests[0].url), edit_url)
+                            self.assertIn(f'name="model"\r\n\r\n{model}'.encode(), requests[0].content)
+                            self.assertEqual(task['provider_id'], provider_id)
+                            self.assertEqual(task['status'], 'failed')
+                            self.assertTrue(task['upstream_terminal_error'])
+                            error = task['error']
+                            self.assertIn(f'{name or provider_id} 的 GPT-Image-2/2.5 编辑接口', error)
+                            self.assertIn(f'HTTP {status}', error)
+                            self.assertIn('请求编号：upstream-edit-fixture', error)
+                            self.assertIn('请先到该平台后台核对请求状态和扣费记录', error)
+                            self.assertEqual(error.count('扣费记录'), 1)
+                            if provider_id != 'api-6789':
+                                self.assertNotIn('6789API', error)
 
     async def test_edit_does_not_retry_transient_bad_response_status(self):
         image = io.BytesIO()

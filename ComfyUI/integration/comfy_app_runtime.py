@@ -307,10 +307,30 @@ class ManagedRuntime:
                 raise RuntimeError('环境准备失败：\n' + tail)
 
     def _download_model(self, plan, log, report_progress=None):
-        for attempt in range(5):
-            if self.cancel.is_set():
+        manager = getattr(self, 'download_manager', None)
+        if manager is not None:
+            return manager.wait_for_download(plan, log, report_progress, self.cancel)
+        return self._download_model_direct(plan, log, report_progress)
+
+    def model_download_partial(self, plan):
+        destination = self.base / 'models' / plan['category'] / plan['name']
+        content = str(plan.get('sha256') or '').lower() or plan['url']
+        identity = hashlib.sha256((destination.name + '\0' + content).encode('utf-8')).hexdigest()
+        return destination.with_name('.xiaomei-' + identity + '.download')
+
+    def _download_model_direct(self, plan, log, report_progress=None, control=None,
+                               transfer_progress=None, request_options=None):
+        def check():
+            if control:
+                control()
+            elif self.cancel.is_set():
                 raise RuntimeError('准备已取消；已下载文件保留')
+        for attempt in range(5):
+            check()
             try:
+                if control or transfer_progress or request_options:
+                    return self._download_model_attempt(plan, log, report_progress, control,
+                                                        transfer_progress, request_options)
                 return self._download_model_attempt(plan, log, report_progress)
             except RuntimeError as exc:
                 cause = exc.__cause__
@@ -326,10 +346,18 @@ class ManagedRuntime:
                     output.write(detail + '\n')
                 if report_progress:
                     report_progress(None, detail)
-                if self.cancel.wait(delay):
+                if transfer_progress:
+                    transfer_progress({'status': 'retrying', 'speed': 0, 'detail': detail})
+                if control:
+                    deadline = time.monotonic() + delay
+                    while time.monotonic() < deadline:
+                        check()
+                        time.sleep(min(.2, max(0, deadline - time.monotonic())))
+                elif self.cancel.wait(delay):
                     raise RuntimeError('准备已取消；已下载文件保留')
 
-    def _download_model_attempt(self, plan, log, report_progress=None):
+    def _download_model_attempt(self, plan, log, report_progress=None, control=None,
+                                transfer_progress=None, request_options=None):
         """Download one allow-listed model into the shared ComfyUI tree.
 
         The caller supplies descriptors from the application library's trusted
@@ -337,11 +365,17 @@ class ManagedRuntime:
         so a future caller cannot turn a workflow field into an arbitrary
         filesystem write or network request.
         """
-        name = Path(str(plan.get('name') or '')).name
+        def check():
+            if control:
+                control()
+            elif self.cancel.is_set():
+                raise RuntimeError('准备已取消；已下载文件保留，未标记为完成')
+        check()
+        name = str(plan.get('name') or '')
         category = str(plan.get('category') or '').strip().replace('\\', '/')
         url = str(plan.get('url') or '').strip()
         allowed_categories = {'checkpoints', 'diffusion_models', 'text_encoders', 'vae', 'loras',
-                              'upscale_models', 'controlnet', 'clip_vision', 'SEEDVR2', 'models'}
+                              'upscale_models', 'controlnet', 'clip_vision', 'embeddings', 'SEEDVR2', 'models'}
         parsed = urlparse(url)
         if not name or name in ('.', '..') or '/' in name or '\\' in name:
             raise RuntimeError('自动下载失败：模型文件名不安全')
@@ -355,6 +389,10 @@ class ManagedRuntime:
                 or not re.fullmatch('[a-fA-F0-9]{64}', str(plan.get('sha256') or ''))):
             raise RuntimeError('自动下载失败：Civitai 文件缺少可核验的下载地址或 SHA-256')
         destination = self.base / 'models' / category / name
+        try:
+            destination.resolve().relative_to((self.base / 'models').resolve())
+        except ValueError:
+            raise RuntimeError('模型目录超出配置范围，请检查模型目录链接')
         destination.parent.mkdir(parents=True, exist_ok=True)
         expected_size = plan.get('size_bytes')
         expected_hash = str(plan.get('sha256') or '').strip().lower()
@@ -362,23 +400,50 @@ class ManagedRuntime:
             if expected_size and destination.stat().st_size != int(expected_size):
                 raise RuntimeError(f'模型已存在但大小不符：{destination.name}；系统不会覆盖，请手动确认')
             if expected_hash:
-                digest = self._file_sha256(destination)
+                digest = self._file_sha256(destination, control) if control else self._file_sha256(destination)
                 if digest != expected_hash:
                     raise RuntimeError(f'模型已存在但校验值不符：{destination.name}；系统不会覆盖')
             if report_progress:
                 report_progress(100, f'已找到模型：{name}')
             return
 
-        partial = destination.with_name(destination.name + '.xiaomei.download')
+        partial = self.model_download_partial(plan)
+        legacy = destination.with_name(destination.name + '.xiaomei.download')
+        # Preserve resumability for transfers created before content-specific partials.
+        if len(legacy.name) <= 255 and not partial.exists() and legacy.is_file():
+            legacy.rename(partial)
         offset = partial.stat().st_size if partial.is_file() else 0
+        def finish_partial():
+            if expected_hash:
+                if transfer_progress:
+                    transfer_progress({'status': 'verifying', 'downloaded': partial.stat().st_size,
+                                       'total': int(expected_size or partial.stat().st_size),
+                                       'speed': 0, 'detail': '正在校验 SHA-256', 'progress': 99})
+                digest = self._file_sha256(partial, control) if control else self._file_sha256(partial)
+                if digest != expected_hash:
+                    raise RuntimeError(f'模型校验失败：{name}，文件可能已损坏，请重试')
+            check()
+            # Creating the final name must fail if a model arrived during transfer.
+            if os.name == 'nt':
+                partial.rename(destination)
+            else:
+                os.link(partial, destination)
+                partial.unlink()
+            with log.open('a', encoding='utf-8') as output:
+                output.write(f'自动下载完成：{destination} <- {url}\n')
+            if report_progress:
+                report_progress(100, f'模型下载完成：{name}')
+        if expected_size and offset == int(expected_size):
+            return finish_partial()
         if expected_size and shutil.disk_usage(destination.parent).free < max(0, int(expected_size) - offset):
             raise RuntimeError(f'模型目录磁盘空间不足：{name}；清理空间后可继续下载')
-        headers = {'Accept-Encoding': 'identity'}
+        request_options = dict(request_options or {})
+        headers = {**request_options.pop('headers', {}), 'Accept-Encoding': 'identity'}
         if offset:
             headers['Range'] = f'bytes={offset}-'
         try:
             response = requests.get(url, headers=headers, stream=True,
-                                    allow_redirects=True, timeout=(20, 120))
+                                    allow_redirects=True, timeout=(15, 30), **request_options)
             # Some mirrors ignore Range and return the whole file.  Restart
             # the partial file instead of corrupting it by appending twice.
             append = offset > 0 and response.status_code == 206
@@ -386,27 +451,37 @@ class ManagedRuntime:
                 partial.unlink(missing_ok=True)
                 response.close()
                 offset = 0
-                response = requests.get(url, headers={'Accept-Encoding': 'identity'}, stream=True,
-                                        allow_redirects=True, timeout=(20, 120))
+                headers.pop('Range', None)
+                response = requests.get(url, headers=headers, stream=True,
+                                        allow_redirects=True, timeout=(15, 30), **request_options)
                 append = False
             response.raise_for_status()
+            if any(value in str(response.headers.get('Content-Type') or '').lower()
+                   for value in ('text/html', 'application/json')):
+                raise RuntimeError(f'来源没有返回模型文件：{name}；请检查账号权限，或打开来源页面下载')
             if append and not response.headers.get('Content-Range', '').startswith(f'bytes {offset}-'):
                 raise RuntimeError(f'下载源返回了错误的续传位置：{name}；已保留临时文件，请重试')
             remaining = int(response.headers.get('Content-Length') or 0)
             total = offset + remaining if append and remaining else (remaining or int(expected_size or 0))
             received = offset if append else 0
             mode = 'ab' if append else 'wb'
+            started = time.monotonic()
+            initial_received = received
+            if transfer_progress:
+                transfer_progress({'status': 'downloading', 'downloaded': received, 'total': total, 'speed': 0})
             with partial.open(mode) as output:
-                for chunk in response.iter_content(chunk_size=8 * 1024 * 1024):
-                    if self.cancel.is_set():
-                        raise RuntimeError('准备已取消；已下载文件保留，未标记为完成')
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    check()
                     if not chunk:
                         continue
                     output.write(chunk)
                     received += len(chunk)
                     if report_progress:
-                        percent = min(100, int(received * 100 / total)) if total else None
+                        percent = min(99, int(received * 100 / total)) if total else None
                         report_progress(percent, f'下载模型：{name}' + (f'（{percent}%）' if percent is not None else '（处理中）'))
+                    if transfer_progress:
+                        transfer_progress({'downloaded': received, 'total': total,
+                                           'speed': (received - initial_received) / max(.1, time.monotonic() - started)})
                 output.flush()
                 os.fsync(output.fileno())
             response.close()
@@ -414,26 +489,25 @@ class ManagedRuntime:
                 raise RuntimeError(f'模型下载未完成：{name}，已下载 {partial.stat().st_size} / {total} 字节，请重试')
             if expected_size and partial.stat().st_size != int(expected_size):
                 raise RuntimeError(f'模型下载大小校验失败：{name}，请重试或手动导入')
-            if expected_hash:
-                digest = self._file_sha256(partial)
-                if digest != expected_hash:
-                    raise RuntimeError(f'模型校验失败：{name}，文件可能已损坏，请重试')
-            partial.replace(destination)
-            with log.open('a', encoding='utf-8') as output:
-                output.write(f'自动下载完成：{destination} <- {url}\n')
+            finish_partial()
         except requests.RequestException as exc:
-            raise RuntimeError(f'模型下载失败：{name}；{exc}') from exc
+            status = exc.response.status_code if isinstance(exc, requests.HTTPError) and exc.response is not None else None
+            reason = ('来源需要账号权限，请在下载设置中填写对应平台的 Key 或 Token' if status in (401, 403)
+                      else f'来源返回 HTTP {status}' if status else '连接中断或超时')
+            raise RuntimeError(f'模型下载失败：{name}；{reason}。请检查网络或代理后重试，也可以打开来源页面下载') from exc
         finally:
             try:
                 response.close()
             except UnboundLocalError:
                 pass
 
-    def _file_sha256(self, path):
+    def _file_sha256(self, path, control=None):
         digest = hashlib.sha256()
         with path.open('rb') as stream:
             for block in iter(lambda: stream.read(8 * 1024 * 1024), b''):
-                if self.cancel.is_set():
+                if control:
+                    control()
+                elif self.cancel.is_set():
                     raise RuntimeError('校验已取消；已下载文件保留')
                 digest.update(block)
         return digest.hexdigest()

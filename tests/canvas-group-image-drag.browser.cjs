@@ -104,20 +104,20 @@ function imageItem(page, id, index = 0) {
     return page.locator(`.image-node[data-id="${id}"] [data-image-index="${index}"]`).filter({ has: page.locator('img') }).first();
 }
 
-async function dragImage(page, id, alt = false, short = false) {
-    const box = await imageItem(page, id).boundingBox();
+async function dragImage(page, id, alt = false, short = false, index = 0) {
+    const box = await imageItem(page, id, index).boundingBox();
     assert.ok(box);
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     if (alt) await page.keyboard.down('Alt');
     await page.mouse.down();
-    if (alt) await page.keyboard.up('Alt');
     await page.mouse.move(short ? box.x + box.width / 2 + 2 : 1080, short ? box.y + box.height / 2 : 500, { steps: 12 });
     await page.mouse.up();
+    if (alt) await page.keyboard.up('Alt');
 }
 
 test('Alt dragging a group image preserves the source and creates one independent copy', { timeout: 60000 }, async t => {
     const page = await fixture(t);
-    for (const [count, nodeType] of [[9, 'smart-group'], [1, 'smart-group'], [3, 'smart-upload']]) {
+    for (const [count, nodeType] of [[9, 'smart-group'], [1, 'smart-group'], [3, 'smart-upload'], [4, 'smart-paint']]) {
         const id = await makeGroup(page, count, nodeType);
         const before = await page.evaluate(id => {
             const upstream = createPromptNode(20, 780, { select: false, skipUndo: true });
@@ -131,7 +131,7 @@ test('Alt dragging a group image preserves the source and creates one independen
                 ids: nodes.map(node => node.id), connections: JSON.parse(JSON.stringify(canvas.connections))
             };
         }, id);
-        await dragImage(page, id, true);
+        await dragImage(page, id, true, false, count - 1);
         const copied = await page.evaluate(({ id, ids }) => {
             const source = nodes.find(node => node.id === id);
             const copy = nodes.find(node => !ids.includes(node.id));
@@ -147,7 +147,7 @@ test('Alt dragging a group image preserves the source and creates one independen
         assert.deepEqual(copied.rect, before.rect);
         assert.equal(copied.copyImages.length, 1);
         for (const field of ['url', 'name', 'kind', 'width', 'height', 'asset_ref_id']) {
-            assert.equal(copied.copyImages[0][field], before.images[0][field]);
+            assert.equal(copied.copyImages[0][field], before.images[count - 1][field]);
         }
         assert.ok(copied.copyPosition.x > 800);
         assert.equal(copied.independent, true);
@@ -155,11 +155,8 @@ test('Alt dragging a group image preserves the source and creates one independen
         before.connections.forEach(edge => {
             assert.ok(copiedEdgeKeys.has(`${edge.from}|${edge.to}|${edge.kind || 'flow'}|${edge.input_slot || edge.inputSlot || ''}`));
         });
-        before.connections.forEach(edge => {
-            const from = edge.from === id ? copied.copyId : edge.from;
-            const to = edge.to === id ? copied.copyId : edge.to;
-            assert.ok(copiedEdgeKeys.has(`${from}|${to}|${edge.kind || 'flow'}|${edge.input_slot || edge.inputSlot || ''}`));
-        });
+        assert.equal(copied.connections.length, before.connections.length);
+        assert.ok(copied.connections.every(edge => edge.from !== copied.copyId && edge.to !== copied.copyId));
         assert.equal(copied.undoCount, 1);
         const restored = await page.evaluate(id => {
             performUndo();

@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>发送模型到小美画布</title><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <p class="kicker">小美画布 / 模型下载</p>
+  <h1>发送当前模型</h1>
+  <p id="model" class="model">正在读取当前页面…</p>
+  <label for="receiver">小美画布接收地址</label>
+  <input id="receiver" type="url" placeholder="http://127.0.0.1:3000" autocomplete="off">
+  <p class="help">保持小美画布运行。端口变化时，从“本地模型 → 浏览器发送”复制接收地址。</p>
+  <button id="send" type="button" disabled>发送并选择文件</button>
+  <p id="status" role="status"></p>
+  <script src="receiver-default.js"></script><script src="popup.js"></script>
+</body>
+</html>

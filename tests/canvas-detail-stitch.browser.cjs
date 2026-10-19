@@ -14,6 +14,7 @@ test('detail screens stitch in screen order, update one output, and allow manual
     const requests = [];
     let savedCanvas = null;
     let stitchGate = null;
+    let saveGate = null;
     let failNextSave = false;
     await page.routeWebSocket('**/*', socket => socket.close());
     await page.route('**/*', async route => {
@@ -31,14 +32,14 @@ test('detail screens stitch in screen order, update one output, and allow manual
                 connections:['p1','p2','p3'].map(id => ({from:'loop', to:id, kind:'input'})),
                 nodes:[
                     {id:'p3', type:'smart-paint', x:1060, y:640, batchDetailOwnerId:'loop', batchDetailScreenIndex:3,
-                        images:[{url:'/assets/output/c.png', natural_w:1024, natural_h:1792, kind:'image'}]},
+                        images:[{url:'/assets/output/c.png', natural_w:1086, natural_h:1448, kind:'image'}]},
                     {id:'loop', type:'smart-loop', x:30, y:30, w:420, h:760, batchUiMode:'paired', batchDetailModeV2:true,
-                        batchPaintNodeIds:['p1','p2','p3'], batchImageSettings:{ratio:'9:16', resolution:'1K'},
+                        batchPaintNodeIds:['p1','p2','p3'], batchImageSettings:{ratio:'story', resolution:'1K'},
                         aiSplitPrompts:[1,2,3].map(n => ({title:`第${n}屏`, prompt:`画面${n}`}))},
                     {id:'p2', type:'smart-paint', x:1600, y:30, batchDetailOwnerId:'loop', batchDetailScreenIndex:2,
-                        images:[{url:'/assets/output/b.png', natural_w:1024, natural_h:1792, kind:'image'}]},
+                        images:[{url:'/assets/output/b.png', natural_w:1086, natural_h:1448, kind:'image'}]},
                     {id:'p1', type:'smart-paint', x:1060, y:30, batchDetailOwnerId:'loop', batchDetailScreenIndex:1,
-                        images:[{url:'/assets/output/a.png', natural_w:1024, natural_h:1792, kind:'image'}]},
+                        images:[{url:'/assets/output/a.png', natural_w:1086, natural_h:1448, kind:'image'}]},
                 ]
             }}});
         }
@@ -46,10 +47,11 @@ test('detail screens stitch in screen order, update one output, and allow manual
             requests.push(JSON.parse(route.request().postData()));
             const n = requests.length;
             if(stitchGate) await stitchGate;
-            return route.fulfill({json:{url:`/assets/output/long-${n}.png`, name:'详情页长图.png', width:1024, height:5376,
+            return route.fulfill({json:{url:`/assets/output/long-${n}.png`, name:'详情页长图.png', width:1086, height:4344, actual_ratio:'3:4', scaled_down:n === 1,
                 asset_ref_id:`asset_long_${n}`}});
         }
         if(url.pathname === '/api/canvases/stitch' && ['PUT','PATCH'].includes(route.request().method())){
+            if(saveGate) await saveGate;
             if(failNextSave){
                 failNextSave = false;
                 return route.fulfill({status:500, json:{detail:'simulated save failure'}});
@@ -61,27 +63,70 @@ test('detail screens stitch in screen order, update one output, and allow manual
     });
     await page.goto('http://xiaomei-stitch.test/static/smart-canvas.html?id=stitch');
     await page.waitForFunction(() => nodes.some(node => node.id === 'loop') && document.querySelector('[data-loop-detail-stitch="loop"]'));
+    let releaseSave;
+    saveGate = new Promise(resolve => { releaseSave = resolve; });
     await page.locator('[data-loop-detail-stitch="loop"]').click();
     await page.waitForFunction(() => nodes.some(node => node.detailStitchOwnerId === 'loop'));
     assert.deepEqual(requests[0].urls, ['/assets/output/a.png','/assets/output/b.png','/assets/output/c.png']);
+    assert.equal(requests[0].allow_compatible_portrait, true);
     const initial = await page.evaluate(() => {
         const output = nodes.find(node => node.detailStitchOwnerId === 'loop');
-        const right = Math.max(...nodes.filter(node => node.batchDetailOwnerId === 'loop').map(node => nodeRect(node).x + nodeRect(node).width));
-        return {id:output.id, x:output.x, right, url:output.images[0].url, sources:output.detailStitchSourceUrls};
+        const sourceRects = nodes.filter(node => node.batchDetailOwnerId === 'loop').map(nodeRect);
+        const right = Math.max(...sourceRects.map(rect => rect.x + rect.width));
+        const top = Math.min(...sourceRects.map(rect => rect.y));
+        const bottom = Math.max(...sourceRects.map(rect => rect.y + rect.height));
+        const outputRect = nodeRect(output);
+        return {id:output.id, x:output.x, right, top, bottom, y:output.y, height:outputRect.height,
+            width:outputRect.width, url:output.images[0].url, sources:output.detailStitchSourceUrls,
+            actualRatio:output.detailStitchActualRatio,
+            lines:canvas.connections.filter(conn => conn.to === output.id && conn.detail_stitch).map(conn => conn.from)};
     });
     assert.ok(initial.x > initial.right, 'long image is placed to the right of the screens');
+    assert.equal(initial.height, Math.round(initial.bottom - initial.top), 'long image matches the source group height');
+    assert.ok(Math.abs(initial.y + initial.height / 2 - (initial.top + initial.bottom) / 2) <= 1,
+        'long image is vertically centered alongside the source group');
+    assert.equal(initial.width, Math.round(initial.height * 1086 / 4344), 'long image keeps its natural aspect ratio');
     assert.equal(initial.url, '/assets/output/long-1.png');
+    assert.equal(initial.actualRatio, '3:4');
+    assert.deepEqual(initial.lines, ['p1','p2','p3'], 'each source screen is linked to the long image');
+    assert.equal(await page.locator(`.conn-group[data-conn-from="p1"][data-conn-to="${initial.id}"]`).count(), 1,
+        'the source line is visible on the canvas');
+    assert.equal(await page.locator(`.image-node[data-id="${initial.id}"]`).count(), 1,
+        'the long image appears before the canvas save finishes');
+    releaseSave();
+    saveGate = null;
     await page.evaluate(() => saveCanvas());
+    await page.waitForFunction(() => document.getElementById('toast')?.textContent.includes('已等比缩至 1086×4344 像素'));
     assert.deepEqual(savedCanvas.nodes.find(node => node.id === initial.id).detailStitchSourceNodeIds, ['p1','p2','p3']);
+    assert.equal(savedCanvas.connections.filter(conn => conn.to === initial.id && conn.detail_stitch).length, 3);
     await page.reload();
     await page.waitForFunction(id => nodes.some(node => node.id === id), initial.id);
     assert.deepEqual(await page.evaluate(id => {
         const output = nodes.find(node => node.id === id);
         return {url:output.images[0].url, sources:output.detailStitchSourceUrls, stale:detailStitchOutputNeedsUpdate(output)};
     }, initial.id), {url:'/assets/output/long-1.png', sources:initial.sources, stale:false});
+    assert.equal(await page.evaluate(id => nodeRect(nodes.find(node => node.id === id)).height, initial.id), initial.height,
+        'the enlarged layout remains after reloading the canvas');
+    assert.deepEqual(await page.evaluate(id => {
+        const output = nodes.find(node => node.id === id);
+        output.manualSize = true;
+        output.w = 140;
+        output.h = 560;
+        const {width, height} = nodeRect(output);
+        delete output.manualSize;
+        delete output.w;
+        delete output.h;
+        return {width, height};
+    }, initial.id), {width:140, height:560}, 'a manually resized long image keeps its chosen size');
+    savedCanvas.connections = savedCanvas.connections.filter(conn => conn.to !== initial.id);
+    delete savedCanvas.nodes.find(node => node.id === initial.id).detailStitchConnectionVersion;
+    await page.reload();
+    await page.waitForFunction(id => canvas?.connections?.filter(conn => conn.to === id && conn.detail_stitch).length === 3, initial.id);
+    assert.equal(await page.evaluate(id => nodes.find(node => node.id === id).detailStitchConnectionVersion, initial.id), 1,
+        'older long images regain their source lines when the canvas is loaded');
 
     await page.evaluate(() => {
-        nodes.find(node => node.id === 'p2').images = [{url:'/assets/output/b-new.png', natural_w:1024, natural_h:1792, kind:'image'}];
+        nodes.find(node => node.id === 'p2').images = [{url:'/assets/output/b-new.png', natural_w:1086, natural_h:1448, kind:'image'}];
         render();
     });
     assert.match(await page.locator('[data-loop-detail-stitch-status]').textContent(), /更新长图/);
@@ -114,7 +159,24 @@ test('detail screens stitch in screen order, update one output, and allow manual
     assert.match(await page.locator(`.image-node[data-id="${initial.id}"] .smart-detail-stitch-marker`).textContent(), /待更新/);
 
     await page.evaluate(() => {
-        nodes.find(node => node.id === 'p3').images = [{url:'/assets/output/c.png', natural_w:1024, natural_h:1792, kind:'image'}];
+        nodes.find(node => node.id === 'p3').images = [{url:'/assets/output/c.png', natural_w:1086, natural_h:1448, kind:'image'}];
+        nodes.find(node => node.id === 'loop').batchImageSettings.ratio = 'portrait43';
+        render();
+    });
+    assert.equal(await page.evaluate(() => detailStitchStateForLoop(nodes.find(node => node.id === 'loop')).ready), false,
+        'batch stitching requires a 9:16 request');
+    await page.evaluate(() => {
+        nodes.find(node => node.id === 'loop').batchImageSettings.ratio = 'story';
+        nodes.push(
+            {id:'independent-1', type:'smart-paint', x:700, y:1200, images:[{url:'/assets/output/independent-1.png', natural_w:1086, natural_h:1448, kind:'image'}]},
+            {id:'independent-2', type:'smart-paint', x:1100, y:1200, images:[{url:'/assets/output/independent-2.png', natural_w:1086, natural_h:1448, kind:'image'}]}
+        );
+        selectedIds = ['independent-1','independent-2']; selectedId = '';
+        render();
+    });
+    assert.equal(await page.locator('[data-smart-selection-action="stitch-detail"]').count(), 0, 'independent 3:4 images cannot use the batch fallback');
+    await page.evaluate(() => {
+        nodes = nodes.filter(node => !node.id.startsWith('independent-'));
         viewport.scale = 0.65; centerViewportOnWorldPoint({x:1400,y:350});
         selectedIds = ['p3','p1','p2']; selectedId = ''; render();
     });
@@ -123,12 +185,13 @@ test('detail screens stitch in screen order, update one output, and allow manual
     await page.locator('[data-detail-stitch-confirm]').click();
     await page.waitForFunction(() => nodes.filter(node => Array.isArray(node.detailStitchSourceNodeIds)).length === 2);
     assert.deepEqual(requests[2].urls, ['/assets/output/b-new.png','/assets/output/a.png','/assets/output/c.png']);
+    assert.equal(requests[2].allow_compatible_portrait, true, 'manual selection from a 9:16 batch keeps the provider-ratio fallback');
 
     await page.evaluate(() => saveCanvas());
     await page.goto('http://xiaomei-stitch.test/static/smart-canvas.html?id=stitch&shared=1');
     await page.waitForFunction(id => sharedCanvasMode && !sharedCanvasReadOnly && nodes.some(node => node.id === id), initial.id);
     await page.evaluate(() => {
-        nodes.find(node => node.id === 'p1').images = [{url:'/assets/output/a-shared.png', natural_w:1024, natural_h:1792, kind:'image'}];
+        nodes.find(node => node.id === 'p1').images = [{url:'/assets/output/a-shared.png', natural_w:1086, natural_h:1448, kind:'image'}];
         centerViewportOnWorldPoint({x:240, y:370});
         render();
     });
@@ -141,7 +204,7 @@ test('detail screens stitch in screen order, update one output, and allow manual
     assert.equal(await page.evaluate(id => nodes.find(node => node.id === id).images[0].url, initial.id), '/assets/output/long-4.png');
     failNextSave = true;
     await page.evaluate(() => {
-        nodes.find(node => node.id === 'p1').images = [{url:'/assets/output/a-save-fail.png', natural_w:1024, natural_h:1792, kind:'image'}];
+        nodes.find(node => node.id === 'p1').images = [{url:'/assets/output/a-save-fail.png', natural_w:1086, natural_h:1448, kind:'image'}];
         centerViewportOnWorldPoint({x:240, y:370});
         render();
     });

@@ -1751,6 +1751,8 @@ body.detail-long-preview-open { overflow: hidden; }
 .site-page-context-facts { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; color: #4e6380; font-size: 11px; line-height: 1.55; list-style: none; }
 .site-page-context-facts li { overflow-wrap: anywhere; }
 .site-page-context-facts b { color: #2f5688; font-weight: 650; }
+.site-page-context-resources { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 9px; color: #70829a; font-size: 10px; }
+.site-page-context-resources .mention-chip { font-size: 10px; }
 .site-page-context-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 9px; padding-top: 7px; border-top: 1px solid #eef3f9; color: #8494a9; font-size: 10px; }
 .site-page-context-meta button { width: 22px; height: 22px; border: 1px solid #dce6f2; border-radius: 6px; background: #fff; color: #5c7fb3; font-size: 13px; line-height: 1; }
 .site-page-context-meta button:hover { border-color: #abc6ef; background: #f4f8ff; color: #2468d7; }

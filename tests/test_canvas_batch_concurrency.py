@@ -24,6 +24,7 @@ class CanvasBatchConcurrencyTests(unittest.TestCase):
         self.ns = dict(globals(), ONLINE_IMAGE_PROMPT_MAX_LENGTH=10000,
                        CANVAS_IMAGE_TASK_CONCURRENCY=2, GPT_IMAGE2_EDIT_CONCURRENCY=2,
                        CANVAS_IMAGE_TASK_SEMAPHORES={}, CANVAS_IMAGE_TASK_SEMAPHORES_LOCK=Lock(),
+                       CANVAS_TASK_LOCK=Lock(), CANVAS_TASKS={},
                        GPT_IMAGE2_EDIT_SEMAPHORES={}, GPT_IMAGE2_EDIT_SEMAPHORES_LOCK=Lock(),
                        CANVAS_IMAGE_BATCH_CONCURRENCY=contextvars.ContextVar("fixture_batch_concurrency", default=0))
         exec(compile(ast.Module(body=body, type_ignores=[]), str(source), "exec"), self.ns)

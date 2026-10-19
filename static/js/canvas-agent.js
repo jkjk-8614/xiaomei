@@ -30,8 +30,11 @@
     let agentActionWatchTimer=0;
     let runState='idle', runStateText='', runStateDetail='';
     let composerFileReferences=[], composerUploadBusy=false, composerRunStartedAt=0, composerRunTimer=0;
+    let composerCanvasReferences=[], composerReferenceOrder=[], composerReferenceContext='', composerPickerScope=null;
+    const composerRemovedReferenceIds=new Set();
     let activeAgentAbortController=null, activeAgentRunToken=0, activeAgentStopRequested=false, activeHarnessRunId='';
     let store={activeId:'',conversations:[]}, historyTab='conversations';
+    let loadedStoreKey='', composerReferenceSaveTimer=0;
     let folderBatch=null;
     let editingUserMessageIndex=-1, editingUserMessageDraft='', editingUserMessageOriginal='', editingInputDraft='';
     // Skill 自动路由只是可选的优化步骤，不能因为上游聊天模型无响应而阻塞整个 Agent。
@@ -340,10 +343,16 @@
         return current;
     }
     function loadStore(){
+        if(composerReferenceSaveTimer)saveStore();
+        loadedStoreKey=storeKey();
+        composerReferenceContext='';
         try{store=JSON.parse(localStorage.getItem(storeKey())||'null')||{activeId:'',conversations:[]};}catch(_){store={activeId:'',conversations:[]};}
         activeConversation();saveStore();renderMessages();
     }
-    function saveStore(){localStorage.setItem(storeKey(),JSON.stringify(store));}
+    function saveStore(){
+        clearTimeout(composerReferenceSaveTimer);composerReferenceSaveTimer=0;
+        localStorage.setItem(loadedStoreKey||storeKey(),JSON.stringify(store));
+    }
     function currentMode(){
         let storedMode='';
         try{storedMode=JSON.parse(localStorage.getItem(generationPrefKey)||'{}')?.mode||'';}catch(_){storedMode='';}
@@ -1664,16 +1673,97 @@
         const canReset=Boolean((scope?.excludedNodeIds||[]).length||(scope?.excludedReferenceKeys||[]).length);
         return `<div class="canvas-agent-scope-details"><div class="canvas-agent-scope-detail-label"><span>引用来源 · ${sourceNodes.length} 个节点</span>${canReset?'<button type="button" data-agent-reset-scope title="恢复已移除的来源和引用图">恢复</button>':''}</div><div class="canvas-agent-scope-sources">${sourceHtml}</div><div class="canvas-agent-scope-references">${referenceHtml}</div></div>`;
     }
-    function composerAttachmentReferences(scope){
-        const seen=new Set();
-        return [...(scope?.referenceImages||[]),...(Array.isArray(composerFileReferences)?composerFileReferences:[])]
-            .filter(item=>{
-                const url=String(item?.url||'').trim();
-                if(!url||seen.has(url))return false;
-                seen.add(url);
-                return true;
-            });
+    function composerAttachmentReferences(scope,extraReferences=null){
+        syncComposerReferenceContext();
+        const files=extraReferences===null?composerFileReferences:extraReferences;
+        return orderedSmartInputReferences({inputRefOrder:composerReferenceOrder},[...(composerPickerScope?.referenceImages||scope?.referenceImages||[]),...composerCanvasReferences,...(files||[])]
+            .map(item=>item.sourceImageId?{...item,...referenceSourceState(item)}:item)
+            .filter(item=>!composerRemovedReferenceIds.has(referenceMaterialKey(item))));
     }
+    function composerReferenceOwner(){ return `${canvas?.id || ''}|${store.activeId}`; }
+    function syncComposerReferenceContext(){
+        if(canvas?.id&&loadedStoreKey!==storeKey())loadStore();
+        const identity=composerReferenceOwner();
+        if(composerReferenceContext===identity)return;
+        if(window.SmartCanvasReferencePicker?.active?.type==='composer-agent')window.SmartCanvasReferencePicker.finish('conversation-change');
+        composerReferenceContext=identity;
+        composerPickerScope=null;
+        const saved=activeConversation().composerReferences||{};
+        const draft=saved.canvasId&&saved.canvasId!==String(canvas?.id||'')?{}:saved;
+        composerCanvasReferences=Array.isArray(draft.canvas)?draft.canvas.map(item=>({...item})):[];
+        composerFileReferences=Array.isArray(draft.files)?draft.files.map(item=>({...item})):[];
+        composerReferenceOrder=Array.isArray(draft.order)?draft.order.slice():[];
+        composerRemovedReferenceIds.clear();
+        (draft.removed||[]).forEach(key=>composerRemovedReferenceIds.add(key));
+    }
+    function saveComposerReferenceDraft(){
+        activeConversation().composerReferences={canvasId:String(canvas?.id||''),canvas:composerCanvasReferences,files:composerFileReferences,order:composerReferenceOrder,removed:[...composerRemovedReferenceIds]};
+        clearTimeout(composerReferenceSaveTimer);
+        composerReferenceSaveTimer=setTimeout(saveStore,450);
+    }
+    function removeComposerReference(item){
+        syncComposerReferenceContext();
+        composerCanvasReferences=composerCanvasReferences.filter(ref=>!sameReferenceMaterial(ref,item));
+        composerFileReferences=composerFileReferences.filter(ref=>!sameReferenceMaterial(ref,item));
+        composerRemovedReferenceIds.add(referenceMaterialKey(item));
+        composerReferenceOrder=composerReferenceOrder.filter(key=>key!==`ref|${referenceMaterialKey(item)}`);
+        saveComposerReferenceDraft();
+    }
+    const composerReferenceBridge={
+        targetId(){syncComposerReferenceContext();return composerReferenceOwner();},
+        references(){return composerAttachmentReferences(currentTaskScope());},
+        add(item){
+            syncComposerReferenceContext();
+            const previous=composerAttachmentReferences(currentTaskScope());
+            composerRemovedReferenceIds.delete(referenceMaterialKey(item));
+            if(!composerAttachmentReferences(currentTaskScope()).some(ref=>sameReferenceMaterial(ref,item))){
+                composerCanvasReferences.push({...item,referenceId:referenceMaterialKey(item),sourceImageId:referenceMaterialKey(item),source:'composer-canvas',kind:'image'});
+            }
+            composerReferenceOrder=uniqueReferenceImages([...previous,item]).map(ref=>`ref|${referenceMaterialKey(ref)}`);
+            saveComposerReferenceDraft();
+        },
+        remove:removeComposerReference,
+        reorder(from,to){
+            const refs=this.references(),keys=refs.map(ref=>`ref|${referenceMaterialKey(ref)}`);
+            if(!keys.includes(from)||!keys.includes(to)||from===to)return;
+            if(!window.SmartCanvasReferencePicker?.recordChange(composerReferenceOwner()))pushUndo();
+            composerReferenceOrder=movedBeforeAfterIds(keys,from,to,keys.indexOf(from)<keys.indexOf(to)?'after':'before');
+            saveComposerReferenceDraft();renderTaskScope();window.SmartCanvasReferencePicker?.refresh();
+        },
+        sync(){renderTaskScope();},
+        snapshot(){
+            syncComposerReferenceContext();
+            return cloneAgentTaskScope({owner:composerReferenceOwner(),canvas:composerCanvasReferences,files:composerFileReferences,order:composerReferenceOrder,removed:[...composerRemovedReferenceIds]});
+        },
+        restore(snapshot){
+            if(!snapshot||snapshot.owner!==composerReferenceOwner())return;
+            composerReferenceContext=snapshot.owner;
+            composerCanvasReferences=cloneAgentTaskScope(snapshot.canvas||[]);
+            composerFileReferences=cloneAgentTaskScope(snapshot.files||[]);
+            composerReferenceOrder=(snapshot.order||[]).slice();
+            composerRemovedReferenceIds.clear();
+            (snapshot.removed||[]).forEach(key=>composerRemovedReferenceIds.add(key));
+            saveComposerReferenceDraft();
+            renderTaskScope();
+        },
+        start(){
+            const targetId=this.targetId();
+            if(busy||composerUploadBusy)return false;
+            return window.SmartCanvasReferencePicker?.start({type:'composer-agent',targetId})||false;
+        }
+    };
+    window.CanvasAgentReferenceBridge=composerReferenceBridge;
+    window.SmartCanvasReferencePicker?.register('composer-agent',targetId=>({
+        alive:()=>!busy&&composerReferenceOwner()===targetId,
+        begin:()=>{composerPickerScope=snapshotAgentTaskScope(currentTaskScope());},
+        read:()=>composerReferenceBridge.references(),same:sameReferenceMaterial,
+        accept:ref=>mediaKindForItem(ref)==='image'?'':'当前模型不支持此素材',
+        validate:refs=>refs.some(ref=>ref.sourceMissing)?'引用已失效，请移除后重新选择':'',
+        beforeChange:pushUndo,add:ref=>composerReferenceBridge.add(ref),remove:ref=>composerReferenceBridge.remove(ref),
+        sync:()=>composerReferenceBridge.sync(),
+        finish:()=>{composerPickerScope=null;if(composerReferenceSaveTimer)saveStore();renderTaskScope();}
+    }));
+    window.addEventListener('pagehide',()=>{if(composerReferenceSaveTimer)saveStore();});
     function renderComposerAttachments(scope){
         if(!composerAttachmentsEl)return;
         const references=composerAttachmentReferences(scope);
@@ -1688,21 +1778,18 @@
             const label=item.name||`素材图 ${index+1}`;
             const owner=nodes.find(node=>node.id===String(item?.nodeId||item?.groupNodeId||''));
             const title=`${owner?scopeNodeLabel(owner.id):'已选素材图'} · ${label}`;
-            return `<span class="canvas-agent-composer-attachment" role="option" aria-label="${esc(title)}" title="${esc(title)}">${agentPreviewImg(item,label,96)}<em>${index+1}</em><button type="button" class="canvas-agent-composer-attachment-remove" data-agent-composer-remove-reference="${index}" title="移除这张素材图" aria-label="移除${esc(label)}"><i data-lucide="x"></i></button></span>`;
+            return `<span class="canvas-agent-composer-attachment ${item.sourceMissing?'reference-source-missing':''}" data-agent-reference-index="${index}" role="option" aria-label="${esc(title)}" title="${esc(item.sourceMissing?'引用已失效，请移除后重新选择':title)}">${agentPreviewImg(item,label,96)}<em>${index+1}</em><button type="button" class="canvas-agent-composer-attachment-remove" data-agent-composer-remove-reference="${index}" title="移除这张素材图" aria-label="移除${esc(label)}"><i data-lucide="x"></i></button></span>`;
         }).join('');
         composerAttachmentsEl.querySelectorAll('[data-agent-composer-remove-reference]').forEach(button=>button.addEventListener('click',event=>{
             event.preventDefault();
             event.stopPropagation();
             const item=references[Number(button.dataset.agentComposerRemoveReference)];
             if(!item)return;
-            if(item.source==='composer-upload'){
-                const key=agentReferenceKey(item),url=String(item.url||'');
-                composerFileReferences=composerFileReferences.filter(reference=>agentReferenceKey(reference)!==key&&String(reference?.url||'')!==url);
-                renderComposerAttachments(currentTaskScope());
-                syncComposerFileUi();
-                return;
-            }
-            removeAgentTaskScopeReference(agentReferenceKey(item));
+            if(!window.SmartCanvasReferencePicker?.recordChange(composerReferenceOwner()))pushUndo();
+            composerReferenceBridge.remove(item);
+            renderTaskScope();
+            syncComposerFileUi();
+            window.SmartCanvasReferencePicker?.refresh();
         }));
         resizeComposerInput();
         if(typeof refreshIcons==='function')refreshIcons();
@@ -1756,7 +1843,10 @@
                 .filter(item=>item?.url)
                 .map(item=>({...item,source:'composer-upload',kind:'image'}));
             if(!uploaded.length)throw new Error('没有收到可用的图片地址');
-            composerFileReferences=[...composerFileReferences,...uploaded];
+            syncComposerReferenceContext();
+            uploaded.forEach(item=>composerRemovedReferenceIds.delete(referenceMaterialKey(item)));
+            composerFileReferences=uniqueReferenceImages([...composerFileReferences,...uploaded]);
+            saveComposerReferenceDraft();
             renderComposerAttachments(currentTaskScope());
             toast(`已添加 ${uploaded.length} 张素材图`);
         }catch(error){
@@ -1767,9 +1857,14 @@
             syncComposerFileUi();
         }
     }
-    function clearComposerFileReferences(){
-        if(!composerFileReferences.length)return;
+    function clearComposerFileReferences(expectedOwner=composerReferenceOwner()){
+        if(expectedOwner!==composerReferenceOwner())return;
+        syncComposerReferenceContext();
         composerFileReferences=[];
+        composerCanvasReferences=[];
+        composerReferenceOrder=[];
+        composerRemovedReferenceIds.clear();
+        saveComposerReferenceDraft();
         renderComposerAttachments(currentTaskScope());
         syncComposerFileUi();
     }
@@ -1904,11 +1999,12 @@
     function planReferenceImages(scope=currentTaskScope()){
         return uniqueReferenceImages(scope?.referenceImages||[]).filter(item=>item?.url);
     }
-    function scopeWithComposerReferences(scope,extraReferences=composerFileReferences){
+    function scopeWithComposerReferences(scope,extraReferences=null){
         if(!scope)return scope;
+        syncComposerReferenceContext();
         return {
             ...scope,
-            referenceImages:snapshotReferenceImages([...(scope.referenceImages||[]),...(extraReferences||[])])
+            referenceImages:snapshotReferenceImages(composerAttachmentReferences(scope,extraReferences))
         };
     }
     function snapshotReferenceImages(items=[]){
@@ -1918,6 +2014,8 @@
             if(!url||seen.has(url))return null;
             seen.add(url);
             return {
+                ...cloneAgentTaskScope(item),
+                asset_uris:{...(item.asset_uris||{})},
                 url,
                 name:String(item?.name||item?.alias||'').slice(0,100),
                 kind:String(item?.kind||'image'),
@@ -2312,7 +2410,7 @@
         if(!node)throw new Error('没有找到操作目标，请先选中要处理的节点或明确指定“图几”。');
         return {...target,node};
     }
-    async function executeCanvasAgentOperation(scope,operation){
+    async function executeCanvasAgentOperation(scope,operation,executionScope=null){
         const tool=String(operation?.tool||'').trim();
         const {node,imageIndex}=canvasAgentOperationNode(scope,operation);
         const args=operation?.args&&typeof operation.args==='object'?operation.args:{};
@@ -2321,7 +2419,7 @@
             const result=batch&&typeof removeSmartNodeBackgroundBatch==='function'
                 ?await removeSmartNodeBackgroundBatch(node)
                 :typeof removeSmartNodeBackground==='function'
-                    ?await removeSmartNodeBackground(node,imageIndex,{closeEditor:true})
+                    ?await removeSmartNodeBackground(node,imageIndex,{closeEditor:true,expectedCanvasId:executionScope?.canvasId})
                     :null;
             if(!result)throw new Error('去背景工具没有返回结果，原图未修改。');
             return {message:batch?'批量去背景已完成，原图保留。':'已生成透明底节点，原图保留。',targetNodeId:result?.outputNode?.id||''};
@@ -2334,9 +2432,10 @@
                 :(direction==='left'||direction==='ccw'?'rotate-left':'rotate-right');
             const before=typeof smartOriginalMediaUrl==='function'?smartOriginalMediaUrl(imageForDisplay(node.images?.[imageIndex])):'';
             await openSmartNodeTransform(node.id,imageIndex);
+            if(executionScope&&String(canvas?.id||'')!==executionScope.canvasId)throw new Error('画布已切换，图片操作已停止');
             const turns=Math.max(1,Math.min(3,Math.round(Number(args.degrees||90)/90)));
             for(let index=0;index<(tool==='image.flip'?1:turns);index++)applySmartNodeTransform(operationName);
-            await saveSmartNodeTransform();
+            await saveSmartNodeTransform({expectedCanvasId:executionScope?.canvasId});
             const after=typeof smartOriginalMediaUrl==='function'?smartOriginalMediaUrl(imageForDisplay(node.images?.[imageIndex])):'';
             if(before&&after===before)throw new Error('图片变换未保存，原图未修改。');
             return {message:tool==='image.flip'?'图片镜像已保存。':'图片旋转已保存。',targetNodeId:node.id};
@@ -3052,7 +3151,7 @@
         const incoming=spec.settings||spec.run_settings;
         if(!incoming||typeof incoming!=='object')return;
         const base=typeof cloneSmartSettings==='function'?cloneSmartSettings(node.runSettings||settings||{}):{...(node.runSettings||settings||{})};
-        const allowed=['engine','apiKind','provider_id','model','ratio','resolution','customRatio','customRatioWidth','customRatioHeight','customSize','quality','background','count','videoProvider','videoModel','videoAspect','videoResolution','size'];
+        const allowed=['engine','apiKind','provider_id','model','ratio','resolution','customRatio','customRatioWidth','customRatioHeight','customSize','quality','background','count','videoProvider','videoModel','videoDuration','videoAspect','videoResolution','size'];
         allowed.forEach(key=>{if(incoming[key]!==undefined)base[key]=incoming[key];});
         node.runSettings=typeof settingsForStorage==='function'?settingsForStorage(base):base;
     }
@@ -3682,20 +3781,24 @@
             return;
         }
         const conversation=activeConversation(),message=conversation.messages[index],related=actionMessageForUser(index),action=related?.message;
-        if(!message||message.role!=='user'||!canEditUserMessage(index)||!action){toast('当前提示词暂时不能编辑');return;}
+        if(!message||message.role!=='user'||!canEditUserMessage(index)||!action){reportAgentSendError('当前提示词暂时不能编辑');return;}
         const text=String(editingUserMessageDraft||'').trim();
-        if(!text){toast('提示词不能为空');return;}
+        if(!text){reportAgentSendError('提示词不能为空');return;}
+        if(!providerEl.value||!modelEl.value)syncProviders();
         const provider=providerEl.value,model=modelEl.value;
-        if(!provider||!model){toast('请先选择 Agent 模型');return;}
+        if(!provider||!model){reportAgentSendError('请先在 Agent 设置中选择聊天模型');return;}
         let scope=editedTaskScopeForUser(index,action);
-        if(!scope?.valid){toast(scope?.reason||'原任务范围已不可用，请重新选择画布节点后再试');return;}
-        const composerRefs=composerFileReferences.slice();
+        if(!scope?.valid){reportAgentSendError(scope?.reason||'原任务范围已不可用，请重新选择画布节点后再试');return;}
+        syncComposerReferenceContext();
+        const referenceOwner=composerReferenceOwner();
+        const composerRefs=uniqueReferenceImages([...composerCanvasReferences,...composerFileReferences]);
         scope=scopeWithComposerReferences(scope,composerRefs);
-        const savedRefs=messageReferenceImages(message),messageRefs=snapshotReferenceImages([...(savedRefs.length?savedRefs:planReferenceImages(scope)),...composerRefs]);
+        const savedRefs=messageReferenceImages(message),messageRefs=snapshotReferenceImages(orderedSmartInputReferences({inputRefOrder:composerReferenceOrder},[...(savedRefs.length?savedRefs:planReferenceImages(scope)),...composerRefs]
+            .filter(item=>!composerRemovedReferenceIds.has(referenceMaterialKey(item)))));
         scope.referenceImages=messageRefs;
         const scopeSnapshot=serializedTaskScope(scope),history=editedMessageHistory(conversation,index),requestedGeneration=requestedGenerationPreferences(text),hasLink=/https?:\/\//i.test(text);
         const generationError=generationPreferenceError(requestedGeneration,text);
-        if(generationError){renderGenerationPreferences();toast(generationError);return;}
+        if(generationError){renderGenerationPreferences();reportAgentSendError(generationError);return;}
         let actionTargetId=String(action.targetNodeId||'');
         let linkJobIds=Array.isArray(message.linkJobIds)?message.linkJobIds.slice(0,3):[];
         const runToken=beginAgentRun();
@@ -3792,14 +3895,169 @@
         }finally{
             finishAgentRun(runToken);
             $('canvasAgentSend').disabled=false;
-            clearComposerFileReferences();
+            clearComposerFileReferences(referenceOwner);
             saveStore();
             renderMessages();
             renderTaskScope();
         }
     }
+    async function flushMultiAgentCanvas(expectedId){
+        if(String(canvas?.id||'')!==expectedId)throw new Error('画布已切换，操作等待恢复');
+        const saved=await saveCanvas();
+        if(String(canvas?.id||'')!==expectedId)throw new Error('画布已切换，操作等待恢复');
+        if(!saved)throw new Error('画布保存未完成，请检查连接后继续');
+    }
+    async function executeMultiAgentCanvasCommand(action){
+        const canvasId=String(canvas?.id||'');
+        if(canvasId!==action.canvas_id||String(canvas?.project||'default')!==action.project_id)throw new Error('请打开任务所属的画布');
+        const operation=action.operation,args=operation.args||{},tool=operation.tool;
+        const targetId=typeof operation.target==='object'?operation.target.node_id:operation.target;
+        const target=nodes.find(node=>node.id===targetId);
+        const before=new Set(nodes.map(node=>node.id));
+        let affected=[],result;
+        if(tool==='canvas.run_node'){
+            if(!target)throw new Error('运行目标已移除');
+            target._agent_action_ids=[...new Set([...(target._agent_action_ids||[]),action.action_id])];
+            pushUndo();
+            await flushMultiAgentCanvas(canvasId);
+            const executionSettings={...cloneSmartSettings(target.runSettings||settings),count:1,multiAgentActionId:action.action_id,multiAgentExecutionToken:action.lease_token,multiAgentCanvasId:canvasId,multiAgentProjectId:action.project_id};
+            // Direct execution uses the existing node's prepared inputs and never starts paid upstream nodes.
+            result=await runGenerationDirect('default',null,'',target,executionSettings);
+            if(!result?.ok)throw new Error(result?.error||'节点没有启动');
+            affected=[target.id,...nodes.filter(node=>!before.has(node.id)).map(node=>node.id)];
+        }else if(tool==='canvas.use_project_asset'){
+            pushUndo();
+            const created=createImageNodeAt(viewportCenter(),[{url:args.url,name:args.title}],{select:false,skipUndo:true,nodeType:SMART_UPLOAD_NODE_TYPE});
+            if(!created)throw new Error('素材节点未能创建，请重新选择');
+            created.title=args.title;affected=[created.id];
+        }else if(tool==='canvas.delete_node'){
+            if(!action.approved)throw new Error('删除尚未确认');
+            pushUndo();
+            if(!target||!removePlanNodeWithoutUndo(target))throw new Error('无法删除目标节点');
+        }else if(tool==='canvas.arrange'){
+            pushUndo();arrangeSmartIdsByConnections(args.node_ids);affected=args.node_ids;
+        }else if(tool==='canvas.stop_node'){
+            if(!target)throw new Error('停止目标已移除');
+            for(const task of target.pendingTasks||[]){
+                const prefix=String(task.taskId||'').startsWith('canvas_comfy_')?'canvas-comfy-tasks':'canvas-image-tasks';
+                const response=await fetch(`/api/${prefix}/${encodeURIComponent(task.taskId)}/cancel`,{method:'POST'});
+                if(!response.ok)throw new Error('停止请求失败，请查看节点任务');
+            }
+            affected=[target.id];
+        }else if(tool==='canvas.move_node'||tool.startsWith('image.')){
+            const scope=canvasWideTaskScope();
+            result=await executeCanvasAgentOperation(scope,{...operation,target:{nodeId:targetId,imageIndex:operation.target?.image_index||0}},{canvasId});
+            affected=[targetId,result?.targetNodeId,...nodes.filter(node=>!before.has(node.id)).map(node=>node.id)].filter(Boolean);
+        }else{
+            const workflow={mode:'edit',nodes:[],connections:[],operations:[],run:[]};
+            if(tool==='canvas.create_node')workflow.nodes=[{...args,key:action.action_id}];
+            else if(tool==='canvas.update_node'||tool==='canvas.rename_node')workflow.operations=[{op:'update_node',node:targetId,changes:args}];
+            else if(tool==='canvas.connect')workflow.connections=[args];
+            else if(tool==='canvas.disconnect')workflow.operations=[{op:'disconnect',...args}];
+            else throw new Error('此画布工具尚未连接');
+            await executePlanOption({workflow},providerEl.value,modelEl.value,serializedTaskScope(canvasWideTaskScope()));
+            affected=tool==='canvas.create_node'?nodes.filter(node=>!before.has(node.id)).map(node=>node.id)
+                :tool==='canvas.connect'||tool==='canvas.disconnect'?[args.from,args.to]:[targetId];
+        }
+        if(String(canvas?.id||'')!==canvasId)throw new Error('画布已切换，操作等待原画布恢复');
+        for(const node of nodes.filter(node=>affected.includes(node.id))){
+            node._agent_action_ids=[...new Set([...(node._agent_action_ids||[]),action.action_id])];
+        }
+        render();scheduleSave();
+        await flushMultiAgentCanvas(canvasId);
+        return {node_ids:affected};
+    }
+    window.CanvasMultiAgentBridge={
+        current(){return {project_id:String(canvas?.project||'default'),canvas_id:String(canvas?.id||''),provider_id:providerEl?.value||'',model:modelEl?.value||''};},
+        isBusy(){return busy;},
+        async prepare(){
+            if(busy)throw new Error('请先等待当前 Agent 请求结束');
+            const scope=scopeWithComposerReferences(currentTaskScope());
+            const refs=snapshotReferenceImages(planReferenceImages(scope));
+            const missing=refs.filter(ref=>!nodes.some(node=>(node.images||[]).some(image=>(image?.url||image)===ref.url)));
+            if(missing.length){
+                pushUndo();createImageNodeAt(viewportCenter(),missing,{select:false,skipUndo:true,nodeType:SMART_UPLOAD_NODE_TYPE});
+                render();scheduleSave();
+            }
+            const current=this.current();
+            await flushMultiAgentCanvas(current.canvas_id);
+            const prefs=effectiveGenerationPreferences();
+            return {...current,source_node_ids:[...new Set(refs.map(ref=>ref.nodeId).filter(id=>nodes.some(node=>node.id===id)))],source_images:refs.map(ref=>ref.url),
+                generation_preferences:{engine:'api',apiKind:prefs.media==='video'?'video':'image',provider_id:prefs.imageProvider||'',model:prefs.imageModel||'',ratio:prefs.ratio,resolution:prefs.resolution,quality:prefs.quality,background:prefs.background,count:1,
+                    videoProvider:prefs.videoProvider||'',videoModel:prefs.videoModel||'',videoDuration:Number(prefs.videoDuration)||5,videoAspect:prefs.videoAspect||'16:9',videoResolution:prefs.videoResolution||''}};
+        },
+        flush:flushMultiAgentCanvas,
+        execute:executeMultiAgentCanvasCommand,
+        focus(nodeId){const node=nodes.find(item=>item.id===nodeId);if(node){selectedId=node.id;selectedIds=[];if(typeof focusNodes==='function')focusNodes([node.id]);render();}},
+        async restore(action){
+            if(String(canvas?.id||'')!==action.canvas_id||String(canvas?.project||'default')!==action.project_id)return;
+            if(action.operation.tool!=='canvas.run_node'||action.submission_unknown)return;
+            const matches=nodes.filter(node=>node._agent_action_ids?.includes(action.action_id));
+            if(!matches.length)return null;
+            if(action.status==='registered'&&action.resume_unsubmitted){
+                for(const node of matches){
+                    if(smartPendingTasks(node).length)throw new Error('节点已有任务编号，请核对后恢复原任务');
+                    node.pending=0;node.running=false;node.queued=false;
+                }
+                render();scheduleSave();await flushMultiAgentCanvas(action.canvas_id);return;
+            }
+            const output=matches.find(node=>node._agent_output_action_id===action.action_id)||matches[0];
+            if(smartPendingTasks(output).length)return;
+            const urls=resultMediaUrls(action.server_result||{});
+            if(urls.length&&urls.every(url=>(output.images||[]).some(image=>(image.url||image)===url)))return;
+            const ids=action.generation_task_ids||[];
+            if(!ids.length&&!urls.length)return;
+            // Recovery only queries already submitted IDs; it never calls runGenerationDirect.
+            output.pendingTasks=(ids.length?ids:[action.action_id]).map(taskId=>({taskId,kind:action.generation_kind==='video'?'video':'image',...(action.local_gpu?{executor:'comfy'}:{})}));
+            output.pending=output.pendingTasks.length;output.running=false;
+            if(action.generation_kind==='video'&&urls.length){
+                finalizeSmartPendingTask(output,action.action_id,urls,'video');
+            }else{
+                void resumeSmartPendingNode(output).catch(error=>{
+                    if(String(canvas?.id||'')===action.canvas_id){output.runError=error.message;render();scheduleSave();}
+                });
+            }
+            render();scheduleSave();await flushMultiAgentCanvas(action.canvas_id);
+            return {node_ids:[output.id]};
+        }
+    };
+    function reportAgentSendError(detail){
+        composerRunStartedAt=0;
+        setRunStatus('error','未发送',detail);
+        toast(detail);
+    }
     async function send(){
+        if(sharedCanvasMode||busy)return;
+        const previousRunToken=activeAgentRunToken;
+        try{
+            await sendCurrentMessage();
+        }catch(error){
+            const started=activeAgentRunToken===previousRunToken+1;
+            if(started)finishAgentRun(activeAgentRunToken);
+            const detail=String(error?.message||'发送失败，请重试');
+            if(started)setRunStatus('error','运行失败',detail);
+            else reportAgentSendError(detail);
+            console.warn('[Canvas Agent] Send failed:',error);
+        }
+    }
+    async function sendCurrentMessage(){
         if(sharedCanvasMode)return;
+        if(window.SmartCanvasReferencePicker?.active?.type==='composer-agent')window.SmartCanvasReferencePicker.finish('send');
+        syncComposerReferenceContext();
+        const referenceOwner=composerReferenceOwner();
+        const references=composerAttachmentReferences(currentTaskScope());
+        const invalidReferenceIndex=references.findIndex(ref=>ref.sourceMissing);
+        if(invalidReferenceIndex>=0){reportAgentSendError(`图${invalidReferenceIndex+1}的引用已失效，请移除后重新选择`);return;}
+        if(window.CanvasMultiAgent?.enabled()){
+            const text=input.value.trim();if(!text||busy)return;
+            $('canvasAgentSend').disabled=true;
+            try{
+                await window.CanvasMultiAgent.start(text);
+                if(input.value.trim()===text){input.value='';resizeComposerInput();clearComposerFileReferences(referenceOwner);}
+            }catch(error){reportAgentSendError(error?.message||'智能分工启动失败');}
+            finally{$('canvasAgentSend').disabled=false;}
+            return;
+        }
         // Folder requests must be handled before message edits or node scope checks.
         if(folderBatch?.hasActive()){
             const text=input.value.trim();
@@ -3810,18 +4068,20 @@
             return;
         }
         if(editingUserMessageIndex>=0)return sendEditedUserMessage(editingUserMessageIndex);
-        const composerRefs=composerFileReferences.slice();
+        const composerRefs=uniqueReferenceImages([...composerCanvasReferences,...composerFileReferences]);
         let text=input.value.trim();
         if((!text&&!composerRefs.length)||busy)return;
         if(!text)text='请分析我上传的素材图。';
         const browserSkillSelected=canonicalSkillId(skillEl.value)===BROWSER_SKILL_ID;
-        const provider=providerEl.value,model=modelEl.value;if(!browserSkillSelected&&(!provider||!model)){toast('请先选择 Agent 模型');return;}
+        if(!browserSkillSelected&&(!providerEl.value||!modelEl.value))syncProviders();
+        const provider=providerEl.value,model=modelEl.value;
+        if(!browserSkillSelected&&(!provider||!model)){reportAgentSendError('请先在 Agent 设置中选择聊天模型');return;}
         let scope=currentTaskScope();
         const readOnlyQuestion=!browserSkillSelected&&isCanvasReadOnlyQuestion(text);
         const commerceWorkflow=commerceWorkflowRequested(text)||commerceReferenceWorkflowRequested(text);
         const canvasGraphWorkflow=canvasGraphWorkflowRequested(text);
         const graphManagement=!browserSkillSelected&&!readOnlyQuestion&&(planModeRequested(text)||harnessComplexTaskRequested(text)||commerceWorkflow||canvasGraphWorkflow);
-        if(!scope.valid&&!browserSkillSelected&&!readOnlyQuestion&&!graphManagement){renderTaskScope();toast(scope.reason||'请先选择画布节点');return;}
+        if(!scope.valid&&!browserSkillSelected&&!readOnlyQuestion&&!graphManagement){renderTaskScope();reportAgentSendError(scope.reason||'请先选择画布节点');return;}
         if(!scope.valid&&(readOnlyQuestion||graphManagement))scope=canvasWideTaskScope();
         if(browserSkillSelected&&!scope.valid){
             Object.assign(scope,{valid:true,mode:'browser',selectedNodeIds:[],targetNodeId:'',sourceNodeIds:[],formalInputNodeIds:[],upstreamNodeIds:[],referenceImages:[],generationSettings:{}});
@@ -3830,7 +4090,7 @@
         const conversation=activeConversation();
             const planning=!readOnlyQuestion&&!noGenerationRequested(text)&&(planModeRequested(text)||commerceWorkflow||canvasGraphWorkflow),harnessRequested=!readOnlyQuestion&&!planning&&!browserSkillSelected&&harnessComplexTaskRequested(text),requestedGeneration=requestedGenerationPreferences(text),messageRefs=snapshotReferenceImages(planReferenceImages(scope));
         const generationError=(!browserSkillSelected&&!readOnlyQuestion)?generationPreferenceError(requestedGeneration,text):'';
-        if(generationError){renderGenerationPreferences();toast(generationError);return;}
+        if(generationError){renderGenerationPreferences();reportAgentSendError(generationError);return;}
         const scopeSnapshot=serializedTaskScope(scope);
         const runToken=beginAgentRun();
         $('canvasAgentSend').disabled=true;
@@ -3956,7 +4216,7 @@
                     ? {role:'assistant',kind:'browser',text:`请求失败：${error.message}`,skillId:selectedSkillForMessage?.id||BROWSER_SKILL_ID,skillName:selectedSkillForMessage?.name||'网页操作助手',browserResult:{ok:false,status:'error',error:error.message||'请求未完成'},taskScope:scopeSnapshot}
                     : {role:'assistant',kind:'action',text:`请求失败：${error.message}`,skillId:selectedSkillForMessage?.id||'',skillName:selectedSkillForMessage?.name||'',actionStatus:'error',targetNodeId:actionTargetId,actionDetail:error.message||'请求未完成',taskScope:scopeSnapshot});
             setRunStatus(cancelled?'done':'error',cancelled?'已停止':'运行失败',cancelled?'本次 Agent 请求已停止，画布未继续改动':(error.message||'请求未完成'));
-        }finally{finishAgentRun(runToken);$('canvasAgentSend').disabled=false;clearComposerFileReferences();saveStore();renderMessages();renderTaskScope();}
+        }finally{finishAgentRun(runToken);$('canvasAgentSend').disabled=false;clearComposerFileReferences(referenceOwner);saveStore();renderMessages();renderTaskScope();}
     }
     function retryAgentRequest(index){
         if(busy)return;
@@ -4245,6 +4505,40 @@
         if(reconcileAgentTaskScopeLock())return;
         renderTaskScope();
     });
+    composerAttachmentsEl?.addEventListener('pointerdown',event=>{
+        const thumb=event.target.closest('[data-agent-reference-index]');
+        if(event.button!==0||!thumb||event.target.closest('button')||composerReferenceBridge.references().length<2)return;
+        event.preventDefault();event.stopPropagation();
+        const references=composerReferenceBridge.references(),from=references[Number(thumb.dataset.agentReferenceIndex)];
+        const owner=composerReferenceOwner(),controller=new AbortController(),signal=controller.signal;
+        const startX=event.clientX,startY=event.clientY;
+        let dragging=false,ghost=null;
+        const atPoint=event=>{
+            const target=document.elementFromPoint(event.clientX,event.clientY)?.closest('[data-agent-reference-index]');
+            return target&&composerAttachmentsEl.contains(target)?references[Number(target.dataset.agentReferenceIndex)]:null;
+        };
+        const finish=(event,commit=true)=>{
+            if(event.pointerId!==undefined&&event.pointerId!==pointerId)return;
+            const target=dragging&&commit?atPoint(event):null;
+            controller.abort();ghost?.remove();thumb.classList.remove('reference-dragging');
+            if(target&&owner===composerReferenceOwner())composerReferenceBridge.reorder(`ref|${referenceMaterialKey(from)}`,`ref|${referenceMaterialKey(target)}`);
+        };
+        const pointerId=event.pointerId;
+        window.addEventListener('pointermove',event=>{
+            if(event.pointerId!==pointerId)return;
+            if(!dragging&&Math.hypot(event.clientX-startX,event.clientY-startY)>6){
+                dragging=true;
+                const rect=thumb.getBoundingClientRect();
+                ghost=thumb.cloneNode(true);ghost.className='canvas-agent-composer-attachment reference-attachment-ghost';
+                ghost.style.width=`${rect.width}px`;ghost.style.height=`${rect.height}px`;document.body.appendChild(ghost);
+                thumb.classList.add('reference-dragging');
+            }
+            if(dragging){event.preventDefault();ghost.style.left=`${event.clientX-20}px`;ghost.style.top=`${event.clientY-20}px`;}
+        },{signal,passive:false,capture:true});
+        window.addEventListener('pointerup',finish,{signal,capture:true});
+        window.addEventListener('pointercancel',event=>finish(event,false),{signal,capture:true});
+        window.addEventListener('blur',()=>finish({},false),{signal,once:true});
+    });
     $('canvasAgentClose').onclick=()=>window.closeCanvasAgentPanel?.();
     composerMenuToggleEl?.addEventListener('click',event=>{
         event.preventDefault();
@@ -4259,6 +4553,7 @@
         const action=button.dataset.composerMenuAction;
         closeComposerMenu();
         if(action==='images')composerFileInputEl?.click();
+        if(action==='canvas')composerReferenceBridge.start();
         if(action==='folder'){
             const batchApi=folderBatch||refreshFolderBatch();
             if(batchApi?.startImport)void batchApi.startImport();

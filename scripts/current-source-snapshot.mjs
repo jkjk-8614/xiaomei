@@ -17,6 +17,13 @@ const criticalPackagedPaths = [
   'static/js/smart-canvas.js', 'static/css/smart-canvas.css',
   'static/inspiration.html', 'static/js/inspiration.js',
   'inspiration_library.py', 'project_agent_store.py',
+  'multi_agent_api.py', 'multi_agent_runtime.py', 'multi_agent_store.py',
+  'static/js/canvas-multi-agent.js', 'static/js/smart-canvas-reference-picker.js',
+  'ComfyUI/integration/comfy_model_downloads.py', 'ComfyUI/integration/comfy_model_links.py',
+  'ComfyUI/web/js/comfy-models.js', 'ComfyUI/web/css/comfy-models.css',
+  'tools/chrome-model-downloader/manifest.json', 'tools/chrome-model-downloader/popup.html',
+  'tools/chrome-model-downloader/popup.js', 'tools/chrome-model-downloader/popup.css',
+  'tools/chrome-model-downloader/README.md',
 ];
 
 function gitFiles(args) {
@@ -35,13 +42,19 @@ function isProductSource(file, tracked) {
     return ['.png', '.jpg', '.jpeg', '.gif', '.ico'].includes(extension)
       && (tracked || /^static\/images\/(?:file-icons|inspiration)\//.test(file));
   }
-  if (/^(?:tools|workflows|ComfyUI\/(?:integration|web))\//.test(file)) {
+  if (/^ComfyUI\/(?:integration|web)\//.test(file)) {
+    return ['.py', '.js', '.html', '.css', '.svg'].includes(extension);
+  }
+  if (/^tools\/chrome-model-downloader\/[^/]+$/.test(file)) {
+    return ['.js', '.json', '.html', '.css', '.md'].includes(extension);
+  }
+  if (/^(?:tools|workflows)\//.test(file)) {
     return tracked && ['.py', '.js', '.cjs', '.mjs', '.json', '.html', '.css', '.svg', '.yaml', '.yml'].includes(extension);
   }
   return false;
 }
 
-const textExtensions = new Set(['.py', '.js', '.cjs', '.mjs', '.json', '.html', '.css', '.svg', '.yaml', '.yml', '.txt']);
+const textExtensions = new Set(['.py', '.js', '.cjs', '.mjs', '.json', '.html', '.css', '.svg', '.yaml', '.yml', '.txt', '.md']);
 function fileHash(bytes, file) {
   const content = (textExtensions.has(path.extname(file).toLowerCase()) || path.basename(file) === '.env.example')
     ? Buffer.from(bytes.toString('utf8').replace(/\r\n/g, '\n'), 'utf8')

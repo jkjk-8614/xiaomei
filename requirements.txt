@@ -5,6 +5,7 @@ requests
 pydantic
 python-multipart
 httpx
+tomli>=2,<3; python_version < "3.11"
 websockets>=16,<17
 mcp>=1.30,<2
 pillow

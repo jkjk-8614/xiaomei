@@ -206,6 +206,7 @@ function readMarketplacePage(site, mode) {
             const images = imagesIn(config.detail, 12);
             return images.length ? images : null;
           }) || [];
+          result.structured.excerpt = tidy(section.innerText, 600);
           result.structured.marketplace.detailImageCount = result.images.length;
           if (result.images.length) result.structured.resources.push({ id: `${site}-detail-images`, token: '@详情图片', label: '详情图片' });
         } else {

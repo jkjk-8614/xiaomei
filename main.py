@@ -4146,6 +4146,9 @@ def rollback_update(req: RollbackRequest):
         UPDATE_LOCK.release()
 
 class GenerateRequest(BaseModel):
+    multi_agent_action_id: str = Field(default="", max_length=80)
+    multi_agent_execution_token: str = Field(default="", max_length=120)
+    client_request_id: str = Field(default="", max_length=120)
     prompt: str = ""
     width: int = 1024
     height: int = 1024
@@ -4213,6 +4216,8 @@ class AIReference(BaseModel):
     reference_id: str = ""
 
 class OnlineImageRequest(BaseModel):
+    multi_agent_action_id: str = Field(default="", max_length=80)
+    multi_agent_execution_token: str = Field(default="", max_length=120)
     prompt: str = Field(min_length=1, max_length=ONLINE_IMAGE_PROMPT_MAX_LENGTH)
     provider_id: str = "comfly"
     model: str = ""
@@ -4852,7 +4857,9 @@ async def delete_scheduled_task(task_id: str):
 CANVAS_TASKS: Dict[str, Dict[str, Any]] = {}
 CANVAS_TASK_LOCK = Lock()
 CANVAS_TASK_STORE_VERSION = 1
-CANVAS_TASK_TERMINAL_STATUSES = {"succeeded", "failed"}
+CANVAS_TASK_TERMINAL_STATUSES = {"succeeded", "failed", "cancelled"}
+CANVAS_IMAGE_BACKGROUND_TASKS: Dict[str, asyncio.Task] = {}
+CANVAS_COMFY_CANCEL_EVENTS: Dict[str, threading.Event] = {}
 try:
     CANVAS_TASK_RETENTION_SECONDS = max(
         24 * 60 * 60,
@@ -5025,6 +5032,8 @@ def update_canvas_task(task_id, changes):
         task = CANVAS_TASKS.get(task_id)
         if not isinstance(task, dict):
             return False
+        if task.get("status") == "cancelled" and (changes or {}).get("status") != "cancelled":
+            return False
         task.update(changes or {})
         task["updated_at"] = time.time()
         if task.get("status") in CANVAS_TASK_TERMINAL_STATUSES and not task.get("finished_at"):
@@ -5084,6 +5093,8 @@ def _find_canvas_task_by_client_request_id(client_request_id):
     return None
 
 class CanvasVideoRequest(BaseModel):
+    multi_agent_action_id: str = Field(default="", max_length=80)
+    multi_agent_execution_token: str = Field(default="", max_length=120)
     prompt: str = Field(min_length=1, max_length=VIDEO_PROMPT_MAX_LENGTH)
     provider_id: str = "comfly"
     model: str = "veo3-fast"
@@ -5379,6 +5390,8 @@ class CanvasLLMRequest(BaseModel):
     skill_id: str = ""
     link_job_ids: List[str] = Field(default_factory=list)
     allow_model_fallback: bool = True
+    max_output_tokens: int = Field(default=0, ge=0, le=16384)
+    transport_retries: int = Field(default=-1, ge=-1, le=3)
 
 class CanvasPlanRequest(BaseModel):
     message: str = Field(min_length=1, max_length=LLM_MESSAGE_MAX_LENGTH)
@@ -5575,6 +5588,7 @@ class CanvasAssetDownloadRequest(BaseModel):
 
 class CanvasDetailStitchRequest(BaseModel):
     urls: List[str] = []
+    allow_compatible_portrait: bool = False
 
 class CommerceAnalysisRequest(BaseModel):
     url: str = Field(min_length=1, max_length=4096)
@@ -9708,11 +9722,14 @@ async def post_openai_responses(client, url, headers, body):
     2) 后台模式被拒（4xx 参数类错误）→ SSE 流式；
     3) 流式也被拒 → 非流式直接请求。
     5xx/超时一律不自动重试，避免上游已开始生成后重复扣费。"""
+    from multi_agent_runtime import PAID_REQUEST_SCOPE
     bg_body = dict(body)
     bg_body["background"] = True
     try:
         resp = await client.post(url, headers=headers, json=bg_body)
     except httpx.HTTPError as e:
+        if PAID_REQUEST_SCOPE.get():
+            raise
         print(f"RS background 请求传输失败，改走流式：{e}")
         return await post_openai_responses_stream(client, url, headers, body)
     if resp.status_code in RESPONSES_REJECT_STATUSES:
@@ -9768,6 +9785,7 @@ async def post_openai_responses_stream(client, url, headers, body):
     """RS / Responses 的 SSE 流式请求：流式从一开始就持续有事件字节返回，
     不会触发中转的 Cloudflare 120s 读超时。收到 response.completed 后
     把完整 response 对象包装成普通 httpx.Response，下游解析逻辑不变。"""
+    from multi_agent_runtime import PAID_REQUEST_SCOPE
     request = httpx.Request("POST", url)
 
     def wrap(status_code, payload):
@@ -9872,6 +9890,8 @@ async def post_openai_responses_stream(client, url, headers, body):
                 return wrap(200, completed)
             return wrap(502, error_payload or {"error": {"message": "RS 流式响应结束但没有 response.completed 事件"}})
     except httpx.HTTPError as e:
+        if PAID_REQUEST_SCOPE.get():
+            raise
         print(f"RS 流式请求传输失败，回退非流式：{e}")
         return await client.post(url, headers=headers, json=body)
 
@@ -10342,8 +10362,10 @@ def gpt_image_2_skill_auth_file():
         return configured
     project_auth = os.path.join(BASE_DIR, "API", "openai-gpt-account-auth.json")
     user_profile = os.getenv("USERPROFILE", "").strip()
+    codex_home = str(codex_env_value("CODEX_HOME") or "").strip()
     candidates = [
         project_auth,
+        os.path.join(codex_home, "auth.json") if codex_home else "",
         os.path.join(user_profile, ".codex", "auth.json") if user_profile else "",
         os.path.join(os.path.expanduser("~"), ".codex", "auth.json"),
     ]
@@ -10388,7 +10410,8 @@ def gpt_image_2_skill_api_key(auth_data=None):
         if value:
             return value
     user_profile = os.getenv("USERPROFILE", "").strip()
-    user_auth = os.path.join(user_profile, ".codex", "auth.json") if user_profile else ""
+    codex_home = str(codex_env_value("CODEX_HOME") or "").strip()
+    user_auth = os.path.join(codex_home, "auth.json") if codex_home else (os.path.join(user_profile, ".codex", "auth.json") if user_profile else "")
     if user_auth:
         user_data = gpt_image_2_skill_auth_json(user_auth)
         value = str(user_data.get("OPENAI_API_KEY") or user_data.get("api_key") or user_data.get("apiKey") or "").strip()
@@ -10396,13 +10419,59 @@ def gpt_image_2_skill_api_key(auth_data=None):
             return value
     return ""
 
+def gpt_image_2_skill_openai_args(auth_data=None):
+    """Keep an API-key login paired with its configured OpenAI-compatible base."""
+    api_key = gpt_image_2_skill_api_key(auth_data)
+    explicit_key = any(str(codex_env_value(key) or "").strip() for key in ("GPT_IMAGE_2_SKILL_API_KEY", "OPENAI_API_KEY"))
+    base_url = str(codex_env_value("GPT_IMAGE_2_SKILL_OPENAI_API_BASE") or codex_env_value("OPENAI_BASE_URL") or "").strip()
+    if not explicit_key:
+        codex_home = str(codex_env_value("CODEX_HOME") or "").strip() or os.path.join(os.path.expanduser("~"), ".codex")
+        config_path = os.path.join(codex_home, "config.toml")
+        if os.path.isfile(config_path):
+            try:
+                try:
+                    import tomllib
+                except ModuleNotFoundError:
+                    import tomli as tomllib
+                with open(config_path, "r", encoding="utf-8-sig") as config_file:
+                    config = tomllib.loads(config_file.read())
+                provider_id = str(config.get("model_provider") or "openai").strip()
+                selected = config.get("model_providers", {}).get(provider_id, {})
+                configured_base = str(selected.get("base_url") or "").strip()
+                if provider_id != "openai" and not (base_url or configured_base):
+                    raise HTTPException(status_code=400, detail=f"Codex 配置中的平台 {provider_id} 缺少 base_url，请补全中转服务地址后重试。")
+                base_url = base_url or configured_base
+                env_key = str(selected.get("env_key") or "").strip()
+                if env_key:
+                    api_key = str(codex_env_value(env_key) or "").strip()
+                    if not api_key:
+                        raise HTTPException(status_code=400, detail=f"Codex 中转服务所需的环境变量 {env_key} 未设置，请配置 API Key 后重试。")
+                else:
+                    api_key = str(selected.get("experimental_bearer_token") or api_key or "").strip()
+            except HTTPException:
+                raise
+            except (OSError, ValueError, TypeError, AttributeError, ImportError) as exc:
+                raise HTTPException(status_code=400, detail=f"无法读取 Codex 配置 {config_path}，请检查 TOML 格式及 Python 的 tomli 依赖后重试。") from exc
+    if not api_key:
+        return []
+    base_url = (base_url or "https://api.openai.com/v1").rstrip("/")
+    try:
+        parsed = urllib.parse.urlparse(base_url)
+        valid_base = parsed.scheme in {"http", "https"} and parsed.hostname and not (parsed.username or parsed.password or parsed.query or parsed.fragment)
+    except ValueError:
+        valid_base = False
+    if not valid_base:
+        raise HTTPException(status_code=400, detail="GPT CLI 生图的请求地址无效，请配置不含账号、密码或查询参数的 HTTP(S) API 根地址。")
+    return ["--provider", "openai", "--api-key", api_key, "--openai-api-base", base_url]
+
+
 def gpt_image_2_skill_provider_args(auth_file=""):
     auth_data = gpt_image_2_skill_auth_json(auth_file)
     if gpt_image_2_skill_access_token(auth_data):
         return ["--provider", "codex", "--auth-file", auth_file] if auth_file else ["--provider", "codex"], "codex"
-    api_key = gpt_image_2_skill_api_key(auth_data)
-    if api_key:
-        return ["--provider", "openai", "--api-key", api_key], "openai"
+    openai_args = gpt_image_2_skill_openai_args(auth_data)
+    if openai_args:
+        return openai_args, "openai"
     return (["--provider", "codex", "--auth-file", auth_file] if auth_file else ["--provider", "codex"]), "codex"
 
 def is_codex_gpt_image_25_model(model=""):
@@ -10801,7 +10870,24 @@ def gpt_image_2_skill_failure_message(stdout_text="", stderr_text="", returncode
             continue
         error = item.get("error")
         if isinstance(error, dict):
-            msg = error.get("message") or error.get("detail") or error.get("code")
+            msg = error.get("message")
+            detail = error.get("detail")
+            if isinstance(detail, str):
+                try:
+                    detail = json.loads(detail)
+                except ValueError:
+                    pass
+            if isinstance(detail, dict):
+                detail = detail.get("error") or detail
+                if isinstance(detail, dict):
+                    detail = detail.get("message") or detail.get("detail") or detail.get("code")
+            if isinstance(detail, str) and detail.strip():
+                detail = detail.strip()
+                if not msg:
+                    msg = detail
+                elif detail not in str(msg):
+                    msg = f"{msg}：{detail}"
+            msg = msg or error.get("code")
             if msg:
                 messages.append(str(msg))
         elif isinstance(error, str) and error.strip():
@@ -10948,9 +11034,8 @@ async def generate_codex_provider_image_via_gpt_image_2_skill(prompt, size, mode
     auth_data = gpt_image_2_skill_auth_json(auth_file)
     provider_args, tool_provider = gpt_image_2_skill_provider_args(auth_file)
     attempts = [(provider_args, tool_provider)]
-    fallback_api_key = gpt_image_2_skill_api_key(auth_data)
-    if tool_provider == "codex" and fallback_api_key:
-        attempts.append((["--provider", "openai", "--api-key", fallback_api_key], "openai"))
+    if tool_provider == "codex" and gpt_image_2_skill_api_key(auth_data):
+        attempts.append((gpt_image_2_skill_openai_args(auth_data), "openai"))
     last_message = ""
     for attempt_index, (attempt_provider_args, attempt_provider) in enumerate(attempts):
         out_path = os.path.join(OUTPUT_OUTPUT_DIR, generated_output_filename("gpt_image_2_", ".png"))
@@ -10978,8 +11063,6 @@ async def generate_codex_provider_image_via_gpt_image_2_skill(prompt, size, mode
         ])
         for path in ref_paths:
             args.extend(["--ref-image", path])
-        if ref_paths and attempt_provider == "openai":
-            args.extend(["--input-fidelity", "high"])
         try:
             proc = await asyncio.create_subprocess_exec(
                 *args,
@@ -11000,12 +11083,22 @@ async def generate_codex_provider_image_via_gpt_image_2_skill(prompt, size, mode
         out_text, err_text = codex_decode_output(stdout, stderr)
         if proc.returncode != 0:
             message = gpt_image_2_skill_failure_message(out_text, err_text, proc.returncode)
+            if "--api-key" in attempt_provider_args:
+                api_key = attempt_provider_args[attempt_provider_args.index("--api-key") + 1]
+                message = message.replace(api_key, "[已隐藏]")
             last_message = f"{attempt_provider}: {message}"
-            auth_failed = bool(re.search(r"\b401\b|unauthori[sz]ed|access[_ -]?token|api[_ -]?key", message, re.I))
+            auth_failed = bool(re.search(
+                r"\b401\b|unauthori[sz]ed|authentication[_ -]?(?:failed|required|error)"
+                r"|(?:invalid|incorrect|expired|revoked|missing)[^\r\n]{0,80}(?:api[_ -]?key|access[_ -]?token|refresh[_ -]?token)"
+                r"|(?:api[_ -]?key|access[_ -]?token|refresh[_ -]?token)[^\r\n]{0,40}(?:invalid|expired|revoked|missing|reused)",
+                message,
+                re.I,
+            ))
             if attempt_provider == "codex" and attempt_index + 1 < len(attempts) and auth_failed:
                 continue
             if auth_failed:
-                return None
+                action = "请重新执行 codex login 完成账号登录后重试。" if attempt_provider == "codex" else "请检查 Codex 中转服务的 API Key、请求地址和生图权限后重试。"
+                raise HTTPException(status_code=401, detail=f"GPT CLI 生图鉴权失败：{last_message[:1200]}。{action}")
             raise HTTPException(status_code=502, detail=f"GPT Image 2 Skill 调用失败：{last_message[:1200]}")
         parsed, reported_paths = parse_gpt_image_2_skill_output(out_text, err_text)
         candidate_paths = []
@@ -11358,11 +11451,14 @@ async def generate_codex_provider_image(prompt, size, model, reference_images=No
             ))
             if not network_failure:
                 raise
+            _provider_args, tool_provider = gpt_image_2_skill_provider_args(gpt_image_2_skill_auth_file())
+            if tool_provider != "codex":
+                raise
             fallback = await generate_codex_provider_image_via_codex_cli(prompt, size, model, ref_paths)
             if fallback:
                 return fallback
             raise
-        raise HTTPException(status_code=400, detail="未找到 GPT Image helper，且 Codex CLI 生图回退不可用。请先安装 gpt-image-2-skill 后再生成图片。")
+        raise HTTPException(status_code=400, detail="GPT CLI 生图组件未安装或路径已失效。请在“API 设置 → GPT CLI”点击“安装 / 更新”，完成后重试。")
     finally:
         for path in temp_paths:
             try:
@@ -13486,6 +13582,9 @@ def image_task_fail_reason(payload):
     return "生图任务失败"
 
 async def httpx_request_with_transient_retries(client, method, url, attempts=2, retry_delay=1.2, **kwargs):
+    from multi_agent_runtime import PAID_REQUEST_SCOPE
+    if str(method).upper() == "POST" and PAID_REQUEST_SCOPE.get():
+        attempts = 1
     attempts = max(1, int(attempts or 1))
     last_exc = None
     retry_statuses = {502, 503, 504, 520, 522, 524}
@@ -22361,12 +22460,13 @@ def _commerce_analysis_format_visible_page_context(value: Dict[str, Any]) -> str
         if structured_excerpt:
             blocks.append(f"页面主体可见摘录：{structured_excerpt}")
         if structured_kind == f"{site}-product":
-            blocks.append(f"详情图片：{'已读取 ' + str(image_count) + ' 张' if image_count else '未读取或未返回'}；图片像素未返回")
+            blocks.append(f"详情图片：{'已读取 ' + str(image_count) + ' 张' if image_count else '未读取或未返回'}；图片像素未返回。主图、详情图和视频画面均未作为视觉输入，不得做视觉诊断")
         # 以下样本只供对应快捷分析使用：报表保留表格、搜索保留卡片、作品保留评论。
         if page_type == "report" and tables:
             blocks.append(f"报表表格样本：{_commerce_analysis_prompt_json(tables, 8000)}")
-        if page_type == "search" and cards:
-            blocks.append(f"搜索结果结构化样本：{_commerce_analysis_prompt_json(cards, 9000)}")
+        if page_type in {"search", "shop"} and cards:
+            label = "搜索结果" if page_type == "search" else "店铺商品"
+            blocks.append(f"{label}结构化样本：{_commerce_analysis_prompt_json(cards, 9000)}")
         if comments:
             blocks.append(f"可见评论样本：{_commerce_analysis_prompt_json(comments, 9000)}")
         formatted = re.sub(r"[ \t]+", " ", "\n".join(blocks))
@@ -22631,7 +22731,7 @@ async def _prepare_link_context(
     merged_images: List[str] = []
     if isinstance(page_context, dict):
         visible_assistant_context = str(page_context.get("source") or "").strip() == "electron-visible-dom-assistant"
-        # 六站点页面快照的图片 URL 是站点临时资源。模型会尝试下载这些 URL，
+        # 页内助手快照的图片 URL 是站点临时资源。模型会尝试下载这些 URL，
         # 容易超时；当前页的文字、结构和图片数量仍会通过 page_text 供分析。
         if not visible_assistant_context:
             page_items = page_context.get("items") if isinstance(page_context.get("items"), list) else page_context.get("visibleItems")
@@ -28761,11 +28861,11 @@ def append_gpt_image_edit_diagnostic(**fields):
 def gpt_image_2_edit_http_error_detail(status, text, model):
     status = int(status or 0)
     if status == 500:
-        return "上游服务器内部错误（HTTP 500），请求状态可能未知；请到 6789API 后台核对请求 ID 和扣费记录后再决定是否重试。"
+        return "上游服务器内部错误（HTTP 500），请求状态可能未知。"
     if status == 503:
-        return "上游服务暂时不可用（HTTP 503），请求状态可能未知；请到 6789API 后台核对请求 ID 和扣费记录后再决定是否重试。"
+        return "上游服务暂时不可用（HTTP 503），请求状态可能未知。"
     if status in {502, 504, 520, 522, 524}:
-        return f"中转通道未能确认上游结果（HTTP {status}），请求状态可能未知；请核对请求 ID 和扣费记录。"
+        return f"中转通道未能确认上游结果（HTTP {status}），请求状态可能未知。"
     return friendly_image_error_detail(text, "", model) or f"上游图片编辑接口返回 HTTP {status}。"
 
 
@@ -30837,6 +30937,7 @@ def comfly_gemini_reference_data_url(ref, max_size=1536, target_ratio=""):
         return value
 
 async def generate_ai_image(prompt, size, quality, model, reference_images=None, provider_id="comfly", aspect_ratio="", background="auto"):
+    from multi_agent_runtime import PAID_REQUEST_SCOPE
     provider = get_api_provider(provider_id)
     if provider["id"] == "modelscope":
         return await generate_modelscope_provider_image(prompt, size, model, reference_images, provider)
@@ -31175,6 +31276,8 @@ async def generate_ai_image(prompt, size, quality, model, reference_images=None,
                     edit_semaphore.release()
             # 2) edits 失败 → 非 GPT-Image-2 可回退到 /images/generations + JSON image:[urls/base64]（grsai 风格）
             if response is None:
+                if PAID_REQUEST_SCOPE.get() and edit_failed_status not in {400, 404, 405, 415, 422}:
+                    raise HTTPException(status_code=502, detail="图片编辑提交结果待核对，不再切换接口重复提交；" + (edit_failed_text or "上游未返回结果")[:300])
                 if image_refs[0].get("outpaint_canvas"):
                     raise HTTPException(status_code=502, detail="扩图蒙版编辑请求失败，请检查平台是否支持图片编辑和蒙版；" + (edit_failed_text or "上游未返回图片")[:300])
                 if is_gpt2:
@@ -31188,8 +31291,8 @@ async def generate_ai_image(prompt, size, quality, model, reference_images=None,
                     terminal_error = HTTPException(
                         status_code=502,
                         detail=(
-                            f"GPT-Image-2/2.5 编辑接口 /images/edits 调用失败：{error_detail}"
-                            f"{request_hint}请先核对 6789API 后台请求状态和扣费记录，再决定是否重试。"
+                            f"{provider.get('name') or provider['id']} 的 GPT-Image-2/2.5 编辑接口 /images/edits 调用失败：{error_detail}"
+                            f"{request_hint}请先到该平台后台核对请求状态和扣费记录，再决定是否重试。"
                         )
                     )
                     setattr(terminal_error, "upstream_terminal_error", True)
@@ -31222,7 +31325,7 @@ async def generate_ai_image(prompt, size, quality, model, reference_images=None,
                 headers=api_headers(provider=provider, model=model),
                 json=body,
             )
-            if response.status_code >= 400 and images_api_unsupported(response):
+            if response.status_code >= 400 and images_api_unsupported(response) and (not PAID_REQUEST_SCOPE.get() or response.status_code in {400, 404, 405, 415, 422}):
                 response = await post_openai_edits()
         raw = None
         try:
@@ -34828,12 +34931,22 @@ async def codex_status():
     exe = codex_cli_executable()
     image2_exe = gpt_image_2_skill_executable()
     capabilities = await detect_codex_image_capabilities()
+    image_connection = {}
+    if image2_exe:
+        try:
+            image_args, image_provider = gpt_image_2_skill_provider_args(gpt_image_2_skill_auth_file())
+            image_connection["provider"] = image_provider
+            if "--openai-api-base" in image_args:
+                image_connection["api_base"] = image_args[image_args.index("--openai-api-base") + 1]
+        except HTTPException as exc:
+            image_connection["error"] = str(exc.detail)
     if not exe:
         return {
             "installed": False,
             "logged_in": False,
             "image2_helper_installed": bool(image2_exe),
             "image2_helper_path": image2_exe,
+            "image_connection": image_connection,
             "image_models": capabilities.get("image_models") or CODEX_DEFAULT_IMAGE_MODELS,
             "image_capabilities": {
                 "probe_ok": bool(capabilities.get("probe_ok")),
@@ -34855,8 +34968,12 @@ async def codex_status():
         helper_message = (
             capabilities.get("message")
             if image2_exe
-            else "未找到 GPT Image helper，Codex CLI 生图不可用；已禁用 Codex 内置 $imagegen 回退。"
+            else "GPT CLI 生图组件未安装或路径已失效，请在 API 设置中点击“安装 / 更新”。"
         )
+        if image_connection.get("error"):
+            helper_message = f"{helper_message} {image_connection['error']}"
+        elif image_connection.get("api_base"):
+            helper_message = f"生图使用 API Key，请求地址：{image_connection['api_base']}。{helper_message}"
         return {
             "installed": ok,
             "logged_in": None,
@@ -34864,6 +34981,7 @@ async def codex_status():
             "path": exe,
             "image2_helper_installed": bool(image2_exe),
             "image2_helper_path": image2_exe,
+            "image_connection": image_connection,
             "image_models": capabilities.get("image_models") or CODEX_DEFAULT_IMAGE_MODELS,
             "image_capabilities": {
                 "probe_ok": bool(capabilities.get("probe_ok")),
@@ -34879,6 +34997,7 @@ async def codex_status():
             "path": exe,
             "image2_helper_installed": bool(image2_exe),
             "image2_helper_path": image2_exe,
+            "image_connection": image_connection,
             "image_models": capabilities.get("image_models") or CODEX_DEFAULT_IMAGE_MODELS,
             "image_capabilities": {
                 "probe_ok": bool(capabilities.get("probe_ok")),
@@ -35159,6 +35278,20 @@ async def jimeng_query_media(payload: JimengQueryMediaRequest):
     except HTTPException as exc:
         return {"status": "failed", "submit_id": submit_id, "kind": kind, "error": str(getattr(exc, "detail", "") or exc)}
 
+def canvas_reference_image_limits(providers):
+    limits = {}
+    for provider in providers:
+        model_limits = {}
+        for model in provider.get("image_models") or []:
+            caps = product_fidelity_capabilities(provider, model)
+            maximum = caps.get("maxReferenceImages") or ONLINE_IMAGE_REFERENCE_MAX
+            if effective_protocol(provider, model) == "gemini-cli" and is_antigravity_cli(gemini_cli_executable()):
+                maximum = min(maximum, 3)
+            model_limits[model] = min(ONLINE_IMAGE_REFERENCE_MAX, maximum)
+        limits[provider["id"]] = model_limits
+    return {"default": ONLINE_IMAGE_REFERENCE_MAX, "models": limits}
+
+
 @app.get("/api/config")
 async def ai_config(response: Response):
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
@@ -35175,6 +35308,7 @@ async def ai_config(response: Response):
         "video_models": VIDEO_MODELS,
         "comfy_instances": COMFYUI_INSTANCES,
         "api_providers": providers,
+        "reference_image_limits": canvas_reference_image_limits(providers),
         "has_api_key": bool(AI_API_KEY),
         "ms_chat_models": MODELSCOPE_CHAT_MODELS,
         "has_ms_key": bool(modelscope_api_key()),
@@ -36745,20 +36879,33 @@ async def _run_canvas_image_task(task_id: str, payload: OnlineImageRequest):
 
 async def run_canvas_image_task(task_id: str, payload: OnlineImageRequest):
     """Run one canvas image task after it obtains a shared generation slot."""
+    from multi_agent_runtime import PAID_REQUEST_SCOPE
+    paid_scope = PAID_REQUEST_SCOPE.set(bool(getattr(payload, "multi_agent_action_id", "")))
     token = CANVAS_IMAGE_BATCH_CONCURRENCY.set(payload.canvas_batch_concurrency)
     try:
+        with CANVAS_TASK_LOCK:
+            if (CANVAS_TASKS.get(task_id) or {}).get("status") == "cancelled":
+                return
         semaphore = canvas_image_task_semaphore()
         if semaphore is None:
             await _run_canvas_image_task(task_id, payload)
             return
         async with semaphore:
+            with CANVAS_TASK_LOCK:
+                if (CANVAS_TASKS.get(task_id) or {}).get("status") == "cancelled":
+                    return
             await _run_canvas_image_task(task_id, payload)
     finally:
         CANVAS_IMAGE_BATCH_CONCURRENCY.reset(token)
+        PAID_REQUEST_SCOPE.reset(paid_scope)
 
 
 @app.post("/api/canvas-image-tasks")
 async def create_canvas_image_task(payload: OnlineImageRequest):
+    if payload.multi_agent_action_id:
+        existing = MULTI_AGENT.before_generation(payload, "image")
+        if existing:
+            return existing
     client_request_id = _normalize_canvas_client_request_id(payload.client_request_id)
     if client_request_id:
         existing = _find_canvas_task_by_client_request_id(client_request_id)
@@ -36800,8 +36947,36 @@ async def create_canvas_image_task(payload: OnlineImageRequest):
             "reference_count": len([ref for ref in payload.reference_images if ref.url]),
         },
     })
-    asyncio.create_task(run_canvas_image_task(task_id, payload))
+    if payload.multi_agent_action_id:
+        MULTI_AGENT.generation_submitted(payload.multi_agent_action_id, task_id)
+    background_task = asyncio.create_task(run_canvas_image_task(task_id, payload))
+    CANVAS_IMAGE_BACKGROUND_TASKS[task_id] = background_task
+    background_task.add_done_callback(lambda finished, key=task_id: CANVAS_IMAGE_BACKGROUND_TASKS.pop(key, None))
     return {"task_id": task_id, "status": "queued", "client_request_id": client_request_id}
+
+
+@app.post("/api/canvas-image-tasks/{task_id}/cancel")
+async def cancel_canvas_image_task(task_id: str):
+    with CANVAS_TASK_LOCK:
+        task = CANVAS_TASKS.get(task_id)
+        if not isinstance(task, dict):
+            raise HTTPException(status_code=404, detail="未找到生图任务")
+        status = str(task.get("status") or "")
+        if status in CANVAS_TASK_TERMINAL_STATUSES:
+            return {"task_id": task_id, "status": status, "message": "任务已结束"}
+        upstream_accepted = bool(task.get("upstream_task_id") or task.get("upstream_task_ids"))
+        message = ("已停止本地等待；平台已受理的请求可能继续执行或计费" if upstream_accepted
+                   else "已取消生图；如果请求已到达平台，平台仍可能继续执行或计费")
+        task.update({"status": "cancelled", "message": message, "error": message,
+                     "finished_at": time.time(), "updated_at": time.time()})
+        try:
+            _write_canvas_task_store_locked()
+        except OSError as exc:
+            print(f"保存取消任务状态失败({task_id}): {exc}")
+    background_task = CANVAS_IMAGE_BACKGROUND_TASKS.get(task_id)
+    if background_task and not background_task.done():
+        background_task.cancel()
+    return {"task_id": task_id, "status": "cancelled", "message": message}
 
 
 @app.get("/api/canvas-image-tasks/recover")
@@ -37018,6 +37193,10 @@ def _watch_comfy_progress(address, client_id, prompt_id, workflow, callback, sto
 
 
 async def run_canvas_comfy_task(task_id: str, payload: GenerateRequest):
+    cancel_event = CANVAS_COMFY_CANCEL_EVENTS[task_id]
+    if cancel_event.is_set():
+        CANVAS_COMFY_CANCEL_EVENTS.pop(task_id, None)
+        return
     update_canvas_task(task_id, {"status": "running", "started_at": time.time()})
     try:
         # ``generate`` waits for the local ComfyUI history entry.  Surface the
@@ -37027,7 +37206,7 @@ async def run_canvas_comfy_task(task_id: str, payload: GenerateRequest):
         def report_comfy_progress(update):
             if isinstance(update, dict):
                 update_canvas_task(task_id, update)
-        result = await asyncio.to_thread(_generate_comfy, payload, report_comfy_progress)
+        result = await asyncio.to_thread(_generate_comfy, payload, report_comfy_progress, cancel_event)
         if isinstance(result, dict) and result.get("error"):
             raise RuntimeError(str(result.get("error") or "ComfyUI 生成失败"))
         update_canvas_task(task_id, {
@@ -37045,12 +37224,32 @@ async def run_canvas_comfy_task(task_id: str, payload: GenerateRequest):
             "status_code": status_code,
             "finished_at": time.time(),
         })
+    finally:
+        CANVAS_COMFY_CANCEL_EVENTS.pop(task_id, None)
 
 @app.post("/api/canvas-comfy-tasks")
 async def create_canvas_comfy_task(payload: GenerateRequest):
     # 应用库工作流的独立 ComfyUI 端口必须在入队前解析；否则异步任务
     # 只能看到默认 8188，最终会把“连接被拒绝”保存成失败结果。
-    payload = await asyncio.to_thread(_prepare_canvas_comfy_payload, payload)
+    if payload.multi_agent_action_id:
+        existing = MULTI_AGENT.before_generation(payload, "comfy")
+        if existing:
+            return existing
+    try:
+        payload = await asyncio.to_thread(_prepare_canvas_comfy_payload, payload)
+        if payload.multi_agent_action_id:
+            local_backend = payload.preferred_backend or next((addr for addr in COMFYUI_INSTANCES
+                if re.fullmatch(r"(?:127\.0\.0\.1|localhost):\d+", str(addr))), "")
+            managed_backend = globals().get("COMFY_APPS") and local_backend == COMFY_APPS.runtime.address
+            if (not re.fullmatch(r"(?:127\.0\.0\.1|localhost):\d+", str(local_backend))
+                    or local_backend not in COMFYUI_INSTANCES and not managed_backend):
+                raise ValueError("智能分工的本地工作流需要已配置的本机 ComfyUI")
+            payload = payload.model_copy(update={"local_only": True, "preferred_backend": local_backend})
+            MULTI_AGENT.ensure_generation_active(payload.multi_agent_action_id)
+    except Exception as exc:
+        if payload.multi_agent_action_id:
+            MULTI_AGENT.preparation_failed(payload.multi_agent_action_id, exc)
+        raise
     task_id = f"canvas_comfy_{uuid.uuid4().hex}"
     add_canvas_task(task_id, {
         "id": task_id,
@@ -37065,10 +37264,36 @@ async def create_canvas_comfy_task(payload: GenerateRequest):
         "history_source": normalize_history_source(payload.history_source, "canvas"),
         "project_id": str(payload.project_id or "").strip(),
         "client_id": str(payload.client_id or "").strip(),
+        "client_request_id": payload.client_request_id,
         "progress_source": "comfyui",
     })
+    CANVAS_COMFY_CANCEL_EVENTS[task_id] = threading.Event()
+    if payload.multi_agent_action_id:
+        MULTI_AGENT.generation_submitted(payload.multi_agent_action_id, task_id)
     asyncio.create_task(run_canvas_comfy_task(task_id, payload))
     return {"task_id": task_id, "status": "queued"}
+
+@app.post("/api/canvas-comfy-tasks/{task_id}/cancel")
+async def cancel_canvas_comfy_task(task_id: str):
+    with CANVAS_TASK_LOCK:
+        task = CANVAS_TASKS.get(task_id)
+        if not isinstance(task, dict) or task.get("type") != "comfy":
+            raise HTTPException(status_code=404, detail="未找到本地生图任务")
+        status = str(task.get("status") or "")
+        if status in CANVAS_TASK_TERMINAL_STATUSES:
+            return {"task_id": task_id, "status": status, "message": "任务已结束"}
+        message = ("已停止接收本地结果；ComfyUI 已受理的工作流可能继续运行" if task.get("prompt_id")
+                   else "已取消本地生图任务")
+        task.update({"status": "cancelled", "message": message, "error": message,
+                     "finished_at": time.time(), "updated_at": time.time()})
+        try:
+            _write_canvas_task_store_locked()
+        except OSError as exc:
+            print(f"保存取消任务状态失败({task_id}): {exc}")
+    cancel_event = CANVAS_COMFY_CANCEL_EVENTS.get(task_id)
+    if cancel_event:
+        cancel_event.set()
+    return {"task_id": task_id, "status": "cancelled", "message": message}
 
 @app.get("/api/canvas-comfy-tasks/{task_id}")
 async def get_canvas_comfy_task(task_id: str):
@@ -38043,6 +38268,8 @@ def volcengine_video_prompt_text(prompt, aspect_ratio="", duration=None):
 
 @app.post("/api/canvas-video")
 async def canvas_video(payload: CanvasVideoRequest):
+    if payload.multi_agent_action_id:
+        return await MULTI_AGENT.video(payload, canvas_video)
     provider = get_api_provider(payload.provider_id)
     if is_jimeng_provider(provider):
         result = await generate_jimeng_video(payload, provider)
@@ -38450,6 +38677,7 @@ async def canvas_video(payload: CanvasVideoRequest):
             last_response = None
             last_json_error = None
             total_candidates = len(submit_urls)
+            from multi_agent_runtime import PAID_REQUEST_SCOPE
             for idx, candidate_url in enumerate(submit_urls):
                 submit_url = candidate_url
                 is_last = idx == total_candidates - 1
@@ -38462,7 +38690,7 @@ async def canvas_video(payload: CanvasVideoRequest):
                     # 这种情况要继续尝试下一个候选端点（关键修复：以前在这里直接 raise_for_status，
                     # 第一个 /v1 报错就抛出，永远轮不到 /v2，表现为“接口错误”）。
                     # 其它错误（模型不支持/时长/额度等请求被拒）说明端点是存在的，直接抛出交给外层友好提示。
-                    endpoint_missing = response.status_code in (404, 405) or looks_like_html_response(response.text)
+                    endpoint_missing = response.status_code in (404, 405) or not PAID_REQUEST_SCOPE.get() and looks_like_html_response(response.text)
                     if endpoint_missing and not is_last:
                         continue
                     response.raise_for_status()
@@ -38470,6 +38698,8 @@ async def canvas_video(payload: CanvasVideoRequest):
                     raw = response.json()
                     break
                 except Exception as exc:
+                    if PAID_REQUEST_SCOPE.get():
+                        raise HTTPException(status_code=502, detail="视频提交响应无法解析，请核对平台原任务；不会切换接口重复提交") from exc
                     last_json_error = exc
                     if looks_like_html_response(response.text):
                         html_response = response
@@ -38737,8 +38967,12 @@ async def canvas_llm(payload: CanvasLLMRequest):
             )
             candidate_failed = False
             candidate_retries = CANVAS_LLM_RETRIES if len(model_candidates) == 1 else min(1, CANVAS_LLM_RETRIES)
+            if payload.transport_retries >= 0:
+                candidate_retries = payload.transport_retries
             async with httpx.AsyncClient(timeout=canvas_llm_timeout) as client:
                 req_body = {"model": model, "messages": upstream_messages}
+                if payload.max_output_tokens:
+                    req_body["max_completion_tokens" if re.match(r"^(?:o\d|gpt-5|gpt-6)", model, re.I) else "max_tokens"] = payload.max_output_tokens
                 if _is_apimart:
                     req_body["stream"] = False   # APIMart 默认流式，强制关闭
                 for attempt in range(candidate_retries + 1):
@@ -38853,7 +39087,8 @@ async def canvas_llm(payload: CanvasLLMRequest):
             status_code=502,
             detail=(
                 f"{provider_name} 的聊天接口在返回响应前断开了连接（{str(exc)[:180]}）。"
-                "系统已完成自动重试；请稍后点击“重试请求”，或切换到其他已拉取的聊天模型。"
+                + ("本次未自动重试；请核对用量后重试，或切换到其他已拉取的聊天模型。" if payload.transport_retries == 0
+                   else "系统已完成自动重试；请稍后点击“重试请求”，或切换到其他已拉取的聊天模型。")
             ),
         ) from exc
     except httpx.HTTPError as exc:
@@ -44349,11 +44584,11 @@ def _compose_vertical_canvas(images, target_width, scaled_heights):
                         white.close()
                 else:
                     rgb = oriented.convert("RGB")
-                resized = rgb.resize((target_width, height), resampling)
+                resized = rgb if rgb.size == (target_width, height) else rgb.resize((target_width, height), resampling)
                 canvas.paste(resized, (0, y))
                 y += height
             finally:
-                if resized is not None:
+                if resized is not None and resized is not rgb:
                     resized.close()
                 if rgb is not None:
                     rgb.close()
@@ -44363,6 +44598,26 @@ def _compose_vertical_canvas(images, target_width, scaled_heights):
     except Exception:
         canvas.close()
         raise
+
+
+def _detail_stitch_dimensions(sizes, max_width=4096, max_height=50_000, max_pixels=120_000_000):
+    def scaled_heights(width):
+        return [max(1, round(height * width / source_width)) for source_width, height in sizes]
+
+    low, high = 1, min(max_width, *(width for width, _ in sizes))
+    best = None
+    while low <= high:
+        width = (low + high) // 2
+        heights = scaled_heights(width)
+        total_height = sum(heights)
+        if total_height <= max_height and width * total_height <= max_pixels:
+            best = (width, heights, total_height)
+            low = width + 1
+        else:
+            high = width - 1
+    if best is None:
+        raise ValueError("这些详情图即使缩至最小宽度仍超过单图上限；请减少屏数")
+    return best
 
 
 @app.post("/api/canvas-detail-stitch")
@@ -44391,7 +44646,9 @@ async def canvas_detail_stitch(payload: CanvasDetailStitchRequest, request: Requ
                         width, height = height, width
                     if width < 1 or height < 1 or width * height > 50_000_000:
                         raise ValueError("图片尺寸无效或超过 5000 万像素")
-                    if abs(width / height - 9 / 16) > (9 / 16) * 0.03:
+                    if width >= height and payload.allow_compatible_portrait:
+                        raise ValueError(f"实际比例为 {width}:{height}，详情页分屏需要竖图")
+                    if not payload.allow_compatible_portrait and abs(width / height - 9 / 16) > (9 / 16) * 0.03:
                         raise ValueError(f"实际比例为 {width}:{height}，仅支持 9:16；请重新生成该屏")
                 except Exception as exc:
                     if source is not None:
@@ -44399,13 +44656,15 @@ async def canvas_detail_stitch(payload: CanvasDetailStitchRequest, request: Requ
                     raise ValueError(f"第 {index} 屏无法拼接：{exc}") from exc
                 sources.append(source)
                 sizes.append((width, height))
-            target_width = min(width for width, _ in sizes)
-            if target_width > 4096:
-                raise ValueError("详情图宽度超过 4096 像素，请先降低源图尺寸")
-            heights = [max(1, round(height * target_width / width)) for width, height in sizes]
-            total_height = sum(heights)
-            if total_height > 50_000 or target_width * total_height > 120_000_000:
-                raise ValueError(f"长图预计为 {target_width}×{total_height} 像素，超过单图上限；请减少屏数或降低源图宽度")
+            if payload.allow_compatible_portrait:
+                first_width, first_height = sizes[0]
+                first_ratio = first_width / first_height
+                for index, (width, height) in enumerate(sizes[1:], 2):
+                    if abs(width / height - first_ratio) > first_ratio * 0.03:
+                        raise ValueError(
+                            f"第 {index} 屏实际比例为 {width}:{height}，与第 1 屏的 {first_width}:{first_height} 不一致；请统一分屏比例"
+                        )
+            target_width, heights, total_height = _detail_stitch_dimensions(sizes)
             try:
                 canvas = _compose_vertical_canvas(sources, target_width, heights)
             except Exception as exc:
@@ -44416,7 +44675,7 @@ async def canvas_detail_stitch(payload: CanvasDetailStitchRequest, request: Requ
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 temporary = f"{path}.tmp"
                 try:
-                    canvas.save(temporary, format="PNG", optimize=True)
+                    canvas.save(temporary, format="PNG", compress_level=3)
                     os.replace(temporary, path)
                 finally:
                     if os.path.exists(temporary):
@@ -44424,12 +44683,18 @@ async def canvas_detail_stitch(payload: CanvasDetailStitchRequest, request: Requ
             finally:
                 canvas.close()
             result_url = output_url_for(filename, "output")
+            first_width, first_height = sizes[0]
+            divisor = math.gcd(first_width, first_height)
+            actual_ratio = "9:16" if abs(first_width / first_height - 9 / 16) <= (9 / 16) * 0.03 else f"{first_width // divisor}:{first_height // divisor}"
             record = asset_registry_register_media(
                 result_url, name="详情页长图.png", kind="image", source="generated",
-                derived_from=urls, metadata={"operation": "detail-stitch", "screens": len(urls)},
+                derived_from=urls, metadata={"operation": "detail-stitch", "screens": len(urls),
+                                             "source_ratio": actual_ratio},
             )
             return {"url": result_url, "name": "详情页长图.png", "width": target_width,
-                    "height": total_height, "asset_ref_id": (record or {}).get("id", "")}
+                    "height": total_height, "actual_ratio": actual_ratio,
+                    "scaled_down": target_width < min(width for width, _ in sizes),
+                    "asset_ref_id": (record or {}).get("id", "")}
         finally:
             for source in sources:
                 source.close()
@@ -49153,7 +49418,22 @@ def generate(req: GenerateRequest):
     return _generate_comfy(req)
 
 
-def _generate_comfy(req: GenerateRequest, progress_callback=None):
+def _comfy_execution_error_message(message):
+    message = str(message)
+    size_error = re.fullmatch(
+        r"A\s+(\d+)\s*[x×]\s*(\d+)\s+output exceeds the supported\s+"
+        r"(\d+)\s*[x×]\s*(\d+)\s+boundary\.\s*Use 1x or lower for this source\.",
+        message.strip(),
+        flags=re.IGNORECASE,
+    )
+    if size_error:
+        width, height, max_width, max_height = size_error.groups()
+        return (f"输出尺寸 {width}×{height} 超出支持范围（{max_width}×{max_height}）。"
+                "请将此图片的放大倍数调为 1× 或更低后重试。")
+    return message
+
+
+def _generate_comfy(req: GenerateRequest, progress_callback=None, cancel_event=None):
     global NEXT_TASK_ID
     current_task = None
     target_backend = None
@@ -49269,6 +49549,8 @@ def _generate_comfy(req: GenerateRequest, progress_callback=None):
             else (f"xiaomei_canvas_{uuid.uuid4().hex}" if callable(progress_callback) else CLIENT_ID)
         )
         p = {"prompt": workflow, "client_id": comfy_client_id}
+        if cancel_event is not None and cancel_event.is_set():
+            raise RuntimeError("本地生图已取消")
         data = json.dumps(p).encode('utf-8')
         try:
             post_req = urllib.request.Request(f"http://{target_backend}/prompt", data=data)
@@ -49301,6 +49583,8 @@ def _generate_comfy(req: GenerateRequest, progress_callback=None):
             workflow_timeout = COMFYUI_HISTORY_TIMEOUT
         workflow_timeout = max(30, min(COMFYUI_HISTORY_TIMEOUT, workflow_timeout))
         for i in range(workflow_timeout):
+            if cancel_event is not None and cancel_event.is_set():
+                raise RuntimeError("本地生图已取消")
             try:
                 res = get_comfy_history(target_backend, prompt_id)
                 if prompt_id in res:
@@ -49317,12 +49601,14 @@ def _generate_comfy(req: GenerateRequest, progress_callback=None):
                 })
             time.sleep(1)
 
+        if cancel_event is not None and cancel_event.is_set():
+            raise RuntimeError("本地生图已取消")
         if not history_data:
             raise Exception(f"ComfyUI 渲染超时（已等待 {workflow_timeout} 秒）")
 
         if history_data.get('status', {}).get('status_str') == 'error':
             messages = history_data.get('status', {}).get('messages', [])
-            errors = [str(message[1].get('exception_message', message[1])) for message in messages
+            errors = [_comfy_execution_error_message(message[1].get('exception_message', message[1])) for message in messages
                       if isinstance(message, list) and len(message) > 1 and message[0] == 'execution_error' and isinstance(message[1], dict)]
             raise RuntimeError('ComfyUI 执行失败：' + ('；'.join(errors) or str(messages)))
 
@@ -49382,6 +49668,8 @@ def _generate_comfy(req: GenerateRequest, progress_callback=None):
             seen_local_urls = set()
             prefix = f"{req.type}_{int(current_timestamp)}_"
             for node_id, class_type, output_key, item, kind in file_candidates:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise RuntimeError("本地生图已取消")
                 # Image Comparer/rgthree produces temporary A/B files for its
                 # slider.  They are UI inputs, never workflow results.  When
                 # another image is available (normally PreviewImage or
@@ -49471,6 +49759,8 @@ def _generate_comfy(req: GenerateRequest, progress_callback=None):
                 "source": "workflow_input",
                 "result": "workflow_output",
             }
+        if cancel_event is not None and cancel_event.is_set():
+            raise RuntimeError("本地生图已取消")
         if req.record_history:
             save_to_history(result)
             if GLOBAL_LOOP:
@@ -50221,6 +50511,9 @@ install_image_vectorizer(app, sys.modules[__name__])
 
 from inspiration_library import install_inspiration_library
 install_inspiration_library(app, sys.modules[__name__])
+
+from multi_agent_api import install_multi_agent
+MULTI_AGENT = install_multi_agent(app, sys.modules[__name__])
 
 if __name__ == "__main__":
     import uvicorn

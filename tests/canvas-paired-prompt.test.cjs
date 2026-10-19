@@ -30,6 +30,7 @@ vm.runInContext([
     'smartLoopNumberedScreenBlocks',
     'smartLoopNumberedScreenItems',
     'extractSmartLoopSourceScreens',
+    'smartLoopSourceScreenCopy',
     'parseSmartLoopAiSplitResult'
 ].map(extract).join('\n'), context);
 
@@ -214,6 +215,41 @@ test('AI split results keep the shared guide separate from screen prompts', () =
     }), 2);
     assert.equal(result.visualGuide, '统一暖光、米白背景、产品外观不变');
     assert.deepEqual(Array.from(result.screens, item => item.prompt), ['暖光首屏构图', '材质近景构图']);
+});
+
+test('AI split carries each original screen copy into the image prompt', () => {
+    const source = [
+        '### 第 1 屏｜首屏视觉',
+        '**策划文案：**',
+        '- **主标题：** 让心明白，让人想要',
+        '- **副标题：** 把回忆装进相框',
+        '**视觉总纲：** 暖光和浅木色',
+        '**AI 绘图提示词（Midjourney / SD）：**',
+        'Prompt: A framed photo on an oak desk',
+        '### 第 2 屏｜材质细节',
+        '**策划文案：**',
+        '- **主标题：** 每一处细节都值得珍藏',
+        '**AI 绘图提示词：**',
+        'Prompt: Close-up of the frame'
+    ].join('\n');
+    const result = context.parseSmartLoopAiSplitResult(JSON.stringify({screens:[
+        {title:'首屏', source_text:'模型摘要', prompt:'A framed photo on an oak desk'},
+        {title:'细节', source_text:'模型摘要', prompt:'Close-up of the frame'}
+    ]}), 2, source);
+    assert.match(result.screens[0].prompt, /主标题： 让心明白，让人想要/);
+    assert.match(result.screens[0].prompt, /副标题： 把回忆装进相框/);
+    assert.doesNotMatch(result.screens[0].prompt, /视觉总纲|AI 绘图提示词|Prompt:/);
+    assert.match(result.screens[1].prompt, /每一处细节都值得珍藏/);
+    assert.doesNotMatch(result.screens[1].prompt, /把回忆装进相框/);
+    assert.match(result.screens[0].source, /### 第 1 屏/);
+});
+
+test('AI split does not repeat copy already present in a screen prompt', () => {
+    const source = '### 第 1 屏：首屏\n**策划文案：**\n- **主标题：** 把回忆装进相框\n**视觉总纲：** 暖光';
+    const result = context.parseSmartLoopAiSplitResult(JSON.stringify({screens:[{
+        prompt:'相框摆在木桌上，主标题“把回忆装进相框”'
+    }]}), 1, source);
+    assert.doesNotMatch(result.screens[0].prompt, /画面中必须呈现的文案/);
 });
 
 test('detail batch state requires one paint node per screen', () => {

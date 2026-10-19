@@ -2920,9 +2920,6 @@ html[data-studio-skin] .composer:not(.comfy-run-only) > .composer-card > :is(.co
 }
 html[data-studio-skin] .composer:not(.comfy-run-only) > .composer-card > .param-row { grid-area: auto; grid-column: 1; }
 html[data-studio-skin] .composer:not(.comfy-run-only) > .composer-card > .composer-actions { grid-area: auto; grid-column: 2; align-self: end; }
-html[data-studio-skin] .composer .input-thumbs-row { justify-content: flex-start; padding-bottom: 0; }
-html[data-studio-skin] .composer .input-thumb-list { flex: 0 1 auto; }
-html[data-studio-skin] .composer .input-thumb-actions { margin-left: auto; }
 html[data-studio-skin] .composer .prompt-input { min-height: 88px; border-radius: 8px; }
 html[data-studio-skin] .composer .kind-toggle {
     border-radius: 8px;
@@ -2941,18 +2938,18 @@ html[data-studio-skin] .composer .kind-toggle button.active {
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--colorBrandStroke1) 70%, transparent);
     font-weight: 600 !important;
 }
-html[data-studio-skin] .composer :is(.input-thumb-add, .composer-template-btn, .prompt-optimize-btn) {
+html[data-studio-skin] .composer :is(.composer-template-btn, .prompt-optimize-btn) {
     color: var(--colorNeutralForeground1);
     background: var(--colorNeutralBackground2);
     border-color: var(--colorNeutralStroke1);
     box-shadow: none;
 }
-html[data-studio-skin] .composer :is(.input-thumb-add, .composer-template-btn, .prompt-optimize-btn):hover:not(:disabled) {
+html[data-studio-skin] .composer :is(.composer-template-btn, .prompt-optimize-btn):hover:not(:disabled) {
     background: var(--colorBrandBackground2);
     border-color: var(--colorBrandStroke1);
     color: var(--colorBrandForeground1);
 }
-html[data-studio-skin] .composer :is(.input-thumb-add, .composer-template-btn).active {
+html[data-studio-skin] .composer .composer-template-btn.active {
     background: var(--colorBrandBackground2);
     color: var(--colorBrandForeground1);
     border-color: var(--colorBrandStroke1);

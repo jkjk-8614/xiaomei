@@ -28,7 +28,7 @@
   const REVIEW_QUESTIONS_COLLECTION_MODULE = 'reviews_questions';
   const moduleLabels = { base: '商品基础信息', product: '商品信息', images: '主图', detail: '详情结构', reviews: '用户评价', questions: '问大家', reviews_questions: '用户反馈', sku: '规格信息', videos: '商品视频', operations: '经营信号' };
   const moduleOrder = ['product', 'images', 'detail', 'reviews', 'questions', 'sku', 'videos'];
-  const resourceOrder = ['product', 'videos', 'images', 'detail', 'detail_more', 'sku_images', 'sku_list', 'reviews', 'questions', 'operations', 'people'];
+  const resourceOrder = ['product', 'videos', 'images', 'detail', 'detail_more', 'sku_images', 'sku_list', 'reviews', 'questions'];
   const resourceLabels = { product: '商品信息', images: '主图', detail: '详情长图', detail_more: '详情图片', sku_images: 'SKU图片', sku_list: 'SKU规格列表', reviews: '用户评价', questions: '问大家', videos: '商品视频', operations: '经营报表', people: '人群结构' };
   const resourceIcons = { product: 'FileText', images: 'Image', detail: 'Layers', detail_more: 'Images', sku_images: 'Image', sku_list: 'List', reviews: 'MessageSquare', questions: 'CircleHelp', videos: 'Video', operations: 'ChartLine', people: 'Users' };
   function commerceIcon(name) {
@@ -920,12 +920,12 @@
       notifySharedConversation('', true, { remember: false });
       const searchContextReset = isSearchCommerceUrl(nextUrl);
       renderConversationPlaceholder(
-        options.message || (searchContextReset ? '正在读取当前搜索结果页，读取完成后可以直接分析价格带、标题和竞品。' : '已切换到新商品，正在自动读取商品基础信息；评价、问大家、运营报表和人群结构按需采集。'),
+        options.message || (searchContextReset ? '正在读取当前搜索结果页，读取完成后可以直接分析价格带、标题和竞品。' : '已切换到新商品，正在自动读取商品基础信息；评价和问大家按需采集。'),
         { pageContextPlaceholder: searchContextReset },
       );
       const activeKey = productContextKey(activeProductUrl());
       if (nextKey && (!activeKey || activeKey === nextKey)) {
-        void restoreConversationForProduct(nextKey, { emptyMessage: options.message || (searchContextReset ? '正在读取当前搜索结果页，读取完成后可以直接分析价格带、标题和竞品。' : '已切换到新商品，正在自动读取商品基础信息；评价、问大家、运营报表和人群结构按需采集。'), pageContextPlaceholder: searchContextReset });
+        void restoreConversationForProduct(nextKey, { emptyMessage: options.message || (searchContextReset ? '正在读取当前搜索结果页，读取完成后可以直接分析价格带、标题和竞品。' : '已切换到新商品，正在自动读取商品基础信息；评价和问大家按需采集。'), pageContextPlaceholder: searchContextReset });
       }
     }
     $('jobIdText').textContent = ''; renderInfo(null); renderModules();
@@ -969,7 +969,7 @@
     state.autoCollectionProductKey = key;
     applyProductInfoExpandedForTab(false);
     renderResources();
-    setJobState('正在自动读取商品基础信息、主图、详情、SKU 和视频；评价、问大家、运营报表和人群结构按需采集…', 'running');
+    setJobState('正在自动读取商品基础信息、主图、详情、SKU 和视频；评价和问大家按需采集…', 'running');
     const pending = Promise.resolve(startAnalysis(false, BASE_COLLECTION_MODULE));
     // startAnalysis() 在第一次 await 前会同步设置 analysisStarting；把这个
     // “正在进行”状态也绑定到当前标签，切换回来时不会再开第二套采集链。
@@ -1335,7 +1335,7 @@
       renderInfo(null);
       renderModules();
       renderResources();
-      setJobState('正在自动读取商品基础信息、主图、详情、SKU 和视频；评价、问大家、运营报表和人群结构按需采集…', 'running');
+      setJobState('正在自动读取商品基础信息、主图、详情、SKU 和视频；评价和问大家按需采集…', 'running');
     }
     return true;
   }
@@ -1416,7 +1416,9 @@
       thumb.classList.add('has-image');
       thumbImage.onerror = () => { thumb.classList.remove('has-image'); thumbImage.removeAttribute('src'); };
     } else { thumb.classList.remove('has-image'); thumbImage.removeAttribute('src'); }
-    const fieldLabels = ['店铺', '品牌', '规格', '成色', '交易方式', '尺码表', '面料', '评分', '评价数', '卖家反馈'];
+    const marketSignals = new Set(['价格', '划线价', '销量信号', '配送', '退货']);
+    const fieldLabels = (assistantProfileApi()?.marketplaceFieldOrder?.(profile.site) || [])
+      .filter((label) => !marketSignals.has(label) && !['ASIN', '刊登编号', '商品ID'].includes(label));
     const fields = fieldLabels.filter((label) => facts.get(label));
     content.classList.toggle('has-data', Boolean(fields.length));
     content.classList.add('is-marketplace');
@@ -1548,7 +1550,8 @@
     node.dataset.siteContextPreview = 'true';
     node.dataset.siteContextKey = key;
     node.dataset.copyText = String(preview.copyText || '');
-    node.innerHTML = `<div class="message-avatar">小</div><div class="message-bubble"><div class="site-page-context-title">${escapeHtml(preview.title || '当前页面 · 实况')}</div><ul class="site-page-context-facts">${facts.map((entry) => `<li><b>${escapeHtml(entry.label || '资料')}：</b>${escapeHtml(entry.value || '')}</li>`).join('')}</ul><div class="site-page-context-meta"><span>仅当前已渲染、可见的页面资料</span><button type="button" data-copy-site-context aria-label="复制当前页面资料" title="复制当前页面资料">⧉</button></div></div>`;
+    const resources = Array.isArray(preview.resources) ? preview.resources : [];
+    node.innerHTML = `<div class="message-avatar">小</div><div class="message-bubble"><div class="site-page-context-title">${escapeHtml(preview.title || '当前页面 · 实况')}</div><ul class="site-page-context-facts">${facts.map((entry) => `<li><b>${escapeHtml(entry.label || '资料')}：</b>${escapeHtml(entry.value || '')}</li>`).join('')}</ul>${resources.length ? `<div class="site-page-context-resources"><span>可引用：</span>${resources.map((entry) => `<span class="mention-chip" title="${escapeHtml(entry.label || '')}">${escapeHtml(entry.token || '')}</span>`).join('')}</div>` : ''}<div class="site-page-context-meta"><span>${escapeHtml(preview.note || '仅当前已渲染、可见的页面资料')}</span><button type="button" data-copy-site-context aria-label="复制当前页面资料" title="复制当前页面资料">⧉</button></div></div>`;
     box.appendChild(node);
     scrollChatToBottom(box);
     return true;
@@ -1595,6 +1598,7 @@
       structured: {
         ...previous.structured,
         resources: (previous.capturedResources || []).filter((item) => item.id !== resourceId),
+        excerpt: mode === 'detail' ? '' : previous.excerpt,
         marketplace: { ...(previous.marketplace || {}), [countKey]: 0 },
       },
       images: mode === 'detail' ? [] : previous.images,
@@ -1679,6 +1683,7 @@
       if (canPreserve) {
         const replacedResource = mode === 'detail' ? `${profile.site}-detail-images` : mode === 'reviews' ? `${profile.site}-reviews` : '';
         rawContext.structured.resources = [...(previous.capturedResources || []).filter((item) => item.id !== replacedResource), ...(rawContext.structured.resources || [])];
+        if (mode !== 'detail') rawContext.structured.excerpt = previous.excerpt;
         if (mode !== 'detail') rawContext.images = previous.images;
         if (mode !== 'reviews') rawContext.comments = previous.comments;
         rawContext.structured.marketplace = {
@@ -1764,11 +1769,6 @@
   function updateQuickActions() {
     const grid = $('productQuickGrid') || document.querySelector('.quick-grid:not(.site-quick-grid)');
     const siteGrid = $('siteQuickGrid');
-    const operationsButton = $('quickOperations');
-    if (operationsButton && operationsButton.dataset.labelVersion !== 'commerce-resource-state2') {
-      operationsButton.innerHTML = `<span>${commerceIcon('ChartLine')}</span>经营与人群洞察 <b>›</b>`;
-      operationsButton.dataset.labelVersion = 'commerce-resource-state2';
-    }
     if (grid && !grid.querySelector('[data-page-module]')) {
       grid.insertAdjacentHTML('beforeend', '<button type="button" hidden data-page-module="market"><span>⌁</span>寻找市场机会 <b>›</b></button><button type="button" hidden data-page-module="priceSales"><span>⌗</span>分析价格带和销量分布 <b>›</b></button><button type="button" hidden data-page-module="titleTerms"><span>≋</span>总结标题高频词 <b>›</b></button><button type="button" hidden data-page-module="competitors"><span>◇</span>找出高销量低价竞品 <b>›</b></button>');
     }
@@ -1788,8 +1788,9 @@
       }
       const heading = document.querySelector('.quick-heading strong');
       const caption = document.querySelector('.quick-caption');
-      if (heading) heading.textContent = `${siteProfile.title || '当前页面'}快捷分析`;
-      if (caption) caption.textContent = '点击指令填入对话框';
+      const marketplace = isCrossBorderPlatform({ id: siteProfile.site });
+      if (heading) heading.textContent = marketplace ? '分析工具' : `${siteProfile.title || '当前页面'}快捷分析`;
+      if (caption) caption.textContent = marketplace ? `${siteProfile.title} · 点击指令填入对话框` : '点击指令填入对话框';
       return;
     }
     if (grid) { grid.hidden = false; grid.setAttribute('aria-hidden', 'false'); }
@@ -3260,7 +3261,7 @@
     q('[data-resource-picker-id]', list).forEach((button) => { button.onclick = () => toggleResourceSelection(button.dataset.resourcePickerId); });
   }
   function groupResearchResources(list) {
-    const groups = [ ['商品素材', ['product', 'images', 'sku_images', 'sku_list', 'detail', 'detail_more', 'videos']], ['用户反馈', ['reviews', 'questions']], ['经营数据', ['operations', 'people']] ];
+    const groups = [ ['商品素材', ['product', 'images', 'sku_images', 'sku_list', 'detail', 'detail_more', 'videos']], ['用户反馈', ['reviews', 'questions']] ];
     const grid = list.querySelector('.resource-grid');
     if (!grid) return;
     const cards = Array.from(grid.children);
@@ -3277,10 +3278,16 @@
   }
   function renderResources(result = currentResult()) {
     const list = $('resourceList'); if (!list) return;
+    const siteView = activeSiteAssistantView();
+    if (siteView?.profile?.pageType === 'product' && isCrossBorderPlatform({ id: siteView.profile.site })) {
+      renderMarketplaceProductInfo(siteView);
+      updateContextChip();
+      return;
+    }
     if (!result) {
       const pending = pendingResourceItems();
       if (!pending.length) { list.innerHTML = ''; updateContextChip(); renderResourcePicker(); return; }
-       list.innerHTML = `<div class="resource-heading"><strong>商品页资源</strong><span>基础商品数据自动读取；评价、问大家、运营报表和人群结构按需采集</span></div><div class="resource-grid">${pending.map((item) => { const deferred = ['reviews', 'questions'].includes(item.id); const report = ['operations', 'people'].includes(item.id); const actionable = deferred || report; const label = resourcePendingLabel(item); const title = report ? '点击打开对应官方报表并采集' : deferred ? '点击采集正文' : '基础数据正在自动读取'; return `<div class="resource-card is-missing is-pending ${actionable ? 'is-deferred' : 'is-running'}"><button class="resource-card-main" type="button" data-resource-id="${escapeHtml(item.id)}" title="${escapeHtml(item.reason)}"><span class="resource-icon">${commerceIcon(resourceIcons[item.id])}</span><span class="resource-copy"><span class="resource-title">${escapeHtml(item.title)}</span><span class="resource-count">${escapeHtml(label)}</span></span></button><span class="resource-actions"><span class="resource-trigger" title="${escapeHtml(title)}">${commerceIcon(actionable ? 'Play' : 'LoaderCircle')}</span></span></div>`; }).join('')}</div>`;
+       list.innerHTML = `<div class="resource-heading"><strong>商品页资源</strong><span>基础商品数据自动读取；评价和问大家按需采集</span></div><div class="resource-grid">${pending.map((item) => { const deferred = ['reviews', 'questions'].includes(item.id); const report = ['operations', 'people'].includes(item.id); const actionable = deferred || report; const label = resourcePendingLabel(item); const title = report ? '点击打开对应官方报表并采集' : deferred ? '点击采集正文' : '基础数据正在自动读取'; return `<div class="resource-card is-missing is-pending ${actionable ? 'is-deferred' : 'is-running'}"><button class="resource-card-main" type="button" data-resource-id="${escapeHtml(item.id)}" title="${escapeHtml(item.reason)}"><span class="resource-icon">${commerceIcon(resourceIcons[item.id])}</span><span class="resource-copy"><span class="resource-title">${escapeHtml(item.title)}</span><span class="resource-count">${escapeHtml(label)}</span></span></button><span class="resource-actions"><span class="resource-trigger" title="${escapeHtml(title)}">${commerceIcon(actionable ? 'Play' : 'LoaderCircle')}</span></span></div>`; }).join('')}</div>`;
       groupResearchResources(list); updateContextChip(); renderResourcePicker(); return;
     }
     ensureResourceSelection(result);
@@ -3476,7 +3483,7 @@
     if (!content) return;
     content.classList.remove('is-marketplace');
     $('productInfoBody')?.classList.remove('is-marketplace');
-    if (empty) empty.textContent = '打开商品页后会自动读取商品基础信息、主图、详情、SKU 和视频；评价、问大家、运营报表和人群结构按需采集。';
+    if (empty) empty.textContent = '打开商品页后会自动读取商品基础信息、主图、详情、SKU 和视频；评价和问大家按需采集。';
     if (!result) { content.classList.remove('has-data'); if (empty) empty.style.display = ''; renderProductSummary(null); renderResources(null); const preference = productInfoPreferenceForTab(); setProductInfoExpanded(typeof preference === 'boolean' ? preference : false, { remember: false, syncState: typeof preference === 'boolean' }); if (!isSiteAssistantTab()) $('chatContextLabel').textContent = '未关联商品任务'; updateContextChip(); return; }
     const product = result.product || {}; const quality = result.quality || result.analysis?.coverage || {}; const metrics = result.metrics || {};
     const price = product.priceRange || (product.price ? (String(product.price).startsWith('¥') ? product.price : `¥${product.price}`) : '');
@@ -4021,7 +4028,7 @@
         return toast('页面已切换，正在恢复当前页面的独立对话');
       }
       const switchedSearch = isSearchCommerceUrl(activeUrl);
-      resetProductContext(activeUrl, { message: switchedSearch ? '已切换到新的搜索结果页，正在读取当前页面数据。' : '已切换到新商品，正在自动读取商品基础信息；评价、问大家、运营报表和人群结构按需采集。' });
+      resetProductContext(activeUrl, { message: switchedSearch ? '已切换到新的搜索结果页，正在读取当前页面数据。' : '已切换到新商品，正在自动读取商品基础信息；评价和问大家按需采集。' });
       if (switchedSearch) await captureCurrentPageContext({ url: activeUrl });
       return toast(switchedSearch ? '已切换搜索页，正在重新读取当前结果' : '已切换商品，正在自动读取基础数据');
     }

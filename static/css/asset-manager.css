@@ -724,6 +724,33 @@ html.studio-theme-dark body .image-space-dialog textarea { background: #292c32 !
 .asset-modal-backdrop { position:absolute; inset:0; }
 .asset-modal { position:relative; z-index:1; width:min(430px, 94vw); max-height:min(560px, 86vh); display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--line); border-radius:16px; background:var(--panel); box-shadow:0 28px 80px rgba(15,23,42,.28); }
 .asset-modal .panel-head { padding:14px 16px; border-bottom:1px solid var(--line); }
+.prompt-editor-dialog { width:min(1120px, calc(100vw - 48px)); height:min(800px, calc(100dvh - 48px)); max-height:calc(100dvh - 48px); margin:auto; padding:0; color:var(--text); }
+.prompt-editor-dialog:not([open]) { display:none; }
+.prompt-editor-dialog::backdrop { background:rgba(15,23,42,.42); backdrop-filter:blur(4px); }
+.prompt-editor-dialog .panel-head { min-height:64px; }
+.prompt-editor-dialog .panel-title strong { font-size:16px; }
+.prompt-editor-body { flex:1; min-height:0; overflow:auto; padding:18px 20px; gap:16px; }
+.prompt-editor-fields { flex:1; min-height:280px; display:grid; grid-template-columns:minmax(0,1fr) 270px; gap:18px; }
+.prompt-editor-main,.prompt-editor-options,.prompt-editor-options .inline-edit-field { min-width:0; min-height:0; }
+.prompt-editor-label { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.prompt-editor-body .inline-edit-field > span,.prompt-editor-label span { color:var(--muted); font-size:12px; font-weight:650; }
+.prompt-editor-body .inline-edit-field input { font-size:14px; font-weight:500; }
+.prompt-editor-body .inline-edit-field textarea { flex:1; min-height:110px; resize:none; font-size:13px; line-height:1.7; font-weight:400; }
+.prompt-editor-body .prompt-editor-main textarea { min-height:280px; padding:14px 16px; font-size:14px; line-height:1.8; }
+.prompt-editor-options { display:grid; grid-template-rows:1fr 1fr; gap:16px; }
+.prompt-editor-footer { flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:14px 20px; border-top:1px solid var(--line); }
+.prompt-editor-status { min-width:0; color:var(--muted); font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+.prompt-editor-footer .panel-actions { flex:0 0 auto; }
+.prompt-editor-dialog .asset-btn { min-height:34px; padding:0 14px; font-size:12px; }
+@media(max-width:760px) {
+    .prompt-editor-dialog { width:calc(100vw - 24px); height:calc(100dvh - 24px); max-height:calc(100dvh - 24px); }
+    .prompt-editor-body { padding:14px; }
+    .prompt-editor-fields { flex:none; grid-template-columns:minmax(0,1fr); }
+    .prompt-editor-main { min-height:340px; }
+    .prompt-editor-options { grid-template-rows:auto; }
+    .prompt-editor-options textarea { min-height:120px; }
+    .prompt-editor-footer { padding:12px 14px; }
+}
 .case-category-add-row { display:flex; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line); }
 .case-category-add-row input { flex:1; min-width:0; height:30px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--text); padding:0 10px; font-size:12px; }
 .case-category-list { flex:1; min-height:0; overflow:auto; padding:12px 16px 16px; display:flex; flex-direction:column; gap:7px; }

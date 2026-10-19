@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "小美画布 · 模型下载",
+  "version": "1.0.0",
+  "description": "将当前 Civitai 或 Hugging Face 模型链接发送到本机小美画布，选择版本与文件后下载。",
+  "permissions": ["activeTab", "storage"],
+  "action": { "default_title": "发送模型到小美画布", "default_popup": "popup.html" }
+}

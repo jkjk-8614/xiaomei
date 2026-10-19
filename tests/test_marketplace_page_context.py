@@ -60,13 +60,16 @@ class MarketplacePageContextTests(unittest.TestCase):
             "structured": {
                 "kind": "amazon-product",
                 "title": "桌面阅读灯",
+                "excerpt": "三档亮度，可折叠灯臂。",
                 "marketplace": {"mainImageCount": 1, "detailImageCount": 2},
                 "resources": [{"id": "amazon-detail-images", "token": "@详情图片", "label": "详情图片"}],
             },
         }
         result = main._commerce_analysis_format_visible_page_context(context)
         self.assertIn("详情图片：已读取 2 张", result)
+        self.assertIn("三档亮度，可折叠灯臂", result)
         self.assertIn("图片像素未返回", result)
+        self.assertIn("不得做视觉诊断", result)
         self.assertNotIn("images.example.test", result)
 
     def test_empty_samples_do_not_advertise_deferred_resources(self):
@@ -87,6 +90,19 @@ class MarketplacePageContextTests(unittest.TestCase):
         result = main._commerce_analysis_format_visible_page_context(context)
         self.assertNotIn("@详情图片", result)
         self.assertNotIn("@用户评价", result)
+
+    def test_shop_listing_samples_reach_model_context(self):
+        context = {
+            "source": "electron-visible-dom-assistant",
+            "site": "ebay",
+            "pageType": "shop",
+            "url": "https://www.ebay.com/str/example",
+            "structured": {"kind": "ebay-shop", "title": "eBay 店铺"},
+            "cards": [{"title": "Used camera with lens"}],
+        }
+        result = main._commerce_analysis_format_visible_page_context(context)
+        self.assertIn("店铺商品结构化样本", result)
+        self.assertIn("Used camera with lens", result)
 
 
 if __name__ == "__main__":

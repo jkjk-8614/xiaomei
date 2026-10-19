@@ -172,14 +172,13 @@
         const backgroundValue=['opaque','transparent'].includes(state.common.background)?state.common.background:'opaque';
         const backgroundField=gpt25?`<div class="field"><label>背景</label><select class="select" data-common="background"><option value="opaque" ${backgroundValue==='opaque'?'selected':''}>不透明</option><option value="transparent" ${backgroundValue==='transparent'?'selected':''}>透明</option></select></div>`:'';
         const planner=isPromptWorkflow()?`<div class="parameter-subgroup"><div class="parameter-subgroup-head"><strong>策划模型</strong><span>用于分析产品和生成可编辑的提示词方案</span></div><div class="form-grid planner-grid">${plannerFields()}</div></div>`:'';
-        const requestMode=!isPromptWorkflow()?`<div class="field"><label>任务模式</label><select class="select" data-common="requestMode"><option value="async" ${state.common.requestMode==='async'?'selected':''}>异步（推荐）</option><option value="sync" ${state.common.requestMode==='sync'?'selected':''}>同步</option></select></div>`:'';
-        return `<section class="form-section form-section-generation"><div class="section-title"><div class="section-heading"><h3>生成参数</h3><span>图片模型与分析模型均来自 API 设置实时列表</span></div><span class="section-status">${esc(state.common.requestMode==='sync'?'同步执行':'异步执行')}</span></div><div class="parameter-subgroup"><div class="parameter-subgroup-head"><strong>出图参数</strong><span>决定生成画幅、清晰度与任务数量</span></div><div class="form-grid">
+        return `<section class="form-section form-section-generation"><div class="section-title"><div class="section-heading"><h3>生成参数</h3><span>图片模型与分析模型均来自 API 设置实时列表</span></div><span class="section-status">异步执行</span></div><div class="parameter-subgroup"><div class="parameter-subgroup-head"><strong>出图参数</strong><span>决定生成画幅、清晰度与任务数量</span></div><div class="form-grid">
             <div class="field"><label>API 平台</label><select class="select" data-common="provider">${providerList().map(p=>`<option value="${attr(p.id)}" ${p.id===state.common.provider?'selected':''}>${esc(p.name||p.id)}</option>`).join('')}</select></div>
             <div class="field"><label>图片模型</label><select class="select" data-common="model">${groupedModelOptions()}</select></div>
             <div class="field"><label>画面比例</label><select class="select" data-common="ratio">${['1:1','4:5','3:4','2:3','9:16','5:4','4:3','3:2','16:9','21:9'].map(v=>`<option ${v===state.common.ratio?'selected':''}>${v}</option>`).join('')}</select></div>
             <div class="field"><label>清晰度</label><select class="select" data-common="resolution">${['1K','2K','4K'].map(v=>`<option ${v===state.common.resolution?'selected':''}>${v}</option>`).join('')}</select></div>
              <div class="field"><label>生成质量</label><select class="select" data-common="quality">${qualityOptions.map(([value,label])=>`<option value="${value}" ${qualityValue===value?'selected':''}>${label}</option>`).join('')}</select></div>
-             ${countField}${requestMode}${backgroundField}
+             ${countField}${backgroundField}
         </div></div>${planner}</section>`;
     }
     function uploadSection(pool,title,subtitle,max=4,compact=false){
@@ -213,7 +212,7 @@
         return name?(points?'产品名 · 卖点已填':'已填写产品名'):'待填写产品信息';
     }
     function generateRow(label='开始生成'){
-        return `<div class="generate-row form-action-bar"><button class="primary-btn" id="generateBtn" type="button" ${state.running?'disabled':''}><i data-lucide="sparkles"></i> ${state.running?'任务进行中…':esc(label)}</button>${state.running?`<button class="stop-btn" id="stopBtn" type="button"><i data-lucide="square"></i>停止队列</button>`:''}</div>`;
+        return `<div class="generate-row form-action-bar"><button class="primary-btn" id="generateBtn" type="button" ${state.running?'disabled':''}><i data-lucide="sparkles"></i> ${state.running?'任务进行中…':esc(label)}</button>${state.running?`<button class="stop-btn" id="stopBtn" type="button"><i data-lucide="square"></i>取消生图</button>`:''}</div>`;
     }
     function markdownImportControl(){
         const imported=valueState().importedPlanName,currentCount=currentSegments().length,skill=selectedSkill();
@@ -380,12 +379,12 @@
             const elapsed=Math.max(0,Math.round((Date.now()-task.startedAt)/1000));
             let media='';
             if(task.status==='success' && task.url) media=`<img src="${attr(task.url)}" alt="生成结果">`;
-            else if(task.status==='failed') media=`<div><div class="failed-mark"><i data-lucide="circle-x"></i></div><div class="progress-label">生成失败</div></div>`;
+            else if(task.status==='failed'||task.status==='cancelled') media=`<div><div class="failed-mark"><i data-lucide="circle-x"></i></div><div class="progress-label">${task.status==='cancelled'?'已取消':'生成失败'}</div></div>`;
             else {const status=taskStatusDisplay(task,elapsed); media=`<div><div class="progress-ring ${status.phase}"><span>${status.value}</span></div><div class="progress-label">${status.label}</div></div>`;}
             const refs=(task.refs||[]).map((ref,refIndex)=>`<span class="task-ref" title="图${refIndex+1}：${attr(ref.name||'引用图')}"><img src="${attr(ref.url)}" alt="引用图 ${refIndex+1}" loading="lazy"><b>${refIndex+1}</b></span>`).join('');
-            const menu=`<details class="task-menu"><summary title="当前屏操作"><i data-lucide="grip-vertical"></i></summary><div><button type="button" data-edit-task-prompt="${index}"><i data-lucide="pencil"></i>修改提示词</button><button type="button" data-retry-task="${index}" ${state.running?'disabled':''}><i data-lucide="refresh-cw"></i>单屏重新生图</button>${task.url?`<a href="${attr(task.url)}" download><i data-lucide="download"></i>下载当前屏</a>`:''}<button type="button" data-copy-prompt="${index}"><i data-lucide="copy"></i>复制提示词</button></div></details>`;
+            const menu=`<details class="task-menu"><summary title="当前屏操作"><i data-lucide="grip-vertical"></i></summary><div><button type="button" data-edit-task-prompt="${index}"><i data-lucide="pencil"></i>修改提示词</button>${task.status==='running'||task.status==='pending'?`<button type="button" data-cancel-task="${index}" ${task.cancelRequested?'disabled':''}><i data-lucide="square"></i>取消当前生图</button>`:''}<button type="button" data-retry-task="${index}" ${state.running?'disabled':''}><i data-lucide="refresh-cw"></i>单屏重新生图</button>${task.url?`<a href="${attr(task.url)}" download><i data-lucide="download"></i>下载当前屏</a>`:''}<button type="button" data-copy-prompt="${index}"><i data-lucide="copy"></i>复制提示词</button></div></details>`;
             const zoom=task.url?`<a class="task-zoom" href="${attr(task.url)}" target="_blank" rel="noopener" title="查看大图"><i data-lucide="zoom-in"></i></a>`:'';
-            const failedRetry=task.status==='failed'?`<button class="failed-retry" type="button" data-retry-task="${index}" ${state.running?'disabled':''}><i data-lucide="refresh-cw"></i>重新生图</button>`:'';
+            const failedRetry=['failed','cancelled'].includes(task.status)?`<button class="failed-retry" type="button" data-retry-task="${index}" ${state.running?'disabled':''}><i data-lucide="refresh-cw"></i>重新生图</button>`:'';
             return `<article class="task-card ${task.selected!==false?'task-selected':'task-unselected'}"><div class="task-card-head"><span>${String(index+1).padStart(2,'0')}</span><div class="task-head-actions"><button class="task-quick-retry" type="button" data-retry-task="${index}" ${state.running?'disabled':''} title="仅重新生成这一屏"><i data-lucide="refresh-cw"></i></button>${menu}</div></div><div class="task-media"><button class="task-select ${task.selected!==false?'selected':''}" type="button" data-toggle-task="${index}" aria-pressed="${task.selected!==false}" title="选择此图片">${task.selected!==false?'✓':''}</button>${zoom}${media}${failedRetry}</div><div class="task-prompt-wrap"><button class="task-prompt-line" type="button" data-edit-task-prompt="${index}" title="点击修改，悬停查看完整提示词">${esc(task.prompt||'暂无提示词')}</button><div class="task-prompt-popover"><strong>${esc(task.label||`第 ${index+1} 屏`)}</strong><p>${esc(task.prompt||'暂无提示词')}</p><span>点击下方提示词可修改</span></div></div>${refs?`<div class="task-refs">${refs}</div>`:''}${task.error?`<div class="task-error compact">${esc(task.error)}</div>`:''}</article>`;
         }).join(''); refreshIcons();
     }
@@ -479,7 +478,7 @@
         }));
         document.querySelectorAll('[data-mode]').forEach(btn=>btn.addEventListener('click',()=>{valueState().mode=btn.dataset.mode;savePreferences();renderForm();}));
         document.querySelectorAll('[data-crop]').forEach(input=>input.addEventListener('input',()=>{const c=valueState().crop,key=input.dataset.crop;c[key]=Number(input.value);normalizeCrop(c,key);updateCropBox();savePreferences();}));
-        $('generateBtn')?.addEventListener('click',()=>void generateActiveWorkflow()); $('stopBtn')?.addEventListener('click',()=>{state.stopped=true;toast('已停止继续提交新任务');});
+        $('generateBtn')?.addEventListener('click',()=>void generateActiveWorkflow()); $('stopBtn')?.addEventListener('click',()=>{state.stopped=true;state.tasks.filter(task=>['pending','running'].includes(task.status)).forEach(task=>void cancelCommerceTask(task));toast('已取消队列和进行中的生图');});
         $('brushSize')?.addEventListener('input',e=>{valueState().brush=Number(e.target.value);savePreferences();}); $('clearMask')?.addEventListener('click',()=>{valueState().mask='';savePreferences();setupPaintCanvas(true)});
         $('analyzeProduct')?.addEventListener('click',()=>void analyzeProduct());
         $('planPrompts')?.addEventListener('click',()=>void generateSegmentedPrompts());
@@ -591,9 +590,9 @@
         state.promptGenerationActive=true;state.running=true;state.stopped=false;
         state.tasks=segmentEntries.map(({segment,sourceIndex},index)=>({id:`prompt-task-${Date.now()}-${index}`,label:segment.title||`分段 ${index+1}`,prompt:segment.prompt,refs,sourceSegmentIndex:sourceIndex,status:'pending',upstreamStatus:'',startedAt:Date.now(),model:state.common.model,url:'',error:'',selected:true}));render();
         const workers=Math.min(COMMERCE_IMAGE_CONCURRENCY,state.tasks.length);let cursor=0;
-        const runWorker=async()=>{while(cursor<state.tasks.length&&!state.stopped){const task=state.tasks[cursor++];await runTask(task);}};
+        const runWorker=async()=>{while(cursor<state.tasks.length&&!state.stopped){const task=state.tasks[cursor++];if(task.status==='cancelled')continue;await runTask(task);}};
         await Promise.all(Array.from({length:workers},runWorker));
-        if(state.stopped)state.tasks.filter(task=>task.status==='pending').forEach(task=>{task.status='failed';task.error='队列已停止';});
+        if(state.stopped)state.tasks.filter(task=>task.status==='pending').forEach(task=>{task.status='cancelled';task.error='已取消';});
         state.running=false;renderForm();renderTasks();toast(`确认生成完成：成功 ${state.tasks.filter(task=>task.status==='success').length}/${state.tasks.length}`);
     }
     function normalizeCommerceAssetLibraries(payload){
@@ -716,16 +715,35 @@
         if(state.merchantBatchTaskCap&&specs.length>state.merchantBatchTaskCap){specs=specs.slice(0,state.merchantBatchTaskCap);toast(`经营助手方案已按安全上限保留前 ${specs.length} 个任务`);}
         state.running=true;state.stopped=false;state.tasks=specs.map((spec,i)=>({id:`task-${Date.now()}-${i}`,label:spec.label,prompt:spec.prompt,refs:spec.refs,status:'pending',upstreamStatus:'',startedAt:Date.now(),model:state.common.model,url:'',error:'',selected:true,clientRequestId:state.active==='batch'&&state.merchantBatchIdempotency?`${state.merchantBatchIdempotency}-${i+1}`:''}));render();
         const workers=Math.min(COMMERCE_IMAGE_CONCURRENCY,state.tasks.length);let cursor=0;
-        const runWorker=async()=>{while(cursor<state.tasks.length&&!state.stopped){const index=cursor++,task=state.tasks[index];await runTask(task);}};
+        const runWorker=async()=>{while(cursor<state.tasks.length&&!state.stopped){const index=cursor++,task=state.tasks[index];if(task.status==='cancelled')continue;await runTask(task);}};
         await Promise.all(Array.from({length:workers},runWorker));
-        if(state.stopped)state.tasks.filter(t=>t.status==='pending').forEach(t=>{t.status='failed';t.error='队列已停止'});
+        if(state.stopped)state.tasks.filter(t=>t.status==='pending').forEach(t=>{t.status='cancelled';t.error='已取消'});
         state.running=false;renderForm();renderTasks();toast(`任务结束：成功 ${state.tasks.filter(t=>t.status==='success').length}/${state.tasks.length}`);
     }
-    async function runTask(task){task.status='running';task.upstreamStatus='submitting';task.upstreamMessage='';task.startedAt=Date.now();renderTasks();const normalizedRefs=(task.refs||[]).map((ref,index)=>({...ref,role:ref.role==='mask'?'mask':`image_${index+1}`}));const payload={prompt:task.prompt,provider_id:state.common.provider,model:state.common.model,history_source:'commerce',size:sizeFor(state.common.ratio,state.common.resolution,state.common.model),quality:state.common.quality,n:1,reference_images:normalizedRefs};if(isGptImage25Model(state.common.model))payload.background=state.common.background==='transparent'?'transparent':'opaque';if(task.clientRequestId)payload.client_request_id=task.clientRequestId;
+    async function cancelCommerceTask(task){
+        if(!task||!['pending','running'].includes(task.status)||task.cancelRequested)return;
+        task.cancelRequested=true;
+        if(task.status==='pending'){task.status='cancelled';task.error='已取消';renderTasks();return;}
+        renderTasks();
+        if(!task.serverTaskId)return;
+        try{
+            const cancelled=await XiaomeiImageTaskClient.requestJson(`/api/canvas-image-tasks/${encodeURIComponent(task.serverTaskId)}/cancel`,{method:'POST'});
+            if(cancelled.status==='cancelled'){task.status='cancelled';task.error=cancelled.message||'已取消';}
+        }catch(error){task.cancelRequested=false;toast(error.message||'取消失败','error');}
+        renderTasks();
+    }
+    async function runTask(task){task.status='running';task.cancelRequested=false;task.serverTaskId='';task.upstreamStatus='submitting';task.upstreamMessage='';task.startedAt=Date.now();renderTasks();const normalizedRefs=(task.refs||[]).map((ref,index)=>({...ref,role:ref.role==='mask'?'mask':`image_${index+1}`}));const payload={prompt:task.prompt,provider_id:state.common.provider,model:state.common.model,history_source:'commerce',size:sizeFor(state.common.ratio,state.common.resolution,state.common.model),quality:state.common.quality,n:1,reference_images:normalizedRefs};if(isGptImage25Model(state.common.model))payload.background=state.common.background==='transparent'?'transparent':'opaque';if(task.clientRequestId)payload.client_request_id=task.clientRequestId;
         try{
             let result;
-            result=await XiaomeiImageTaskClient.runImage(payload,{
-                mode:state.common.requestMode === 'sync' ? 'sync' : 'async',
+            const created=await XiaomeiImageTaskClient.createImageTask(payload);
+            task.serverTaskId=created.task_id;
+            if(!task.serverTaskId)throw new Error('接口没有返回生图任务 ID');
+            if(task.cancelRequested){
+                const cancelled=await XiaomeiImageTaskClient.requestJson(`/api/canvas-image-tasks/${encodeURIComponent(task.serverTaskId)}/cancel`,{method:'POST'});
+                task.status=cancelled.status==='cancelled'?'cancelled':task.status;
+                task.error=cancelled.message||'已取消';
+            }
+            result=await XiaomeiImageTaskClient.pollImageTask(task.serverTaskId,{
                 intervalMs:1500,
                 fallbackMessage:'生成失败',
                 timeoutMessage:'生成任务超时',
@@ -741,10 +759,10 @@
                 },
             });
             const data=result?.result||result;task.url=XiaomeiImageTaskClient.extractMediaUrls(data)[0] || '';if(!task.url)throw new Error('接口没有返回可用图片');task.status='success';task.upstreamStatus='succeeded';
-         }catch(error){task.status='failed';task.upstreamStatus='failed';task.error=String(error.message||error).slice(0,500);}finally{
+         }catch(error){if(task.status!=='cancelled')task.status='failed';task.upstreamStatus=task.status;task.error=String(error.message||error).slice(0,500);}finally{
              window.XiaomeiGenerationNotifications?.notify?.({
                  id:`commerce-${task.id}`,
-                 status:task.status==='success'?'success':'failed',
+                 status:task.status==='success'?'success':task.status==='cancelled'?'cancelled':'failed',
                  model:task.model || state.common.model || '图片模型',
                  outputs:task.url ? [{url:task.url}] : [],
                  error:task.error || '',
@@ -846,6 +864,7 @@
         if(e.target.closest('[data-back-prompts]')){if(!state.running){state.promptGenerationActive=false;renderTasks();}return;}
         const taskToggle=e.target.closest('[data-toggle-task]');if(taskToggle){const task=state.tasks[Number(taskToggle.dataset.toggleTask)];if(task){task.selected=task.selected===false;renderTasks();}return;}
         if(e.target.closest('[data-select-all-tasks]')){const successful=state.tasks.filter(task=>task.status==='success'&&task.url),allSelected=successful.length&&successful.every(task=>task.selected!==false);successful.forEach(task=>task.selected=allSelected?false:true);renderTasks();return;}
+        const cancel=e.target.closest('[data-cancel-task]');if(cancel){await cancelCommerceTask(state.tasks[Number(cancel.dataset.cancelTask)]);return;}
         const retry=e.target.closest('[data-retry-task]');if(retry){await retryTask(retry.dataset.retryTask);return;}
         const editPrompt=e.target.closest('[data-edit-task-prompt]');if(editPrompt){openTaskPromptEditor(editPrompt.dataset.editTaskPrompt);return;}
         if(e.target.closest('[data-preview-long]')){await previewLongImage();return;}

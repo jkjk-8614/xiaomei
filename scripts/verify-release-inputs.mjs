@@ -22,7 +22,7 @@ const forbidden = [
   /(^|[\\/])user_data([\\/]|$)/i,
   /^assets[\\/](?:input|uploads|output|library)(?:[\\/]|$)/i,
   /^data[\\/](?:models|conversations|canvases)(?:[\\/]|$)/i,
-  /^ComfyUI[\\/](?:models|input|output|user|temp|\.venv)(?:[\\/]|$)/i,
+  /^ComfyUI[\\/](?:models|model_downloads|model-downloads|input|output|user|temp|\.venv)(?:[\\/]|$)/i,
 ];
 
 function isPrivateEnv(file) {

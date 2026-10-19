@@ -127,6 +127,23 @@ test('each successful detail split refreshes the guide and all screen drafts', {
     assert.ok(recovered.drafts[1].includes('保留细节原文'));
 
     await page.evaluate(() => {
+        nodes.find(item => item.id === 'loop-guide').batchSourceText = [
+            '### 第 1 屏：首屏', '**策划文案：**', '- **主标题：** 把回忆装进相框',
+            '**AI 绘图提示词：**', 'Prompt: framed product',
+            '### 第 2 屏：细节', '**策划文案：**', '- **主标题：** 细节值得珍藏',
+            '**AI 绘图提示词：**', 'Prompt: product detail'
+        ].join('\n');
+    });
+    reply = {visual_guide:'暖光', screens:[
+        {title:'首屏', prompt:'framed product'}, {title:'细节', prompt:'product detail'}
+    ]};
+    await split();
+    const withCopy = await state();
+    assert.ok(withCopy.drafts[0].includes('把回忆装进相框'));
+    assert.ok(withCopy.drafts[1].includes('细节值得珍藏'));
+    assert.ok(!withCopy.drafts[0].includes('细节值得珍藏'));
+
+    await page.evaluate(() => {
         const node = nodes.find(item => item.id === 'loop-guide');
         nodes.push({ id: 'linked-guide', type: 'smart-prompt', x: 0, y: 900, text: '独立连接的复古风格' });
         addConnection('linked-guide', node.id, 'input');

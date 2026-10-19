@@ -1,5 +1,5 @@
 (function(){
-  const VERSION = '2026.10.17.detail-stitch.2';
+  const VERSION = '2026.10.19.alt-copy.1';
     const scripts = [
         '/static/js/i18n-core.js',
         '/static/js/i18n/common.js',

@@ -18,14 +18,25 @@ const platformExtras = {
   ebay: '<div class="x-item-condition-text">Used</div><button id="bidBtn_btn">Bid</button><div class="ux-labels-values--returns">30 day returns</div>',
   shein: '<div class="size-guide">Size guide</div><div class="color-list"><img src="https://images.example.test/sku.jpg" style="width:180px;height:180px"></div>',
 };
+const expectedProductActions = {
+  amazon: '检查品牌、卖点与配送',
+  aliexpress: '检查规格与跨境配送',
+  shopee: '检查本地卖点与履约',
+  temu: '检查价格与规格表达',
+  ozon: '检查参数与配送',
+  ebay: '检查成色与交易风险',
+  shein: '检查尺码与面料',
+  'tiktok-shop': '检查商品卖点与视频线索',
+};
 
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   try {
     for (const [site, url, gallery, detail, reviews] of cases) {
       const page = await browser.newPage();
+      const describedDetail = detail.replace(/<\/div>$/, '<p>三档亮度，可折叠灯臂。</p></div>');
       await page.route('**/*', (route) => route.request().resourceType() === 'document'
-        ? route.fulfill({ contentType: 'text/html', body: `<html><body><h1>桌面阅读灯</h1>${gallery}${platformExtras[site] || ''}${detail}${reviews}</body></html>` })
+        ? route.fulfill({ contentType: 'text/html; charset=utf-8', body: `<html><body><h1>桌面阅读灯</h1>${gallery}${platformExtras[site] || ''}${describedDetail}${reviews}</body></html>` })
         : route.abort());
       await page.goto(url);
       await page.addScriptTag({ path: path.resolve(__dirname, '../static/js/commerce-assistant-profiles.js') });
@@ -45,10 +56,26 @@ const platformExtras = {
       assert.equal(view.profile.site, site);
       assert.ok(view.resources.some((item) => item.id === `${site}-product-info`));
       assert.ok(!view.resources.some((item) => item.id === `${site}-reviews`));
+      assert.ok(view.actions.some((item) => item.label === expectedProductActions[site]), `${site} product analysis must match the platform`);
+      assert.ok(!view.actions.some((item) => /诊断.*图|视频诊断/.test(item.label)), `${site} cannot claim visual diagnosis from image URLs`);
+      const preview = await page.evaluate((snapshot) => {
+        const built = window.XiaomeiCommerceAssistantProfiles.build({ ...snapshot, url: location.href });
+        return window.XiaomeiCommerceAssistantProfiles.pagePreview(built);
+      }, base);
+      assert.equal(preview.title, '已帮你看了这个商品');
+      assert.ok(preview.resources.some((item) => item.token === '@商品信息'));
+      assert.ok(preview.facts.some((item) => item.label === '主图' && /页面可见 1 张/.test(item.value)));
+      assert.match(preview.note, /画面未送入模型/);
+      if (site === 'ebay') assert.ok(preview.facts.some((item) => item.label === '成色' && item.value === 'Used'));
       const detailResult = await page.evaluate(marketplaceCaptureScript(site, 'detail'));
       assert.equal(detailResult.images.length, 1, `${site} detail image after click`);
+      assert.match(detailResult.structured.excerpt, /三档亮度/, `${site} captures visible detail copy after click`);
+      const detailView = await page.evaluate((snapshot) => window.XiaomeiCommerceAssistantProfiles.build({ ...snapshot, url: location.href }), detailResult);
+      assert.ok(detailView.actions.some((item) => item.id === `${site}-detail-analysis`));
       const reviewResult = await page.evaluate(marketplaceCaptureScript(site, 'reviews'));
       assert.equal(reviewResult.comments.length, 1, `${site} review after click`);
+      const reviewView = await page.evaluate((snapshot) => window.XiaomeiCommerceAssistantProfiles.build({ ...snapshot, url: location.href }), reviewResult);
+      assert.ok(reviewView.actions.some((item) => item.id === `${site}-review-analysis`));
       await page.close();
     }
     const pageTypes = [
@@ -70,7 +97,11 @@ const platformExtras = {
         await page.goto(url);
         await page.addScriptTag({ path: path.resolve(__dirname, '../static/js/commerce-assistant-profiles.js') });
         assert.equal(await page.evaluate((value) => window.XiaomeiCommerceAssistantProfiles.classify(value)?.pageType, url), expected, `${site} ${expected} profile`);
-        assert.equal((await page.evaluate(marketplaceCaptureScript(site))).pageType, expected, `${site} ${expected} capture`);
+        const snapshot = await page.evaluate(marketplaceCaptureScript(site));
+        assert.equal(snapshot.pageType, expected, `${site} ${expected} capture`);
+        const view = await page.evaluate((value) => window.XiaomeiCommerceAssistantProfiles.build({ ...value, url: location.href }), snapshot);
+        assert.deepEqual(view.actions.map((item) => item.label), [expected === 'shop' ? '分析当前店铺商品' : '分析当前搜索结果'], `${site} ${expected} uses a page-specific action`);
+        assert.ok(view.actions[0].prompt.includes('@商品列表'));
       }
       await page.close();
     }
@@ -106,8 +137,11 @@ const platformExtras = {
       ? route.fulfill({ contentType: 'text/html', body: '<html><body><h1 id="productTitle">桌面阅读灯</h1><div id="aplus"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" data-src="https://images.example.test/lazy-detail.jpg" style="width:180px;height:180px"></div></body></html>' })
       : route.abort());
     await lazyDetailPage.goto('https://www.amazon.com/dp/B012345678');
+    await lazyDetailPage.addScriptTag({ path: path.resolve(__dirname, '../static/js/commerce-assistant-profiles.js') });
     const lazyDetail = await lazyDetailPage.evaluate(marketplaceCaptureScript('amazon', 'detail'));
     assert.equal(lazyDetail.images[0]?.url, 'https://images.example.test/lazy-detail.jpg', 'a lazy image with a tiny placeholder still has a readable detail URL');
+    const imageOnlyView = await lazyDetailPage.evaluate((snapshot) => window.XiaomeiCommerceAssistantProfiles.build({ ...snapshot, url: location.href }), lazyDetail);
+    assert.ok(!imageOnlyView.actions.some((item) => item.id === 'amazon-detail-analysis'), 'image URLs without visible copy cannot enable a text structure analysis');
     await lazyDetailPage.close();
     const delayedSectionPage = await browser.newPage();
     const delayedBody = `<html><body><h1 id="productTitle">桌面阅读灯</h1>

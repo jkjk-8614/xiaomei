@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
 const { chromium } = require('../tools/commerce-analysis/node_modules/playwright');
@@ -7,10 +8,11 @@ const { chromium } = require('../tools/commerce-analysis/node_modules/playwright
 const root = path.resolve(__dirname, '..');
 const names = ['wide', 'tall', 'square'];
 
-test('paint references preview, reorder, submit and survive a canvas reload', { timeout: 40000 }, async t => {
+async function fixture(t){
     const browser = await chromium.launch({ channel: 'msedge', headless: true });
     t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+    page.setDefaultTimeout(5000);
     const errors = [];
     let storedCanvas = { id:'paint-refs', title:'Paint references', nodes:[], connections:[], logs:[], settings:{engine:'api',provider_id:'fixture',model:'fixture-image',count:1} };
     page.on('pageerror', error => errors.push(error.message));
@@ -48,6 +50,76 @@ test('paint references preview, reorder, submit and survive a canvas reload', { 
         updateComposer();
         return node.id;
     });
+    return {page, errors, nodeId, stored:() => storedCanvas};
+}
+
+test('composer reference bar uses its available width and keeps only canvas selection', {timeout:40000}, async t => {
+    const {page, errors} = await fixture(t);
+    const selectButton = page.locator('#inputThumbsRow [data-reference-picker-node]');
+    const setReferences = count => page.evaluate(count => {
+        const node = selectedNode();
+        const referenceNames = ['wide','tall','square'];
+        node.y = 20;
+        node.manualInputRefs = Array.from({length:count}, (_, index) => ({
+            url:`/fixture-images/${referenceNames[index % referenceNames.length]}.png?ref=${index}`,
+            name:`Reference ${index + 1}`, kind:'image', manualAdded:true
+        }));
+        delete node.inputRefOrder;
+        render();
+        updateComposer();
+    }, count);
+    const measure = () => page.locator('#inputThumbsRow').evaluate(row => {
+        const list = row.querySelector('.input-thumb-list');
+        const actions = row.querySelector('.input-thumb-actions').getBoundingClientRect();
+        const bounds = row.getBoundingClientRect();
+        const strip = list.getBoundingClientRect();
+        return {
+            clientWidth:list.clientWidth, scrollWidth:list.scrollWidth,
+            contained:strip.left >= bounds.left - 1 && strip.right <= actions.left && actions.right <= bounds.right + 1,
+            aligned:Math.abs((strip.top + strip.bottom - actions.top - actions.bottom) / 2) < 1,
+            buttonCount:row.querySelectorAll('.input-thumb-actions button').length
+        };
+    });
+    assert.equal(await page.locator('[data-input-add-reference], .input-thumb-add').count(), 0);
+    for(const count of [0,1,2,18]){
+        await setReferences(count);
+        assert.equal(await page.locator('#inputThumbsRow .input-thumb').count(), count);
+        const sample = await measure();
+        assert.ok(sample.contained && sample.aligned, `aligned controls with ${count} references: ${JSON.stringify(sample)}`);
+        assert.equal(sample.buttonCount, 1);
+        if(count <= 2) assert.equal(sample.scrollWidth, sample.clientWidth, 'few references do not show a horizontal scrollbar');
+        else assert.ok(sample.scrollWidth > sample.clientWidth, 'long reference lists remain scrollable');
+    }
+    await setReferences(2);
+    assert.equal(await page.evaluate(() => {
+        const first = inputThumbsRow.querySelector('.input-thumb');
+        renderInputThumbsRow(selectedNode());
+        return first === inputThumbsRow.querySelector('.input-thumb');
+    }), true, 'unchanged references retain their thumbnail DOM');
+    for(const width of [1000,420]){
+        await page.setViewportSize({width,height:700});
+        await page.evaluate(() => updateComposer());
+        for(const theme of ['light','dark']){
+            await page.evaluate(theme => applyTheme(theme), theme);
+            const sample = await measure();
+            assert.ok(sample.contained && sample.aligned, `${theme} reference controls fit at ${width}px`);
+            assert.equal(sample.scrollWidth, sample.clientWidth, `${theme} two references fit at ${width}px`);
+            const artifacts = path.join(os.tmpdir(), 'xiaomei-composer-layout-qa');
+            fs.mkdirSync(artifacts, {recursive:true});
+            await page.locator('#composer').screenshot({path:path.join(artifacts, `${theme}-${width}.png`)});
+        }
+    }
+    await selectButton.click();
+    await page.locator('.reference-picker-bar').waitFor();
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('.reference-picker-bar').count(), 0);
+    assert.equal(await page.locator('#inputThumbsRow .input-thumb').count(), 2);
+    assert.deepEqual(errors, []);
+    console.log(`Reference layout screenshots: ${path.join(os.tmpdir(), 'xiaomei-composer-layout-qa')}`);
+});
+
+test('paint references preview, reorder, submit and survive a canvas reload', { timeout: 40000 }, async t => {
+    const {page, errors, nodeId, stored} = await fixture(t);
     const thumbs = page.locator('#inputThumbsRow .input-thumb');
     assert.deepEqual(await thumbs.evaluateAll(items => items.map(item => item.dataset.url.split('/').pop())), names.map(name => `${name}.png`));
     assert.deepEqual(await page.evaluate(() => sourceDimensionsForRun(selectedNode())), {w:400,h:200});
@@ -116,7 +188,7 @@ test('paint references preview, reorder, submit and survive a canvas reload', { 
     assert.deepEqual(request.submitted, expected);
     assert.match(request.prompt, /图1：square[\s\S]*图2：wide[\s\S]*图3：tall/);
     assert.equal(request.stored.length, 3);
-    assert.deepEqual(storedCanvas.nodes.find(node => node.id === nodeId).inputRefOrder, request.stored);
+    assert.deepEqual(stored().nodes.find(node => node.id === nodeId).inputRefOrder, request.stored);
 
     await page.reload();
     await page.waitForFunction(() => document.getElementById('smartTitle').textContent === 'Paint references');
@@ -128,5 +200,112 @@ test('paint references preview, reorder, submit and survive a canvas reload', { 
     }, nodeId);
     assert.deepEqual(restored.refs, expected);
     assert.deepEqual(restored.order, request.stored);
+    assert.deepEqual(errors, []);
+});
+
+test('zoomed reference previews use the space above the composer without covering canvas images', {timeout:40000}, async t => {
+    const {page, errors, nodeId} = await fixture(t);
+    await page.setViewportSize({width:1600,height:1000});
+    await page.evaluate(id => {
+        const node = nodes.find(item => item.id === id);
+        node.images = [{url:'/fixture-images/tall.png',width:200,height:400}];
+        nodes.push({id:'source',type:'smart-upload',x:node.x-480,y:node.y,images:[{url:'/fixture-images/tall.png',width:200,height:400}]});
+        render();
+    }, nodeId);
+    for(const scale of [.7,1,1.6,2]){
+        await page.mouse.move(5,990);
+        await page.evaluate(({scale,id}) => {
+            viewport.scale = scale;
+            applyViewport();
+            const rect = world.querySelector(`[data-id="${id}"]`).getBoundingClientRect();
+            viewport.x += 920 - rect.left;
+            viewport.y += 70 - rect.top;
+            applyViewport();
+            updateComposer();
+        }, {scale,id:nodeId});
+        const previewNames = await page.locator('#inputThumbsRow .input-thumb').evaluateAll(items => items.map(el => el.dataset.url.split('/').pop()));
+        for(const [index,name] of previewNames.entries()){
+            await page.locator('#inputThumbsRow .input-thumb').nth(index).hover();
+            await page.waitForFunction(name => {
+                const preview = document.querySelector('.paint-input-ref-hover');
+                return preview && !preview.hidden && preview.querySelector('img').dataset.refUrl.includes(name);
+            }, name, {timeout:5000});
+            const sample = await page.evaluate(() => {
+                const preview = document.querySelector('.paint-input-ref-hover').getBoundingClientRect();
+                const card = composer.getBoundingClientRect();
+                const overlaps = rect => preview.left < rect.right && preview.right > rect.left && preview.top < rect.bottom && preview.bottom > rect.top;
+                return {preview:preview.toJSON(),card:card.toJSON(),covered:[...world.querySelectorAll('.image-node')].filter(el => overlaps(el.getBoundingClientRect())).map(el => el.dataset.id)};
+            });
+            assert.ok(sample.preview.bottom <= sample.card.top - 7, `preview stays above the editor at ${scale}x: ${JSON.stringify(sample)}`);
+            assert.deepEqual(sample.covered, [], `preview leaves canvas images visible at ${scale}x`);
+        }
+    }
+    const screenshot = path.join(os.tmpdir(),'xiaomei-reference-preview-fixed.png');
+    await page.screenshot({path:screenshot});
+    console.log(`Composer preview: ${screenshot}`);
+    assert.deepEqual(errors, []);
+});
+
+test('reference dragging stays in its row and an outside release restores every thumbnail', {timeout:40000}, async t => {
+    const {page, errors} = await fixture(t);
+    await page.setViewportSize({width:1600,height:1200});
+    const thumbs = page.locator('#inputThumbsRow .input-thumb');
+    for(const scale of [1,1.6,2]){
+        await page.evaluate(scale => {viewport.scale=scale; viewport.y=40-selectedNode().y*scale; applyViewport(); updateComposer();},scale);
+        const original = await thumbs.evaluateAll(items => items.map(el => el.dataset.url));
+        const source = await thumbs.nth(1).boundingBox();
+        await page.mouse.move(source.x+source.width/2,source.y+source.height/2);
+        await page.mouse.down();
+        await page.mouse.move(20,100,{steps:8});
+        const sample = await page.locator('.paint-ref-drag-ghost').evaluate(el => ({ghost:el.getBoundingClientRect().toJSON(),row:document.querySelector('.input-thumb-list').getBoundingClientRect().toJSON()}));
+        assert.ok(sample.ghost.left >= sample.row.left-1 && sample.ghost.right <= sample.row.right+1 && Math.abs(sample.ghost.top-source.y)<2, `drag stays in the reference row at ${scale}x: ${JSON.stringify(sample)}`);
+        assert.ok(Math.abs(sample.ghost.width-source.width)<1 && Math.abs(sample.ghost.height-source.height)<1, 'drag keeps its screen size');
+        await page.mouse.up();
+        await page.locator('.paint-ref-drag-ghost').waitFor({state:'detached'});
+        assert.deepEqual(await thumbs.evaluateAll(items => items.map(el => el.dataset.url)),original);
+        assert.equal(await thumbs.evaluateAll(items => items.every(el => getComputedStyle(el).visibility === 'visible')),true);
+        assert.equal(await page.locator('body.smart-input-thumb-drag').count(),0);
+        assert.equal(await page.locator('#smartLogLightbox.open').count(),0);
+        const first = await thumbs.first().boundingBox();
+        const last = await thumbs.last().boundingBox();
+        await page.mouse.move(last.x+last.width/2,last.y+last.height/2);
+        await page.mouse.down();
+        await page.mouse.move(first.x+2,first.y+first.height/2,{steps:8});
+        await page.mouse.up();
+        const settling = await page.locator('#inputThumbsRow .paint-ref-drag-source').evaluateAll(items => items.map(el => el.dataset.url));
+        assert.ok(settling.every(url => url === original.at(-1)), 'the return animation targets the dragged reference');
+        await page.locator('.paint-ref-drag-ghost').waitFor({state:'detached'});
+        const expected = [original.at(-1), ...original.slice(0,-1)];
+        assert.deepEqual(await thumbs.evaluateAll(items => items.map(el => el.dataset.url)),expected, `sorting works at ${scale}x`);
+        assert.deepEqual(await page.evaluate(() => buildPromptRequest(selectedNode()).refs.map(ref => ref.url)),expected);
+    }
+    assert.deepEqual(errors, []);
+});
+
+test('interrupted reference sorting clears the ghost and restores the previous order', {timeout:40000}, async t => {
+    const {page, errors} = await fixture(t);
+    const thumbs = page.locator('#inputThumbsRow .input-thumb');
+    const original = await thumbs.evaluateAll(items => items.map(el => el.dataset.url));
+    for(const interruption of ['Escape','pointercancel','lostpointercapture','blur','render','zoom']){
+        const first = await thumbs.first().boundingBox();
+        const third = await thumbs.nth(2).boundingBox();
+        await page.mouse.move(third.x+third.width/2,third.y+third.height/2);
+        await page.mouse.down();
+        await page.mouse.move(first.x+2,first.y+first.height/2,{steps:8});
+        await page.locator('.paint-ref-drag-ghost').waitFor({state:'visible'});
+        if(interruption === 'Escape') await page.keyboard.press('Escape');
+        else await page.evaluate(kind => {
+            if(kind === 'blur') window.dispatchEvent(new Event('blur'));
+            else if(kind === 'render') render();
+            else if(kind === 'zoom'){viewport.scale=.9;applyViewport();}
+            else document.querySelector('.input-thumb-list').dispatchEvent(new PointerEvent(kind,{pointerId:1,bubbles:true}));
+        },interruption);
+        await page.locator('.paint-ref-drag-ghost').waitFor({state:'detached',timeout:2000});
+        await page.mouse.up();
+        assert.deepEqual(await thumbs.evaluateAll(items => items.map(el => el.dataset.url)),original, interruption);
+        assert.equal(await thumbs.evaluateAll(items => items.every(el => getComputedStyle(el).visibility === 'visible')),true,interruption);
+        assert.equal(await page.locator('body.smart-input-thumb-drag').count(),0,interruption);
+        assert.equal(await page.locator('#smartLogLightbox.open').count(),0,interruption);
+    }
     assert.deepEqual(errors, []);
 });

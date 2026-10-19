@@ -170,7 +170,11 @@ let assetCategoryDragState = null;
 const SEARCH_INPUT_IDS = new Set(['assetSearch','workflowSearch','promptSearch','hubSearch','localSearch','localUploadSearch','canvasAssetSearch','generatedSearch']);
 
 function refreshIcons(){ if(window.lucide) lucide.createIcons(); }
-function setStatus(text='准备就绪'){ if(statusEl) statusEl.textContent = text || '准备就绪'; }
+function setStatus(text='准备就绪'){
+    if(statusEl) statusEl.textContent = text || '准备就绪';
+    const editorStatus = document.getElementById('promptEditorStatus');
+    if(editorStatus) editorStatus.textContent = text || '';
+}
 function escapeHtml(value=''){
     return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
@@ -2101,6 +2105,7 @@ function render(){
     refreshIcons();
     prepareVideoThumbs(root);
     syncPromptCaseOverlays();
+    syncPromptEditor();
     if(scrollState.length){
         requestAnimationFrame(() => {
             document.querySelectorAll('.nav-scroll,.content-scroll,.detail-scroll').forEach((el, index) => {
@@ -4032,70 +4037,114 @@ function renderPromptTreeInlineEdit(kind){
         <button type="button" data-prompt-tree-edit-cancel><i data-lucide="x"></i><span>取消</span></button>
     </div>`;
 }
+function promptSceneDescription(item){
+    const scene = String(item.scene || '').trim();
+    const positive = String(item.positive || '').trim();
+    return scene.replace(/\s+/g, ' ') === positive.replace(/\s+/g, ' ') ? '' : scene;
+}
 function renderPromptRow(item, readonly){
+    const scene = promptSceneDescription(item);
     return `<article class="prompt-row ${item.id === selectedPromptId ? 'active' : ''}" data-prompt-row="${escapeAttr(item.id)}">
         <input class="prompt-row-check" type="checkbox" data-prompt-check="${escapeAttr(item.id)}" ${selectedPromptIds.has(item.id) ? 'checked' : ''} ${readonly ? 'disabled' : ''}>
         <div class="prompt-row-main">
             <div class="prompt-row-title"><strong>${escapeHtml(item.name || '提示词')}</strong><span class="prompt-tag">${escapeHtml(promptCategoryLabel(item.category || 'custom'))}</span><button class="prompt-row-fav ${item.favorite ? 'is-fav' : ''}" type="button" data-prompt-favorite="${escapeAttr(item.id)}" title="${item.favorite ? '取消收藏' : '收藏'}" aria-label="${item.favorite ? '取消收藏' : '收藏'}"><i data-lucide="star"></i></button></div>
-            <div class="prompt-row-scene">${escapeHtml(item.scene || '未填写用途说明')}</div>
+            ${scene ? `<div class="prompt-row-scene">${escapeHtml(scene)}</div>` : ''}
             <div class="prompt-row-text">${escapeHtml(item.positive || '')}</div>
         </div>
     </article>`;
 }
+function renderPromptEditor(item){
+    const draft = promptCreateMode ? {} : item;
+    const saveAttr = promptCreateMode ? 'data-prompt-create-save' : `data-prompt-edit-save="${escapeAttr(draft.id)}"`;
+    return `<dialog id="promptEditorDialog" class="asset-modal prompt-editor-dialog" aria-labelledby="promptEditorTitle">
+        <header class="panel-head">
+            <div class="panel-title"><strong id="promptEditorTitle">${promptCreateMode ? '新增提示词' : '编辑提示词'}</strong><span>${escapeHtml(activePromptLibrary()?.name || '提示词模板库')}</span></div>
+            <button class="asset-icon-btn" type="button" data-prompt-edit-cancel title="关闭" aria-label="关闭编辑"><i data-lucide="x"></i></button>
+        </header>
+        <div class="inline-edit-form prompt-editor-body">
+            <label class="inline-edit-field"><span>名称</span><input id="promptEditName" type="text" value="${escapeAttr(draft.name || '')}" placeholder="提示词名称"></label>
+            <div class="prompt-editor-fields">
+                <label class="inline-edit-field prompt-editor-main"><span class="prompt-editor-label"><span>正向提示词</span><span id="promptEditorCount">${String(draft.positive || '').length} 字符</span></span><textarea id="promptEditPositive" placeholder="输入或粘贴提示词正文" spellcheck="false">${escapeHtml(draft.positive || '')}</textarea></label>
+                <div class="prompt-editor-options">
+                    <label class="inline-edit-field"><span>用途说明（选填）</span><textarea id="promptEditScene" placeholder="说明适用场景或使用方法">${escapeHtml(promptSceneDescription(draft))}</textarea></label>
+                    <label class="inline-edit-field"><span>负向提示词（选填）</span><textarea id="promptEditNegative" placeholder="填写希望避免的内容" spellcheck="false">${escapeHtml(draft.negative || '')}</textarea></label>
+                </div>
+            </div>
+        </div>
+        <footer class="prompt-editor-footer">
+            <span id="promptEditorStatus" class="prompt-editor-status" role="status" aria-live="polite">Ctrl+Enter 保存</span>
+            <div class="panel-actions">
+                <button class="asset-btn" type="button" data-prompt-edit-cancel>取消</button>
+                <button class="asset-btn primary" type="button" ${saveAttr}><i data-lucide="check"></i><span>保存</span></button>
+            </div>
+        </footer>
+    </dialog>`;
+}
+function syncPromptEditor(){
+    const dialog = document.getElementById('promptEditorDialog');
+    if(!dialog || dialog.open) return;
+    dialog.addEventListener('cancel', event => {
+        event.preventDefault();
+        if(dialog.dataset.saving !== 'true') closePromptEditor();
+    });
+    dialog.addEventListener('keydown', event => {
+        if(event.key === 'Tab'){
+            const controls = [...dialog.querySelectorAll('input,textarea,button')].filter(control => !control.disabled);
+            const first = controls[0], last = controls[controls.length - 1];
+            if(event.shiftKey && document.activeElement === first){ event.preventDefault(); last.focus(); }
+            else if(!event.shiftKey && document.activeElement === last){ event.preventDefault(); first.focus(); }
+        }
+        if((event.ctrlKey || event.metaKey) && event.key === 'Enter'){
+            event.preventDefault();
+            savePromptEditor().catch(err => setStatus(err.message || '保存失败'));
+        }
+    });
+    dialog.addEventListener('input', event => {
+        if(event.target.id === 'promptEditPositive') document.getElementById('promptEditorCount').textContent = `${event.target.value.length} 字符`;
+    });
+    dialog.showModal();
+    document.getElementById(promptCreateMode ? 'promptEditName' : 'promptEditPositive')?.focus();
+}
+function closePromptEditor(){
+    document.getElementById('promptEditorDialog')?.close();
+    promptEditMode = false;
+    promptCreateMode = false;
+    render();
+    (root.querySelector('[data-prompt-edit-start]') || root.querySelector('[data-prompt-new]'))?.focus();
+}
+async function savePromptEditor(){
+    const dialog = document.getElementById('promptEditorDialog');
+    if(!dialog || dialog.dataset.saving === 'true') return;
+    dialog.dataset.saving = 'true';
+    const controls = [...dialog.querySelectorAll('input,textarea,button')];
+    controls.forEach(control => { control.disabled = true; });
+    setStatus('正在保存提示词...');
+    try {
+        if(promptCreateMode) await savePromptCreate();
+        else await savePromptEdit(selectedPromptId);
+    } finally {
+        dialog.dataset.saving = 'false';
+        controls.forEach(control => { control.disabled = false; });
+    }
+}
 function renderPromptDetail(item, readonly){
-    if(promptCreateMode && !readonly){
-        return `
-            <div class="panel-head">
-                 <div class="panel-title"><strong>新增提示词</strong><span>${promptDetailContext === 'hub' ? '保存到「我的提示词」' : '保存到当前提示词模板库'}</span></div>
-                <div class="panel-actions">
-                    <button class="asset-btn primary" type="button" data-prompt-create-save><i data-lucide="check"></i><span>保存</span></button>
-                    <button class="asset-icon-btn" type="button" data-prompt-edit-cancel title="取消"><i data-lucide="x"></i></button>
-                </div>
-            </div>
-            <div class="detail-scroll">
-                <div class="inline-edit-form">
-                    <label class="inline-edit-field"><span>名称</span><input id="promptEditName" type="text" value="" placeholder="提示词名称"></label>
-                    <label class="inline-edit-field"><span>用途说明 / 提示词正文</span><textarea id="promptEditScene" placeholder="用途说明；也可直接填写提示词正文"></textarea></label>
-                    <label class="inline-edit-field"><span>正向提示词</span><textarea id="promptEditPositive" placeholder="正向提示词"></textarea></label>
-                    <label class="inline-edit-field"><span>负向提示词</span><textarea id="promptEditNegative" placeholder="负向提示词"></textarea></label>
-                </div>
-            </div>
-        `;
-    }
-    if(!item) return `<div class="panel-head"><div class="panel-title"><strong>提示词预览</strong><span>选择一条提示词查看全文</span></div></div><div class="detail-scroll"><div class="detail-empty"><i data-lucide="text-cursor-input"></i><span>暂无可预览提示词</span></div></div>`;
-    if(promptEditMode && item.id === selectedPromptId && !readonly){
-        return `
-            <div class="panel-head">
-                <div class="panel-title"><strong>编辑提示词</strong><span>在当前库内保存</span></div>
-                <div class="panel-actions">
-                    <button class="asset-btn primary" type="button" data-prompt-edit-save="${escapeAttr(item.id)}"><i data-lucide="check"></i><span>保存</span></button>
-                    <button class="asset-icon-btn" type="button" data-prompt-edit-cancel title="取消"><i data-lucide="x"></i></button>
-                </div>
-            </div>
-            <div class="detail-scroll">
-                <div class="inline-edit-form">
-                    <label class="inline-edit-field"><span>名称</span><input id="promptEditName" type="text" value="${escapeAttr(item.name || '')}" placeholder="提示词名称"></label>
-                    <label class="inline-edit-field"><span>用途说明</span><textarea id="promptEditScene" placeholder="用途说明">${escapeHtml(item.scene || '')}</textarea></label>
-                    <label class="inline-edit-field"><span>正向提示词</span><textarea id="promptEditPositive" placeholder="正向提示词">${escapeHtml(item.positive || '')}</textarea></label>
-                    <label class="inline-edit-field"><span>负向提示词</span><textarea id="promptEditNegative" placeholder="负向提示词">${escapeHtml(item.negative || '')}</textarea></label>
-                </div>
-            </div>
-        `;
-    }
+    const editor = !readonly && (promptCreateMode || promptEditMode && item?.id === selectedPromptId) ? renderPromptEditor(item) : '';
+    if(!item) return `<div class="panel-head"><div class="panel-title"><strong>提示词预览</strong><span>选择一条提示词查看全文</span></div></div><div class="detail-scroll"><div class="detail-empty"><i data-lucide="text-cursor-input"></i><span>暂无可预览提示词</span></div></div>${editor}`;
+    const scene = promptSceneDescription(item);
     const params = item.params && typeof item.params === 'object' ? Object.entries(item.params) : [];
     return `
         <div class="panel-head">
             <div class="panel-title"><strong>提示词预览</strong><span>${escapeHtml(promptCategoryLabel(item.category || 'custom'))}</span></div>
             <div class="panel-actions">
                 <button class="asset-icon-btn prompt-detail-fav ${item.favorite ? 'is-fav' : ''}" type="button" data-prompt-favorite="${escapeAttr(item.id)}" title="${item.favorite ? '取消收藏' : '收藏'}" aria-label="${item.favorite ? '取消收藏' : '收藏'}"><i data-lucide="star"></i></button>
-                <button class="asset-icon-btn" type="button" data-prompt-edit-start="${escapeAttr(item.id)}" ${readonly ? 'disabled' : ''} title="编辑"><i data-lucide="pencil"></i></button>
+                <button class="asset-btn" type="button" data-prompt-edit-start="${escapeAttr(item.id)}" ${readonly ? 'disabled' : ''} title="展开编辑"><i data-lucide="pencil"></i><span>编辑</span></button>
                 <button class="asset-icon-btn danger ${pendingDeletePromptId === item.id ? 'detail-confirm' : ''}" type="button" data-prompt-delete="${escapeAttr(item.id)}" ${readonly ? 'disabled' : ''} title="${pendingDeletePromptId === item.id ? '再次点击确认删除' : '删除'}"><i data-lucide="trash-2"></i></button>
             </div>
         </div>
         <div class="detail-scroll">
             <div class="prompt-detail-head">
                 <div class="prompt-detail-title">${escapeHtml(item.name || '提示词')}</div>
-                <div class="prompt-detail-scene">${escapeHtml(item.scene || '未填写用途说明')}</div>
+                ${scene ? `<div class="prompt-detail-scene">${escapeHtml(scene)}</div>` : ''}
             </div>
             <section class="prompt-block">
                 <div class="prompt-block-head"><span>正向提示词</span><span>${String(item.positive || '').length} 字符</span></div>
@@ -4107,6 +4156,7 @@ function renderPromptDetail(item, readonly){
             </section>
             ${params.length ? `<div class="params-list">${params.map(([key, value]) => `<div class="param-row"><strong>${escapeHtml(key)}</strong><span>${escapeHtml(value)}</span></div>`).join('')}</div>` : ''}
         </div>
+        ${editor}
     `;
 }
 async function ensureBackgroundRemovalEngine(){
@@ -6230,9 +6280,8 @@ async function handleClick(event){
     }
 
     const promptEditSave = target.closest?.('[data-prompt-edit-save]');
-    if(promptEditSave){ await savePromptEdit(promptEditSave.dataset.promptEditSave || ''); return; }
-    if(target.closest?.('[data-prompt-create-save]')){ await savePromptCreate(); return; }
-    if(target.closest?.('[data-prompt-edit-cancel]')){ promptEditMode = false; promptCreateMode = false; render(); return; }
+    if(promptEditSave || target.closest?.('[data-prompt-create-save]')){ await savePromptEditor(); return; }
+    if(target.closest?.('[data-prompt-edit-cancel]')){ closePromptEditor(); return; }
     const promptEditStart = target.closest?.('[data-prompt-edit-start]');
     if(promptEditStart){ selectedPromptId = promptEditStart.dataset.promptEditStart || selectedPromptId; promptEditMode = true; promptCreateMode = false; pendingDeletePromptId = ''; render(); return; }
     if(target.closest?.('[data-prompt-manage]')){
@@ -7046,8 +7095,7 @@ async function savePromptCreate(){
     const data = await apiJson('/api/prompt-libraries/items', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({library_id:lib.id, name, positive:promptText, negative, category, scene})});
     promptLibrary = data.library || promptLibrary;
     selectedPromptId = data.item?.id || selectedPromptId;
-    promptCreateMode = false;
-    render();
+    closePromptEditor();
     setStatus('提示词已新增');
 }
 async function editPromptItem(id){
@@ -7080,8 +7128,7 @@ async function savePromptEdit(id){
     const data = await apiJson(`/api/prompt-libraries/items/${encodeURIComponent(id)}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({library_id:lib.id, name, positive, negative, category:item.category || 'custom', scene})});
     promptLibrary = data.library || promptLibrary;
     selectedPromptId = id;
-    promptEditMode = false;
-    render();
+    closePromptEditor();
     setStatus('提示词已保存');
 }
 async function deletePromptItem(id){

@@ -57,6 +57,7 @@
     return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
   }
   async function api(path = '', options = {}) {
+    if (window.comfyModelSession) await window.comfyModelSession;
     const request = { ...options };
     if (!request.method || String(request.method).toUpperCase() === 'GET') request.cache = 'no-store';
     const response = await fetch('/api/comfy-apps' + path, request);
@@ -247,7 +248,7 @@
       const state = $('model-status-filter').value;
       const visible = models.filter(item => {
         if (state === 'protected' && !item.protected || state === 'unused' && item.protected) return false;
-        const text = [item.name, item.category, item.root_label, item.relative_path, ...(item.users || [])].join(' ').toLocaleLowerCase();
+        const text = [item.name, item.category, item.root_label, item.relative_path, item.metadata?.display_name, item.metadata?.version, ...(item.metadata?.trigger_words || []), ...(item.users || [])].join(' ').toLocaleLowerCase();
         return !query || text.includes(query);
       });
       const list = $('model-list'); list.replaceChildren();
@@ -297,10 +298,12 @@
         meta.append(el('span', formatBytes(item.size)), el('span', item.category), el('span', item.modified_at ? new Date(item.modified_at * 1000).toLocaleString() : '修改时间未知'));
         const users = el('p', '', 'model-users');
         users.append(el('strong', '引用关系：'), el('span', item.users?.length ? item.users.join('、') : '暂未在应用、工作流或画布中发现引用'));
-        row.append(heading, location, meta, users); list.append(row);
+        row.append(heading, location, meta, users);
+        window.comfyModelDownloads?.decorateModel(row, item);
+        list.append(row);
       }
     };
-    if (!$('model-search').dataset.bound) { $('model-search').addEventListener('input', draw); $('model-status-filter').addEventListener('change', draw); $('model-search').dataset.bound = 'true'; }
+    $('model-search').oninput = draw; $('model-status-filter').onchange = draw;
     draw();
     const warning = (data.warnings || []).join('\n');
     modelNotice(`扫描完成：${models.length} 个模型文件，占用 ${formatBytes(data.total_size)}。${warning ? '\n' + warning : ''}`);
@@ -1089,6 +1092,7 @@
     } catch (error) { notice(error); } finally { $('import-app').disabled = false; event.target.value = ''; }
   };
   $('models-tab').onclick = () => { window.comfyWorkspace.showMode('models'); loadModelCatalog(); };
+  window.addEventListener('comfy-model-download-complete', () => { if (!$('models').hidden) loadModelCatalog(); });
   $('model-refresh').onclick = () => loadModelCatalog();
   $('library-tab').addEventListener('click', () => library().catch(notice));
   try {

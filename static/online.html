@@ -3,20 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="/static/images/logo.png?v=2026.10.17" type="image/png">
+    <link rel="icon" href="/static/images/logo.png?v=2026.10.19" type="image/png">
     <title>在线生图</title>
-    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.10.17.1784161005"></script>
-    <script src="/static/vendor/js/lucide.js?v=2026.10.17.1784161005"></script>
-<script src="/static/js/theme.js?v=2026.10.17.1791335865"></script>
-    <script src="/static/js/i18n.js?v=2026.10.17.1792198036"></script>
-    <script src="/static/js/legacy-common.js?v=2026.10.17.1786170056"></script>
-    <link rel="stylesheet" href="/static/css/legacy-common.css?v=2026.10.17.1786170067">
-<script src="/static/js/generation-notifications.js?v=2026.10.17.1787131165"></script>
-<script src="/static/js/image-task-client.js?v=2026.10.17.1791025940"></script>
-<script src="/static/js/image-preview.js?v=2026.10.17.1784161005"></script>
-    <script src="/static/js/history-bulk-manager.js?v=2026.10.17.1791852441"></script>
+    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.10.19.1784161005"></script>
+    <script src="/static/vendor/js/lucide.js?v=2026.10.19.1784161005"></script>
+<script src="/static/js/theme.js?v=2026.10.19.1791335865"></script>
+    <script src="/static/js/i18n.js?v=2026.10.19.1792373073"></script>
+    <script src="/static/js/legacy-common.js?v=2026.10.19.1786170056"></script>
+    <link rel="stylesheet" href="/static/css/legacy-common.css?v=2026.10.19.1786170067">
+<script src="/static/js/generation-notifications.js?v=2026.10.19.1787131165"></script>
+<script src="/static/js/image-task-client.js?v=2026.10.19.1791025940"></script>
+<script src="/static/js/image-preview.js?v=2026.10.19.1784161005"></script>
+    <script src="/static/js/history-bulk-manager.js?v=2026.10.19.1791852441"></script>
     <style>
-        @import url('/static/vendor/css/fonts.css?v=2026.10.17.1784161005');
+        @import url('/static/vendor/css/fonts.css?v=2026.10.19.1784161005');
         :root { --accent:#111827; --bg:#f9fafb; --card:#fff; --easing:cubic-bezier(0.4,0,0.2,1); }
         body { margin:0; background:var(--bg); font-family:'Inter',-apple-system,sans-serif; color:var(--accent); -webkit-font-smoothing:antialiased; }
         .container-box { max-width:1280px; margin:0 auto; padding:0 40px; margin-top:50px; }
@@ -151,7 +151,7 @@
         .gallery-lightbox { background:rgba(255,255,255,.99); backdrop-filter:blur(22px) saturate(1.05); }
         @keyframes fadeIn { from{opacity:0} to{opacity:1} }
     </style>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.17.1792161228">
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.19.1792161228">
     <style>
         html:not(.studio-theme-dark) body:not(.studio-theme-dark) #lightbox.gallery-lightbox {
             background: rgba(255,255,255,.99) !important;
@@ -159,9 +159,9 @@
             -webkit-backdrop-filter: blur(22px) saturate(1.05) !important;
         }
     </style>
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.17.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.17.1792161228">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.17.1790178173"></script>
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.19.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.19.1792401588">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.19.1790178173"></script>
 </head>
 <body>
     <div class="container-box min-h-screen flex flex-col">
@@ -347,6 +347,7 @@
                     <i data-lucide="zap" class="w-4 h-4 text-yellow-400"></i>
                     <span class="tracking-[0.3em] text-[11px] uppercase" data-i18n="online.generate">Generate</span>
                 </button>
+                <button id="cancelGenBtn" type="button" onclick="cancelImageGeneration()" class="hidden w-full mt-3 py-3 rounded-2xl border border-current font-bold text-sm">取消生图</button>
             </div>
 
             <div class="lg:col-span-7">
@@ -1152,7 +1153,27 @@
             return ref.comfy_name;
         }
 
-        async function requestLocalComfyImage(){
+        let activeImageRun = null;
+        async function cancelImageGeneration(){
+            const run = activeImageRun;
+            if(!run || run.cancelRequested) return;
+            run.cancelRequested = true;
+            const button = document.getElementById('cancelGenBtn');
+            button.disabled = true;
+            button.textContent = '正在取消…';
+            if(!run.taskId) return;
+            try {
+                const path = run.local ? '/api/canvas-comfy-tasks' : '/api/canvas-image-tasks';
+                const cancelled = await XiaomeiImageTaskClient.requestJson(`${path}/${encodeURIComponent(run.taskId)}/cancel`, {method:'POST'});
+                run.cancelMessage = cancelled.message || '生图已取消';
+            } catch(error) {
+                run.cancelRequested = false;
+                button.disabled = false;
+                button.textContent = '取消生图';
+                alert(error.message || '取消生图失败');
+            }
+        }
+        async function requestLocalComfyImage(run){
             const size = parseSizeValue(currentSize()) || {width:1024, height:1024};
             const width = Math.max(64, Number(size.width) || 1024);
             const height = Math.max(64, Number(size.height) || 1024);
@@ -1202,6 +1223,8 @@
             });
             const taskId = created?.task_id || created?.taskId || created?.id;
             if(!taskId) throw new Error(tr('online.localTaskIdMissing'));
+            run.taskId = taskId;
+            if(run.cancelRequested) await cancelImageGenerationAfterCreate(run);
             const task = await XiaomeiImageTaskClient.pollImageTask(taskId, {
                 taskPath: id => `/api/canvas-comfy-tasks/${encodeURIComponent(id)}`,
                 intervalMs:1800,
@@ -1212,6 +1235,12 @@
             const result = task?.result !== undefined ? task.result : task;
             if(!result?.images?.length) throw new Error(result?.error || tr('online.localNoImage'));
             return result;
+        }
+
+        async function cancelImageGenerationAfterCreate(run){
+            const path = run.local ? '/api/canvas-comfy-tasks' : '/api/canvas-image-tasks';
+            const cancelled = await XiaomeiImageTaskClient.requestJson(`${path}/${encodeURIComponent(run.taskId)}/cancel`, {method:'POST'});
+            run.cancelMessage = cancelled.message || '生图已取消';
         }
 
         async function submitImage(){
@@ -1234,18 +1263,27 @@
                 ? (localMode === 'enhance' ? 'Z-Image Enhance · ComfyUI' : 'Z-Image Turbo · ComfyUI')
                 : (selectedModel || activeProvider?.name || '图片模型');
             window.XiaomeiGenerationNotifications?.requestPermission?.();
+            const run = {local:useLocal, taskId:'', cancelRequested:false, cancelMessage:''};
+            activeImageRun = run;
+            const cancelBtn = document.getElementById('cancelGenBtn');
+            cancelBtn.classList.remove('hidden'); cancelBtn.disabled = false; cancelBtn.textContent = '取消生图';
             btn.disabled = true; placeholder.classList.add('hidden'); out.classList.add('hidden'); dl.classList.add('hidden');
             if(loaderLabel) loaderLabel.textContent = useLocal ? tr('online.generatingWithComfy') : tr('online.generating');
             loader.classList.remove('hidden');
             try {
                 let result;
                 if(useLocal){
-                    result = await requestLocalComfyImage();
+                    result = await requestLocalComfyImage(run);
                 } else {
                     const reqBody = { prompt, provider_id:provider, model:selectedModel, size:currentSize(), n:outputCount, reference_images:Object.values(refs).filter(Boolean) };
                     if(QUALITY_PROTOCOLS.has(providerProtocol(provider))) reqBody.quality = quality;
                     if(providerProtocol(provider) === 'api' && isGptImage25Model(selectedModel)) reqBody.background = background;
-                    result = await XiaomeiImageTaskClient.requestOnlineImage(reqBody, {fallbackMessage:'生成失败'});
+                    const created = await XiaomeiImageTaskClient.createImageTask({...reqBody, history_source:'online'});
+                    run.taskId = created.task_id;
+                    if(!run.taskId) throw new Error('接口没有返回生图任务 ID');
+                    if(run.cancelRequested) await cancelImageGenerationAfterCreate(run);
+                    const task = await XiaomeiImageTaskClient.pollImageTask(run.taskId, {intervalMs:1800});
+                    result = task.result || task;
                 }
                 const primaryUrl = XiaomeiImageTaskClient.extractMediaUrls(result)[0] || result?.images?.[0] || '';
                 if(!primaryUrl) throw new Error('接口没有返回可用图片');
@@ -1253,7 +1291,7 @@
                 if(result?.partial_failures?.length){
                     alert(`已保留 ${result.images?.length || 1} 张成功图片，${result.partial_failures.length} 个生成请求失败。成功图片已写入历史记录。`);
                 }
-                window.XiaomeiGenerationNotifications?.notify?.({
+                if(!run.cancelRequested) window.XiaomeiGenerationNotifications?.notify?.({
                     id: notificationId,
                     status: 'success',
                     model: modelLabel,
@@ -1275,6 +1313,8 @@
             } finally {
                 if(loaderLabel) loaderLabel.textContent = tr('online.generating');
                 loader.classList.add('hidden'); btn.disabled = false;
+                if(activeImageRun === run) activeImageRun = null;
+                cancelBtn.classList.add('hidden');
             }
         }
 

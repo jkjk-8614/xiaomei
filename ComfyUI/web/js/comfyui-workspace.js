@@ -21,6 +21,7 @@
   }
 
   async function comfyAppApi(path, options = {}) {
+    if (window.comfyModelSession) await window.comfyModelSession;
     const response = await fetch('/api/comfy-apps' + path, { ...options, cache: 'no-store' });
     const text = await response.text();
     let data = {};
@@ -259,6 +260,7 @@
   }
 
   async function connect(preferredAddress = '') {
+    if (window.comfyModelSession) await window.comfyModelSession;
     if (connecting) return;
     connecting = true;
     $('refresh').disabled = true;
