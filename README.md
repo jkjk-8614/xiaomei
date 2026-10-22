@@ -191,7 +191,4 @@ https://github.com/hero8152/Infinite-Canvas/blob/main/LICENSE
 
 ![小美画布微信交流群二维码](./docs/images/wechat-group.svg)
 
-[点击加入微信交流群](https://weixin.qq.com/g/AQYAAMJb1-fS9afxmeW7jknC2eTQ_QCaaERDf98JS7KtRljUjoVh8wpRFxX_htHa)
-
-> 当前微信群二维码有效期至 **2026 年 10 月 22 日**。如果二维码或邀请链接已过期，可通过 [GitHub Issues](https://github.com/jkjk-8614/xiaomei/issues) 反馈问题。
-
+> 当前微信群二维码有效期至 **2026 年 10 月 29 日**。二维码过期后，请通过 [GitHub Issues](https://github.com/jkjk-8614/xiaomei/issues) 反馈，以获取最新二维码。
