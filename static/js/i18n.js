@@ -1,5 +1,5 @@
 (function(){
-  const VERSION = '2026.10.19.alt-copy.1';
+  const VERSION = '2026.10.21.text-stack.2';
     const scripts = [
         '/static/js/i18n-core.js',
         '/static/js/i18n/common.js',

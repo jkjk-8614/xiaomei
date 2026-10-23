@@ -24,19 +24,20 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from PIL import Image
+from runtime_paths import resolve_roots
 
 
 router = APIRouter(prefix="/api", tags=["local-bridges"])
 
 
 def _runtime_root() -> Path:
-    """Resolve the persistent application directory in source and PyInstaller builds."""
+    """Locate application files in source and PyInstaller builds."""
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent
 
 
-ROOT = _runtime_root()
+PROJECT_ROOT, ROOT = resolve_roots(_runtime_root())
 DATA_DIR = ROOT / "data"
 QUEUE_FILE = DATA_DIR / "photoshop_bridge_queue.json"
 STATE_FILE = DATA_DIR / "photoshop_bridge_state.json"
@@ -116,7 +117,7 @@ def _local_path(url: str) -> Path | None:
     mappings = {
         "/assets/": ROOT / "assets",
         "/output/": ROOT / "output",
-        "/static/": ROOT / "static",
+        "/static/": PROJECT_ROOT / "static",
     }
     for prefix, base in mappings.items():
         if path.startswith(prefix):

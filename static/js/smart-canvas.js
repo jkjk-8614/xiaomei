@@ -43,6 +43,7 @@ const inputThumbsRow = document.getElementById('inputThumbsRow');
 const SMART_REFERENCE_VIDEO_MAX = 20;
 const SMART_UPLOAD_NODE_TYPE = 'smart-upload';
 const SMART_PAINT_NODE_TYPE = 'smart-paint';
+const SMART_AI_RENDER_NODE_TYPE = 'smart-ai-render';
 const SMART_PRODUCT_FIDELITY_NODE_TYPE = 'smart-product-fidelity';
 const SMART_COMFY_WORKFLOW_NODE_TYPE = 'smart-comfy-workflow';
 const SMART_DRAWING_BOARD_NODE_TYPE = 'smart-drawing-board';
@@ -51,6 +52,8 @@ const SMART_COMPARE_NODE_TYPE = 'smart-compare';
 const SMART_COLOR_NODE_TYPE = 'smart-color';
 const SMART_TABLE_NODE_TYPE = 'smart-table';
 const SMART_TIMELINE_NODE_TYPE = 'smart-timeline';
+// 选中的提示词节点折叠后仍保留文本输出能力；通过这个标记切换为卡片堆外观和恢复逻辑。
+const SMART_TEXT_STACK_NODE_KEY = 'collapsedTextStack';
 const PROMPT_OPTIMIZER_IMAGE_MAX = 8;
 const PROMPT_OPTIMIZER_TIMEOUT_MS = 180000;
 const SMART_IMAGE_REQUEST_CONCURRENCY = 4;
@@ -1143,6 +1146,7 @@ function serializableSmartNode(node){
     normalizeSmartCompareNode(copy);
     normalizeSmartColorNode(copy);
     normalizeSmartDrawingBoardNode(copy);
+    normalizeSmartAiRenderNode(copy);
     if(Array.isArray(copy.images)) copy.images = copy.images.map(img => stripImageGenerationMeta(img)).filter(Boolean);
     prepareSmartNodeMediaForStorage(copy);
     if(copy.runSettings) copy.runSettings = settingsForStorage(copy.runSettings);
@@ -1596,7 +1600,13 @@ function clearVolcengineSelectionOutsideVolcengine(target=settings){
     return target;
 }
 function isSmartImageNode(node){
-    return Boolean(node && [SMART_UPLOAD_NODE_TYPE, SMART_PAINT_NODE_TYPE, SMART_COMFY_WORKFLOW_NODE_TYPE, SMART_DRAWING_BOARD_NODE_TYPE, 'smart-image'].includes(node.type || 'smart-image'));
+    return Boolean(node && [SMART_UPLOAD_NODE_TYPE, SMART_PAINT_NODE_TYPE, SMART_AI_RENDER_NODE_TYPE, SMART_COMFY_WORKFLOW_NODE_TYPE, SMART_DRAWING_BOARD_NODE_TYPE, 'smart-image'].includes(node.type || 'smart-image'));
+}
+function isSmartAiRenderNode(node){
+    return Boolean(node && node.type === SMART_AI_RENDER_NODE_TYPE);
+}
+function isSmartTextStackNode(node){
+    return Boolean(node?.[SMART_TEXT_STACK_NODE_KEY] === true && Array.isArray(node?.[SMART_COLLAPSED_NODES_KEY]));
 }
 function isSmartComfyWorkflowNode(node){
     return Boolean(node && node.type === SMART_COMFY_WORKFLOW_NODE_TYPE);
@@ -2020,7 +2030,50 @@ function normalizeSmartDataVideoNode(node){
 function isSmartPaintNode(node){
     // smart-image is the legacy image/generation node. Keep it runnable so
     // existing canvases do not lose their composer when opened after update.
-    return Boolean(node && !isProductFidelityNode(node) && (node.type === SMART_PAINT_NODE_TYPE || node.type === SMART_COMFY_WORKFLOW_NODE_TYPE || node.type === 'smart-image' || !node.type));
+    return Boolean(node && !isProductFidelityNode(node) && (node.type === SMART_PAINT_NODE_TYPE || isSmartAiRenderNode(node) || node.type === SMART_COMFY_WORKFLOW_NODE_TYPE || node.type === 'smart-image' || !node.type));
+}
+function normalizeSmartAiRenderNode(node){
+    if(!isSmartAiRenderNode(node)) return node;
+    const recent = typeof recentSmartSettingsForMode === 'function' ? recentSmartSettingsForMode('api:image') : {};
+    const stored = node.runSettings && typeof node.runSettings === 'object' ? node.runSettings : {};
+    const ai = node.aiRender && typeof node.aiRender === 'object' ? node.aiRender : {};
+    const aiLayoutVersion = Math.round(Number(ai.layoutVersion) || 0);
+    node.title = 'AI 渲染';
+    node.w = Math.max(440, Math.round(Number(node.w) || 480));
+    node.h = Math.max(430, Math.round(Number(node.h) || 470));
+    node.aiRender = {
+        whiteRequired:true,
+        prompt:String(ai.prompt ?? node.promptDraftText ?? '').slice(0, 4000),
+        followRatio:ai.followRatio !== false,
+        ratio:String(ai.ratio || '9:16'),
+        resolution:['1k','2k','4k'].includes(String(ai.resolution || '').toLowerCase()) ? String(ai.resolution).toLowerCase() : '2k',
+        quality:['auto','low','medium','high'].includes(String(ai.quality || '').toLowerCase()) ? String(ai.quality).toLowerCase() : 'auto',
+        count:Math.max(1, Math.min(4, Math.round(Number(ai.count) || 1))),
+        provider:String(ai.provider || stored.provider_id || recent.provider_id || ''),
+        model:String(ai.model || stored.model || recent.model || ''),
+        manualRefs:Array.isArray(ai.manualRefs) ? ai.manualRefs : [],
+        pendingPickerRole:String(ai.pendingPickerRole || ''),
+        layoutVersion:4
+    };
+    if(node.manualSize !== true && aiLayoutVersion < 3 && Number(node.h) >= 500) node.h = 430;
+    // 4 版把默认卡片放大到能容纳「平台 + 模型 + 参数」两列布局；只迁移仍是旧默认尺寸的节点。
+    if(node.manualSize !== true && aiLayoutVersion < 4){
+        if(Math.round(Number(node.w) || 0) === 440) node.w = 480;
+        if(Math.round(Number(node.h) || 0) === 430) node.h = 470;
+    }
+    const source = {...cloneSmartSettings(initialSmartSettings), ...recent, ...stored};
+    source.engine = source.engine === 'volcengine' ? 'volcengine' : 'api';
+    source.apiKind = 'image';
+    source.provider_id = node.aiRender.provider || source.provider_id || '';
+    source.model = node.aiRender.model || source.model || '';
+    source.ratio = node.aiRender.followRatio ? 'source' : node.aiRender.ratio;
+    source.resolution = node.aiRender.resolution;
+    source.quality = node.aiRender.quality;
+    source.count = node.aiRender.count;
+    node.runSettings = settingsForStorage(apiOnlySettings(source));
+    node.aiRender.provider = node.runSettings.provider_id || node.aiRender.provider || '';
+    node.aiRender.model = node.runSettings.model || node.aiRender.model || '';
+    return node;
 }
 function isProductFidelityNode(node){
     return Boolean(node && (node.type === SMART_PRODUCT_FIDELITY_NODE_TYPE || (node.type === SMART_PAINT_NODE_TYPE && node.productFidelityNode === true)));
@@ -2053,8 +2106,8 @@ function canProvideSmartCompareInput(node){
     ));
 }
 function isSmartComposerNode(node){
-    // 分组是素材容器，不在分组卡片下方打开独立的生成面板。
-    return Boolean(isSmartPaintNode(node));
+    // 分组是素材容器；AI 渲染节点把提示词和参数收在节点内部。
+    return Boolean(isSmartPaintNode(node) && !isSmartAiRenderNode(node));
 }
 function isSmartRunnableNode(node){
     return Boolean(isSmartPaintNode(node) || isSmartGroupNode(node));
@@ -2117,6 +2170,7 @@ function normalizeLegacySmartNode(node){
     if(node.type === 'smart-prompt' && node.llmSystemPrompt === 'You are a helpful prompt assistant.') node.llmSystemPrompt = '';
     if(isProductFidelityNode(node) && typeof normalizeProductFidelityNode === 'function') return normalizeProductFidelityNode(node);
     if(node.type === SMART_DRAWING_BOARD_NODE_TYPE) return normalizeSmartDrawingBoardNode(node);
+    if(isSmartAiRenderNode(node)) return normalizeSmartAiRenderNode(node);
     if(node.type === 'smart-container'){
         const fallbackImage = node.inputImage?.url ? stripImageGenerationMeta({
             url:node.inputImage.url,
@@ -2860,6 +2914,15 @@ function createPaintNodeAt(point, options={}){
         ...options,
         nodeType:SMART_PAINT_NODE_TYPE,
         title:options.title || tr('smart.createPaintNode')
+    });
+}
+function createAiRenderNodeAt(point, options={}){
+    return createImageNodeAt(point, [], {
+        ...options,
+        nodeType:SMART_AI_RENDER_NODE_TYPE,
+        title:options.title || 'AI 渲染',
+        w:Math.max(420, Math.round(Number(options.w) || 440)),
+        h:Math.max(400, Math.round(Number(options.h) || 430))
     });
 }
 function createComfyWorkflowNodeAt(point, payload={}, options={}){
@@ -3948,6 +4011,35 @@ function collapsedStackLayout(node){
         stackGapY:gapY
     };
 }
+function smartTextStackSourceNodes(node){
+    return smartCollapsedImageNodes(node);
+}
+function smartTextStackItems(node){
+    const images = (node?.images || []).map(imageForDisplay).filter(image => image?.url);
+    if(images.length) return images.map(image => ({kind:'image', image}));
+    return smartTextStackSourceNodes(node).map(source => ({kind:'text', node:source}));
+}
+function smartTextStackCardMetrics(item){
+    const defaultHeight = 160;
+    if(item?.kind !== 'image') return {width:300, height:128};
+    const image = item.image || {};
+    const naturalWidth = Number(image.natural_w || image.layout_w || image.width || image.w);
+    const naturalHeight = Number(image.natural_h || image.layout_h || image.height || image.h);
+    const ratio = naturalWidth > 0 && naturalHeight > 0 ? naturalWidth / naturalHeight : 1;
+    return {
+        width:Math.max(72, Math.min(360, Math.round(defaultHeight * ratio))),
+        height:defaultHeight
+    };
+}
+function smartTextStackLayout(node){
+    const items = smartTextStackItems(node);
+    const gap = 24;
+    const pad = 14;
+    const metrics = items.length ? items.map(smartTextStackCardMetrics) : [{width:300, height:128}];
+    const width = Math.max(...metrics.map(item => item.width), 1) + pad * 2;
+    const height = metrics.reduce((sum, item) => sum + item.height, 0) + Math.max(0, metrics.length - 1) * gap + pad * 2;
+    return {cols:1, rows:metrics.length, width, height, thumb:96, single:true, stackItems:items, stackMetrics:metrics, stackGap:gap, stackPad:pad};
+}
 function groupImageGridLayout(count, explicitW, explicitH, maxThumb, pad=32, gap=8, maxVisibleRows=MEDIA_GROUP_MAX_VISIBLE_ROWS){
     let best = null;
     for(let cols = 1; cols <= count; cols++){
@@ -4030,6 +4122,7 @@ function smartNodeInputThumbsHtml(images, opts={}){
 const PROMPT_LLM_INSTRUCTION_DEFAULT_H = 58;
 const PROMPT_LLM_INSTRUCTION_MIN_H = 40;
 const PROMPT_LLM_INSTRUCTION_MAX_H = 400;
+const PROMPT_NODE_COLLAPSED_HEIGHT = 86;
 function promptLlmInstructionHeight(node){
     const h = Number(node?.llmInstructionHeight);
     if(!Number.isFinite(h)) return PROMPT_LLM_INSTRUCTION_DEFAULT_H;
@@ -4041,6 +4134,34 @@ function promptNodePromptItems(node){
 }
 function promptNodeMinHeight(node){
     return node?.llmEnabled ? promptNodeExpandedHeight(node) : 240;
+}
+function isSmartCollapsibleTextNode(node){
+    // 智能对话节点保持原来的完整卡片；只有提示词节点参与这类折叠。
+    return !isSmartTextStackNode(node) && node?.type === 'smart-prompt';
+}
+function smartTextNodeCollapsedHeight(node){
+    return PROMPT_NODE_COLLAPSED_HEIGHT;
+}
+function smartTextNodeCollapsedPreview(node){
+    const raw = String(node?.text || node?.llmInstruction || node?.runPrompt || '').trim();
+    const fallback = tr('smart.promptCompactLabel');
+    return raw.replace(/\s+/g, ' ') || fallback;
+}
+function smartTextNodeCollapsedBodyHtml(node){
+    const expandLabel = tr('smart.promptCompactExpand') || '展开完整提示词';
+    const label = tr('smart.promptCompactLabel') || '提示词已收起';
+    const preview = smartTextNodeCollapsedPreview(node);
+    return `<button type="button" class="smart-text-node-collapsed-card prompt-node-collapsed-card" data-smart-text-node-expand="${escapeAttr(node.id)}" data-prompt-node-expand="${escapeAttr(node.id)}" title="${escapeAttr(preview)}" aria-label="${escapeAttr(expandLabel)}">
+        <span class="prompt-node-collapsed-title"><i data-lucide="text-cursor-input"></i><span>${escapeHtml(label)}</span></span>
+        <span class="prompt-node-collapsed-preview">${escapeHtml(preview)}</span>
+        <span class="prompt-node-collapsed-expand">${escapeHtml(expandLabel)}</span>
+    </button>`;
+}
+function promptNodeCollapsedPreview(node){
+    return smartTextNodeCollapsedPreview(node);
+}
+function promptNodeCollapsedBodyHtml(node){
+    return smartTextNodeCollapsedBodyHtml(node);
 }
 function promptTextItemsForNode(node, ctx=smartLoopContext){
     if(!node) return [];
@@ -4104,6 +4225,10 @@ function promptNodeLayoutSize(node){
     const oldExpandedH = node?.llmSystemEnabled ? 400 : 340;
     const explicitW = Number(node?.w);
     const explicitH = Number(node?.h);
+    const width = !Number.isFinite(explicitW) || explicitW === 360 ? 316 : explicitW;
+    if(node?.collapsed){
+        return {width:Math.round(width), height:smartTextNodeCollapsedHeight(node)};
+    }
     if(isSmartGroupCompactMember(node) && Number.isFinite(explicitW) && explicitW > 24 && Number.isFinite(explicitH) && explicitH > 24){
         return {width:Math.round(explicitW), height:Math.round(explicitH)};
     }
@@ -4113,12 +4238,18 @@ function promptNodeLayoutSize(node){
             height:Math.round(Math.max(promptNodeMinHeight(node), Number.isFinite(explicitH) ? explicitH : 0))
         };
     }
-    const width = !Number.isFinite(explicitW) || explicitW === 360 ? 316 : explicitW;
     const fallbackH = promptNodeMinHeight(node);
     const legacyExpandedH = node?.llmSystemEnabled ? 344 : 292;
     const height = !Number.isFinite(explicitH) || explicitH === 194 || explicitH === oldCollapsedH || explicitH === oldExpandedH || explicitH === legacyExpandedH
         ? fallbackH
         : Math.max(explicitH, fallbackH);
+    return {width:Math.round(width), height:Math.round(height)};
+}
+function agentNodeLayoutSize(node){
+    const explicitW = Number(node?.w);
+    const explicitH = Number(node?.h);
+    const width = Number.isFinite(explicitW) && explicitW > 24 ? explicitW : SMART_AGENT_DEFAULT_WIDTH;
+    const height = Number.isFinite(explicitH) && explicitH > 24 ? explicitH : SMART_AGENT_DEFAULT_HEIGHT;
     return {width:Math.round(width), height:Math.round(height)};
 }
 // 智能分组的图片网格布局：跟多图节点一致，但可见排数上限为 4（超过出现滚动），且缩略图无放大上限
@@ -4234,6 +4365,11 @@ function activeGenerationLayout(node, count=0){
 }
 function imageLayout(images, scale=1, node=null){
     if(isProductFidelityNode(node)) return {cols:1, rows:1, width:Math.max(760,Number(node.w)||980), height:Math.max(650,Number(node.h)||820), thumb:96, single:true};
+    if(isSmartAiRenderNode(node)){
+        normalizeSmartAiRenderNode(node);
+        return {cols:1, rows:1, width:Math.max(440, Math.round(Number(node.w) || 480)), height:Math.max(430, Math.round(Number(node.h) || 470)), thumb:96, single:true};
+    }
+    if(isSmartTextStackNode(node)) return smartTextStackLayout(node);
     if(isSmartTableNode(node) || isSmartTimelineNode(node)){
         normalizeSmartDataVideoNode(node);
         return {cols:1, rows:1, width:Math.round(node.w), height:Math.round(node.h), thumb:96, single:true};
@@ -4290,7 +4426,7 @@ function imageLayout(images, scale=1, node=null){
         };
     }
     if(node?.type === 'smart-prompt') return {cols:1, rows:1, ...promptNodeLayoutSize(node), thumb:96, single:true};
-    if(node?.type === 'smart-agent') return {cols:1, rows:1, width:Math.round(Number(node.w) || SMART_AGENT_DEFAULT_WIDTH), height:Math.round(Number(node.h) || SMART_AGENT_DEFAULT_HEIGHT), thumb:96, single:true};
+    if(node?.type === 'smart-agent') return {cols:1, rows:1, ...agentNodeLayoutSize(node), thumb:96, single:true};
     if(node?.type === 'smart-loop'){
         const explicitW = Number(node.w);
         const explicitH = Number(node.h);
@@ -4778,13 +4914,20 @@ function scheduleCanvasViewportRender(){
     });
 }
 function applyViewport(options={}){
-    hidePaintInputRefHover();
     paintInputRefDragCancel?.();
     // 保持节点布局尺寸不变，缩放和平移共用一个矩阵，避免逐帧布局取整。
     invalidateClientToWorldMapper();
     const scale = safeScale(viewport.scale);
     world.style.transform = `translate(${viewport.x}px, ${viewport.y}px) scale(${scale})`;
+    // 设置菜单位于被缩放的 world 内。给它同倍率的 CSS zoom，抵消 fixed
+    // popover 在 transformed containing block 中产生的反向缩放。
+    world.querySelectorAll('.smart-node-settings-panel').forEach(panel => {
+        panel.style.zoom = String(scale);
+    });
     syncCanvasToolbarScale(scale);
+    world.querySelectorAll('.smart-node-settings-panel:popover-open').forEach(panel => {
+        positionSmartNodeSettingsPanel(panel, panel.previousElementSibling);
+    });
     if(canvasZoomRange && document.activeElement !== canvasZoomRange) canvasZoomRange.value = String(Math.round(scale * 100) / 100);
     scheduleSmartCanvasImageResolution();
     // Canvas panning leaves the open composer at its screen position.
@@ -4795,6 +4938,16 @@ function applyViewport(options={}){
             composer.style.top = panComposerPosition.top;
         } else {
             positionComposerForNode(selectedNode());
+        }
+    }
+    // 悬停预览是固定在屏幕上的浮层，但锚点缩略图属于画布世界；缩放/平移后
+    // 需要用新的屏幕矩形重算位置，不能沿用旧坐标或直接把预览收掉。
+    if(paintInputRefHoverThumb){
+        if(paintInputRefHoverThumb.isConnected
+            && !document.body.classList.contains('smart-input-thumb-drag')){
+            positionPaintInputRefHover();
+        } else {
+            hidePaintInputRefHover();
         }
     }
     scheduleOcrPanelPosition();
@@ -4816,6 +4969,21 @@ function syncCanvasToolbarScale(scale = viewport.scale){
             toolbar.style.top = `${anchorY / inverse - toolbar.offsetHeight - 10}px`;
         }
     });
+}
+function positionSmartNodeSettingsPanel(panel, button){
+    if(!panel?.matches(':popover-open') || !button?.isConnected) return;
+    const anchor = button.getBoundingClientRect();
+    const bounds = panel.getBoundingClientRect();
+    const width = Math.max(1, bounds.width);
+    const height = Math.max(1, bounds.height);
+    const maxLeft = Math.max(8, window.innerWidth - width - 8);
+    const maxTop = Math.max(8, window.innerHeight - height - 8);
+    const preferredLeft = anchor.left + anchor.width / 2 - width / 2;
+    const preferredTop = anchor.top >= height + 16
+        ? anchor.top - height - 8
+        : anchor.bottom + 8;
+    panel.style.left = `${Math.max(8, Math.min(preferredLeft, maxLeft))}px`;
+    panel.style.top = `${Math.max(8, Math.min(preferredTop, maxTop))}px`;
 }
 function schedulePanViewportApply(){
     if(panViewportApplyRaf) return;
@@ -4983,8 +5151,8 @@ function clientToWorldPoint(clientX, clientY){
 function nodePortWorldPoint(nodeOrId, port='out', clientToWorld=null, inputSlot=''){
     const node = typeof nodeOrId === 'string' ? nodes.find(item => item.id === nodeOrId) : nodeOrId;
     const rect = node ? nodeRect(node) : null;
-    const colorSlot = isSmartColorNode(node) && port === 'in' ? normalizeSmartColorInputSlot(inputSlot) : '';
-    const inputRatio = colorSlot === 'reference' ? .67 : .33;
+    const colorSlot = port === 'in' ? normalizeSmartNodeInputSlot(node, inputSlot) : '';
+    const inputRatio = colorSlot === 'reference' || colorSlot === 'style' ? .5 : colorSlot === 'product' ? .76 : colorSlot === 'white' ? .24 : .33;
     const fallback = rect ? {
         x:port === 'in' ? rect.x : rect.x + rect.width,
         y:rect.y + rect.height * (port === 'in' && colorSlot ? inputRatio : .5)
@@ -5004,8 +5172,8 @@ function nodeConnectionWorldPoint(nodeOrId, port='out', clientToWorld=null, inpu
     const node = typeof nodeOrId === 'string' ? nodes.find(item => item.id === nodeOrId) : nodeOrId;
     const rect = node ? (knownRect || nodeRect(node)) : null;
     if(!rect) return null;
-    const colorSlot = isSmartColorNode(node) && port === 'in' ? normalizeSmartColorInputSlot(inputSlot) : '';
-    const inputRatio = colorSlot === 'reference' ? .67 : .33;
+    const colorSlot = port === 'in' ? normalizeSmartNodeInputSlot(node, inputSlot) : '';
+    const inputRatio = colorSlot === 'reference' || colorSlot === 'style' ? .5 : colorSlot === 'product' ? .76 : colorSlot === 'white' ? .24 : .33;
     // 端口按钮可以故意放在节点外侧，方便用户拖线；正式连线和临时线
     // 统一落在节点的可见外边缘。节点部分样式使用了 padding/border，
     // 只用数据里的 width/height 会让线端落在卡片内部，视觉上像没有接上。
@@ -5018,10 +5186,20 @@ function nodeConnectionWorldPoint(nodeOrId, port='out', clientToWorld=null, inpu
     const screenRect = nodeEl?.getBoundingClientRect?.();
     if(!screenRect || screenRect.width <= 0 || screenRect.height <= 0) return fallback;
     const toWorld = clientToWorld || createClientToWorldMapper();
-    const ratio = port === 'in' && colorSlot ? inputRatio : .5;
+    // 输入槽位的视觉端口会随节点内部行高变化（尤其是 AI 渲染节点的
+    // 三个参考槽）。连线端点也读取端口的实际中心，避免仍使用旧的
+    // 24% / 50% / 76% 固定比例而落在两行之间。横坐标保留在节点边缘，
+    // 这样线条仍然从卡片边缘进入，不会被端口的外扩点击区域拉长。
+    const portEl = colorSlot
+        ? nodeEl.querySelector(`.node-port[data-port="${port}"][data-input-slot="${CSS.escape(colorSlot)}"]`)
+        : nodeEl.querySelector(`.node-port[data-port="${port}"]`);
+    const portRect = portEl?.getBoundingClientRect?.();
+    const portY = portRect && portRect.height > 0
+        ? portRect.top + portRect.height / 2
+        : screenRect.top + screenRect.height * (port === 'in' && colorSlot ? inputRatio : .5);
     return toWorld(
         port === 'in' ? screenRect.left : screenRect.right,
-        screenRect.top + screenRect.height * ratio
+        portY
     ) || fallback;
 }
 function screenToWorld(event){
@@ -8737,6 +8915,10 @@ function mergeSmartImageLists(localImgs, remoteImgs){
 }
 function smartNodeInFlight(node){
     if(smartDependencyRuns.has(node?.id)) return true;
+    // AI 渲染把任务放在右侧的独立输出节点，源节点本身仍要保持禁用，
+    // 否则任务轮询期间可以重复点击“开始渲染”。
+    if(isSmartAiRenderNode(node) && nodes.some(item => item?.aiRenderSourceId === node.id
+        && (item.pending || item.queued || item.running || smartPendingTasks(item).length))) return true;
     if(smartNodeHasCompletedResult(node)) return false;
     return Boolean(node && (node.running || node.pending || node.queued || node.jimengPending || smartPendingTasks(node).length));
 }
@@ -9547,11 +9729,13 @@ function collabReplaceWithServerCanvas(serverCanvas){
     document.getElementById('smartTitle')?.replaceChildren(document.createTextNode(canvas.title || tr('canvas.smartCanvas')));
     applyViewport();
     collabCaptureSnapshot(canvas, nodes);
+    const restoredLegacyAgentTextStacks = restoreLegacyAgentTextStacks();
     render();
     if(!sharedCanvasMode){
         resumeSmartPendingTasks();
         resumeJimengPendingNodes();
     }
+    if(restoredLegacyAgentTextStacks && !sharedCanvasReadOnly) scheduleSave();
 }
 function collabConflictSummary(node){
     if(!node) return '（节点已删除）';
@@ -10319,6 +10503,7 @@ async function loadCanvas(){
             [],
             smartConnectionDeletionTombstones
         );
+        const restoredLegacyAgentTextStacks = restoreLegacyAgentTextStacks();
         const protectedConnectionsRemovedOnLoad = canvas.connections.length !== serverConnectionsBeforeDeletionGuard.length;
         const comfyWorkflowIds = new Set(nodes.filter(isSmartComfyWorkflowNode).map(node => node.id));
         const comfyOutputIds = new Set(canvas.connections
@@ -10375,7 +10560,7 @@ async function loadCanvas(){
         render();
         if(!sharedCanvasMode) void window.SmartExpertWorkflow?.restore?.(nodes);
         window.ProjectAgent?.openCanvas(canvas);
-        if(migratedLegacySmartUploadNodes || migratedInvalidImageTaskRecoveries || cleanedDetachedInputs || interruptedRunState || cleanedCompletedState || recoveredLoggedOutputs || hiddenCompletedTimers || protectedConnectionsRemovedOnLoad || repairedDetailStitchConnections) scheduleSave();
+        if(migratedLegacySmartUploadNodes || migratedInvalidImageTaskRecoveries || cleanedDetachedInputs || interruptedRunState || cleanedCompletedState || recoveredLoggedOutputs || hiddenCompletedTimers || protectedConnectionsRemovedOnLoad || repairedDetailStitchConnections || restoredLegacyAgentTextStacks) scheduleSave();
         startCanvasMetaPoll();
     } catch(e) { toast(tr('smart.toastCanvasFail')); }
 }
@@ -10533,6 +10718,8 @@ function createNode(x, y, images=[], options={}){
     const emptyTitle = options.title
         || (nodeType === SMART_PAINT_NODE_TYPE
             ? tr('smart.createPaintNode')
+            : nodeType === SMART_AI_RENDER_NODE_TYPE
+            ? 'AI 渲染'
             : nodeType === SMART_DRAWING_BOARD_NODE_TYPE
             ? tr('smart.createDrawingBoardNode')
             : tr('smart.createImportNode'));
@@ -10551,16 +10738,21 @@ function createNode(x, y, images=[], options={}){
         node.w = Math.max(320, Math.round(Number(options.w) || 390));
         node.h = Math.max(190, Math.round(Number(options.h) || 238));
     }
+    if(nodeType === SMART_AI_RENDER_NODE_TYPE){
+        node.w = Math.max(420, Math.round(Number(options.w) || 440));
+        node.h = Math.max(400, Math.round(Number(options.h) || 430));
+        normalizeSmartAiRenderNode(node);
+    }
     node.scale = nodeImages.length > 1 ? MEDIA_GROUP_DEFAULT_SCALE : mediaNodeDefaultScale(node);
     inheritNodeMetaFromImage(node);
-    if(nodeType === SMART_PAINT_NODE_TYPE && !node.runSettings){
+    if((nodeType === SMART_PAINT_NODE_TYPE || nodeType === SMART_AI_RENDER_NODE_TYPE) && !node.runSettings){
         const recent = recentSmartSettingsForMode();
         const source = ['api','volcengine'].includes(recent.engine)
             ? recent
             : {...cloneSmartSettings(initialSmartSettings), ...recentSmartSettingsForMode('api:image'), engine:'api'};
         node.runSettings = settingsForStorage(apiOnlySettings(source));
     }
-    if(options.autoAvoid !== false && [SMART_UPLOAD_NODE_TYPE, SMART_PAINT_NODE_TYPE, SMART_COMFY_WORKFLOW_NODE_TYPE, 'smart-image'].includes(nodeType)){
+    if(options.autoAvoid !== false && [SMART_UPLOAD_NODE_TYPE, SMART_PAINT_NODE_TYPE, SMART_AI_RENDER_NODE_TYPE, SMART_COMFY_WORKFLOW_NODE_TYPE, 'smart-image'].includes(nodeType)){
         const position = smartAutoAvoidNodePosition(node, {x:Number(x) || 0, y:Number(y) || 0}, options);
         node.x = position.x;
         node.y = position.y;
@@ -10775,6 +10967,8 @@ function cloneSmartNode(node, dx=0, dy=0){
             ? 'timeline'
             : node.type === SMART_COMFY_WORKFLOW_NODE_TYPE
             ? 'comfy-workflow'
+            : node.type === SMART_AI_RENDER_NODE_TYPE
+            ? 'ai-render'
             : 'smart'
     );
     copy.x = (Number(node.x) || 0) + dx;
@@ -11064,12 +11258,13 @@ function renderConnections(rectCache=new Map()){
             b.indices.push(conn.index);
             b.targets.push(conn.to);
         } else {
+            const targetNode = nodes.find(node => node.id === conn.to);
             items.push({
                 merged:false,
                 from:conn.from,
                 toId:conn.to,
                 kind,
-                inputSlot:normalizeSmartColorInputSlot(conn.input_slot || conn.inputSlot),
+                inputSlot:normalizeSmartNodeInputSlot(targetNode, conn.input_slot || conn.inputSlot),
                 indices:[conn.index],
                 targets:[conn.to]
             });
@@ -11190,8 +11385,8 @@ function connectionGeometryForItem(item, draggedNodeIds=new Set(), nodeMap=null,
     const tr = readRect(toNode);
     const kind = item.kind || 'flow';
     const isHistory = kind === 'history';
-    const colorSlot = isSmartColorNode(toNode) ? normalizeSmartColorInputSlot(item.inputSlot) : '';
-    const inputRatio = colorSlot === 'reference' ? .67 : .33;
+    const colorSlot = normalizeSmartNodeInputSlot(toNode, item.inputSlot);
+    const inputRatio = colorSlot === 'reference' || colorSlot === 'style' ? .5 : colorSlot === 'product' ? .76 : colorSlot === 'white' ? .24 : .33;
     const readPort = (node, port, slot, rect) => {
         if(!portCache) return nodeConnectionWorldPoint(node, port, null, slot, rect);
         const key = `${node.id}|${port}|${slot || ''}`;
@@ -11487,6 +11682,7 @@ function updateNodeElementDuringResize(node){
             media.style.height = `${mediaH}px`;
         }
     }
+    if(isSmartAiRenderNode(node)) syncSmartAiRenderPortPositions(el);
     const active = selectedNode();
     if(active?.id === node.id) positionComposerForNode(active);
     markInteractionDirtyNodes(node.id);
@@ -14503,9 +14699,149 @@ function smartComfyWorkflowNodeBodyHtml(node){
         <div class="comfy-workflow-node-footer"><span><i data-lucide="check"></i>参数自动保存</span><button type="button" class="comfy-node-run" data-comfy-node-run ${smartNodeInFlight(node) || comfyNodeSubmissions.has(node.id) ? 'disabled' : ''}><i data-lucide="${comfyNodeSubmissions.has(node.id) ? 'loader-2' : 'play'}"></i><span>${comfyNodeSubmissions.has(node.id) ? '正在运行' : '运行工作流'}</span></button></div>
     </div>`;
 }
+function normalizeSmartNodeInputSlot(node, value){
+    const slot = String(value || '').trim().toLowerCase();
+    if(isSmartAiRenderNode(node)){
+        if(['white','whitemodel','base','白模'].includes(slot)) return 'white';
+        if(['style','reference','ref','风格'].includes(slot)) return 'style';
+        if(['product','products','sku','产品'].includes(slot)) return 'product';
+        return '';
+    }
+    return isSmartColorNode(node) ? normalizeSmartColorInputSlot(value) : '';
+}
+function smartAiRenderInputGroups(node, ctx=smartLoopContext){
+    normalizeSmartAiRenderNode(node);
+    const groups = {white:[], style:[], product:[]};
+    const seen = new Set();
+    const add = (image, role) => {
+        if(!image?.url || !groups[role]) return;
+        const key = inputRefKey(image) || image.url;
+        if(!key || seen.has(`${role}|${key}`)) return;
+        const limit = role === 'product' ? 4 : 1;
+        if(groups[role].length >= limit) return;
+        seen.add(`${role}|${key}`);
+        groups[role].push({...image, aiRenderRole:role});
+    };
+    const inputConnections = (canvas?.connections || []).filter(conn => conn?.to === node.id && (conn.kind || 'flow') === 'input');
+    inputConnections.forEach((conn, index) => {
+        const source = nodes.find(item => item.id === conn.from);
+        if(!source) return;
+        let role = normalizeSmartNodeInputSlot(node, conn.input_slot || conn.inputSlot);
+        if(!role) role = index === 0 ? 'white' : index === 1 ? 'style' : 'product';
+        outputImagesForNode(source, false, ctx).filter(image => image?.url).forEach(image => add(image, role));
+    });
+    if(!inputConnections.length){
+        (node.inputNodeIds || []).map(id => nodes.find(item => item.id === id)).filter(Boolean).forEach((source, index) => {
+            const role = index === 0 ? 'white' : index === 1 ? 'style' : 'product';
+            outputImagesForNode(source, false, ctx).filter(image => image?.url).forEach(image => add(image, role));
+        });
+    }
+    const manual = [...(Array.isArray(node.aiRender?.manualRefs) ? node.aiRender.manualRefs : []), ...manualReferenceImagesFor(node)];
+    manual.filter(image => image?.url).forEach(image => add(image, image.aiRenderRole || 'product'));
+    return groups;
+}
+function smartAiRenderInputReferences(node, ctx=smartLoopContext){
+    const groups = smartAiRenderInputGroups(node, ctx);
+    return [...groups.white, ...groups.style, ...groups.product];
+}
+function smartAiRenderRoleLabel(role){
+    return role === 'white' ? '白模' : role === 'style' ? '风格' : '产品';
+}
+function smartAiRenderRoleHint(role, count){
+    if(role === 'white') return `必填 · ${Math.min(1, count)}/1`;
+    if(role === 'style') return `可选 · ${Math.min(1, count)}/1`;
+    return `可选 · ${Math.min(4, count)}/4`;
+}
+function smartAiRenderReferenceHtml(image, role, index){
+    const key = inputRefKey(image) || image?.url || `${role}-${index}`;
+    return `<div class="smart-ai-render-ref" data-ai-render-ref-key="${escapeAttr(key)}" title="${escapeAttr(image?.name || `${smartAiRenderRoleLabel(role)}参考`)}">${smartPreviewImgHtml(image, 96, 'class="smart-ai-render-ref-image" alt=""')}<button type="button" class="smart-ai-render-ref-remove" data-ai-render-remove="${escapeAttr(role)}" data-ai-render-ref-key="${escapeAttr(key)}" aria-label="移除参考图"><i data-lucide="x"></i></button></div>`;
+}
+function smartAiRenderNodeBodyHtml(node, layout={}){
+    normalizeSmartAiRenderNode(node);
+    const groups = smartAiRenderInputGroups(node);
+    const settingsNode = node.runSettings || {};
+    const ai = node.aiRender || {};
+    const configuredProviders = imageProviders();
+    const storedProviderId = String(ai.provider || settingsNode.provider_id || '').trim();
+    const providerId = configuredProviders.some(provider => provider.id === storedProviderId)
+        ? storedProviderId
+        : (storedProviderId || configuredProviders[0]?.id || '');
+    const providerOptionsList = [...configuredProviders];
+    if(providerId && !providerOptionsList.some(provider => provider.id === providerId)){
+        const knownProvider = (apiProviders || []).find(provider => provider.id === providerId);
+        providerOptionsList.unshift(knownProvider || {id:providerId, name:providerId, image_models:[]});
+    }
+    const providerLabel = providerOptionsList.find(provider => provider.id === providerId)?.name || providerId || '未配置 API 平台';
+    const providerOptions = providerOptionsList.map(provider => `<option value="${escapeAttr(provider.id)}" ${provider.id === providerId ? 'selected' : ''}>${escapeHtml(provider.name || provider.id)}</option>`).join('') || '<option value="">未配置 API 平台</option>';
+    const models = providerImageModels(providerId);
+    const storedModel = String(ai.model || settingsNode.model || '').trim();
+    const modelValue = models.includes(storedModel) ? storedModel : (models[0] || storedModel);
+    const modelOptions = [...new Set([modelValue, ...models].filter(Boolean))].map(model => `<option value="${escapeAttr(model)}" ${model === modelValue ? 'selected' : ''}>${escapeHtml(model)}</option>`).join('') || '<option value="">未配置图片模型</option>';
+    const outputImages = (node.images || []).filter(image => image?.url).slice(0, 4);
+    const outputHtml = outputImages.length ? `<div class="smart-ai-render-output">${outputImages.map(image => smartPreviewImgHtml(image, 128, 'class="smart-ai-render-output-image" alt="生成结果"')).join('')}</div>` : '';
+    const roleHtml = ['white','style','product'].map(role => {
+        const items = groups[role] || [];
+        const canAdd = role === 'product' ? items.length < 4 : items.length < 1;
+        return `<div class="smart-ai-render-input-row" data-ai-render-role="${role}">
+            <div class="smart-ai-render-input-heading"><span class="smart-ai-render-role"><i data-lucide="${role === 'white' ? 'box' : role === 'style' ? 'palette' : 'package'}"></i><strong>${smartAiRenderRoleLabel(role)}</strong></span><span class="smart-ai-render-role-hint">${smartAiRenderRoleHint(role, items.length)}</span></div>
+            <div class="smart-ai-render-ref-list">${items.map((image, index) => smartAiRenderReferenceHtml(image, role, index)).join('')}${canAdd ? `<button type="button" class="smart-ai-render-add-ref" data-ai-render-picker="${role}" title="从画布素材中选择"><i data-lucide="plus"></i><span>添加</span></button>` : ''}</div>
+        </div>`;
+    }).join('');
+    const running = smartNodeInFlight(node);
+    const countOptions = [1,2,3,4].map(count => `<button type="button" class="smart-ai-render-segment ${Number(ai.count) === count ? 'active' : ''}" data-ai-render-setting="count" data-ai-render-value="${count}">${count}</button>`).join('');
+    const resolutionOptions = [['1k','1K'],['2k','2K'],['4k','4K']].map(([value,label]) => `<button type="button" class="smart-ai-render-segment ${ai.resolution === value ? 'active' : ''}" data-ai-render-setting="resolution" data-ai-render-value="${value}">${label}</button>`).join('');
+    const qualityOptions = [['auto','自动'],['low','低'],['medium','中'],['high','高']].map(([value,label]) => `<button type="button" class="smart-ai-render-segment ${ai.quality === value ? 'active' : ''}" data-ai-render-setting="quality" data-ai-render-value="${value}">${label}</button>`).join('');
+    const ratioOptions = ['1:1','4:5','9:16','16:9','3:4'].map(value => `<option value="${value}" ${ai.ratio === value ? 'selected' : ''}>${value}</option>`).join('');
+    return `<div class="smart-ai-render-card">
+        <div class="smart-ai-render-intro"><div class="smart-ai-render-intro-icon"><i data-lucide="sparkles"></i></div><div><strong>商品视觉渲染</strong><span>按输入槽位组合参考图，保持主体与构图关系</span></div></div>
+        <div class="smart-ai-render-main">
+            <div class="smart-ai-render-primary">
+                <div class="smart-ai-render-inputs">${roleHtml}</div>
+                <label class="smart-ai-render-prompt"><span>渲染要求</span><textarea data-ai-render-prompt rows="3" placeholder="例如：棚拍白底，柔和侧光，保留产品结构">${escapeHtml(ai.prompt || '')}</textarea></label>
+            </div>
+            <div class="smart-ai-render-controls">
+                <div class="smart-ai-render-controls-title"><span>生成设置</span><span class="smart-ai-render-controls-caption">可随时调整</span></div>
+                <div class="smart-ai-render-setting"><span class="smart-ai-render-setting-label">API 平台</span><select data-ai-render-setting="provider" title="${escapeAttr(providerLabel)}">${providerOptions}</select></div>
+                <div class="smart-ai-render-setting"><span class="smart-ai-render-setting-label">模型</span><select data-ai-render-setting="model" title="${escapeAttr(modelValue || '未配置图片模型')}">${modelOptions}</select></div>
+                <div class="smart-ai-render-setting smart-ai-render-setting-row"><label class="smart-ai-render-check"><input type="checkbox" data-ai-render-setting="followRatio" ${ai.followRatio !== false ? 'checked' : ''}><span>比例跟随白模</span></label><select data-ai-render-setting="ratio" aria-label="输出比例">${ratioOptions}</select></div>
+                <div class="smart-ai-render-setting"><span class="smart-ai-render-setting-label">分辨率</span><div class="smart-ai-render-segments">${resolutionOptions}</div></div>
+                <div class="smart-ai-render-setting"><span class="smart-ai-render-setting-label">生成质量</span><div class="smart-ai-render-segments">${qualityOptions}</div></div>
+                <div class="smart-ai-render-setting"><span class="smart-ai-render-setting-label">生成张数</span><div class="smart-ai-render-segments">${countOptions}</div></div>
+                <div class="smart-ai-render-footer"><span class="smart-ai-render-status">${groups.white.length ? `本次输入 ${smartAiRenderInputReferences(node).length} 张` : '请先连接白模'}</span><button type="button" class="smart-ai-render-run" data-ai-render-run ${running ? 'disabled' : ''}><i data-lucide="${running ? 'loader-2' : 'sparkles'}"></i><span>${running ? '正在渲染' : '开始渲染'}</span></button></div>
+            </div>
+        </div>
+        ${outputHtml}
+    </div>`;
+}
+function smartTextStackBodyHtml(node, layout){
+    const items = layout?.stackItems || smartTextStackItems(node);
+    const metrics = layout?.stackMetrics || items.map(smartTextStackCardMetrics);
+    const gap = Number(layout?.stackGap) || 24;
+    const pad = Number(layout?.stackPad) || 14;
+    let top = pad;
+    const cards = items.map((item, index) => {
+        const metric = metrics[index] || smartTextStackCardMetrics(item);
+        const left = Math.max(pad, Math.round((Number(layout?.width || 0) - metric.width) / 2));
+        const style = `left:${left}px;top:${Math.round(top)}px;width:${metric.width}px;height:${metric.height}px`;
+        top += metric.height + gap;
+        if(item.kind === 'image'){
+            const image = item.image;
+            return `<div class="collapsed-text-stack-card collapsed-text-stack-image-card" data-smart-text-stack-card="${index}" data-image-index="${index}" data-media-signature="${escapeAttr(`${mediaKindForItem(image)}:${image.url || ''}`)}" style="${style}">${singleMediaHtml(image, metric.width, metric.height)}</div>`;
+        }
+        const source = item.node || {};
+        const label = source.type === 'smart-agent' ? '智能对话' : '提示词';
+        const preview = smartTextNodeCollapsedPreview(source);
+        return `<button type="button" class="collapsed-text-stack-card collapsed-text-stack-text-card" data-smart-text-stack-card="${index}" style="${style}" title="${escapeAttr(preview)}">
+            <span class="collapsed-text-stack-card-title"><i data-lucide="${source.type === 'smart-agent' ? 'bot' : 'text-cursor-input'}"></i>${escapeHtml(label)}</span>
+            <span class="collapsed-text-stack-card-preview">${escapeHtml(preview)}</span>
+        </button>`;
+    }).join('');
+    return `<div class="collapsed-text-stack" style="width:${Number(layout?.width || 328)}px;height:${Number(layout?.height || 156)}px" aria-label="已折叠 ${items.length || 1} 个文字节点">${cards}</div>`;
+}
 function nodeBodyHtml(node, layout){
     if(node.collapsed) ensureSmartColorLocalMedia(node);
     if(isProductFidelityNode(node)) return productFidelityNodeBodyHtml(node);
+    if(isSmartAiRenderNode(node)) return smartAiRenderNodeBodyHtml(node, layout);
     if(isSmartTableNode(node)){
         normalizeSmartDataVideoNode(node);
         return window.SmartCanvasDataVideo?.tableHtml?.(node) || '<div>多维表格模块未加载</div>';
@@ -14516,7 +14852,8 @@ function nodeBodyHtml(node, layout){
         return window.SmartCanvasDataVideo?.timelineHtml?.(node, upstream) || '<div>视频时间线模块未加载</div>';
     }
     if(node.type === 'smart-group') return smartGroupBodyHtml(node);
-    if(node.type === 'smart-prompt') return promptNodeBodyHtml(node);
+    if(isSmartTextStackNode(node)) return smartTextStackBodyHtml(node, layout);
+    if(node.type === 'smart-prompt') return node.collapsed ? promptNodeCollapsedBodyHtml(node) : promptNodeBodyHtml(node);
     if(node.type === 'smart-agent') return agentNodeBodyHtml(node);
     if(node.type === 'smart-loop') return smartLoopBodyHtml(node);
     if(isSmartCompareNode(node)) return smartCompareNodeBodyHtml(node);
@@ -14957,8 +15294,28 @@ function smartNodeToolbarImageIndex(node){
 }
 function smartNodeToolbarHtml(node){
     if(isSmartDrawingBoardNode(node)) return '';
+    if(isSmartTextStackNode(node)){
+        const canMutate = !sharedCanvasReadOnly;
+        const button = (key, icon, label, options={}) => `<button type="button" class="${options.iconOnly ? 'icon-only' : ''}" data-smart-node-action="${escapeAttr(key)}" data-node-id="${escapeAttr(node.id)}" ${options.disabled ? 'disabled' : ''} title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}"><i data-lucide="${escapeAttr(icon)}"></i>${options.iconOnly ? '' : `<span>${escapeHtml(label)}</span>`}</button>`;
+        return `<div class="smart-node-floating-menu collapsed-node-toolbar" data-smart-node-menu="1" aria-label="折叠节点操作">
+            ${button('uncollapse', 'layers-2', '展开', {disabled:!canMutate})}
+            <span class="collapsed-node-toolbar-divider" aria-hidden="true"></span>
+            ${button('delete-collapsed', 'trash-2', '删除', {disabled:!canMutate, iconOnly:true})}
+        </div>`;
+    }
+    const isPromptNode = node?.type === 'smart-prompt';
     const isImageNode = isSmartImageNode(node);
     const images = node?.images || [];
+    if(isPromptNode){
+        const collapsed = Boolean(node.collapsed);
+        const action = collapsed
+            ? {key:'uncollapse', icon:'layers-2', label:tr('smart.promptCompactExpand') || '展开'}
+            : {key:'collapse', icon:'layers', label:tr('smart.inputPreviewCollapse') || '折叠'};
+        const enabled = !sharedCanvasReadOnly && !isSmartGroupCompactMember(node);
+        return `<div class="smart-node-floating-menu prompt-node-toolbar" data-smart-node-menu="1" aria-label="提示词节点操作">
+            <button type="button" data-smart-node-action="${escapeAttr(action.key)}" data-node-id="${escapeAttr(node.id)}" ${enabled ? '' : 'disabled'} title="${escapeAttr(action.label)}" aria-label="${escapeAttr(action.label)}"><i data-lucide="${escapeAttr(action.icon)}"></i><span>${escapeHtml(action.label)}</span></button>
+        </div>`;
+    }
     if(!isImageNode || !images.some(img => img?.url)) return '';
     const item = imageForDisplay(images[smartNodeToolbarImageIndex(node)] || images.find(img => img?.url));
     if(!item?.url) return '';
@@ -15076,6 +15433,59 @@ function restoreCollapsedConnections(collapsedNode){
         if(target) target.inputNodeIds = Array.from(new Set([...(target.inputNodeIds || []), connection.from]));
     });
 }
+// 智能对话节点曾短暂支持折叠。载入旧画布时把这类牌堆还原成原节点，
+// 同时清掉单个智能对话节点的旧 compact 标记，避免刷新后继续显示旧样式。
+function restoreLegacyAgentTextStacks(){
+    let changed = false;
+    const legacyStacks = (nodes || []).filter(node => {
+        if(!isSmartTextStackNode(node)) return false;
+        return smartCollapsedImageNodes(node).some(source => source?.type === 'smart-agent');
+    });
+    legacyStacks.forEach(stack => {
+        const originals = smartCollapsedImageNodes(stack)
+            .map(source => {
+                if(source?.type === 'smart-agent') source.collapsed = false;
+                return source;
+            })
+            .filter(source => source?.id);
+        if(!originals.length) return;
+        nodes = nodes.filter(node => node.id !== stack.id);
+        const existingIds = new Set(nodes.map(node => node.id));
+        originals.forEach(source => {
+            if(existingIds.has(source.id)){
+                const existing = nodes.find(node => node.id === source.id);
+                if(existing?.type === 'smart-agent') existing.collapsed = false;
+                return;
+            }
+            nodes.push(source);
+            existingIds.add(source.id);
+        });
+        restoreCollapsedConnections(stack);
+        changed = true;
+    });
+    // 旧版的提示词牌堆曾用 smart-agent 作为容器类型；保留牌堆，改回提示词类型。
+    nodes.forEach(node => {
+        if(isSmartTextStackNode(node) && node.type === 'smart-agent'){
+            const sources = smartCollapsedImageNodes(node);
+            if(sources.length && sources.every(source => source?.type === 'smart-prompt')){
+                node.type = 'smart-prompt';
+                node.text = String(node.text || node.outputText || '').trim();
+                delete node.outputText;
+                delete node.userPrompt;
+                delete node.systemPrompt;
+                delete node.agentManualSizeV2;
+                delete node.agentLayoutV2;
+                delete node.agentCompactOutputLayout;
+                changed = true;
+            }
+        }
+        if(node.type === 'smart-agent' && node.collapsed && !isSmartTextStackNode(node)){
+            node.collapsed = false;
+            changed = true;
+        }
+    });
+    return changed;
+}
 // 对一组元素执行 WAAPI 动画并统一等待结束；元素中途被移除时动画照常结束，不阻塞流程。
 function smartFoldAnimateElements(entries, buildAnimation){
     const animations = [];
@@ -15169,10 +15579,131 @@ function smartFoldPlayFlyBackAnimation(restoredNodes, center, stackHeight){
         });
     });
 }
+function canCollapseSmartPromptNodes(nodeList){
+    const list = Array.isArray(nodeList) ? nodeList : [];
+    return list.length > 0 && list.every(node => isSmartCollapsibleTextNode(node) && !isSmartGroupCompactMember(node));
+}
+function smartTextStackSnapshot(node){
+    const snapshot = cloneSmartCollapsedValue(node);
+    if(snapshot && isSmartCollapsibleTextNode(snapshot)){
+        // 旧版本曾把文字节点单独压成摘要条。重新收进卡片堆时，展开应回到
+        // 可编辑卡片，而不是把旧的摘要状态继续嵌套保存。
+        snapshot.collapsed = false;
+    }
+    return snapshot;
+}
+function smartTextStackImagesForNodes(nodeList){
+    const refs = (nodeList || []).flatMap(node => promptNodeInputImages(node)
+        .filter(image => image?.url)
+        .map(image => ({...imageForDisplay(image), collapsedSourceNodeId:node.id})));
+    // 同一张素材可能同时被多个智能对话节点引用；牌堆按画布里实际可见的
+    // 参考图去重，避免共享输入在折叠后重复出现。
+    return uniqueReferenceImages(refs);
+}
+function collapseSmartTextNodes(nodeList){
+    const list = Array.isArray(nodeList) ? nodeList.filter(Boolean) : [];
+    if(!canCollapseSmartPromptNodes(list)) return false;
+    if(!collabCanMutateCanvas() || list.some(node => !collabCanEditNode(node.id, true))) return false;
+    if(smartFoldAnimationRunning) return false;
+    const snapshots = list.map(smartTextStackSnapshot).filter(Boolean);
+    if(!snapshots.length) return false;
+    const ids = list.map(node => node.id);
+    const rects = list.map(node => ({node, rect:nodeRect(node)}));
+    const collapsedId = uid('smart-text-stack');
+    const images = smartTextStackImagesForNodes(list);
+    const outputText = snapshots.map(snapshot => String(snapshot.text || snapshot.llmInstruction || '').trim())
+        .filter(Boolean).join('\n\n');
+    const collapsedNode = {
+        id:collapsedId,
+        // 文字牌堆现在只由提示词节点创建；智能对话节点保持完整卡片。
+        type:'smart-prompt',
+        [SMART_TEXT_STACK_NODE_KEY]:true,
+        title:'已折叠节点',
+        x:0,
+        y:0,
+        images,
+        text:outputText,
+        collapsed:true,
+        [SMART_COLLAPSED_NODES_KEY]:snapshots,
+        [SMART_COLLAPSED_CONNECTIONS_KEY]:(canvas?.connections || []).filter(connection => ids.includes(connection.from) || ids.includes(connection.to)).map(connection => ({...connection})),
+        created_at:Date.now()
+    };
+    const layout = smartTextStackLayout(collapsedNode);
+    const minX = Math.min(...rects.map(({rect}) => rect.x));
+    const minY = Math.min(...rects.map(({rect}) => rect.y));
+    const maxX = Math.max(...rects.map(({rect}) => rect.x + rect.width));
+    const maxY = Math.max(...rects.map(({rect}) => rect.y + rect.height));
+    const stackCenter = {x:(minX + maxX) / 2, y:(minY + maxY) / 2};
+    const targetCardHeight = Math.max(...(layout.stackMetrics || []).map(metric => metric.height), 128);
+    const gatherEntries = list.map((node, index) => ({
+        el:world.querySelector(`.image-node[data-id="${CSS.escape(String(node.id || ''))}"]`),
+        rect:rects[index].rect,
+        ratio:smartFoldScaleRatio(targetCardHeight, rects[index].rect.height)
+    }));
+    world.querySelector('.smart-selection-toolbar')?.remove();
+    smartFoldRaiseElements(gatherEntries);
+    smartFoldAnimationRunning = true;
+    smartFoldAnimateElements(gatherEntries, entry => ({
+        keyframes:[
+            {transform:smartFoldCenteredTransform({x:0, y:0}, 1), easing:SMART_FOLD_EASING},
+            {transform:smartFoldCenteredTransform(smartFoldDeltaToCenter(entry.rect, stackCenter), entry.ratio)}
+        ],
+        options:{duration:SMART_FOLD_GATHER_MS, fill:'forwards'}
+    })).then(() => {
+        pushUndo();
+        collapsedNode.x = Math.round(stackCenter.x - layout.width / 2);
+        collapsedNode.y = Math.round(stackCenter.y - layout.height / 2);
+        nodes = nodes.filter(node => !ids.includes(node.id));
+        nodes.push(collapsedNode);
+        rerouteConnectionsThroughCollapsedNode(ids, collapsedId);
+        selectedId = collapsedId;
+        selectedIds = [];
+        selectedImage = {nodeId:'', index:-1};
+        render();
+        scheduleSave();
+        toast(`已折叠 ${list.length} 个节点`);
+    }).finally(() => {
+        smartFoldAnimationRunning = false;
+    });
+    return true;
+}
+function setSmartPromptNodesCollapsed(nodeList, collapsed=null){
+    const list = Array.isArray(nodeList) ? nodeList.filter(Boolean) : [];
+    if(!canCollapseSmartPromptNodes(list)) return false;
+    if(!collabCanMutateCanvas() || list.some(node => !collabCanEditNode(node.id, true))) return false;
+    if(collapsed === true || (collapsed === null && list.some(node => !node.collapsed || list.length > 1))){
+        return collapseSmartTextNodes(list);
+    }
+    const nextCollapsed = Boolean(collapsed);
+    if(list.every(node => Boolean(node.collapsed) === nextCollapsed)) return true;
+    pushUndo();
+    list.forEach(node => { node.collapsed = nextCollapsed; });
+    selectedId = list.length === 1 ? list[0].id : '';
+    selectedIds = list.length > 1 ? list.map(node => node.id) : [];
+    selectedImage = {nodeId:'', index:-1};
+    render();
+    scheduleSave();
+    const allAgents = list.every(node => node.type === 'smart-agent');
+    const allPrompts = list.every(node => node.type === 'smart-prompt');
+    const label = allAgents ? '智能对话节点' : allPrompts ? '提示词节点' : '文本节点';
+    toast(`${nextCollapsed ? '已折叠' : '已展开'}${label}`);
+    return true;
+}
+function toggleSmartPromptNodeCollapsed(nodeId, collapsed=null){
+    const node = nodes.find(item => item.id === nodeId);
+    return setSmartPromptNodesCollapsed(node ? [node] : [], collapsed);
+}
 function collapseSelectedImageNodes(){
     if(!collabCanMutateCanvas()) return false;
     if(smartFoldAnimationRunning) return false;
     const selection = selectedNodeIds().map(id => nodes.find(node => node.id === id)).filter(Boolean);
+    // 多选时可能同时包含图片节点和智能体/提示词节点。顶部工具栏仍然
+    // 代表同一组选区，但折叠只处理其中的文本节点，不能因为旁边有图片
+    // 就把按钮判定为不可用。
+    const textSelection = selection.filter(node => isSmartCollapsibleTextNode(node) && !isSmartGroupCompactMember(node));
+    if(textSelection.length){
+        return setSmartPromptNodesCollapsed(textSelection);
+    }
     const selected = smartFoldSourceNodes(selection);
     if(!canCollapseSmartImageNodes(selection)){
         toast(selected.some(smartFoldNodeInFlight) ? '请等待图片处理完成后再折叠' : '请选择至少两张已完成的图片或图片分组');
@@ -15300,11 +15831,36 @@ function collapseImageNode(node){
     });
     return true;
 }
+function expandCollapsedTextStackNode(nodeId){
+    const node = nodes.find(item => item.id === nodeId);
+    if(!isSmartTextStackNode(node) || !node.collapsed) return false;
+    if(!collabCanMutateCanvas() || !collabCanEditNode(node.id, true)) return false;
+    if(smartFoldAnimationRunning) return false;
+    const originals = smartCollapsedImageNodes(node);
+    if(!originals.length) return false;
+    const stackCenter = smartFoldCenterOfRect(nodeRect(node));
+    const stackLayout = smartTextStackLayout(node);
+    pushUndo();
+    nodes = nodes.filter(item => item.id !== node.id);
+    const existingIds = new Set(nodes.map(item => item.id));
+    const restored = originals.filter(item => item?.id && !existingIds.has(item.id));
+    nodes.push(...restored);
+    restoreCollapsedConnections(node);
+    selectedIds = restored.map(item => item.id);
+    selectedId = selectedIds.length === 1 ? selectedIds[0] : '';
+    selectedImage = {nodeId:'', index:-1};
+    render();
+    scheduleSave();
+    smartFoldPlayFlyBackAnimation(restored, stackCenter, Math.max(...(stackLayout.stackMetrics || []).map(metric => metric.height), 128));
+    toast(`已展开 ${restored.length} 个节点`);
+    return true;
+}
 function expandCollapsedImageNode(nodeId){
     const node = nodes.find(item => item.id === nodeId);
     if(!node?.collapsed) return false;
     if(!collabCanMutateCanvas() || !collabCanEditNode(node.id, true)) return false;
     if(smartFoldAnimationRunning) return false;
+    if(isSmartTextStackNode(node)) return expandCollapsedTextStackNode(nodeId);
     const originals = smartCollapsedImageNodes(node);
     if(originals.length){
         const collapsedEl = world.querySelector(`.image-node[data-id="${CSS.escape(String(node.id || ''))}"]`);
@@ -15518,12 +16074,14 @@ function renderSmartSelectionToolbar(){
         return;
     }
     const imageNodes = selectedToolbarImageNodes();
+    const textNodes = bounds.selected.filter(node => isSmartCollapsibleTextNode(node) && !isSmartGroupCompactMember(node));
+    const canCollapseTextNodes = textNodes.length > 0 && canCollapseSmartPromptNodes(textNodes);
     const canStitchSources = bounds.selected.length >= 2 && bounds.selected.every(node => isSmartImageNode(node)
         && !node.collapsed && Boolean(detailStitchImageForNode(node)));
     const canStitch = canStitchSources && (bounds.selected.every(node => detailStitchImageHasNineSixteenRatio(detailStitchImageForNode(node)))
         || detailStitchFromNineSixteenBatch(bounds.selected.map(node => ({nodeId:node.id}))));
     const canCollapse = canCollapseSmartImageNodes(bounds.selected);
-    if(!imageNodes.length && !canStitch && !(bounds.selected.length > 1 && canCollapse)){
+    if(!imageNodes.length && !canStitch && !(bounds.selected.length > 1 && canCollapse) && !canCollapseTextNodes){
         smartSelectionToolbarCollapsed = false;
         return;
     }
@@ -15561,7 +16119,7 @@ function renderSmartSelectionToolbar(){
             </div>
         </div>
         <button type="button" data-smart-selection-action="group" title="打组" ${isSingleMultiImageNode ? 'disabled' : ''}><i data-lucide="layers-2"></i><span>打组</span></button>` : ''}
-        ${imageNodes.length || canCollapse ? `<button type="button" data-smart-selection-action="collapse" title="折叠" ${canCollapse ? '' : 'disabled'}><i data-lucide="layers"></i><span>折叠</span></button>` : ''}
+        ${imageNodes.length || canCollapse || canCollapseTextNodes ? `<button type="button" data-smart-selection-action="collapse" title="${canCollapseTextNodes && textNodes.every(node => node.collapsed) ? '展开' : '折叠'}" ${(canCollapse || canCollapseTextNodes) ? '' : 'disabled'}><i data-lucide="layers"></i><span>${canCollapseTextNodes && textNodes.every(node => node.collapsed) ? '展开' : '折叠'}</span></button>` : ''}
         ${imageNodes.length ? `
         ${canBatchRemoveBackground ? `<button type="button" data-smart-selection-action="background-remove" title="批量去背景" ${smartBackgroundRemovalBusy ? 'disabled' : ''}><i data-lucide="eraser"></i><span>批量去背景</span></button>` : ''}
         <span class="smart-selection-toolbar-separator" aria-hidden="true"></span>
@@ -15939,11 +16497,24 @@ function openSmartImageVectorizer(nodeId, index, anchor){
 function runSmartNodeToolbarAction(nodeId, action, anchorElement=null){
     const node = nodes.find(n => n.id === nodeId);
     if(!node) return;
+    if(isSmartTextStackNode(node)){
+        if(action === 'uncollapse') expandCollapsedTextStackNode(nodeId);
+        else if(action === 'delete-collapsed') deleteNodeFromButton(nodeId);
+        return;
+    }
     if(action === 'collapse'){
+        if(isSmartCollapsibleTextNode(node)){
+            toggleSmartPromptNodeCollapsed(nodeId, true);
+            return;
+        }
         collapseImageNode(node);
         return;
     }
     if(action === 'uncollapse'){
+        if(isSmartCollapsibleTextNode(node)){
+            toggleSmartPromptNodeCollapsed(nodeId, false);
+            return;
+        }
         expandCollapsedImageNode(nodeId);
         return;
     }
@@ -16376,17 +16947,19 @@ function render(options={}){
         if(isSmartColorNode(node)) normalizeSmartColorNode(node);
         if(isSmartDrawingBoardNode(node)) normalizeSmartDrawingBoardNode(node);
         if(isSmartComfyWorkflowNode(node)) normalizeSmartComfyWorkflowNode(node);
+        if(isSmartAiRenderNode(node)) normalizeSmartAiRenderNode(node);
         if(isSmartTableNode(node) || isSmartTimelineNode(node)) normalizeSmartDataVideoNode(node);
-        if(node.type === 'smart-agent' && node.agentManualSizeV2 !== true && node.agentManualSize !== true
+        if(node.type === 'smart-agent' && !isSmartTextStackNode(node) && node.agentManualSizeV2 !== true && node.agentManualSize !== true
             && Number(node.w) === SMART_AGENT_DEFAULT_WIDTH && Number(node.h) === 360){
             node.h = SMART_AGENT_DEFAULT_HEIGHT;
         }
         const imgs = node.images || [];
-        const title = isSmartComfyWorkflowNode(node) ? escapeHtml(node.workflowTitle || 'ComfyUI 工作流') : node.type === SMART_DRAWING_BOARD_NODE_TYPE ? escapeHtml(tr('smart.createDrawingBoardNode')) : isSmartTableNode(node) ? '多维表格' : isSmartTimelineNode(node) ? '视频时间线' : node.type === 'smart-group' ? (node.title === '万能分组' ? '智能分组' : (node.title || '智能分组')) : node.type === 'smart-prompt' ? escapeHtml(node.title || 'Prompt') : window.SmartExpertWorkflow?.is(node) ? '专家协作' : node.type === 'smart-agent' ? '智能对话' : node.type === 'smart-loop' ? escapeHtml(node.title || tr('smart.createLoopNode')) : isSmartCameraNode(node) ? '视角控制' : isSmartCompareNode(node) ? smartCompareText('smart.createCompareNode', '对比') : isSmartColorNode(node) ? '色彩还原' : (imgs.length ? escapeHtml(uploadTitleForItems(imgs)) : escapeHtml(isSmartPaintNode(node) ? tr('smart.createPaintNode') : tr('smart.createImportNode')));
+        const title = isSmartTextStackNode(node) ? '已折叠节点' : isSmartAiRenderNode(node) ? 'AI 渲染' : isSmartComfyWorkflowNode(node) ? escapeHtml(node.workflowTitle || 'ComfyUI 工作流') : node.type === SMART_DRAWING_BOARD_NODE_TYPE ? escapeHtml(tr('smart.createDrawingBoardNode')) : isSmartTableNode(node) ? '多维表格' : isSmartTimelineNode(node) ? '视频时间线' : node.type === 'smart-group' ? (node.title === '万能分组' ? '智能分组' : (node.title || '智能分组')) : node.type === 'smart-prompt' ? escapeHtml(node.title || 'Prompt') : window.SmartExpertWorkflow?.is(node) ? '专家协作' : node.type === 'smart-agent' ? '智能对话' : node.type === 'smart-loop' ? escapeHtml(node.title || tr('smart.createLoopNode')) : isSmartCameraNode(node) ? '视角控制' : isSmartCompareNode(node) ? smartCompareText('smart.createCompareNode', '对比') : isSmartColorNode(node) ? '色彩还原' : (imgs.length ? escapeHtml(uploadTitleForItems(imgs)) : escapeHtml(isSmartPaintNode(node) ? tr('smart.createPaintNode') : tr('smart.createImportNode')));
         const scale = nodeScale(node);
         const layout = imageLayout(imgs, scale, node);
         const isPrompt = node.type === 'smart-prompt';
         const isAgent = node.type === 'smart-agent';
+        const isTextStack = isSmartTextStackNode(node);
         const isLoop = node.type === 'smart-loop';
         const isCamera = isSmartCameraNode(node);
         const isCompare = isSmartCompareNode(node);
@@ -16400,7 +16973,8 @@ function render(options={}){
         const isTable = isSmartTableNode(node);
         const isTimeline = isSmartTimelineNode(node);
         const isFidelity = isProductFidelityNode(node);
-        const isPaint = !isFidelity && (node.type === SMART_PAINT_NODE_TYPE || isComfyWorkflow);
+        const isAiRender = isSmartAiRenderNode(node);
+        const isPaint = !isFidelity && (node.type === SMART_PAINT_NODE_TYPE || isComfyWorkflow || isAiRender);
         const detailScreenIndex = Number(node.batchDetailScreenIndex) > 0 ? Math.round(Number(node.batchDetailScreenIndex)) : 0;
         const isDetailPaint = detailScreenIndex > 0 && Boolean(node.batchDetailOwnerId);
         const isDetailStitch = Array.isArray(node.detailStitchSourceNodeIds) && node.detailStitchSourceNodeIds.length >= 2;
@@ -16409,17 +16983,17 @@ function render(options={}){
         const isJimengPending = Boolean(node.jimengPending && node.jimengPending.submitId && imgs.length === 0);
         const isFailed = Boolean(node.runError && imgs.length === 0);
         const isQueued = Boolean(node.queued && imgs.length === 0 && !node.pending && !isJimengPending);
-        const isEmpty = isFidelity || isDrawingBoard || isTable || isTimeline || (isImageNode && imgs.length === 0 && !node.pending && !isQueued && !isJimengPending && !isFailed);
+        const isEmpty = isFidelity || isDrawingBoard || isTable || isTimeline || (isImageNode && !isAiRender && imgs.length === 0 && !node.pending && !isQueued && !isJimengPending && !isFailed);
         const isHistory = isHistoryGroupNode(node);
-        const isGroup = isImageNode && !isDrawingBoard && imgs.length > 1;
+        const isGroup = isImageNode && !isDrawingBoard && !isAiRender && imgs.length > 1;
         const isPending = ((node.pending || isQueued || isJimengPending) && imgs.length === 0);
         const body = nodeBodyHtml(node, layout);
         const collabLock = collabLocks.get(String(node.id || ''));
         const collabLockedByOther = Boolean(collabLock?.member?.id && String(collabLock.member.id) !== String(collabMemberId || ''));
         // 非空节点使用悬浮删除按钮；标题栏按钮只给空上传节点，避免产生重复图标。
         const deleteBtn = isGroup || !isEmpty ? '' : `<button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button>`;
-        const hint = isFidelity ? '' : isTable ? '可接收文本或表格数据' : isTimeline ? '连接图片、视频和音频后导出成片' : isComfyWorkflow ? (isFailed ? '运行失败 · 可检查依赖或重新运行' : isPending ? escapeHtml(tr('smart.hintPending')) : '选中节点编辑参数，连接素材后运行') : isDrawingBoard ? escapeHtml(tr('smart.drawingBoardHint')) : isLoop ? '' : isSmartGroup ? '双击添加 · 拖入归组' : isCamera ? '连接参考图像 → 下游绘画节点' : isCompare ? escapeHtml(smartCompareText('smart.compareNodeConnectHint', '连接两张图片后开始对比')) : isColor ? '连接待修复图片和参考图' : isFailed ? '生成失败 · 可修改参数后重新运行' : isPending ? escapeHtml(tr('smart.hintPending')) : isPaint && !imgs.length ? (isProductFidelityNode(node) ? '连接产品参考图，设置蒙版与细节保护' : escapeHtml(tr('smart.createPaintNodeSub'))) : isUpload && !imgs.length ? escapeHtml(tr('smart.uploadHint')) : (imgs.length > 1 ? escapeHtml(tr('smart.hintMulti')) : imgs.length ? escapeHtml(tr('smart.hintSingle')) : escapeHtml(tr('smart.hintEmpty')));
-        const html = `<div class="image-node ${isFidelity ? 'product-fidelity-smart-node' : ''} ${isComfyWorkflow ? 'comfy-workflow-smart-node' : ''} ${isDrawingBoard ? 'drawing-board-node' : ''} ${isTable ? 'smart-table-node' : ''} ${isTimeline ? 'smart-timeline-node' : ''} ${isEmpty ? 'empty-node' : ''} ${isUpload ? 'upload-node' : ''} ${isPaint ? 'painting-node' : ''} ${isDetailPaint ? 'smart-detail-paint-node' : ''} ${isDetailStitch ? 'smart-detail-stitch-node' : ''} ${isFailed ? 'node-failed' : ''} ${isGroup ? 'group-node' : ''} ${node.collapsed ? 'collapsed-stack-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isAgent ? 'agent-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isCompare ? 'smart-compare-node' : ''} ${isColor ? 'color-smart-node' : ''} ${isSmartGroup ? 'smart-group-node' : ''} ${isCompactMember ? 'smart-group-member-node' : ''} ${collabLockedByOther ? 'collab-locked-by-other' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''}" data-id="${escapeHtml(node.id)}" style="left:${node.x || 0}px;top:${node.y || 0}px;${collabLockedByOther ? `--member-color:${escapeAttr(collabSafeColor(collabLock.member.color, collabLock.member.id))};` : ''}${node.collapsed ? 'background:transparent!important;border-color:transparent!important;box-shadow:none!important;backdrop-filter:none!important;' : ''}width:${layout.width}px;height:${layout.height}px">
+        const hint = isTextStack ? '' : isFidelity ? '' : isAiRender ? (isFailed ? '生成失败 · 可修改参数后重试' : isPending ? escapeHtml(tr('smart.hintPending')) : '连接白模、风格或产品参考图后开始渲染') : isTable ? '可接收文本或表格数据' : isTimeline ? '连接图片、视频和音频后导出成片' : isComfyWorkflow ? (isFailed ? '运行失败 · 可检查依赖或重新运行' : isPending ? escapeHtml(tr('smart.hintPending')) : '选中节点编辑参数，连接素材后运行') : isDrawingBoard ? escapeHtml(tr('smart.drawingBoardHint')) : isLoop ? '' : isSmartGroup ? '双击添加 · 拖入归组' : isCamera ? '连接参考图像 → 下游绘画节点' : isCompare ? escapeHtml(smartCompareText('smart.compareNodeConnectHint', '连接两张图片后开始对比')) : isColor ? '连接待修复图片和参考图' : isFailed ? '生成失败 · 可修改参数后重新运行' : isPending ? escapeHtml(tr('smart.hintPending')) : isPaint && !imgs.length ? (isProductFidelityNode(node) ? '连接产品参考图，设置蒙版与细节保护' : escapeHtml(tr('smart.createPaintNodeSub'))) : isUpload && !imgs.length ? escapeHtml(tr('smart.uploadHint')) : (imgs.length > 1 ? escapeHtml(tr('smart.hintMulti')) : imgs.length ? escapeHtml(tr('smart.hintSingle')) : escapeHtml(tr('smart.hintEmpty')));
+        const html = `<div class="image-node ${isTextStack ? 'collapsed-text-stack-node' : ''} ${isFidelity ? 'product-fidelity-smart-node' : ''} ${isAiRender ? 'ai-render-smart-node' : ''} ${isComfyWorkflow ? 'comfy-workflow-smart-node' : ''} ${isDrawingBoard ? 'drawing-board-node' : ''} ${isTable ? 'smart-table-node' : ''} ${isTimeline ? 'smart-timeline-node' : ''} ${isEmpty ? 'empty-node' : ''} ${isUpload ? 'upload-node' : ''} ${isPaint ? 'painting-node' : ''} ${isDetailPaint ? 'smart-detail-paint-node' : ''} ${isDetailStitch ? 'smart-detail-stitch-node' : ''} ${isFailed ? 'node-failed' : ''} ${isGroup ? 'group-node' : ''} ${node.collapsed && isImageNode ? 'collapsed-stack-node' : ''} ${node.collapsed && isPrompt ? 'collapsed-prompt-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isAgent ? 'agent-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isCompare ? 'smart-compare-node' : ''} ${isColor ? 'color-smart-node' : ''} ${isSmartGroup ? 'smart-group-node' : ''} ${isCompactMember ? 'smart-group-member-node' : ''} ${collabLockedByOther ? 'collab-locked-by-other' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''}" data-id="${escapeHtml(node.id)}" style="left:${node.x || 0}px;top:${node.y || 0}px;${collabLockedByOther ? `--member-color:${escapeAttr(collabSafeColor(collabLock.member.color, collabLock.member.id))};` : ''}${node.collapsed && isImageNode ? 'background:transparent!important;border-color:transparent!important;box-shadow:none!important;backdrop-filter:none!important;' : ''}width:${layout.width}px;height:${layout.height}px">
             ${isDetailPaint ? `<div class="smart-detail-screen-marker" aria-label="${escapeAttr(`第 ${detailScreenIndex} 屏${detailScreenTitle ? `：${detailScreenTitle}` : ''}`)}"><strong>第 ${detailScreenIndex} 屏</strong>${detailScreenTitle ? `<span>${escapeHtml(detailScreenTitle)}</span>` : ''}</div>` : ''}
             ${isDetailStitch ? `<div class="smart-detail-stitch-marker ${detailStitchStale ? 'is-stale' : ''}"><strong>${escapeHtml(tr('smart.detailStitchTitle'))}</strong>${node.detailStitchActualRatio && node.detailStitchActualRatio !== '9:16' ? `<span>${escapeHtml(trf('smart.detailStitchSourceRatio', {ratio:node.detailStitchActualRatio}))}</span>` : ''}${detailStitchStale ? `<span>${escapeHtml(tr('smart.detailStitchNeedsUpdate'))}</span>` : ''}</div>` : ''}
             ${smartNodeRunBorderHtml(node)}
@@ -16430,8 +17004,8 @@ function render(options={}){
             <div class="node-body">${body}</div>
             ${isCompactMember && (isPrompt || isLoop) ? '<div class="smart-group-member-grab" title="拖动移出分组"></div>' : ''}
             <div class="node-hint">${hint}</div>
-             ${(isFidelity || isCompare || isColor || isDrawingBoard || isAgent || isComfyWorkflow || isTable || isTimeline || imgs.length || node.pending || isQueued || isJimengPending || isFailed || isPrompt || isLoop || isSmartGroup) ? '<div class="node-resize-handle" data-resize="1"></div>' : ''}
-             ${(isDrawingBoard || isGroup || isSmartGroup) ? '' : isColor ? '<div class="node-port port-in color-input-port" data-port="in" data-input-slot="target" title="连接待修复图片"><span class="color-input-label">待修复</span></div><div class="node-port port-in color-input-port" data-port="in" data-input-slot="reference" title="连接参考图片"><span class="color-input-label">参考</span></div>' : '<div class="node-port port-in" data-port="in" title="连接输入"></div>'}
+             ${(isFidelity || isAiRender || isCompare || isColor || isDrawingBoard || isAgent || isComfyWorkflow || isTable || isTimeline || imgs.length || node.pending || isQueued || isJimengPending || isFailed || isPrompt || isLoop || isSmartGroup) ? '<div class="node-resize-handle" data-resize="1"></div>' : ''}
+             ${(isTextStack || isDrawingBoard || isGroup || isSmartGroup) ? '' : isAiRender ? '<div class="node-port port-in ai-render-input-port" data-port="in" data-input-slot="white" title="连接白模" aria-label="白模"></div><div class="node-port port-in ai-render-input-port" data-port="in" data-input-slot="style" title="连接风格参考" aria-label="风格"></div><div class="node-port port-in ai-render-input-port" data-port="in" data-input-slot="product" title="连接产品参考" aria-label="产品"></div>' : isColor ? '<div class="node-port port-in color-input-port" data-port="in" data-input-slot="target" title="连接待修复图片"><span class="color-input-label">待修复</span></div><div class="node-port port-in color-input-port" data-port="in" data-input-slot="reference" title="连接参考图片"><span class="color-input-label">参考</span></div>' : '<div class="node-port port-in" data-port="in" title="连接输入"></div>'}
             ${!isCompare ? '<div class="node-port port-out" data-port="out" title="按住加号拖动连接"></div>' : ''}
         </div>`;
         return {node, html};
@@ -17781,7 +18355,8 @@ function updatePortDragVisual(){
     const activePortEls = [];
     sourceIds.forEach(sourceId => {
         const sourceNodeEl = world.querySelector(`.image-node[data-id="${CSS.escape(sourceId)}"]`);
-        const sourceSlot = normalizeSmartColorInputSlot(portDragState.fromInputSlot);
+        const sourceNode = nodes.find(node => node.id === sourceIds[0]);
+        const sourceSlot = normalizeSmartNodeInputSlot(sourceNode, portDragState.fromInputSlot);
         const sourceSlotSelector = sourceSlot ? `[data-input-slot="${CSS.escape(sourceSlot)}"]` : '';
         const sourcePortEl = sourceNodeEl?.querySelector(`.node-port[data-port="${portDragState.fromPort}"]${sourceSlotSelector}`);
         if(sourcePortEl){
@@ -17796,7 +18371,8 @@ function updatePortDragVisual(){
         const targetNodeEl = world.querySelector(`.image-node[data-id="${portDragState.hoverTargetId}"]`);
         targetNodeEl?.classList.add('port-hover');
         portDragState.hoverNodeEl = targetNodeEl || null;
-        const targetSlot = normalizeSmartColorInputSlot(portDragState.hoverInputSlot);
+        const targetNode = nodes.find(node => node.id === portDragState.hoverTargetId);
+        const targetSlot = normalizeSmartNodeInputSlot(targetNode, portDragState.hoverInputSlot);
         const targetSlotSelector = targetSlot ? `[data-input-slot="${CSS.escape(targetSlot)}"]` : '';
         const targetPortEl = targetNodeEl?.querySelector(`.node-port[data-port="${portDragState.hoverPort}"]${targetSlotSelector}`);
         if(targetPortEl){
@@ -17820,7 +18396,7 @@ function buildPortDragTargetCache(fromId, wantedPort){
             const rect = portEl.getBoundingClientRect?.();
             if(!rect || rect.width <= 0 || rect.height <= 0) return;
             const targetInputSlot = wantedPort === 'in'
-                ? normalizeSmartColorInputSlot(portEl.dataset.inputSlot)
+                ? normalizeSmartNodeInputSlot(node, portEl.dataset.inputSlot)
                 : '';
             candidates.push({
                 targetId:nodeId,
@@ -17859,7 +18435,7 @@ function resolvePortDragTarget(clientX, clientY, fromId, fromPort, magnetRadius=
         if(explicitPort === wantedPort){
             const target = nodes.find(node => node.id === nodeEl.dataset.id);
             const targetInputSlot = wantedPort === 'in'
-                ? normalizeSmartColorInputSlot(portEl?.dataset?.inputSlot)
+                ? normalizeSmartNodeInputSlot(target, portEl?.dataset?.inputSlot)
                 : '';
             return {
                 targetId:nodeEl.dataset.id,
@@ -17905,7 +18481,7 @@ function resolvePortDragTarget(clientX, clientY, fromId, fromPort, magnetRadius=
         best = {
             targetId:node.id,
             targetPort:wantedPort,
-            targetInputSlot:wantedPort === 'in' ? normalizeSmartColorInputSlot(candidatePort?.dataset?.inputSlot) : '',
+            targetInputSlot:wantedPort === 'in' ? normalizeSmartNodeInputSlot(node, candidatePort?.dataset?.inputSlot) : '',
             hit,
             distance,
             worldPoint:nodeConnectionWorldPoint(node, wantedPort, null, wantedPort === 'in' ? candidatePort?.dataset?.inputSlot : '')
@@ -18551,7 +19127,7 @@ function beginSmartPortDrag(port, id, event){
     portDragState = {
         fromId:id,
         fromPort:portType,
-        fromInputSlot:normalizeSmartColorInputSlot(port.dataset.inputSlot),
+        fromInputSlot:normalizeSmartNodeInputSlot(nodes.find(node => node.id === id), port.dataset.inputSlot),
         currentWorld:p,
         hoverTargetId:'',
         hoverPort:'',
@@ -18568,12 +19144,147 @@ function beginSmartPortDrag(port, id, event){
     ensurePortDragPathElements(portDragPreviewSourceIds());
     updatePortDragVisual();
 }
+function syncSmartAiRenderRunSettings(node){
+    if(!isSmartAiRenderNode(node)) return null;
+    normalizeSmartAiRenderNode(node);
+    const ai = node.aiRender;
+    const source = {...cloneSmartSettings(node.runSettings || settings)};
+    source.engine = source.engine === 'volcengine' ? 'volcengine' : 'api';
+    source.apiKind = 'image';
+    source.provider_id = ai.provider || source.provider_id || '';
+    source.model = ai.model || source.model || '';
+    source.ratio = ai.followRatio !== false ? 'source' : ai.ratio;
+    source.resolution = ai.resolution;
+    source.quality = ai.quality;
+    source.count = ai.count;
+    node.runSettings = settingsForStorage(apiOnlySettings(source));
+    node.aiRender.provider = node.runSettings.provider_id || node.aiRender.provider || '';
+    node.aiRender.model = node.runSettings.model || node.aiRender.model || '';
+    return node.runSettings;
+}
+function removeSmartAiRenderInput(node, role, key){
+    if(!node || !isSmartAiRenderNode(node)) return false;
+    pushUndo();
+    const manual = manualReferenceImagesFor(node).find(image => inputRefKey(image) === key || image.url === key.replace(/^url\|/,''));
+    if(manual){
+        removeReferenceFromNode(node.id, manual, {skipUndo:true});
+        render();
+        scheduleSave();
+        return true;
+    }
+    const incoming = (canvas.connections || []).filter(conn => conn.to === node.id && (conn.kind || 'flow') === 'input');
+    const connections = incoming.filter(conn => {
+        const connRole = normalizeSmartNodeInputSlot(node, conn.input_slot || conn.inputSlot);
+        if(connRole !== role) return false;
+        if(!key) return true;
+        const source = nodes.find(item => item.id === conn.from);
+        return outputImagesForNode(source).some(image => inputRefKey(image) === key || image?.url === key.replace(/^url\|/,''));
+    });
+    if(!connections.length) return false;
+    rememberSmartConnectionDeletions(connections);
+    const removed = new Set(connections);
+    canvas.connections = (canvas.connections || []).filter(conn => !removed.has(conn));
+    node.inputNodeIds = Array.from(new Set((canvas.connections || []).filter(conn => conn.to === node.id && (conn.kind || 'flow') === 'input').map(conn => conn.from)));
+    clearDetachedRunInputRefs(node);
+    render();
+    scheduleSave();
+    return true;
+}
+function syncSmartAiRenderPortPositions(el){
+    if(!el?.isConnected || !el.classList.contains('ai-render-smart-node')) return;
+    const nodeRect = el.getBoundingClientRect?.();
+    if(!nodeRect || nodeRect.width <= 0 || nodeRect.height <= 0) return;
+    ['white', 'style', 'product'].forEach(role => {
+        const port = el.querySelector(`.ai-render-input-port[data-input-slot="${CSS.escape(role)}"]`);
+        const row = el.querySelector(`[data-ai-render-role="${CSS.escape(role)}"]`);
+        if(!port || !row) return;
+        const rowRect = row.getBoundingClientRect?.();
+        if(!rowRect || rowRect.height <= 0) return;
+        const centerY = rowRect.top + rowRect.height / 2;
+        const percent = Math.max(2, Math.min(98, ((centerY - nodeRect.top) / nodeRect.height) * 100));
+        port.style.top = `${percent}%`;
+    });
+}
+function bindSmartAiRenderNodeControls(el, node){
+    if(!el || !node || !isSmartAiRenderNode(node)) return;
+    normalizeSmartAiRenderNode(node);
+    syncSmartAiRenderPortPositions(el);
+    scheduleConnectionLayerRefresh();
+    // 字体加载、节点缩放和浏览器重排可能在绑定后才完成一次布局，
+    // 下一帧再校准一次，确保端口始终落在对应参考行的中心。
+    requestAnimationFrame(() => {
+        if(el.isConnected){
+            syncSmartAiRenderPortPositions(el);
+            scheduleConnectionLayerRefresh();
+        }
+    });
+    const stop = event => { event.stopPropagation(); };
+    el.querySelectorAll('.smart-ai-render-card button,.smart-ai-render-card select,.smart-ai-render-card textarea,.smart-ai-render-card input').forEach(control => {
+        control.addEventListener('mousedown', stop, true);
+        control.addEventListener('pointerdown', stop, true);
+        control.addEventListener('click', stop);
+    });
+    const prompt = el.querySelector('[data-ai-render-prompt]');
+    if(prompt){
+        bindScrollableText(prompt);
+        prompt.addEventListener('input', () => {
+            node.aiRender.prompt = String(prompt.value || '').slice(0, 4000);
+            node.promptDraftText = node.aiRender.prompt;
+            node.promptDraftHtml = escapeHtml(node.aiRender.prompt);
+            scheduleSave();
+        });
+    }
+    el.querySelectorAll('[data-ai-render-setting]').forEach(control => {
+        if(control.dataset.aiRenderBound === '1') return;
+        control.dataset.aiRenderBound = '1';
+        const apply = () => {
+            const key = control.dataset.aiRenderSetting;
+            if(key === 'provider'){
+                node.aiRender.provider = String(control.value || '');
+                const providerModels = providerImageModels(node.aiRender.provider);
+                if(!providerModels.includes(node.aiRender.model)) node.aiRender.model = providerModels[0] || '';
+            } else if(key === 'followRatio') node.aiRender.followRatio = Boolean(control.checked);
+            else if(key === 'model') node.aiRender.model = String(control.value || '');
+            else if(key === 'ratio') {
+                // 手动选择比例就是退出“跟随白模”；这样下拉框不会看似
+                // 改了值却仍按源图比例提交。
+                node.aiRender.ratio = String(control.value || '9:16');
+                node.aiRender.followRatio = false;
+            }
+            else if(key === 'resolution') node.aiRender.resolution = String(control.dataset.aiRenderValue || control.value || '2k');
+            else if(key === 'quality') node.aiRender.quality = String(control.dataset.aiRenderValue || control.value || 'auto');
+            else if(key === 'count') node.aiRender.count = Math.max(1, Math.min(4, Math.round(Number(control.dataset.aiRenderValue || control.value) || 1)));
+            syncSmartAiRenderRunSettings(node);
+            scheduleSave();
+            render({nodeIds:[node.id]});
+        };
+        control.addEventListener(control.matches('input[type="checkbox"]') ? 'change' : control.matches('select') ? 'change' : 'click', apply);
+    });
+    el.querySelectorAll('[data-ai-render-picker]').forEach(button => {
+        button.addEventListener('click', event => {
+            event.preventDefault();
+            node.aiRender.pendingPickerRole = button.dataset.aiRenderPicker || 'product';
+            startNodeReferencePicker(node.id);
+        });
+    });
+    el.querySelectorAll('[data-ai-render-remove]').forEach(button => {
+        button.addEventListener('click', event => {
+            event.preventDefault();
+            removeSmartAiRenderInput(node, button.dataset.aiRenderRemove || 'product', button.dataset.aiRenderRefKey || '');
+        });
+    });
+    el.querySelector('[data-ai-render-run]')?.addEventListener('click', event => {
+        event.preventDefault();
+        runAiRenderNode(node.id);
+    });
+}
 function bindNodeEvents(nodeEls=world.querySelectorAll('.image-node')){
     if(paintInputRefHoverThumb && !paintInputRefHoverThumb.isConnected) hidePaintInputRefHover();
     nodeEls.forEach(el => {
         const id = el.dataset.id;
         const nodeForControls = nodes.find(n => n.id === id);
         if(isProductFidelityNode(nodeForControls) && typeof bindProductFidelityNode === 'function') bindProductFidelityNode(el, nodeForControls);
+        if(isSmartAiRenderNode(nodeForControls)) bindSmartAiRenderNodeControls(el, nodeForControls);
         if(el.dataset.collabEventsBound !== '1'){
             el.dataset.collabEventsBound = '1';
             el.addEventListener('focusin', event => {
@@ -18661,8 +19372,31 @@ function bindNodeEvents(nodeEls=world.querySelectorAll('.image-node')){
             });
         }
         if(isSmartTableNode(nodeForControls) || isSmartTimelineNode(nodeForControls)) bindSmartDataVideoNode(el, nodeForControls);
-        if(nodeForControls?.type === 'smart-prompt') bindPromptNodeControls(el, nodeForControls);
-        if(nodeForControls?.type === 'smart-agent') bindAgentNodeControls(el, nodeForControls);
+        if(nodeForControls?.type === 'smart-prompt'){
+            bindPromptNodeControls(el, nodeForControls);
+        }
+        if(nodeForControls?.type === 'smart-agent' && !isSmartTextStackNode(nodeForControls)) bindAgentNodeControls(el, nodeForControls);
+        const collapsedTextNode = el.querySelector('[data-smart-text-node-expand]');
+        collapsedTextNode?.addEventListener('mousedown', event => {
+            event.preventDefault();
+            event.stopPropagation();
+        }, true);
+        collapsedTextNode?.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleSmartPromptNodeCollapsed(nodeForControls.id, false);
+        });
+        el.querySelectorAll('[data-smart-text-stack-card]').forEach(card => {
+            card.addEventListener('mousedown', event => {
+                event.preventDefault();
+                event.stopPropagation();
+            }, true);
+            card.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                expandCollapsedTextStackNode(nodeForControls.id);
+            });
+        });
         if(nodeForControls?.type === 'smart-loop') bindLoopNodeControls(el, nodeForControls);
         if(nodeForControls?.type === SMART_COMPARE_NODE_TYPE) bindSmartCompareNodeControls(el, nodeForControls);
         if(isSmartComfyWorkflowNode(nodeForControls)) bindComfyWorkflowNodeControls(el, nodeForControls);
@@ -18726,7 +19460,7 @@ function bindNodeEvents(nodeEls=world.querySelectorAll('.image-node')){
                 deleteNodeFromButton(id);
             });
         });
-        const nodeRefItems = ['smart-agent', 'smart-prompt'].includes(nodeForControls?.type)
+        const nodeRefItems = ['smart-agent', 'smart-prompt'].includes(nodeForControls?.type) && !isSmartTextStackNode(nodeForControls)
             ? promptNodeInputMediaForLLM(nodeForControls) : [];
         el.querySelectorAll('[data-document-preview-url]').forEach(button => {
             button.addEventListener('mousedown', event => { event.preventDefault(); event.stopPropagation(); }, true);
@@ -18758,11 +19492,12 @@ function bindNodeEvents(nodeEls=world.querySelectorAll('.image-node')){
             btn.addEventListener('click', e => {
                 e.preventDefault(); e.stopPropagation();
                 if(panel.matches(':popover-open')) { panel.hidePopover(); return; }
+                // The image node lives inside the transformed canvas world. A fixed popover
+                // otherwise scales inversely with the canvas. Match the current world scale
+                // so the menu remains a stable viewport-sized surface.
+                panel.style.zoom = String(safeScale(viewport.scale));
                 panel.showPopover();
-                const anchor = btn.getBoundingClientRect();
-                const bounds = panel.getBoundingClientRect();
-                panel.style.left = `${Math.max(8, Math.min(anchor.left + anchor.width / 2 - bounds.width / 2, window.innerWidth - bounds.width - 8))}px`;
-                panel.style.top = `${Math.max(8, Math.min(anchor.top >= bounds.height + 16 ? anchor.top - bounds.height - 8 : anchor.bottom + 8, window.innerHeight - bounds.height - 8))}px`;
+                positionSmartNodeSettingsPanel(panel, btn);
             });
             panel.addEventListener('toggle', () => btn.setAttribute('aria-expanded', String(panel.matches(':popover-open'))));
             panel.addEventListener('mousedown', e => e.stopPropagation());
@@ -23492,44 +24227,89 @@ function setPromptDraftForNode(node, text){
         delete promptInput.dataset.preserveDraftOnce;
     }
 }
-function shouldRestorePromptDraft(node, draftText, ctx=smartLoopContext){
-    const draft = String(draftText || '').trim();
-    if(!draft) return false;
-    // 已连入提示词/Agent 节点时，旧版本会把“上游输入”一起写进
-    // promptDraftText。恢复这种草稿会让上游内容在编辑框里再出现一次，
-    // 随后 buildPromptRequest() 又会追加一遍。只有和上游完全相同的
-    // 自动回填内容需要清空，用户自己补充的内容仍然要保留。
-    const upstreamNodes = promptInputNodesFor(node);
-    if(!upstreamNodes.length) return true;
-    const upstream = inputPromptTextFor(node, ctx).trim();
-    return !upstream || draft !== upstream;
+function upstreamPromptTextsFor(node, ctx=smartLoopContext){
+    // 节点上一次运行时合并进来的上游文本可能已经发生变化，恢复草稿时
+    // 需要同时按“当前上游”和“上次合并的上游”做清理，避免旧文本回流。
+    const list = [];
+    const current = inputPromptTextFor(node, ctx).trim();
+    if(current) list.push(current);
+    const recorded = String(node?.runUpstreamText || '').trim();
+    if(recorded && !list.includes(recorded)) list.push(recorded);
+    return list;
+}
+function stripUpstreamPromptText(text, upstreamList=[]){
+    let value = String(text || '');
+    upstreamList.forEach(item => {
+        const upstream = String(item || '').trim();
+        if(!upstream || !value.trim()) return;
+        if(value.trim() === upstream){ value = ''; return; }
+        if(value.endsWith('\n\n' + upstream)) value = value.slice(0, value.length - upstream.length - 2);
+    });
+    return value;
+}
+function upstreamNodeHasTextHistory(node){
+    if(!node) return false;
+    if(node.type === 'smart-agent') return Boolean(String(node.outputText || '').trim()
+        || Number(node.runFinishedAt || 0) > 0 || Number(node.runStartedAt || 0) > 0);
+    if(node.type === 'smart-prompt') return Boolean(String(node.text || '').trim() || Number(node.promptRunAt || 0) > 0);
+    if(node.type === 'smart-loop') return Boolean(String(node.text || '').trim() || Number(node.runFinishedAt || 0) > 0);
+    return false;
+}
+function isLegacyUpstreamEcho(node, draftText, upstreamList=[]){
+    // 旧版本会把合并后的上游文本写进节点自己的提示词，上游删除后这段旧文本
+    // 还会被还原回编辑框，用户看到的现象就是“提示词删不掉”。
+    // 新版本运行过的节点带有 runUpstreamText 记录，草稿可信，不需要这里判断。
+    if(!draftText) return false;
+    if(typeof node?.runUpstreamText === 'string') return false;
+    if(upstreamList.length) return false;
+    const runPrompt = String(node?.runPrompt || '').trim();
+    if(!runPrompt || runPrompt !== String(draftText || '').trim()) return false;
+    if(String(node?.runModelPrompt || '').trim() === runPrompt) return true;
+    return promptInputNodesFor(node).some(upstreamNodeHasTextHistory);
+}
+function localPromptDraftFor(node, ctx=smartLoopContext){
+    // 草稿只保存本节点自己输入的内容；上游提示词仅在提交时合并一次。
+    // 旧版本把合并后的上游文本写进了草稿，上游删除后旧文本仍留在编辑框里，
+    // 用户看到的现象就是“上游提示词跑到下游节点，提示词删不掉”。
+    const hasUpstream = promptInputNodesFor(node).length > 0;
+    const draftText = typeof node?.promptDraftText === 'string' ? node.promptDraftText : null;
+    const draftHtml = typeof node?.promptDraftHtml === 'string' ? node.promptDraftHtml : '';
+    if(!hasUpstream){
+        const text = draftText !== null ? draftText : String(node?.runPrompt || '');
+        return {text, html: draftHtml || escapeHtml(text)};
+    }
+    const upstreamList = upstreamPromptTextsFor(node, ctx);
+    if(draftText !== null){
+        const text = stripUpstreamPromptText(draftText, upstreamList);
+        if(text === draftText){
+            if(isLegacyUpstreamEcho(node, draftText, upstreamList)) return {text:'', html:''};
+            return {text, html: draftHtml};
+        }
+        return {text, html: promptHtmlWithMentionTokens(text, node?.runPromptRefs || []) || escapeHtml(text)};
+    }
+    // 老画布只保存了 runPrompt：里面可能混着上游文本，剥掉后再作为本节点草稿。
+    const runPrompt = String(node?.runPrompt || '');
+    const text = stripUpstreamPromptText(runPrompt, upstreamList);
+    if(text !== runPrompt){
+        return {text, html: promptHtmlWithMentionTokens(text, node?.runPromptRefs || []) || escapeHtml(text)};
+    }
+    if(isLegacyUpstreamEcho(node, runPrompt, upstreamList)) return {text:'', html:''};
+    return {text: runPrompt, html: promptHtmlWithMentionTokens(runPrompt, node?.runPromptRefs || []) || escapeHtml(runPrompt)};
+}
+function applyLocalPromptDraft(node, ctx=smartLoopContext){
+    const draft = localPromptDraftFor(node, ctx);
+    if(!draft.text.trim()){
+        setPromptText('');
+        return draft;
+    }
+    const hasToken = String(draft.html || '').includes('mention-image-token');
+    promptInput.innerHTML = hasToken
+        ? draft.html
+        : (promptHtmlWithMentionTokens(draft.text, node?.runPromptRefs || []) || draft.html || escapeHtml(draft.text));
+    return draft;
 }
 function loadPromptDraft(subject){
-    if(subject?.promptDraftTouched && !subject.promptDraftHtml){
-        setPromptText('');
-        return;
-    }
-    if(subject?.promptDraftHtml){
-        const draftText = subject.promptDraftText || subject.runPrompt || '';
-        if(!shouldRestorePromptDraft(subject, draftText)){
-            setPromptText('');
-            return;
-        }
-        const hasToken = String(subject.promptDraftHtml || '').includes('mention-image-token');
-        promptInput.innerHTML = hasToken
-            ? subject.promptDraftHtml
-            : (promptHtmlWithMentionTokens(subject.promptDraftText || '', subject.runPromptRefs || []) || subject.promptDraftHtml);
-    } else if(typeof subject?.runPrompt === 'string'){
-        if(!shouldRestorePromptDraft(subject, subject.runPrompt)){
-            setPromptText('');
-            return;
-        }
-        const rebuilt = promptHtmlWithMentionTokens(subject.runPrompt, subject.runPromptRefs || []);
-        if(rebuilt) promptInput.innerHTML = rebuilt;
-        else setPromptText(subject.runPrompt);
-    } else {
-        setPromptText('');
-    }
+    applyLocalPromptDraft(subject);
 }
 function positionComposerForNode(node){
     if(!node || !composer || !shell) return;
@@ -23611,6 +24391,15 @@ function updateComposer(){
         return;
     }
     if(node && deferredComposerNodeId === node.id){
+        savePromptDraftForCurrent();
+        composer.classList.remove('open');
+        if(cascadeRunBtn) cascadeRunBtn.style.display = 'none';
+        activeComposerSubject = null;
+        lastComposerNodeId = '';
+        setPromptInputLocked(false);
+        return;
+    }
+    if(node && isSmartAiRenderNode(node)){
         savePromptDraftForCurrent();
         composer.classList.remove('open');
         if(cascadeRunBtn) cascadeRunBtn.style.display = 'none';
@@ -23856,13 +24645,85 @@ function hidePaintInputRefHover(){
     paintInputRefHoverThumb = null;
     if(paintInputRefHover) paintInputRefHover.hidden = true;
 }
+function positionPaintInputRefHover(){
+    const preview = paintInputRefHover;
+    const thumb = paintInputRefHoverThumb;
+    const image = preview?.querySelector('img');
+    if(!preview || !thumb || !image || !thumb.isConnected || !image.naturalWidth || !image.naturalHeight){
+        if(thumb && !thumb.isConnected) hidePaintInputRefHover();
+        return;
+    }
+    const bounds = shell.getBoundingClientRect();
+    const minLeft = Math.max(0, bounds.left) + 8;
+    const minTop = Math.max(0, bounds.top) + 8;
+    const maxRight = Math.min(window.innerWidth, bounds.right) - 8;
+    const maxBottom = Math.min(window.innerHeight, bounds.bottom) - 8;
+    const frame = 10;
+    const availableWidth = maxRight - minLeft - frame;
+    const availableHeight = maxBottom - minTop - frame;
+    if(availableWidth <= 0 || availableHeight <= 0) return hidePaintInputRefHover();
+    const maxWidth = Math.min(420, availableWidth);
+    const maxHeight = Math.min(420, availableHeight * .6);
+    const idealScale = Math.min(maxWidth / image.naturalWidth, maxHeight / image.naturalHeight);
+    const rect = thumb.getBoundingClientRect();
+    const isMention = thumb.classList.contains('mention-image-token');
+    const composerPanel = thumb.closest('.composer.open');
+    let spaces = [{left:minLeft, top:minTop, right:maxRight, bottom:maxBottom}];
+    const composerObstacles = composerPanel
+        ? composerPanel.querySelectorAll('.input-thumbs-row,.input-prompt-preview,.prompt-row')
+        : document.querySelectorAll('.composer.open');
+    const obstacles = isMention ? [] : [...world.querySelectorAll('.image-node'), ...composerObstacles];
+    for(const obstacle of obstacles){
+        const box = obstacle.getBoundingClientRect();
+        if(!box.width || !box.height) continue;
+        const left = box.left - 8, right = box.right + 8;
+        const top = box.top - 8, bottom = box.bottom + 8;
+        spaces = spaces.flatMap(space => {
+            if(right <= space.left || left >= space.right || bottom <= space.top || top >= space.bottom) return [space];
+            return [
+                {...space, bottom:Math.max(space.top, top)},
+                {...space, top:Math.min(space.bottom, bottom)},
+                {...space, right:Math.max(space.left, left)},
+                {...space, left:Math.min(space.right, right)}
+            ].filter(area => area.right - area.left > frame && area.bottom - area.top > frame);
+        });
+        spaces = spaces.filter((space, index, all) => !all.some((other, otherIndex) => otherIndex !== index
+            && other.left <= space.left && other.top <= space.top && other.right >= space.right && other.bottom >= space.bottom
+            && (otherIndex < index || other.left < space.left || other.top < space.top || other.right > space.right || other.bottom > space.bottom)));
+    }
+    const placements = spaces.map(space => {
+        const scale = Math.min(idealScale, (space.right - space.left - frame) / image.naturalWidth, (space.bottom - space.top - frame) / image.naturalHeight);
+        const width = image.naturalWidth * scale, height = image.naturalHeight * scale;
+        const preferredLeft = isMention ? (rect.right + 12 + width + frame <= maxRight ? rect.right + 12 : rect.left - width - frame - 12) : rect.left;
+        const preferredTop = isMention ? rect.top + (rect.height - height - frame) / 2 : rect.top - height - frame - 8;
+        const left = Math.max(space.left, Math.min(space.right - width - frame, preferredLeft));
+        const top = Math.max(space.top, Math.min(space.bottom - height - frame, preferredTop));
+        const right = left + width + frame, bottom = top + height + frame;
+        const above = bottom <= rect.top - 7;
+        const gap = Math.hypot(Math.max(rect.left - right, left - rect.right, 0), Math.max(rect.top - bottom, top - rect.bottom, 0));
+        return {width, height, left, top, above,
+            distance:gap + Math.abs(left - rect.left) * .1 + (1 - scale / idealScale) * 80 + (above ? 0 : 24)};
+    });
+    if(!placements.length) return hidePaintInputRefHover();
+    const placement = placements.sort((a,b) => a.distance - b.distance || Number(b.above) - Number(a.above))[0];
+    image.style.width = `${placement.width}px`;
+    image.style.height = `${placement.height}px`;
+    preview.style.left = `${placement.left}px`;
+    preview.style.top = `${placement.top}px`;
+    preview.hidden = false;
+}
 document.addEventListener('pointerdown', hidePaintInputRefHover, true);
 document.addEventListener('scroll', event => {
     const thumb = paintInputRefHoverThumb;
     if(!thumb || (event.target !== document && !event.target.contains?.(thumb))) return;
-    if(thumb.isConnected && thumb.matches(':hover')){
-        showPaintInputRefHover(thumb, {url:paintInputRefHover.querySelector('img').dataset.refUrl});
-    } else hidePaintInputRefHover();
+    if(thumb.isConnected) positionPaintInputRefHover();
+    else hidePaintInputRefHover();
+}, true);
+document.addEventListener('pointermove', event => {
+    const thumb = paintInputRefHoverThumb;
+    if(!thumb || !thumb.isConnected || document.body.classList.contains('smart-input-thumb-drag')) return;
+    if(event.target === thumb || thumb.contains(event.target)) return;
+    hidePaintInputRefHover();
 }, true);
 window.addEventListener('resize', hidePaintInputRefHover);
 window.addEventListener('blur', hidePaintInputRefHover);
@@ -23881,58 +24742,7 @@ function showPaintInputRefHover(thumb, item){
     paintInputRefHoverThumb = thumb;
     image.onload = () => {
         if(paintInputRefHoverThumb !== thumb || !thumb.isConnected || image.dataset.refUrl !== item.url) return;
-        if(!image.naturalWidth || !image.naturalHeight) return;
-        const bounds = shell.getBoundingClientRect();
-        const minLeft = Math.max(0, bounds.left) + 8;
-        const minTop = Math.max(0, bounds.top) + 8;
-        const maxRight = Math.min(window.innerWidth, bounds.right) - 8;
-        const maxBottom = Math.min(window.innerHeight, bounds.bottom) - 8;
-        const frame = 10;
-        const availableWidth = maxRight - minLeft - frame;
-        const availableHeight = maxBottom - minTop - frame;
-        if(availableWidth <= 0 || availableHeight <= 0) return hidePaintInputRefHover();
-        const maxWidth = Math.min(420, availableWidth);
-        const maxHeight = Math.min(420, availableHeight * .6);
-        const idealScale = Math.min(maxWidth / image.naturalWidth, maxHeight / image.naturalHeight);
-        const rect = thumb.getBoundingClientRect();
-        const isMention = thumb.classList.contains('mention-image-token');
-        const anchor = (isMention ? thumb : thumb.closest('.composer-card') || thumb).getBoundingClientRect();
-        let spaces = [{left:minLeft, top:minTop, right:maxRight, bottom:maxBottom}];
-        const obstacles = isMention ? [] : [...world.querySelectorAll('.image-node'), ...document.querySelectorAll('.composer.open')];
-        for(const obstacle of obstacles){
-            const box = obstacle.getBoundingClientRect();
-            if(!box.width || !box.height) continue;
-            const left = box.left - 8, right = box.right + 8;
-            const top = box.top - 8, bottom = box.bottom + 8;
-            spaces = spaces.flatMap(space => {
-                if(right <= space.left || left >= space.right || bottom <= space.top || top >= space.bottom) return [space];
-                return [
-                    {...space, bottom:Math.max(space.top, top)},
-                    {...space, top:Math.min(space.bottom, bottom)},
-                    {left:space.left, right:Math.max(space.left, left), top:Math.max(space.top, top), bottom:Math.min(space.bottom, bottom)},
-                    {left:Math.min(space.right, right), right:space.right, top:Math.max(space.top, top), bottom:Math.min(space.bottom, bottom)}
-                ].filter(area => area.right - area.left > frame && area.bottom - area.top > frame);
-            });
-        }
-        const placements = spaces.map(space => {
-            const scale = Math.min(idealScale, (space.right - space.left - frame) / image.naturalWidth, (space.bottom - space.top - frame) / image.naturalHeight);
-            const width = image.naturalWidth * scale, height = image.naturalHeight * scale;
-            const preferredLeft = isMention ? (rect.right + 12 + width + frame <= maxRight ? rect.right + 12 : rect.left - width - frame - 12) : rect.left;
-            const preferredTop = isMention ? rect.top + (rect.height - height - frame) / 2 : anchor.top - height - frame - 12;
-            const left = Math.max(space.left, Math.min(space.right - width - frame, preferredLeft));
-            const top = Math.max(space.top, Math.min(space.bottom - height - frame, preferredTop));
-            return {scale, width, height, left, top, above:top + height + frame <= anchor.top - 8,
-                distance:Math.hypot(left - rect.left, top + height + frame - anchor.top + 12) + (1 - scale / idealScale) * 100};
-        });
-        if(!placements.length) return hidePaintInputRefHover();
-        const bestScale = Math.max(...placements.map(placement => placement.scale));
-        const placement = placements.filter(candidate => candidate.scale >= bestScale * .65)
-            .sort((a,b) => Number(b.above) - Number(a.above) || a.distance - b.distance)[0];
-        image.style.width = `${placement.width}px`;
-        image.style.height = `${placement.height}px`;
-        preview.style.left = `${placement.left}px`;
-        preview.style.top = `${placement.top}px`;
-        preview.hidden = false;
+        positionPaintInputRefHover();
     };
     image.onerror = hidePaintInputRefHover;
     image.dataset.refUrl = item.url;
@@ -23954,7 +24764,6 @@ function bindImageReferenceThumb(el, node, item, items, canReorder){
         event.stopPropagation();
     }, true);
     el.addEventListener('mouseenter', () => showPaintInputRefHover(el, item));
-    el.addEventListener('mouseleave', hidePaintInputRefHover);
     let ignoreClick = false;
     el.addEventListener('click', event => {
         event.preventDefault();
@@ -24960,7 +25769,8 @@ function stripImageGenerationMeta(img){
 function addConnection(fromId, toId, kind='flow', inputSlot=''){
     if(!fromId || !toId || fromId === toId) return;
     canvas.connections = canvas.connections || [];
-    const normalizedSlot = kind === 'input' ? normalizeSmartColorInputSlot(inputSlot) : '';
+    const targetNode = nodes.find(node => node.id === toId);
+    const normalizedSlot = kind === 'input' ? normalizeSmartNodeInputSlot(targetNode, inputSlot) : '';
     const connection = {from:fromId, to:toId, kind};
     if(normalizedSlot) connection.input_slot = normalizedSlot;
     clearSmartConnectionDeletionTombstones([connection]);
@@ -24968,7 +25778,7 @@ function addConnection(fromId, toId, kind='flow', inputSlot=''){
         c.from === fromId
         && c.to === toId
         && (c.kind || 'flow') === kind
-        && normalizeSmartColorInputSlot(c.input_slot || c.inputSlot) === normalizedSlot
+        && normalizeSmartNodeInputSlot(targetNode, c.input_slot || c.inputSlot) === normalizedSlot
     ))) return;
     canvas.connections.push(connection);
 }
@@ -25022,6 +25832,26 @@ function connectInputNode(fromId, toId, inputSlot=''){
             && normalizeSmartColorInputSlot(conn.input_slot || conn.inputSlot) === colorInputSlot
         ));
     }
+    let aiInputSlot = '';
+    if(isSmartAiRenderNode(to)){
+        aiInputSlot = normalizeSmartNodeInputSlot(to, inputSlot);
+        const incoming = (canvas.connections || []).filter(conn => conn.to === to.id && (conn.kind || 'flow') === 'input');
+        if(!aiInputSlot){
+            const used = new Set(incoming.map(conn => normalizeSmartNodeInputSlot(to, conn.input_slot || conn.inputSlot)).filter(Boolean));
+            aiInputSlot = !used.has('white') ? 'white' : !used.has('style') ? 'style' : 'product';
+        }
+        const currentConnection = incoming.find(conn => conn.from === from.id && normalizeSmartNodeInputSlot(to, conn.input_slot || conn.inputSlot) === aiInputSlot);
+        if(currentConnection) return true;
+        const sameSlot = incoming.filter(conn => normalizeSmartNodeInputSlot(to, conn.input_slot || conn.inputSlot) === aiInputSlot);
+        if(aiInputSlot === 'product' && sameSlot.length >= 4){
+            toast('产品参考最多连接 4 张图片');
+            return false;
+        }
+        if(aiInputSlot !== 'product' && sameSlot.length){
+            rememberSmartConnectionDeletions(sameSlot);
+            canvas.connections = (canvas.connections || []).filter(conn => !sameSlot.includes(conn));
+        }
+    }
     if(to.type === 'smart-loop'){
         const groupImages = isSmartGroupNode(from) ? imagesForNode(from).filter(img => img?.url) : [];
         const groupPrompts = isSmartGroupNode(from) ? promptTextItemsForNode(from).filter(Boolean) : [];
@@ -25042,8 +25872,8 @@ function connectInputNode(fromId, toId, inputSlot=''){
         if(blocked.size) to.blockedInputRefs = [...blocked];
         else delete to.blockedInputRefs;
     }
-    addConnection(from.id, to.id, 'input', colorInputSlot);
-    if(isSmartColorNode(to)){
+    addConnection(from.id, to.id, 'input', aiInputSlot || colorInputSlot);
+    if(isSmartColorNode(to) || isSmartAiRenderNode(to)){
         to.inputNodeIds = Array.from(new Set((canvas.connections || [])
             .filter(conn => conn.to === to.id && (conn.kind || 'flow') === 'input')
             .map(conn => conn.from)));
@@ -25638,16 +26468,11 @@ function outputImagesForNode(node, consume=false, ctx=smartLoopContext){
     if(node?.type === 'smart-loop') return smartLoopInputImages(node, ctx);
     if(isSmartCameraNode(node)) return smartCameraInputImages(node, consume, ctx);
     if(isSmartColorNode(node)) ensureSmartColorLocalMedia(node);
-    // 提示词节点的图片只用于它自身的 LLM 分析，不作为输出继续传给下游。
-    // 下游绘画节点若需要参考图，应直接连接图片/上传节点；提示词文本仍由
-    // promptInputNodesFor() 单独传递。Agent 仍保留原有的图片透传能力。
+    // 提示词节点和智能对话节点的图片只用于它们自身的 LLM 分析，不作为
+    // 图片输出继续传给下游。下游绘画节点若需要参考图，应直接连接图片/上传
+    // 节点；提示词和智能对话的文本仍由 promptInputNodesFor() 单独传递。
     if(node?.type === 'smart-prompt') return [];
-    if(node?.type === 'smart-agent'){
-        const own = imagesForNode(node).filter(img => img?.url);
-        const upstream = inputNodesFor(node).flatMap(input => outputImagesForNode(input, consume, ctx)).filter(img => img?.url);
-        return orderedSmartInputReferences(node, [...upstream, ...manualReferenceImagesFor(node), ...own]
-            .filter(img => !isInputRefBlocked(node, img)));
-    }
+    if(node?.type === 'smart-agent') return [];
     const roundOutputs = ctx?.roundOutputs;
     if(node?.id && roundOutputs && typeof roundOutputs.get === 'function' && roundOutputs.has(node.id)){
         return (roundOutputs.get(node.id) || []).filter(img => img?.url);
@@ -26015,6 +26840,10 @@ function removePromptNodeInputReference(nodeId, key, sourceNodeId=''){
 }
 function defaultReferenceImagesFor(node, consume=false, ctx=smartLoopContext){
     if(!node) return [];
+    // 智能对话的上游图片只服务于它自己的视觉分析；它的正式输出是文本，
+    // 所以级联到下游绘画时不能把这些图片重新当成参考图。
+    if(node.type === 'smart-agent') return [];
+    if(isSmartAiRenderNode(node)) return smartAiRenderInputReferences(node, ctx).filter(img => !isInputRefBlocked(node, img));
     if(node.smartEditSource?.sourceUrl){
         const source=node.smartEditSource;
         // 智能改图绑定打开编辑器时的单张原图，包括再次运行时。
@@ -26030,6 +26859,9 @@ function defaultReferenceImagesFor(node, consume=false, ctx=smartLoopContext){
     return orderedSmartInputReferences(node, [...upstream, ...manual]);
 }
 function stableReferenceImagesFor(node, consume=false, ctx=smartLoopContext){
+    // 智能对话节点仍需在自身面板和请求中看到上游参考图；这里只禁止它
+    // 作为图片输出流向下游，不能把节点自己的输入缩略图一并隐藏。
+    if(node?.type === 'smart-agent') return promptNodeInputMediaForLLM(node);
     const base = defaultReferenceImagesFor(node, consume, ctx);
     // The first edit replaces a standalone source image with its generated result.
     // Keep the exact request inputs as provenance so later reruns continue editing
@@ -26038,7 +26870,11 @@ function stableReferenceImagesFor(node, consume=false, ctx=smartLoopContext){
         ? node.runInputRefs.filter(ref => ref?.url && !isInputRefBlocked(node, ref))
         : [];
     const savedSelf = saved.filter(ref => ref.nodeId && ref.nodeId === node?.id);
-    return orderedSmartInputReferences(node, [...base, ...(base.length ? savedSelf : saved)]);
+    // 旧版本可能把智能对话透传的图片写进下游绘画节点的 runInputRefs。
+    // 当前仍连接智能对话且没有其它图片输入时，不要用这份旧快照把图片带回来。
+    const hasTextOnlyAgentInput = workflowInputNodesFor(node).some(input => input?.type === 'smart-agent');
+    const savedFallback = hasTextOnlyAgentInput ? [] : saved;
+    return orderedSmartInputReferences(node, [...base, ...(base.length ? savedSelf : savedFallback)]);
 }
 function upstreamRerunReferenceImagesFor(node, consume=false, ctx=smartLoopContext){
     if(!node) return [];
@@ -26535,6 +27371,15 @@ function syncReferenceTarget(nodeId){
         }
     }
     if(selectedId === nodeId) renderInputThumbsRow(node);
+    if(isSmartAiRenderNode(node)){
+        const pickerRole = normalizeSmartNodeInputSlot(node, node.aiRender?.pendingPickerRole);
+        if(pickerRole && pickerRole !== 'product' && Array.isArray(node.manualInputRefs)){
+            const assigned = node.manualInputRefs.find(ref => ref?.url && !ref.aiRenderRole);
+            if(assigned) assigned.aiRenderRole = pickerRole;
+            delete node.aiRender.pendingPickerRole;
+        }
+        render({nodeIds:[nodeId]});
+    }
     scheduleConnectionLayerRefresh();
     notifyCanvasTaskScopeChange();
     window.SmartCanvasReferencePicker?.invalidate();
@@ -26726,13 +27571,15 @@ function buildPromptRequest(node, overrideDefaultImages=null, consumeDefault=fal
     const blockedRefs = blockedInputRefKeys(node);
     const hasOverrideImages = Array.isArray(overrideDefaultImages);
     const baseImages = hasOverrideImages ? overrideDefaultImages : stableReferenceImagesFor(node, consumeDefault, ctx);
-    const orderedImages = node?.type === SMART_PAINT_NODE_TYPE
+    const orderedImages = isSmartAiRenderNode(node)
+        ? (hasOverrideImages ? overrideDefaultImages : smartAiRenderInputReferences(node, ctx))
+        : node?.type === SMART_PAINT_NODE_TYPE
         ? orderedSmartInputReferences(node, [...baseImages, ...collectMentionedImagesFromPrompt()])
         : baseImages;
     const filteredDefaultImages = orderedImages
         .filter(img => !isInputRefBlocked(node,img));
     const defaultRefs = uniqueReferenceImages(filteredDefaultImages);
-    const refs = defaultRefs.map((img, index) => ({...img, role:`image_${index + 1}`}));
+    const refs = defaultRefs.map((img, index) => ({...img, role:isSmartAiRenderNode(node) ? (img.aiRenderRole || 'product') : `image_${index + 1}`}));
     let hasMentionToken = false;
     const refMap = new Map();
     refs.forEach((img, index) => refMap.set(img.url, index + 1));
@@ -26756,12 +27603,16 @@ function buildPromptRequest(node, overrideDefaultImages=null, consumeDefault=fal
         body += `图${refMap.get(part.url)}`;
     });
     body = body.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    if(isSmartAiRenderNode(node) && node.aiRender?.prompt){
+        body = [String(node.aiRender.prompt || '').trim(), body].filter(Boolean).join('\n\n');
+    }
     const groupPrompt = isSmartGroupNode(node) ? textForNode(node, ctx).trim() : '';
     const inputNodes = promptInputNodesFor(node);
     const inputPrompt = inputNodes.filter(input => !isSmartCameraNode(input)).map(input => textForNode(input, ctx)).filter(Boolean).join('\n\n').trim();
     const cameraPrompt = inputNodes.filter(isSmartCameraNode).map(input => textForNode(input, ctx)).filter(Boolean).join('\n\n').trim();
     // Keep the user's composer text first and append camera instructions last.
-    if(groupPrompt || inputPrompt || cameraPrompt) body = [body, groupPrompt, inputPrompt, cameraPrompt].filter(Boolean).join('\n\n');
+    const upstreamText = [groupPrompt, inputPrompt, cameraPrompt].filter(Boolean).join('\n\n');
+    if(upstreamText) body = [body, upstreamText].filter(Boolean).join('\n\n');
     if(!body && settings.engine === 'runninghub'){
         body = rhDefaultPromptSuggestion();
     }
@@ -26771,14 +27622,16 @@ function buildPromptRequest(node, overrideDefaultImages=null, consumeDefault=fal
         return {
             prompt:`${tr('smart.refMapHeader')}\n${mapText}\n\n${tr('smart.refUserNeed')}\n${body}`,
             displayPrompt,
-            refs:refs.map((img, index) => ({...img, url:img.url, name:img.name || `图${index + 1}`, nodeId:img.nodeId || '', imageIndex:img.imageIndex ?? '', kind:img.kind || mediaKindForItem(img), asset_uris:img.asset_uris || {}, role:`image_${index + 1}`})),
+            upstreamText,
+            refs:refs.map((img, index) => ({...img, url:img.url, name:img.name || `图${index + 1}`, nodeId:img.nodeId || '', imageIndex:img.imageIndex ?? '', kind:img.kind || mediaKindForItem(img), asset_uris:img.asset_uris || {}, role:isSmartAiRenderNode(node) ? (img.aiRenderRole || img.role || 'product') : `image_${index + 1}`})),
             mentioned:true
         };
     }
     return {
         prompt:body,
         displayPrompt,
-        refs:refs.map((img, index) => ({...img, url:img.url, name:img.name || `图${index + 1}`, nodeId:img.nodeId || '', imageIndex:img.imageIndex ?? '', kind:img.kind || mediaKindForItem(img), asset_uris:img.asset_uris || {}, role:`image_${index + 1}`})),
+        upstreamText,
+        refs:refs.map((img, index) => ({...img, url:img.url, name:img.name || `图${index + 1}`, nodeId:img.nodeId || '', imageIndex:img.imageIndex ?? '', kind:img.kind || mediaKindForItem(img), asset_uris:img.asset_uris || {}, role:isSmartAiRenderNode(node) ? (img.aiRenderRole || img.role || 'product') : `image_${index + 1}`})),
         mentioned:false
     };
 }
@@ -26855,6 +27708,7 @@ function createPendingOutputFromSource(sourceNode, expectedCount, meta, options=
         scale:MEDIA_NODE_DEFAULT_SCALE,
         created_at:Date.now()
     };
+    if(isSmartAiRenderNode(sourceNode)) output.aiRenderSourceId = sourceNode.id;
     output._selectAfterRunId = options.selectOutput ? output.id : sourceNode.id;
     nodes.push(output);
     if(options.connectSource === false) addConnection(sourceNode.id, output.id, 'flow');
@@ -27715,29 +28569,7 @@ function syncCascadeRunButton(node=selectedNode()){
     refreshIcons();
 }
 function loadNodePromptDraftToInput(node){
-    if(node?.promptDraftTouched && !node.promptDraftHtml){
-        setPromptText('');
-        return;
-    }
-    if(node?.promptDraftHtml) {
-        const draftText = node.promptDraftText || node.runPrompt || '';
-        if(!shouldRestorePromptDraft(node, draftText)) {
-            setPromptText('');
-            return;
-        }
-        const hasToken = String(node.promptDraftHtml || '').includes('mention-image-token');
-        promptInput.innerHTML = hasToken
-            ? node.promptDraftHtml
-            : (promptHtmlWithMentionTokens(node.promptDraftText || '', node.runPromptRefs || []) || node.promptDraftHtml);
-    } else {
-        if(!shouldRestorePromptDraft(node, node?.runPrompt || '')) {
-            setPromptText('');
-            return;
-        }
-        const rebuilt = promptHtmlWithMentionTokens(node?.runPrompt || '', node?.runPromptRefs || []);
-        if(rebuilt) promptInput.innerHTML = rebuilt;
-        else setPromptText(node?.runPrompt || '');
-    }
+    applyLocalPromptDraft(node);
 }
 async function createSmartComfyTask(payload){
     payload = {
@@ -27856,11 +28688,7 @@ function comfyParamsFromWorkflowValues(config, values={}, savedParams={}){
 }
 function buildPromptRequestForNode(node, defaultImages, ctx=smartLoopContext, consumeDefault=false){
     const oldHtml = promptInput.innerHTML;
-    if(node?.promptDraftHtml != null){
-        if(shouldRestorePromptDraft(node, node.promptDraftText || '')) promptInput.innerHTML = node.promptDraftHtml;
-        else setPromptText('');
-    }
-    else loadNodePromptDraftToInput(node);
+    applyLocalPromptDraft(node, ctx);
     try {
         return buildPromptRequest(node, defaultImages, consumeDefault, ctx);
     } finally {
@@ -27977,6 +28805,8 @@ async function runCascadeStepIntoNode(sourceNode, targetNode, inputRefs, ctx=sma
         refsForRequest,
         ctx
     );
+    // 记录本次合并进来的上游文本，后续恢复草稿时用来识别旧版本写入的上游回显。
+    requestNode.runUpstreamText = String(request.upstreamText || '').trim();
     const prompt = (request.prompt || '').trim();
     const displayPrompt = (request.displayPrompt || '').trim();
     if((!prompt || !displayPrompt) && smartRunNeedsPrompt(runSettings)){
@@ -28079,6 +28909,8 @@ async function runLoopRoundIntoSlot(loopNode, rootNode, outputSlot, loopIndex, c
         const refsForRequest = outputImagesForNode(loopNode, true, ctx).filter(img => img?.url);
         // 绘画节点里保留对应屏幕提示词；详情页批量节点本身只负责提供共享素材。
         const request = buildPromptRequestForNode(rootNode, refsForRequest.length ? refsForRequest : null, ctx);
+        // 记录本次合并进来的上游文本，后续恢复草稿时用来识别旧版本写入的上游回显。
+        rootNode.runUpstreamText = String(request.upstreamText || '').trim();
         const prompt = (request.prompt || '').trim();
         const displayPrompt = (request.displayPrompt || '').trim();
         if(smartLoopIsPaired(loopNode) && loopNode.batchDetailModeV2){
@@ -28715,7 +29547,23 @@ function cancelAgentNode(nodeId){
     const node = nodes.find(item => item.id === nodeId);
     if(!node || node.type !== 'smart-agent') return;
     let cancelled = false;
-    for(const state of smartDependencyRuns.values()){
+    for(const state of [...smartDependencyRuns.values()]){
+        // 正在作为上游运行的智能对话：中止它自己的请求，否则这次占用会一直挂在
+        // smartDependencyRuns 里，节点按钮停在“取消”，用户再也无法重新运行。
+        if(state.sourceId === nodeId){
+            cancelled = true;
+            state.owners?.clear();
+            state.controller.abort();
+            const waitingNode = nodes.find(item => item.id === state.sourceId);
+            if(state.waitingForExistingTask && waitingNode?.type === 'smart-agent' && waitingNode.running){
+                waitingNode.running = false;
+                waitingNode.runFinishedAt = nowMs();
+                waitingNode.runElapsedMs = Math.max(0, waitingNode.runFinishedAt - Number(waitingNode.runStartedAt || waitingNode.runFinishedAt));
+                waitingNode.runError = SMART_AGENT_CANCELLED;
+            }
+            continue;
+        }
+        // 作为链路依赖被取消：摘掉占用者，没有其他占用者时中止这次上游运行。
         if(!state.owners?.delete(nodeId)) continue;
         cancelled = true;
         if(!state.owners.size){
@@ -28851,6 +29699,33 @@ async function runGeneration(referenceMode='default', referenceOverride=null, pr
     const runSettings = cloneSmartSettings(settings);
     return runSmartNodeWithDependencies(node, current => runGenerationDirect(referenceMode, referenceOverride, promptOverride, current, runSettings));
 }
+async function runAiRenderNode(nodeId){
+    const node = nodes.find(item => item.id === nodeId);
+    if(!node || !isSmartAiRenderNode(node) || smartNodeInFlight(node)) return {ok:false, error:'节点正在运行'};
+    normalizeSmartAiRenderNode(node);
+    const refs = smartAiRenderInputReferences(node);
+    if(!refs.some(image => image?.aiRenderRole === 'white')){
+        toast('请先连接白模参考图');
+        return {ok:false, error:'请先连接白模参考图'};
+    }
+    const prompt = String(node.aiRender?.prompt || '').trim();
+    if(!prompt){
+        toast('请填写渲染要求');
+        return {ok:false, error:'请填写渲染要求'};
+    }
+    syncSmartAiRenderRunSettings(node);
+    selectedId = node.id;
+    selectedIds = [];
+    selectedImage = {nodeId:'', index:-1};
+    syncSelectionUi();
+    updateComposer();
+    render({nodeIds:[node.id]});
+    const executionSettings = cloneSmartSettings(node.runSettings || settings);
+    return runSmartNodeWithDependencies(node, current => {
+        const currentRefs = smartAiRenderInputReferences(current);
+        return runGenerationDirect('default', currentRefs, String(current.aiRender?.prompt || '').trim(), current, executionSettings);
+    });
+}
 async function runGenerationDirect(referenceMode='default', referenceOverride=null, promptOverride='', node=selectedNode(), executionSettings=null){
     if(!node) return {ok:false, error:'请选择要运行的节点'};
     const multiAgentCanvasId=executionSettings?.multiAgentCanvasId;
@@ -28930,8 +29805,13 @@ async function runGenerationDirect(referenceMode='default', referenceOverride=nu
         settings.outpaintMode = true;
     }
     const meta = snapshotRunMeta(prompt, node.id, displayPrompt, refs);
-    meta.promptHtml = node.promptDraftHtml ?? escapeHtml(node.runPrompt || '');
-    meta.promptText = node.promptDraftText ?? node.runPrompt ?? '';
+    // 只把本节点自己的提示词写回草稿；上游文本由 buildPromptRequest 在提交时合并。
+    // 把合并后的上游文本写进草稿，会让上游删除后旧提示词留在下游节点，
+    // 用户看到的现象就是“提示词跑到生图节点，提示词删不掉”。
+    const localDraft = localPromptDraftFor(node, smartLoopContext);
+    meta.promptHtml = localDraft.html || escapeHtml(localDraft.text);
+    meta.promptText = localDraft.text;
+    node.runUpstreamText = String(request.upstreamText || '').trim();
     const logKind = isApiLikeEngine(settings.engine) && settings.apiKind === 'video' ? 'video' : 'image';
     const runLog = smartRunSnapshot(node, prompt, refs, logKind);
     rememberRecentSmartSettings(settings, node);
@@ -28950,7 +29830,10 @@ async function runGenerationDirect(referenceMode='default', referenceOverride=nu
     const groupRun = isSmartGroupNode(node);
     const comfyWorkflowRun = isSmartComfyWorkflowNode(node);
     if(comfyWorkflowRun) delete node.runError;
-    const shouldCreateBranchOutput = groupRun || comfyWorkflowRun || settings.engine === 'comfy';
+    // AI 渲染节点是参数/输入编排节点，生成结果放到右侧独立图片节点，
+    // 让原节点继续保留可编辑的参考槽和生成设置，也与画布的“输入 → 输出”
+    // 视觉流一致。普通图片节点仍沿用原地替换结果的行为。
+    const shouldCreateBranchOutput = groupRun || comfyWorkflowRun || settings.engine === 'comfy' || isSmartAiRenderNode(node);
     const sourceVisualState = shouldCreateBranchOutput && !comfyWorkflowRun && isSmartImageNode(node) && nodeHasImages && !workflowModeRun ? {
         images:(node.images || []).map(img => ({...img})),
         title:node.title,
@@ -31008,6 +31891,7 @@ function createNodeFromMenu(type){
     else if(type === 'compare') created = createCompareNode(p.x - Math.round(SMART_COMPARE_DEFAULT_WIDTH / 2), p.y - Math.round(SMART_COMPARE_DEFAULT_HEIGHT / 2));
     else if(type === 'color') created = createColorNode(p.x - Math.round(SMART_COLOR_DEFAULT_WIDTH / 2), p.y - Math.round(SMART_COLOR_DEFAULT_HEIGHT / 2));
     else if(type === 'paint') created = createPaintNodeAt(p);
+    else if(type === 'ai-render') created = createAiRenderNodeAt(p);
     else if(type === 'product-fidelity') created = createProductFidelityNodeAt(p);
     else if(type === 'drawing-board') created = createDrawingBoardNodeAt(p);
     else if(type === 'comfyui') created = createComfyWorkflowNodeFromCatalog(p);
@@ -31037,7 +31921,7 @@ function createNodeFromMenu(type){
         let connected = 0;
         fromIds.filter(fromId => fromId !== toId).forEach(fromId => {
             const inputSlot = pendingConnection.fromPort === 'in'
-                ? normalizeSmartColorInputSlot(pendingConnection.fromInputSlot)
+                ? normalizeSmartNodeInputSlot(nodes.find(node => node.id === pendingConnection.fromId), pendingConnection.fromInputSlot)
                 : '';
             if(connectInputNode(fromId, toId, inputSlot)) connected += 1;
         });
@@ -32483,9 +33367,77 @@ promptInput.addEventListener('paste', event => {
     event.stopPropagation();
     insertPlainTextIntoPrompt(text);
 });
+// 图片/视频胶囊(.mention-image-token)是 contenteditable=false 的内联原子块。光标一旦被浏览器
+// 放进这块不可编辑区域，退格/Delete/方向键就全部失灵——用户看到的就是"点一下胶囊，删不掉也走不出去"。
+// 这里统一收口：点胶囊只把光标吸附到它的前后，按键时把整颗胶囊当成一个字符删掉。
+function mentionTokenOf(node){
+    if(!node) return null;
+    const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    return el?.closest?.('.mention-image-token') || null;
+}
+function promptCaretRange(){
+    const sel = window.getSelection();
+    if(!sel || !sel.rangeCount) return null;
+    const range = sel.getRangeAt(0);
+    return promptInput.contains(range.startContainer) ? range : null;
+}
+function setCaretBesideToken(token, side){
+    if(!token?.isConnected) return;
+    const range = document.createRange();
+    const next = token.nextSibling;
+    if(side === 'before') range.setStartBefore(token);
+    else if(next && next.nodeType === Node.TEXT_NODE && next.textContent) range.setStart(next, 0);
+    else range.setStartAfter(token);
+    range.collapse(true);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+}
+function removeMentionToken(token){
+    if(!token?.isConnected) return false;
+    const parent = token.parentNode;
+    const next = token.nextSibling;
+    token.remove();
+    const range = document.createRange();
+    if(next && next.parentNode === parent) range.setStart(next, 0);
+    else {
+        range.selectNodeContents(parent || promptInput);
+        range.collapse(false);
+    }
+    range.collapse(true);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    promptInput.dispatchEvent(new Event('input', {bubbles:true}));
+    return true;
+}
+promptInput.addEventListener('mousedown', event => {
+    const token = mentionTokenOf(event.target);
+    if(!token || promptInput.dataset.promptLocked === '1') return;
+    // 不拦下来，浏览器会把光标塞进不可编辑区域，之后就只剩"删不掉"这一种结局。
+    event.preventDefault();
+    if(document.activeElement !== promptInput) promptInput.focus();
+    const rect = token.getBoundingClientRect();
+    setCaretBesideToken(token, event.clientX < rect.left + rect.width / 2 ? 'before' : 'after');
+});
 promptInput.addEventListener('keydown', event => {
     if(event.key === 'Escape') closeMentionPicker();
     if(event.isComposing || event.altKey || event.shiftKey) return;
+    // 光标万一仍在胶囊内部（双击、拖选、恢复草稿），退格/Delete 直接删掉整颗胶囊。
+    const caret = promptInput.dataset.promptLocked === '1' ? null : promptCaretRange();
+    const tokenAtCaret = caret && caret.collapsed ? mentionTokenOf(caret.startContainer) : null;
+    if(tokenAtCaret){
+        if(event.key === 'Backspace' || event.key === 'Delete'){
+            event.preventDefault();
+            removeMentionToken(tokenAtCaret);
+            return;
+        }
+        if(event.key === 'ArrowLeft' || event.key === 'ArrowRight'){
+            event.preventDefault();
+            setCaretBesideToken(tokenAtCaret, event.key === 'ArrowLeft' ? 'before' : 'after');
+            return;
+        }
+    }
     if((event.ctrlKey || event.metaKey) && event.key === 'Enter'){
         event.preventDefault();
         event.stopPropagation();

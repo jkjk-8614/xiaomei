@@ -54,8 +54,10 @@
         const count = flow.experts.length;
         const status = node.expertRunStatus || 'idle';
         const busy = isBusy(node);
+        // 输出预览必须保留完整结果。`short()` 只适合输入卡片和职责摘要，
+        // 不能用于这里，否则长提示词会在节点里被省略号截断。
         const preview = node.outputText
-            ? (status === 'completed' ? '' : '上次结果：') + short(node.outputText)
+            ? (status === 'completed' ? '' : '上次结果：') + String(node.outputText).trim()
             : (count ? '打开编排，查看专家和连线。' : '添加专家并连接流程。');
         return [
             '<div class="expert-workflow-node">',

@@ -2750,7 +2750,7 @@ html[data-studio-skin] body .shell .composer.comfy-run-only > .composer-card > .
         outline: 2px solid var(--colorStrokeFocus2) !important;
         outline-offset: 2px !important;
     }
-    .canvas-agent-skill-quick-search input:focus-visible {
+    :is(.canvas-agent-skill-quick-search, .canvas-agent-skill-search) input:focus-visible {
         outline: none !important;
     }
     input:not([type="range"]):not([type="color"]):not([type="checkbox"]):not([type="radio"]), select, textarea {

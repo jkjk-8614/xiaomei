@@ -3258,7 +3258,133 @@ function fingerprintDeepSeekSkills(skillRoots) {
   return entries.sort().join('\n');
 }
 
+function readXiaomeiMcpServers() {
+  const file = path.join(xiaomeiApiConfigRoot(), 'data', 'mcp_servers.json');
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
+    const servers = Array.isArray(parsed?.servers) ? parsed.servers : [];
+    return servers.filter(server => server && typeof server === 'object' && server.enabled !== false);
+  } catch {
+    return [];
+  }
+}
+
+// MCP 服务只在 data/mcp_servers.json 里维护一份。这里盯着这个文件，
+// 让"在 DeepSeek 对话里让 AI 装一个 MCP"和"在小美画布里手工添加"落到同一处。
+let xiaomeiMcpWatcher = null;
+let xiaomeiMcpRefreshTimer = null;
+let xiaomeiMcpRefreshPending = false;
+
+/**
+ * Apply a changed MCP service list to the Harness profile.
+ * The Host registers MCP clients at startup, so a restart is required for the
+ * new tools to appear. Restarting while a reply is being written would cut the
+ * answer off, therefore the restart waits until the DeepSeek panel is hidden.
+ * @returns {void}
+ */
+function applyXiaomeiMcpServersChange() {
+  try { ensureDeepSeekHarnessProfile(); } catch {}
+  if (!deepSeekHarnessVisible) {
+    xiaomeiMcpRefreshPending = false;
+    void refreshDeepSeekHarness().catch(() => {});
+    return;
+  }
+  xiaomeiMcpRefreshPending = true;
+  if (xiaomeiMcpRefreshTimer) clearTimeout(xiaomeiMcpRefreshTimer);
+  xiaomeiMcpRefreshTimer = setTimeout(() => {
+    xiaomeiMcpRefreshTimer = null;
+    if (!xiaomeiMcpRefreshPending) return;
+    xiaomeiMcpRefreshPending = false;
+    void refreshDeepSeekHarness().catch(() => {});
+  }, 45000);
+}
+
+/**
+ * Watch the shared MCP service file and reload the DeepSeek panel when it changes.
+ * The state at startup is the baseline, so a file that already exists never
+ * restarts the panel on launch. The baseline is read once up front instead of on
+ * the first successful stat: an MCP installed from the conversation creates this
+ * file from nothing, and that first appearance has to rebuild the profile too.
+ * A missing file only moves the baseline, so a transient stat failure cannot
+ * restart the panel behind the user's back.
+ * @returns {void}
+ */
+function watchXiaomeiMcpServers() {
+  if (xiaomeiMcpWatcher) return;
+  const file = path.join(xiaomeiApiConfigRoot(), 'data', 'mcp_servers.json');
+  const readMtime = () => {
+    try { return fs.statSync(file).mtimeMs; } catch { return 0; }
+  };
+  // 基线在启动时取一次：文件当时不存在就记为 0，之后 AI 首次写出配置
+  // 才算"变化"，否则会被当成基线吞掉，profile 里永远缺这个 MCP。
+  let lastMtime = readMtime();
+  const poll = () => {
+    const mtime = readMtime();
+    if (mtime === lastMtime) return;
+    lastMtime = mtime;
+    if (!mtime) return;
+    applyXiaomeiMcpServersChange();
+  };
+  xiaomeiMcpWatcher = setInterval(poll, 3000);
+  if (typeof xiaomeiMcpWatcher.unref === 'function') xiaomeiMcpWatcher.unref();
+}
+
+/**
+ * YAML key for an environment variable or request header name.
+ * @param {string} value - key text.
+ * @returns {string} plain key when it is unambiguous, otherwise a quoted key.
+ */
+function yamlEnvKey(value) {
+  const text = String(value ?? '').trim();
+  return /^[A-Za-z_][A-Za-z0-9_.-]*$/.test(text) ? text : JSON.stringify(text);
+}
+
+/**
+ * Build the Harness MCP client rows for the enabled 小美画布 MCP services.
+ * Each row mounts one @deepseek-ai/dsh-mcp-client instance whose tools appear
+ * as mcp__<serverName>__<tool> in the DeepSeek conversation. The profile patch
+ * is a patch list, so a new row is added with the loader's insert form.
+ * @param {Array<object>} servers - enabled MCP service records.
+ * @returns {string[]} profile patch lines.
+ */
+function mcpClientProfileRows(servers) {
+  const rows = [];
+  for (const server of servers) {
+    const serverName = String(server.server_name || '').trim();
+    if (!/^[A-Za-z0-9_-]{1,32}$/.test(serverName)) continue;
+    const config = [`      serverName: ${yamlScalar(serverName)}`];
+    if (server.transport === 'http') {
+      const url = String(server.url || '').trim();
+      if (!/^https?:\/\//i.test(url)) continue;
+      config.push(`      transport: ${yamlScalar('streamable-http')}`);
+      config.push(`      url: ${yamlScalar(url)}`);
+      const headers = Object.entries(server.headers || {}).filter(([key, value]) => key && typeof value === 'string');
+      if (headers.length) {
+        config.push('      headers:');
+        for (const [key, value] of headers) config.push(`        ${yamlEnvKey(key)}: ${yamlScalar(value)}`);
+      }
+    } else {
+      const command = String(server.command || '').trim();
+      if (!command) continue;
+      config.push(`      transport: ${yamlScalar('stdio')}`);
+      config.push(`      command: ${yamlScalar(command)}`);
+      const args = Array.isArray(server.args) ? server.args.filter(arg => typeof arg === 'string') : [];
+      if (args.length) config.push(`      args: ${JSON.stringify(args)}`);
+      const cwd = String(server.cwd || '').trim();
+      if (cwd) config.push(`      cwd: ${yamlScalar(cwd)}`);
+      const env = Object.entries(server.env || {}).filter(([key, value]) => key && typeof value === 'string');
+      if (env.length) {
+        config.push('      env:');
+        for (const [key, value] of env) config.push(`        ${yamlEnvKey(key)}: ${yamlScalar(value)}`);
+      }
+    }
+    rows.push('- insert:', `  - id: mcp-${serverName}`, "    name: '@deepseek-ai/dsh-mcp-client'", '    config:', ...config);
+  }
+  return rows;
+}
+
 function ensureDeepSeekHarnessProfile() {
+  const packagedHarness = typeof PACKAGED_DEEPSEEK_HARNESS !== 'undefined' && PACKAGED_DEEPSEEK_HARNESS;
   const home = path.join(TEST_RUNTIME_DATA_ROOT, '.xiaomei-data', 'deepseek-harness');
   const profile = path.join(home, 'profiles', 'desktop');
   fs.mkdirSync(profile, { recursive: true });
@@ -3266,16 +3392,16 @@ function ensureDeepSeekHarnessProfile() {
   if (!fs.existsSync(manifestPath)) {
     fs.writeFileSync(manifestPath, JSON.stringify({ name: 'xiaomei-dsh-desktop-profile', private: true, dependencies: {}, dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'] } } }, null, 2) + '\n', 'utf8');
   }
-  const dshAnchor = PACKAGED_DEEPSEEK_HARNESS
+  const dshAnchor = packagedHarness
     ? path.join(DEEPSEEK_HARNESS_ROOT, 'node_modules', '@deepseek-ai', 'dsh')
     : path.join(DEEPSEEK_HARNESS_ROOT, 'apps', 'cli', 'node_modules', '@deepseek-ai', 'dsh');
-  if (!PACKAGED_DEEPSEEK_HARNESS && !fs.existsSync(dshAnchor)) { try { fs.symlinkSync(path.join(DEEPSEEK_HARNESS_ROOT, 'apps', 'cli'), dshAnchor, 'junction'); } catch {} }
+  if (!packagedHarness && !fs.existsSync(dshAnchor)) { try { fs.symlinkSync(path.join(DEEPSEEK_HARNESS_ROOT, 'apps', 'cli'), dshAnchor, 'junction'); } catch {} }
   const profileModules = path.join(profile, 'node_modules', '@deepseek-ai');
   fs.mkdirSync(profileModules, { recursive: true });
   for (const name of ['dsh-base', 'dsh-web-app', 'dsh-skill-filesystem', 'dsh-session-persistence-jsonl']) {
     const target = path.join(profileModules, name);
     if (!fs.existsSync(target)) {
-      const source = PACKAGED_DEEPSEEK_HARNESS
+      const source = packagedHarness
         ? path.join(DEEPSEEK_HARNESS_ROOT, 'node_modules', '@deepseek-ai', name)
         : path.join(DEEPSEEK_HARNESS_ROOT, 'apps', 'cli', 'node_modules', '@deepseek-ai', name);
       if (fs.existsSync(source)) { try { fs.symlinkSync(source, target, 'junction'); } catch {} }
@@ -3287,6 +3413,7 @@ function ensureDeepSeekHarnessProfile() {
   if (!skillRoots.length) skillRoots.push(path.join(PROJECT_ROOT, 'data', 'agent_skills').replace(/\\/g, '/'));
   const skillFingerprint = fingerprintDeepSeekSkills(skillRoots);
   const sessionRoot = path.join(home, 'sessions').replace(/\\/g, '/');
+  const mcpRows = mcpClientProfileRows(readXiaomeiMcpServers());
   const profilePatch = [
       // 可用模型全部来自小美画布；空配置也不能回退到官方独立凭证。
         "- id: llm-deepseek",
@@ -3353,6 +3480,8 @@ function ensureDeepSeekHarnessProfile() {
       "  name: '@deepseek-ai/dsh-client-ui-settings-general'",
       "  config:",
       "    welcomeNoticeVersion: 'xiaomei-canvas-bridge-1'",
+      // 小美画布 MCP 设置里已启用的服务在这里成为 Harness 的 MCP 客户端。
+      ...mcpRows,
   ].join('\n') + '\n';
   try {
     const current = fs.existsSync(cordis) ? fs.readFileSync(cordis, 'utf8') : '';
@@ -3375,7 +3504,7 @@ function ensureDeepSeekHarnessProfile() {
   const officeSkills = path.join(home, 'office-skills');
   fs.mkdirSync(path.join(primaryRuntime, 'dependencies', 'node', 'bin'), { recursive: true });
   fs.mkdirSync(path.join(officeSkills, 'scripts'), { recursive: true });
-  const packagedOfficeAssets = PACKAGED_DEEPSEEK_HARNESS
+  const packagedOfficeAssets = packagedHarness
     ? path.join(DEEPSEEK_HARNESS_ROOT, 'node_modules', '@deepseek-ai', 'dsh-skill-office', 'assets')
     : path.join(DEEPSEEK_HARNESS_ROOT, 'packages', 'skill', 'skill-office', 'assets');
   if (fs.existsSync(packagedOfficeAssets)) {
@@ -3411,16 +3540,149 @@ function yamlKey(value) {
  * `model_input_modalities` map; those are checked before this conservative
  * family list.
  */
-function harnessModelInputModalities(provider, modelId) {
+function harnessProviderKeyEnv(providerId) {
+  const id = String(providerId || '').trim().toLowerCase();
+  if (id === 'comfly') return 'COMFLY_API_KEY';
+  if (id === 'modelscope') return 'MODELSCOPE_API_KEY';
+  return `API_PROVIDER_${id.replace(/[^A-Za-z0-9]/g, '_').toUpperCase()}_KEY`;
+}
+
+/** Cached provider-declared input modalities, keyed by provider id then model id. */
+function harnessModalityCachePath() {
+  return path.join(xiaomeiApiConfigRoot(), 'data', 'harness_model_modalities.json');
+}
+
+function readHarnessModalityCache() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(harnessModalityCachePath(), 'utf8').replace(/^\uFEFF/, ''));
+    if (parsed && typeof parsed === 'object' && parsed.providers && typeof parsed.providers === 'object') {
+      return { updatedAt: Number(parsed.updatedAt) || 0, providers: parsed.providers };
+    }
+  } catch {}
+  return { updatedAt: 0, providers: {} };
+}
+
+/** Provider registry read that never throws: a broken file must not block chat. */
+function readXiaomeiProvidersTolerant() {
+  try {
+    const file = path.join(xiaomeiApiConfigRoot(), 'data', 'api_providers.json');
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Model-catalog endpoint that publishes `architecture.input_modalities`.
+ * OpenRouter exposes it publicly, so the modality list can be read live
+ * instead of guessed from model ids.
+ */
+function openRouterCatalogURL(value) {
+  const base = String(value || '').trim().replace(/\/+$/, '');
+  if (!/openrouter\.ai/i.test(base)) return '';
+  if (/\/v1$/i.test(base)) return `${base}/models`;
+  if (/\/api$/i.test(base)) return `${base}/v1/models`;
+  return `${base}/api/v1/models`;
+}
+
+async function fetchOpenRouterModalities(provider, apiKey) {
+  const url = openRouterCatalogURL(provider?.base_url);
+  if (!url) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const headers = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+    const response = await fetch(url, { headers, signal: controller.signal });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const entries = Array.isArray(payload?.data) ? payload.data : [];
+    const modalities = {};
+    for (const entry of entries) {
+      const id = String(entry?.id || '').trim();
+      const declared = entry?.architecture?.input_modalities;
+      if (!id || !Array.isArray(declared)) continue;
+      // The Harness only models `text` and `image`; video/file entries are dropped.
+      const accepted = declared
+        .map((value) => String(value).trim().toLowerCase())
+        .filter((value) => value === 'text' || value === 'image');
+      if (!accepted.length) continue;
+      // 文本永远可用；顺序固定为 text 在前，生成的 profile 更易读。
+      modalities[id] = ['text', ...accepted.filter((value) => value !== 'text')];
+    }
+    return Object.keys(modalities).length ? modalities : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const HARNESS_MODALITY_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+let harnessModalityRefreshInFlight = null;
+
+/**
+ * Refresh the modality snapshot from providers that publish one. Runs before
+ * the Harness profile is written so a newly added vision model is not
+ * generated as text-only. Cache-first: only stale or incomplete snapshots
+ * cost a network round trip.
+ */
+async function refreshHarnessModelModalities(force = false) {
+  const cache = readHarnessModalityCache();
+  const targets = readXiaomeiProvidersTolerant().filter((provider) => provider
+    && provider.enabled !== false
+    && openRouterCatalogURL(provider.base_url)
+    && Array.isArray(provider.chat_models)
+    && provider.chat_models.length);
+  if (!targets.length) return cache;
+  const stale = force || !cache.updatedAt || Date.now() - cache.updatedAt > HARNESS_MODALITY_CACHE_TTL_MS;
+  const incomplete = targets.some((provider) => {
+    const known = cache.providers[String(provider.id)] || {};
+    return provider.chat_models.some((id) => !Array.isArray(known[String(id)]));
+  });
+  if (!stale && !incomplete) return cache;
+  if (harnessModalityRefreshInFlight) return harnessModalityRefreshInFlight;
+  harnessModalityRefreshInFlight = (async () => {
+    const next = { updatedAt: Date.now(), providers: { ...cache.providers } };
+    let changed = false;
+    for (const provider of targets) {
+      const providerId = String(provider.id);
+      const apiKey = readApiEnvValue(harnessProviderKeyEnv(providerId), xiaomeiApiConfigRoot());
+      const modalities = await fetchOpenRouterModalities(provider, apiKey);
+      if (!modalities) continue;
+      next.providers[providerId] = modalities;
+      changed = true;
+    }
+    if (!changed) return cache;
+    try {
+      const file = harnessModalityCachePath();
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(next, null, 2) + '\n', 'utf8');
+    } catch {}
+    return next;
+  })().catch(() => cache).finally(() => { harnessModalityRefreshInFlight = null; });
+  return harnessModalityRefreshInFlight;
+}
+
+/**
+ * Return the input modalities a chat model accepts. A provider may supply an
+ * explicit `vision_models` list or a per-model `model_input_modalities` map;
+ * those win. Next comes the live provider snapshot (OpenRouter publishes
+ * `architecture.input_modalities`), and only then a conservative family list
+ * as an offline fallback. `undefined` leaves the Harness default in place.
+ */
+function harnessModelInputModalities(provider, modelId, modalityCache) {
   const id = String(modelId || '').trim();
   const configured = provider?.model_input_modalities?.[id];
   if (Array.isArray(configured) && configured.length) return configured.map((value) => String(value).trim()).filter(Boolean);
   if (Array.isArray(provider?.vision_models) && provider.vision_models.some((value) => String(value).trim() === id)) return ['text', 'image'];
+  const published = modalityCache?.providers?.[String(provider?.id || '')]?.[id];
+  if (Array.isArray(published) && published.length) return published.map((value) => String(value).trim()).filter(Boolean);
   const lc = id.toLowerCase();
   const visionFamilies = [
     'claude', 'gemini', 'gpt-4o', 'gpt-4.1', 'gpt-5', 'grok', 'qwen-vl',
     'qwen3-vl', 'internvl', 'qvq', 'glm-4v', 'minicpm-v', 'pixtral',
-    'mistral-small-3.1', 'llama-4', 'doubao-vision',
+    'mistral-small-3.1', 'llama-4', 'doubao-vision', 'minimax-m3',
   ];
   return visionFamilies.some((family) => lc.includes(family)) ? ['text', 'image'] : undefined;
 }
@@ -3506,6 +3768,9 @@ function readXiaomeiHarnessModelConfig() {
   const env = {};
   const routes = [];
   const configRoot = xiaomeiApiConfigRoot();
+  // 每个模型的输入模态来自平台发布的实时快照（见 refreshHarnessModelModalities），
+  // 缺失时才退回家族白名单，避免新上线的多模态模型被当成纯文本模型。
+  const modalityCache = readHarnessModalityCache();
   let providers = [];
   try {
     const file = path.join(configRoot, 'data', 'api_providers.json');
@@ -3525,9 +3790,7 @@ function readXiaomeiHarnessModelConfig() {
     if (!providerId || !models.length || !/^https?:\/\//i.test(baseURL) || !['openai', 'openai-compatible'].includes(protocol)) continue;
     const routeId = `xiaomei-${providerId}`.replace(/[^a-z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
     if (!routeId) continue;
-    const apiKeyEnv = providerId === 'comfly' ? 'COMFLY_API_KEY'
-      : providerId === 'modelscope' ? 'MODELSCOPE_API_KEY'
-        : `API_PROVIDER_${providerId.replace(/[^A-Za-z0-9]/g, '_').toUpperCase()}_KEY`;
+    const apiKeyEnv = harnessProviderKeyEnv(providerId);
     const apiKey = readApiEnvValue(apiKeyEnv, configRoot) || process.env[apiKeyEnv] || '';
     // 没有 Key 的平台不应进入 Harness 模型下拉框，否则用户选中后才会
     // 收到“缺少凭证”，看起来像又需要重新部署。小美画布 API 设置写入
@@ -3536,7 +3799,9 @@ function readXiaomeiHarnessModelConfig() {
     env[apiKeyEnv] = apiKey;
     routes.push({
       id: routeId,
-      displayName: `小美画布 · ${String(provider.name || providerId).trim()}`,
+      // 模型下拉按平台分组，组头直接显示平台名；不再加“小美画布 · ”前缀，
+      // 整个对话页本身就是小美画布，重复前缀只会让分组标题难以扫读。
+      displayName: String(provider.name || providerId).trim(),
       api: 'openai-completions',
       baseURL,
       apiKeyEnv,
@@ -3551,7 +3816,7 @@ function readXiaomeiHarnessModelConfig() {
         return {
           id: modelId,
           name: String((provider.model_names || {})[id] || id),
-          input: harnessModelInputModalities(provider, modelId),
+          input: harnessModelInputModalities(provider, modelId, modalityCache),
         };
       }).filter((model) => model.id),
     });
@@ -3572,6 +3837,7 @@ function chooseHarnessNode() {
 }
 
 async function startDeepSeekHarness() {
+  await refreshHarnessModelModalities().catch(() => {});
   const profileState = ensureDeepSeekHarnessProfile();
   if (deepSeekHarnessReady && deepSeekHarnessProfileFingerprint === profileState.fingerprint) return deepSeekHarnessReady;
   if (deepSeekHarnessReady && deepSeekHarnessProfileFingerprint !== profileState.fingerprint) {
@@ -3744,6 +4010,12 @@ async function injectXiaomeiHarnessUi() {
   } catch (error) {
     appendDeepSeekHarnessLog('stderr', `图片复制入口加载失败：${error.message}\n`);
   }
+  try {
+    const mcpEntryScript = fs.readFileSync(path.join(__dirname, 'harness-mcp-entry.js'), 'utf8');
+    await deepSeekHarnessView.webContents.executeJavaScript(mcpEntryScript);
+  } catch (error) {
+    appendDeepSeekHarnessLog('stderr', 'MCP 设置入口加载失败：' + error.message + '\n');
+  }
   const origin = LOCAL_ORIGIN;
   const modelConfig = readXiaomeiHarnessModelConfig();
   const modelSummary = {
@@ -3823,7 +4095,8 @@ function navigateFromDeepSeekHarness(rawUrl) {
   let message = null;
   if (pathname === '/static/index.html') {
     const page = parsed.searchParams.get('page');
-    if (['api-settings', 'asset-manager', 'gpt-chat'].includes(page)) message = { type: 'studio-switch-ui', page };
+    if (page === 'mcp') message = { type: 'studio-open-mcp' };
+    else if (['api-settings', 'asset-manager', 'gpt-chat'].includes(page)) message = { type: 'studio-switch-ui', page };
   } else if (pathname === '/static/history.html') {
     message = { type: 'history-manager-open' };
   } else if (pathname === '/static/asset-manager.html') {
@@ -3840,6 +4113,7 @@ function navigateFromDeepSeekHarness(rawUrl) {
 }
 
 async function refreshDeepSeekHarness() {
+  await refreshHarnessModelModalities().catch(() => {});
   const profileState = ensureDeepSeekHarnessProfile();
   const changed = deepSeekHarnessProfileFingerprint !== profileState.fingerprint;
   if (!deepSeekHarnessVisible) return { ok: true, visible: false, changed };

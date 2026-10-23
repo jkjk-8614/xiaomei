@@ -513,6 +513,15 @@ body.theme-dark .asset-context-menu button:hover,body.theme-dark .asset-context-
 .asset-pref-title { display:flex; align-items:center; gap:7px; margin-bottom:10px; color:var(--text); font-size:12px; font-weight:950; }
 .asset-pref-title svg { width:15px; height:15px; }
 .asset-pref-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.image-storage-mode-grid { margin-bottom:12px; }
+.image-storage-mode-card { min-width:0; display:flex; align-items:flex-start; gap:9px; padding:11px 12px; border:1px solid var(--line); border-radius:10px; background:var(--panel); cursor:pointer; }
+.image-storage-mode-card:hover { border-color:var(--line-2); }
+.image-storage-mode-card.active { border-color:var(--line-2); background:var(--soft); box-shadow:0 0 0 2px rgba(15,23,42,.06); }
+.image-storage-mode-card input { flex:0 0 auto; margin:2px 0 0; accent-color:var(--strong); }
+.image-storage-mode-card span { min-width:0; display:flex; flex-direction:column; gap:4px; }
+.image-storage-mode-card b { color:var(--text); font-size:12px; font-weight:950; }
+.image-storage-mode-card em { color:var(--muted); font-size:11px; line-height:1.45; font-style:normal; font-weight:700; }
+.image-storage-cloud-editor { margin-top:0; }
 .asset-pref-wide { grid-column:auto; }
 .asset-pref-full { grid-column:1/-1; }
 .asset-pref-fold { width:100%; min-height:48px; display:grid; grid-template-columns:minmax(150px,.7fr) minmax(0,1fr) 18px; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--panel); color:var(--text); text-align:left; }

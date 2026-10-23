@@ -1,20 +1,22 @@
 (() => {
     'use strict';
     let servers = [], selected = -1, dirty = false, busy = false, loadError = false, previousFocus;
+    let autoPrefix = '';
     const modal = document.createElement('div');
     modal.id = 'mcp-modal'; modal.className = 'studio-modal'; modal.hidden = true;
     modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-labelledby', 'mcp-title');
     modal.innerHTML = `<div class="studio-modal-panel">
-      <div class="studio-modal-head"><div><h2 class="studio-modal-title" id="mcp-title">MCP 设置</h2><p class="mcp-muted">管理小美画布的外部工具服务</p></div><button class="studio-modal-close" id="mcp-close" aria-label="关闭">×</button></div>
+      <div class="studio-modal-head"><div><h2 class="studio-modal-title" id="mcp-title">MCP 设置</h2><p class="mcp-muted">小美画布与 DeepSeek 对话共用的外部工具服务，保存后对话会重启并加载已启用的服务</p></div><button class="studio-modal-close" id="mcp-close" aria-label="关闭">×</button></div>
       <nav class="mcp-tabs" aria-label="MCP 页面"><button id="mcp-settings-tab" class="studio-modal-btn" aria-pressed="true">我的配置</button><button id="mcp-market-tab" class="studio-modal-btn" aria-pressed="false">MCP 市场</button></nav>
       <div class="mcp-layout" id="mcp-settings-view"><aside class="mcp-sidebar"><div class="mcp-toolbar"><button class="studio-modal-btn" id="mcp-add">＋ 添加</button><button class="studio-modal-btn" id="mcp-import">导入 JSON</button></div><input id="mcp-file" type="file" accept=".json,application/json" hidden><div id="mcp-list"></div></aside>
       <div class="mcp-editor"><div id="mcp-empty"><h3>添加你的第一个 MCP 服务</h3><p class="mcp-muted">支持本地命令（STDIO）和远程地址（Streamable HTTP）。可导入服务文档提供的 mcpServers JSON 配置。</p></div>
       <form id="mcp-form" hidden>
         <div class="mcp-row"><label class="mcp-field">服务名称<input id="mcp-name" required maxlength="80" placeholder="例如 Photoshop / Blender"></label><label class="mcp-field">连接方式<select id="mcp-transport"><option value="stdio">本地命令 · STDIO</option><option value="http">远程地址 · Streamable HTTP</option></select></label></div>
-        <label class="mcp-field"><span><input id="mcp-enabled" type="checkbox" style="width:auto"> 启用此配置</span></label>
+        <div class="mcp-row"><label class="mcp-field">工具名前缀<input id="mcp-server-name" maxlength="32" pattern="[A-Za-z0-9_-]*" placeholder="例如 blender（留空自动生成）"></label><label class="mcp-field"><span><input id="mcp-enabled" type="checkbox" style="width:auto"> 启用此配置</span></label></div>
+        <p class="mcp-muted">已启用的服务会作为 MCP 客户端挂进 DeepSeek 对话，工具以 mcp__前缀__工具名 调用。改名会改变工具名，历史会话里的权限规则需要重新确认。</p>
         <div id="mcp-stdio"><label class="mcp-field">启动命令<input id="mcp-command" placeholder="例如 npx、uvx 或程序绝对路径"></label><label class="mcp-field">启动参数（JSON 数组）<textarea id="mcp-args" spellcheck="false" placeholder='["-y", "服务包名"]'></textarea></label><label class="mcp-field">工作目录（选填）<input id="mcp-cwd" placeholder="服务所在文件夹的绝对路径"></label><label class="mcp-field">环境变量（JSON 对象，选填）<textarea id="mcp-env" spellcheck="false" placeholder="{}"></textarea></label></div>
         <div id="mcp-http" hidden><label class="mcp-field">MCP 地址<input id="mcp-url" type="url" placeholder="http://127.0.0.1:8000/mcp"></label><label class="mcp-field">请求头（JSON 对象，选填）<textarea id="mcp-headers" spellcheck="false" placeholder='{"Authorization":"Bearer …"}'></textarea></label></div>
-        <p class="mcp-muted">测试会启动或连接此服务并读取工具列表。连接成功不代表 Photoshop 或 Blender 已就绪；当前设置尚未接入画布 Agent 的工具执行。</p>
+        <p class="mcp-muted">测试会启动或连接此服务并读取工具列表。连接成功不代表 Photoshop 或 Blender 已就绪；保存后 DeepSeek 对话会重启并加载这些服务。</p>
         <div class="mcp-toolbar"><button class="studio-modal-btn" id="mcp-test" type="button">测试连接</button><button class="studio-modal-btn" id="mcp-delete" type="button">移除配置</button></div><div id="mcp-result" role="status"></div>
       </form></div></div>
       <section id="mcp-market-view" class="mcp-market" hidden aria-label="MCP 市场">
@@ -44,14 +46,18 @@
     }
     function capture() {
         if (selected < 0) return;
-        const s = {name:$('name').value.trim(), transport:$('transport').value, enabled:$('enabled').checked,
-            command:$('command').value.trim(), args:object($('args').value, '启动参数', true), cwd:$('cwd').value.trim(),
+        const s = {name:$('name').value.trim(), server_name:$('server-name').value.trim(), transport:$('transport').value, enabled:$('enabled').checked,            command:$('command').value.trim(), args:object($('args').value, '启动参数', true), cwd:$('cwd').value.trim(),
             env:object($('env').value, '环境变量'), url:$('url').value.trim(), headers:object($('headers').value, '请求头')};
         if (!s.name) throw Error('请填写服务名称');
+        if (s.server_name && !/^[A-Za-z0-9_-]{1,32}$/.test(s.server_name)) throw Error('工具名前缀只能包含字母、数字、下划线和短横线，且不超过 32 个字符');
         if (s.transport === 'stdio' && !s.command) throw Error('请填写启动命令');
         if (s.transport === 'http' && !/^https?:\/\//i.test(s.url)) throw Error('请填写 HTTP/HTTPS MCP 地址');
         if (servers.some((x,i) => i !== selected && x.name.toLowerCase() === s.name.toLowerCase())) throw Error('服务名称不能重复');
         servers[selected] = s;
+    }
+    function suggestPrefix(name) {
+        // 前缀只允许 ASCII 字母数字和下划线短横线；中文名由后端生成稳定摘要。
+        return String(name || '').trim().replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^[-_]+|[-_]+$/g, '').slice(0, 32);
     }
     function renderList() {
         $('list').replaceChildren();
@@ -67,8 +73,11 @@
         renderList(); $('form').hidden = selected < 0; $('empty').hidden = selected >= 0;
         if (selected < 0) return;
         const s = servers[selected];
-        for (const k of ['name','transport','command','cwd','url']) $(k).value = s[k] || '';
+        $('name').value = s.name || '';
+        $('server-name').value = s.server_name || '';
+        for (const k of ['transport','command','cwd','url']) $(k).value = s[k] || '';
         for (const k of ['args','env','headers']) $(k).value = JSON.stringify(s[k] || (k === 'args' ? [] : {}), null, 2);
+        autoPrefix=suggestPrefix(s.name||'');
         $('enabled').checked = s.enabled; transport(); $('result').textContent = '';
     }
     function safe(fn) { if (busy) return; try { fn(); } catch(e) { status(e.message); } }
@@ -76,7 +85,10 @@
     function changed() { dirty=true; status('有未保存的更改'); $('result').textContent=''; }
     window.openMcpSettings = async () => {
         if (!modal.hidden) return;
-        previousFocus=document.activeElement; modal.hidden=false; loadError=false; showView(false); setNativeCommerceOverlayActive(true); setBusy(true); status('正在读取配置…');
+        previousFocus=document.activeElement;
+        // DeepSeek 对话是原生子视图，会盖住主窗口里的弹窗；打开前先让它让位。
+        await window.suspendDeepSeekHarnessForModal?.();
+        modal.hidden=false; loadError=false; showView(false); setNativeCommerceOverlayActive(true); setBusy(true); status('正在读取配置…');
         try { const data=await request('settings'); servers=data.servers; selected=servers.length?0:-1; dirty=false; render(); status(''); }
         catch(e) { loadError=true; servers=[]; selected=-1; render(); status(e.message); }
         finally { setBusy(false); $('close').focus(); }
@@ -86,6 +98,7 @@
         if(marketLoading)$('market-status').textContent='查询已取消，可重新搜索。';
         marketAbort?.abort(); marketSequence++; marketLoading=false;
         modal.hidden=true; setNativeCommerceOverlayActive(false); previousFocus?.focus();
+        window.restoreDeepSeekHarnessAfterModal?.();
     }
     $('close').onclick=close; modal.onclick=e => {if(e.target===modal)close();};
     modal.addEventListener('keydown',e => {
@@ -98,6 +111,13 @@
         }
     });
     $('form').onsubmit=e=>e.preventDefault(); $('form').oninput=changed; $('transport').onchange=transport;
+    $('name').oninput=()=>{
+        // 前缀默认跟随服务名称；用户手动改过就不再覆盖。
+        const current=$('server-name').value.trim();
+        if(current && current!==autoPrefix)return;
+        autoPrefix=suggestPrefix($('name').value);
+        $('server-name').value=autoPrefix;
+    };
     $('add').onclick=()=>safe(()=>{capture(); let n=1; while(servers.some(s=>s.name===`新服务 ${n}`))n++;
         servers.push({name:`新服务 ${n}`,transport:'stdio',enabled:true,args:[],env:{},headers:{}});selected=servers.length-1;changed();render();$('name').focus();});
     $('delete').onclick=()=>safe(()=>{if(confirm('移除此 MCP 配置？软件和服务文件会保留。')){servers.splice(selected,1);selected=servers.length?0:-1;changed();render();}});
@@ -119,7 +139,15 @@
     };
     $('save').onclick=async()=>{
         if(busy)return;
-        try{capture();setBusy(true);await request('settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({servers})});dirty=false;renderList();status('设置已保存');}
+        try{capture();setBusy(true);
+            const data=await request('settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({servers})});
+            // 后端会补齐缺失的工具名前缀，以后端返回的结果为准。
+            if(Array.isArray(data.servers)){servers=data.servers;if(selected>=servers.length)selected=servers.length?0:-1;}
+            dirty=false;render();
+            status('设置已保存');
+            // 让桌面端重新生成 Harness profile，已启用的服务在对话里生效。
+            window.requestDeepSeekHarnessRefresh?.();
+        }
         catch(e){status(e.message);}finally{setBusy(false);}
     };
     $('test').onclick=async()=>{

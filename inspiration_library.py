@@ -67,9 +67,20 @@ def _moke_skill_location(case):
         raise HTTPException(400, "这个案例不是可导入的 MOKE Skill")
     url = urlsplit(case["source_url"])
     parts = [unquote(part) for part in url.path.strip("/").split("/")]
+    def valid_segment(value):
+        # MOKE slugs can contain Unicode characters (for example the Chinese
+        # title in ``im2-clean-image-清洁图像``).  Keep the path constrained to
+        # one safe segment while accepting those slugs after URL decoding.
+        return (
+            bool(value)
+            and len(value) <= 120
+            and value[0].isalnum()
+            and all(char.isalnum() or char in "_.-" for char in value)
+        )
+
     if (url.scheme != "https" or url.netloc != "www.mokeaigc.com" or url.query or url.fragment
             or len(parts) != 4 or parts[0] != "skills"
-            or not all(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,119}", part) for part in parts[1:])):
+            or not all(valid_segment(part) for part in parts[1:])):
         raise HTTPException(400, "Skill 来源地址无效，请重新同步 MOKE 来源")
     return parts[2], parts[3]
 

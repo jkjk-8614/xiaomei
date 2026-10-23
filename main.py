@@ -69,6 +69,14 @@ from agent_skill_store import (
     write_skill_text,
 )
 from asset_registry import AssetRegistry, is_asset_id as registry_is_asset_id
+from skill_capabilities import (
+    CAPABILITY_CONTRACT_VERSION,
+    capability_catalog as shared_capability_catalog,
+    capability_labels as shared_capability_labels,
+    evaluate_capabilities as shared_evaluate_capabilities,
+    parse_capability_ids as shared_parse_capability_ids,
+    unknown_capability_ids as shared_unknown_capability_ids,
+)
 from project_agent_store import AgentStateError, ProjectAgentStore, DEFAULT_SETTINGS, FREQUENCIES
 from project_agent_analyzer import TRIGGERS as PROJECT_AGENT_TRIGGERS, summarize as project_agent_summarize, progress as project_agent_progress, candidate as project_agent_candidate, model_intent as project_agent_model_intent, apply_model_intent as project_agent_apply_model_intent, safe_error as project_agent_safe_error
 from deepseek_harness import (
@@ -83,6 +91,7 @@ from canvas_agent_commands import (
     normalize_operation as normalize_canvas_command_operation,
 )
 from remote_media import open_public_remote_response
+from runtime_paths import resolve_roots, migrate_legacy_data, seed_workflows
 from document_attachments import DOCUMENT_EXTS, LEGACY_DOCUMENT_EXTS, document_archive_read, document_preview_image_bytes, document_preview_images, read_document_text
 
 QUIET_ACCESS_PATHS = {
@@ -113,16 +122,23 @@ class QuietAccessLogFilter(logging.Filter):
 logging.getLogger("uvicorn.access").addFilter(QuietAccessLogFilter())
 
 def _runtime_root():
-    """Resolve the persistent application directory in source and PyInstaller builds."""
+    """Locate application files in source and PyInstaller builds."""
     if getattr(sys, "frozen", False):
         return os.path.dirname(os.path.abspath(sys.executable))
     return os.path.dirname(os.path.abspath(__file__))
 
 
-PROJECT_ROOT = _runtime_root()
+_project_path, _data_path = resolve_roots(_runtime_root())
+PROJECT_ROOT, RUNTIME_ROOT = str(_project_path), str(_data_path)
 # 保持运行时根目录也在搜索路径中，兼容便携 Python 与打包环境。
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
+try:
+    _migrated_files = migrate_legacy_data(_project_path, _data_path)
+    if _migrated_files:
+        print(f"已迁移旧版运行数据：{_migrated_files} 个文件")
+except Exception as _migration_error:
+    print(f"旧版运行数据迁移失败，下次启动将重试：{_migration_error}")
 
 app = FastAPI()
 from bridge_api import router as local_bridge_router
@@ -512,10 +528,10 @@ class ConnectionManager:
 manager = ConnectionManager()
 GLOBAL_LOOP = None
 APP_VERSION = "2026.06.03"
-GITHUB_REPO_URL = "https://github.com/hero8152/Infinite-Canvas"
-GITHUB_VERSION_URL = "https://raw.githubusercontent.com/hero8152/Infinite-Canvas/main/VERSION"
-GITHUB_TREE_URL = "https://api.github.com/repos/hero8152/Infinite-Canvas/git/trees/main?recursive=1"
-GITHUB_RAW_ROOT = "https://raw.githubusercontent.com/hero8152/Infinite-Canvas/main"
+GITHUB_REPO_URL = "https://github.com/jkjk-8614/xiaomei"
+GITHUB_VERSION_URL = "https://raw.githubusercontent.com/jkjk-8614/xiaomei/main/VERSION"
+GITHUB_TREE_URL = "https://api.github.com/repos/jkjk-8614/xiaomei/git/trees/main?recursive=1"
+GITHUB_RAW_ROOT = "https://raw.githubusercontent.com/jkjk-8614/xiaomei/main"
 GITHUB_UPDATE_NOTES_URL = GITHUB_RAW_ROOT + "/static/update-notes.json"
 MODELSCOPE_REPO_URL = "https://modelscope.ai/studios/daniel8152/Infinite-Canvas"
 MODELSCOPE_RAW_ROOT = "https://www.modelscope.ai/studios/daniel8152/Infinite-Canvas/raw/main"
@@ -675,22 +691,22 @@ async def canvas_collaboration_endpoint(
 
 CLIENT_ID = str(uuid.uuid4())
 BASE_DIR = PROJECT_ROOT
-WORKFLOW_DIR = os.path.join(BASE_DIR, "ComfyUI", "workflows")
+WORKFLOW_DIR = os.path.join(RUNTIME_ROOT, "ComfyUI", "workflows")
 WORKFLOW_PATH = os.path.join(WORKFLOW_DIR, "Z-Image.json")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 STATIC_RUNNINGHUB_DIR = os.path.join(STATIC_DIR, "runninghub")
 STATIC_RUNNINGHUB_THUMBNAIL_DIR = os.path.join(STATIC_RUNNINGHUB_DIR, "thumbnails")
 STATIC_RUNNINGHUB_API_PROVIDERS_FILE = os.path.join(STATIC_RUNNINGHUB_DIR, "api_providers.json")
 STATIC_RUNNINGHUB_MODEL_REGISTRY_FILE = os.path.join(STATIC_RUNNINGHUB_DIR, "models_registry.json")
-OUTPUT_DIR = os.path.join(BASE_DIR, "output")
-ASSETS_DIR = os.path.join(BASE_DIR, "assets")
+OUTPUT_DIR = os.path.join(RUNTIME_ROOT, "output")
+ASSETS_DIR = os.path.join(RUNTIME_ROOT, "assets")
 OUTPUT_INPUT_DIR = os.path.join(ASSETS_DIR, "input")
 OUTPUT_OUTPUT_DIR = os.path.join(ASSETS_DIR, "output")
 ASSET_LIBRARY_DIR = os.path.join(ASSETS_DIR, "library")
 LOCAL_UPLOAD_DIR = os.path.join(ASSETS_DIR, "uploads")
-HISTORY_FILE = os.path.join(BASE_DIR, "history.json")
-API_ENV_FILE = os.path.join(BASE_DIR, "API", ".env")
-DATA_DIR = os.path.join(BASE_DIR, "data")
+HISTORY_FILE = os.path.join(RUNTIME_ROOT, "history.json")
+API_ENV_FILE = os.path.join(RUNTIME_ROOT, "API", ".env")
+DATA_DIR = os.path.join(RUNTIME_ROOT, "data")
 BACKGROUND_REMOVAL_MODEL_DIR = os.path.join(DATA_DIR, "models", "background-removal")
 LOCAL_UPSCALE_MODEL_DIR = os.path.join(DATA_DIR, "models", "upscale")
 LOCAL_UPSCALE_REAL_ESRGAN_ID = "real-esrgan"
@@ -774,7 +790,7 @@ _BROWSER_AGENT_PROFILE_CONFIG = os.path.expanduser(os.path.expandvars(
     os.getenv("XIAOMEI_BROWSER_PROFILE_DIR", os.path.join(DATA_DIR, "browser_agent_profile"))
 ))
 if not os.path.isabs(_BROWSER_AGENT_PROFILE_CONFIG):
-    _BROWSER_AGENT_PROFILE_CONFIG = os.path.join(BASE_DIR, _BROWSER_AGENT_PROFILE_CONFIG)
+    _BROWSER_AGENT_PROFILE_CONFIG = os.path.join(RUNTIME_ROOT, _BROWSER_AGENT_PROFILE_CONFIG)
 BROWSER_AGENT_PROFILE_DIR = os.path.abspath(_BROWSER_AGENT_PROFILE_CONFIG)
 BROWSER_AGENT_OUTPUT_DIR = os.path.join(OUTPUT_DIR, "browser-agent")
 BROWSER_AGENT_PROCESS = None
@@ -826,12 +842,13 @@ API_PROVIDERS_FILE = os.path.join(DATA_DIR, "api_providers.json")
 API_KEY_PROFILES_FILE = os.path.join(DATA_DIR, "api_key_profiles.json")
 RUNNINGHUB_WORKFLOW_STORE_FILE = os.path.join(DATA_DIR, "runninghub_workflows.json")
 SHARED_FOLDERS_FILE = os.path.join(DATA_DIR, "shared_folders.json")
-GLOBAL_CONFIG_FILE = os.path.join(BASE_DIR, "global_config.json")
+GLOBAL_CONFIG_FILE = os.path.join(RUNTIME_ROOT, "global_config.json")
 CANVAS_TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 LOCAL_IMAGE_IMPORT_MAX_BYTES = int(os.getenv("LOCAL_IMAGE_IMPORT_MAX_BYTES", str(50 * 1024 * 1024)))
 LOCAL_IMAGE_IMPORT_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 RUNNINGHUB_THUMBNAIL_EXTS = (".jpg",)
 STORAGE_SETTINGS_FILE = os.path.join(DATA_DIR, "storage_settings.json")
+IMAGE_STORAGE_PREFERENCES_FILE = os.path.join(DATA_DIR, "image_storage_preferences.json")
 IMAGE_SPACE_FOLDER_NAMES = {
     "upload": "上传素材",
     "generated": "生成素材",
@@ -842,6 +859,69 @@ DEFAULT_STORAGE_DIRS = {
     key: os.path.join(DEFAULT_IMAGE_SPACE_DIR, folder_name)
     for key, folder_name in IMAGE_SPACE_FOLDER_NAMES.items()
 }
+
+def _default_image_storage_preferences():
+    return {
+        "mode": "local",
+        "provider": "qiniu",
+        "providers": {
+            "qiniu": {
+                "bucket": "",
+                "region": "",
+                "domain": "",
+            },
+        },
+    }
+
+
+def _normalize_image_storage_preferences(raw, *, strict=False):
+    raw = raw if isinstance(raw, dict) else {}
+    requested_mode = str(raw.get("mode") or "local").strip().lower()
+    if strict and requested_mode not in {"local", "cloud"}:
+        raise ValueError("图片存储模式必须是 local 或 cloud")
+    mode = requested_mode
+    if mode not in {"local", "cloud"}:
+        mode = "local"
+    requested_provider = str(raw.get("provider") or "qiniu").strip().lower()
+    if strict and requested_provider != "qiniu":
+        raise ValueError("当前仅支持七牛云 Kodo")
+    provider = requested_provider
+    if provider != "qiniu":
+        provider = "qiniu"
+    raw_providers = raw.get("providers") if isinstance(raw.get("providers"), dict) else {}
+    raw_qiniu = raw_providers.get("qiniu") if isinstance(raw_providers.get("qiniu"), dict) else {}
+    return {
+        "mode": mode,
+        "provider": provider,
+        "providers": {
+            "qiniu": {
+                "bucket": str(raw_qiniu.get("bucket") or "").strip()[:256],
+                "region": str(raw_qiniu.get("region") or "").strip()[:128],
+                "domain": str(raw_qiniu.get("domain") or "").strip()[:512],
+            },
+        },
+    }
+
+
+def load_image_storage_preferences():
+    if not os.path.exists(IMAGE_STORAGE_PREFERENCES_FILE):
+        return _default_image_storage_preferences()
+    try:
+        with open(IMAGE_STORAGE_PREFERENCES_FILE, "r", encoding="utf-8-sig") as handle:
+            raw = json.load(handle)
+    except Exception as exc:
+        try:
+            _backup_unreadable_data_file(IMAGE_STORAGE_PREFERENCES_FILE, "图片存储偏好无法解析")
+        except Exception:
+            pass
+        raise RuntimeError(f"加载图片存储偏好失败：{exc}") from exc
+    return _normalize_image_storage_preferences(raw)
+
+
+def save_image_storage_preferences(payload):
+    normalized = _normalize_image_storage_preferences(payload, strict=True)
+    _atomic_write_json_file(IMAGE_STORAGE_PREFERENCES_FILE, normalized)
+    return normalized
 
 
 def _browser_agent_node_executable():
@@ -1716,7 +1796,7 @@ COMMERCE_ANALYSIS_BROWSER_START_TIMEOUT = max(
 )
 COMMERCE_ANALYSIS_BROWSER_PROFILE = os.getenv(
     "COMMERCE_ANALYSIS_BROWSER_PROFILE",
-    os.path.join(PROJECT_ROOT, "data", "commerce_analysis_browser_profile"),
+    os.path.join(DATA_DIR, "commerce_analysis_browser_profile"),
 )
 COMMERCE_ANALYSIS_TAOBAO_LOGIN_URL = "https://login.taobao.com/"
 # 商品分析台的本地任务和脱敏结构化快照。数据库保存任务索引与结构化结果；
@@ -3116,6 +3196,10 @@ os.makedirs(ASSET_LIBRARY_DIR, exist_ok=True)
 os.makedirs(LOCAL_UPLOAD_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
 os.makedirs(WORKFLOW_DIR, exist_ok=True)
+try:
+    seed_workflows(_project_path, _data_path)
+except Exception as _workflow_error:
+    print(f"初始化 ComfyUI 工作流模板失败：{_workflow_error}")
 os.makedirs(CONVERSATION_DIR, exist_ok=True)
 os.makedirs(AGENT_SKILLS_DIR, exist_ok=True)
 os.makedirs(AGENT_SKILL_PACKAGES_DIR, exist_ok=True)
@@ -6604,6 +6688,34 @@ def parse_agent_skill_compatibility(metadata):
             ]
     return result
 
+def parse_agent_skill_capabilities(metadata):
+    """Read the machine readable capability identifiers of a Skill.
+
+    Unknown identifiers are reported instead of dropped: a typo in a Skill
+    front matter must not silently hide a real dependency.
+    """
+
+    ids = shared_parse_capability_ids(metadata)
+    return {
+        "ids": ids,
+        "unknown": shared_unknown_capability_ids(ids),
+        "labels": shared_capability_labels(ids),
+    }
+
+def agent_skill_capability_facts():
+    """Probe the host state that decides model and ComfyUI availability."""
+
+    facts = {}
+    try:
+        providers = load_api_providers()
+    except Exception:
+        providers = []
+    facts["model_text"] = any(item.get("chat_models") for item in providers)
+    facts["model_image"] = any(item.get("image_models") for item in providers)
+    facts["model_video"] = any(item.get("video_models") for item in providers)
+    facts["comfyui"] = os.path.isdir(os.path.join(BASE_DIR, "ComfyUI", "workflows"))
+    return facts
+
 def parse_agent_skill_document(text, fallback_id):
     return shared_parse_skill_document(text, fallback_id)
 
@@ -6930,6 +7042,9 @@ def _agent_skill_scan_entry(source_root, entry):
     else:
         warnings.append("manifest 未提供 zipPath")
         errors.append("manifest 未提供 zipPath")
+    capability_info = parse_agent_skill_capabilities(parsed.get("_frontmatter"))
+    if capability_info["unknown"]:
+        warnings.append("能力标识未登记：" + "、".join(capability_info["unknown"]))
     record = {
         "id": slug,
         "slug": slug,
@@ -6959,6 +7074,7 @@ def _agent_skill_scan_entry(source_root, entry):
         "package_json": package_json,
         "source_format": "single-skill" if is_single_skill else "manifest-package",
         "compatibility": parse_agent_skill_compatibility(parsed.get("_frontmatter")),
+        "capability_ids": capability_info["ids"],
         "has_references": bool(reference_files),
         "has_scripts": bool(script_files),
         "authorization_required": authorization_required,
@@ -7153,7 +7269,7 @@ def _agent_skill_public_record(record):
         "version", "filename", "updated_at", "enabled", "status", "status_label", "valid", "folder_name",
         "source_format",
         "tutorial_available", "example_available", "package_files", "reference_files", "script_files", "requirements",
-        "package_json", "compatibility", "has_references", "has_scripts", "authorization_required", "needs_setup",
+        "package_json", "compatibility", "capability_ids", "has_references", "has_scripts", "authorization_required", "needs_setup",
         "capabilities", "warnings", "package_bytes", "zip_validation", "imported_at",
     )
     return {key: record.get(key) for key in keys if key in record}
@@ -7210,6 +7326,16 @@ def _agent_skill_load_package_record(skill_id):
         "package_root": package_dir,
         "updated_at": int(os.path.getmtime(skill_path) * 1000),
     })
+    # The front matter is the single source of truth for capability
+    # identifiers; the stored index only keeps a copy for offline listings.
+    capability_info = parse_agent_skill_capabilities(parsed.get("_frontmatter"))
+    record["capability_ids"] = capability_info["ids"]
+    if capability_info["unknown"]:
+        unknown_warning = "能力标识未登记：" + "、".join(capability_info["unknown"])
+        warnings = list(record.get("warnings") or [])
+        if unknown_warning not in warnings:
+            warnings.append(unknown_warning)
+        record["warnings"] = warnings
     category_id = str(record.get("category") or "other").strip() or "other"
     category_map = _agent_skill_category_map(registry)
     record["category"] = category_id
@@ -7245,6 +7371,7 @@ def _agent_skill_legacy_record(skill_id):
             "requirements": [],
             "package_json": False,
             "compatibility": parse_agent_skill_compatibility(parsed.get("_frontmatter")),
+            "capability_ids": parse_agent_skill_capabilities(parsed.get("_frontmatter"))["ids"],
             "has_references": False,
             "has_scripts": False,
             "authorization_required": False,
@@ -7622,11 +7749,16 @@ def list_projects():
         out.append(rec)
     return out
 
-def _move_project_canvases_to_default_unlocked(project_id):
-    """Detach canvases from a permanently removed project without deleting them."""
-    moved = 0
+def _soft_delete_project_canvases_unlocked(project_id):
+    """Send a permanently removed project's canvases to the canvas trash.
+
+    The canvases stay recoverable from the canvas recycle bin for the normal
+    retention window, instead of being silently dumped into the default project.
+    """
+    trashed = 0
     if not os.path.isdir(CANVAS_DIR):
-        return moved
+        return trashed
+    ts = now_ms()
     for filename in os.listdir(CANVAS_DIR):
         if not filename.endswith(".json"):
             continue
@@ -7638,16 +7770,18 @@ def _move_project_canvases_to_default_unlocked(project_id):
             continue
         if str(data.get("project") or "") != str(project_id):
             continue
-        data["project"] = DEFAULT_PROJECT_ID
+        if data.get("deleted_at"):
+            continue
+        data["deleted_at"] = ts
         try:
             _atomic_write_json_locked(path, data)
-            moved += 1
+            trashed += 1
         except OSError:
             continue
-    return moved
+    return trashed
 
 def cleanup_expired_project_trash():
-    """Expire project tombstones while keeping their canvases recoverable."""
+    """Expire project tombstones; their canvases go to the canvas trash."""
     cutoff = now_ms() - CANVAS_TRASH_RETENTION_MS
     projects = load_projects()
     expired_ids = {
@@ -7663,7 +7797,7 @@ def cleanup_expired_project_trash():
     remaining = [p for p in projects if str(p.get("id") or "") not in expired_ids]
     with CANVAS_LOCK:
         for project_id in expired_ids:
-            _move_project_canvases_to_default_unlocked(project_id)
+            _soft_delete_project_canvases_unlocked(project_id)
         _write_projects_unlocked(remaining)
 
 def list_deleted_projects():
@@ -7709,8 +7843,16 @@ def load_canvas(canvas_id):
     path = canvas_path(canvas_id)
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="画布不存在")
-    with open(path, 'r', encoding='utf-8') as f:
-        canvas = json.load(f)
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            canvas = json.load(f)
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        # 画布文件坏了：给出可读的原因，而不是抛 500。列表里能看到这条画布，
+        # 用户可以直接把它删掉重建。
+        raise HTTPException(
+            status_code=409,
+            detail=f"画布文件无法解析（{os.path.basename(path)}），请在画布列表中删除后重建。",
+        ) from exc
     if canvas.get("deleted_at"):
         raise HTTPException(status_code=404, detail="画布已在回收站")
     # Loading must stay read-only and fast.  Large legacy canvases are indexed
@@ -7723,8 +7865,14 @@ def load_canvas_any(canvas_id):
     path = canvas_path(canvas_id)
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="画布不存在")
-    with open(path, 'r', encoding='utf-8') as f:
-        return json.load(f)
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"画布文件无法解析（{os.path.basename(path)}），请在画布列表中删除后重建。",
+        ) from exc
 
 CANVAS_COLORS = {"", "red", "orange", "amber", "green", "teal", "blue", "violet", "pink", "slate"}
 
@@ -8696,16 +8844,55 @@ def cleanup_expired_canvas_trash():
             except Exception:
                 continue
 
+def _corrupt_canvas_record(filename, path, error):
+    """无法解析的画布文件的占位记录。
+
+    画布 ID 就是文件名（见 canvas_path），即使内容坏了也能定位并删除它。
+    坏画布必须出现在列表里：否则用户既看不到它，也没法把它删掉，而引用核对
+    会一直因为它拒绝删除素材。
+    """
+    stem = os.path.splitext(filename)[0]
+    canvas_id = stem if re.fullmatch(r"[a-zA-Z0-9_-]+", stem or "") else re.sub(r"[^a-zA-Z0-9_-]", "_", stem)
+    try:
+        stamp = int(os.path.getmtime(path))
+    except OSError:
+        stamp = 0
+    return {
+        "id": canvas_id,
+        "title": f"损坏的画布（{stem}）",
+        "icon": "⚠️",
+        "kind": "classic",
+        "owner": "",
+        "color": "",
+        "pinned": False,
+        "project": DEFAULT_PROJECT_ID,
+        "board_x": None,
+        "board_y": None,
+        "created_at": stamp,
+        "updated_at": stamp,
+        "deleted_at": 0,
+        "node_count": 0,
+        "corrupt": True,
+        "corrupt_reason": "内容无法解析" if isinstance(error, ValueError) else "文件无法读取",
+        "corrupt_path": path,
+    }
+
+
 def iter_canvas_records(include_deleted=False):
     cleanup_expired_canvas_trash()
     records = []
     for filename in os.listdir(CANVAS_DIR):
         if not filename.endswith(".json"):
             continue
+        path = os.path.join(CANVAS_DIR, filename)
         try:
-            with open(os.path.join(CANVAS_DIR, filename), 'r', encoding='utf-8') as f:
+            with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-        except Exception:
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+            record = _corrupt_canvas_record(filename, path, exc)
+            if include_deleted != bool(record.get("deleted_at")):
+                continue
+            records.append(record)
             continue
         is_deleted = bool(data.get("deleted_at"))
         if include_deleted != is_deleted:
@@ -9527,7 +9714,7 @@ def extract_task_id_from_text(text):
     return match.group(1) if match else ""
 
 def unparsed_image_response_path():
-    return os.path.join(BASE_DIR, "logs", "unparsed-image-responses.jsonl")
+    return os.path.join(RUNTIME_ROOT, "logs", "unparsed-image-responses.jsonl")
 
 def save_unparsed_image_response(provider_id, model, raw, task_id=""):
     """保存已经计费/完成、但本地暂时无法解析的上游原始结果。
@@ -10360,7 +10547,7 @@ def gpt_image_2_skill_auth_file():
     configured = str(codex_env_value("GPT_IMAGE_2_SKILL_AUTH_FILE") or codex_env_value("CODEX_AUTH_FILE") or "").strip()
     if configured:
         return configured
-    project_auth = os.path.join(BASE_DIR, "API", "openai-gpt-account-auth.json")
+    project_auth = os.path.join(RUNTIME_ROOT, "API", "openai-gpt-account-auth.json")
     user_profile = os.getenv("USERPROFILE", "").strip()
     codex_home = str(codex_env_value("CODEX_HOME") or "").strip()
     candidates = [
@@ -14242,6 +14429,22 @@ async def get_storage_settings():
 async def update_storage_settings(payload: Dict[str, Any]):
     return save_storage_settings(payload or {})
 
+@app.get("/api/image-storage-preferences")
+async def get_image_storage_preferences():
+    try:
+        return load_image_storage_preferences()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+@app.patch("/api/image-storage-preferences")
+async def update_image_storage_preferences(payload: Dict[str, Any]):
+    try:
+        return save_image_storage_preferences(payload or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"保存图片存储偏好失败：{exc}") from exc
+
 def open_native_folder_picker(initial_path="", title="选择素材保存文件夹"):
     """在 Windows 本机打开原生文件夹选择窗口。"""
     if os.name != "nt":
@@ -15855,6 +16058,113 @@ def _asset_registry_canvas_asset_id(canvas: Dict[str, Any], raw: Any, url: str) 
     return str((registered or {}).get("id") or "")
 
 
+ASSET_SCAN_PROBLEM_LIMIT = 20
+
+
+def _asset_scan_problem(kind, name, path, reason):
+    """记录一个无法读取的引用来源文件。
+
+    引用扫描看不到这些文件里的素材，就无法证明某个素材没有被引用，所以
+    删除、彻底清除、批量清理这类破坏性操作必须先拒绝，而不是当成“没有引用”放行。
+    """
+    return {"kind": kind, "name": name, "path": path, "reason": reason}
+
+
+def _asset_scan_read_json(path, kind, name):
+    """读取 JSON 文件，返回 (数据, 问题)。
+
+    文件在读取期间恰好消失不算问题：它已经不存在，不可能再持有引用。
+    内容损坏或读不到必须上报：引用核对会漏掉其中的素材。
+    """
+    try:
+        with open(path, "r", encoding="utf-8-sig") as handle:
+            return json.load(handle), None
+    except FileNotFoundError:
+        return None, None
+    except (OSError, ValueError) as exc:
+        # ValueError 覆盖 json.JSONDecodeError 与 UnicodeDecodeError，两者都是文件内容坏了。
+        reason = "内容无法解析" if isinstance(exc, ValueError) else "文件无法读取"
+        return None, _asset_scan_problem(kind, name, path, reason)
+
+
+def _asset_scan_canvas_entries(scan_cache):
+    """读取全部画布文件，返回 (entries, problems)。
+
+    entries 是 (文件名, 画布) 列表；problems 是无法读取或无法解析的画布文件。
+    """
+    if "canvas_entries" in scan_cache:
+        return scan_cache["canvas_entries"], scan_cache.get("canvas_problems") or []
+    entries = []
+    problems = []
+    if os.path.isdir(CANVAS_DIR):
+        try:
+            filenames = sorted(os.listdir(CANVAS_DIR))
+        except OSError:
+            filenames = []
+        for filename in filenames:
+            if not filename.endswith(".json"):
+                continue
+            path = os.path.join(CANVAS_DIR, filename)
+            data, problem = _asset_scan_read_json(path, "canvas", filename)
+            if problem:
+                problems.append(problem)
+                continue
+            if data is None:
+                continue
+            entries.append((filename, data))
+    scan_cache["canvas_entries"] = entries
+    scan_cache["canvas_problems"] = problems
+    return entries, problems
+
+
+def _asset_scan_history_records(scan_cache):
+    """读取历史记录文件，返回 (records, problems)。"""
+    if "history_records" in scan_cache:
+        return scan_cache["history_records"], scan_cache.get("history_problems") or []
+    records = []
+    problems = []
+    data, problem = _asset_scan_read_json(HISTORY_FILE, "history", os.path.basename(HISTORY_FILE))
+    if problem:
+        problems.append(problem)
+    elif isinstance(data, list):
+        records = [item for item in data if isinstance(item, dict)]
+    scan_cache["history_records"] = records
+    scan_cache["history_problems"] = problems
+    return records, problems
+
+
+def _asset_scan_problems(scan_cache):
+    """汇总本次扫描发现的问题文件（完整列表，不截断）。"""
+    problems = []
+    for item in list(scan_cache.get("canvas_problems") or []) + list(scan_cache.get("history_problems") or []):
+        problems.append(item)
+    return problems
+
+
+def _asset_scan_problem_detail(problems):
+    """把扫描问题转成可执行的提示：告诉用户哪些文件挡住了引用核对。"""
+    if not problems:
+        return ""
+    names = "、".join(str(item.get("name") or "") for item in problems[:3])
+    if len(problems) > 3:
+        names += f" 等 {len(problems)} 个文件"
+    detail = (
+        f"无法确认该素材是否仍被引用：{len(problems)} 个文件无法读取或解析（{names}）。"
+        "这些文件里的素材引用核对不到，直接删除可能留下损坏的画布或历史。"
+        "请先修复或删除这些文件后再试。"
+    )
+    first = str(problems[0].get("path") or "")
+    if first:
+        detail += f"文件位置：{first}"
+    return detail
+
+
+def _asset_scan_require_readable(problems):
+    """引用核对不完整时拒绝破坏性操作。"""
+    if problems:
+        raise HTTPException(status_code=409, detail=_asset_scan_problem_detail(problems))
+
+
 def asset_registry_references(asset_id: str, _scan_cache: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """Resolve live canvas/history references on demand, avoiding stale counts."""
     asset_id = str(asset_id or "").strip()
@@ -15903,20 +16213,9 @@ def asset_registry_references(asset_id: str, _scan_cache: Optional[Dict[str, Any
 
     refs = []
     seen = set()
-    if "canvas_entries" not in scan_cache:
-        canvas_entries = []
-        if os.path.isdir(CANVAS_DIR):
-            for filename in os.listdir(CANVAS_DIR):
-                if not filename.endswith(".json"):
-                    continue
-                try:
-                    with open(os.path.join(CANVAS_DIR, filename), "r", encoding="utf-8") as handle:
-                        canvas_entries.append((filename, json.load(handle)))
-                except (OSError, json.JSONDecodeError):
-                    continue
-        scan_cache["canvas_entries"] = canvas_entries
+    canvas_entries, _canvas_problems = _asset_scan_canvas_entries(scan_cache)
     canvas_asset_cache = scan_cache.setdefault("canvas_assets", {})
-    for filename, canvas in scan_cache.get("canvas_entries", []):
+    for filename, canvas in canvas_entries:
         if not isinstance(canvas, dict) or canvas.get("deleted_at"):
             continue
         canvas_id = str(canvas.get("id") or os.path.splitext(filename)[0])
@@ -15960,26 +16259,19 @@ def asset_registry_references(asset_id: str, _scan_cache: Optional[Dict[str, Any
                     "node_title": str(log.get("title") or "生成日志"),
                     "source_path": source_path,
                 })
-    if "history_records" not in scan_cache:
-        try:
-            with open(HISTORY_FILE, "r", encoding="utf-8-sig") as handle:
-                history = json.load(handle)
-        except (OSError, json.JSONDecodeError):
-            history = []
-        records = []
-        for record in history if isinstance(history, list) else []:
-            if not isinstance(record, dict):
-                continue
+    if "history_rows" not in scan_cache:
+        history_rows = []
+        for record in _asset_scan_history_records(scan_cache)[0]:
             refs_by_url = {}
             for item in record.get("asset_refs") if isinstance(record.get("asset_refs"), list) else []:
                 if isinstance(item, dict) and registry_is_asset_id(item.get("asset_id")):
                     refs_by_url[str(item.get("url") or "")] = str(item.get("asset_id"))
-            records.append((record, refs_by_url, [
+            history_rows.append((record, refs_by_url, [
                 *_asset_registry_iter_history_media(record),
                 *_asset_registry_iter_history_param_media(record),
             ]))
-        scan_cache["history_records"] = records
-    for record, refs_by_url, record_media in scan_cache.get("history_records", []):
+        scan_cache["history_rows"] = history_rows
+    for record, refs_by_url, record_media in scan_cache.get("history_rows", []):
         for field, raw, url in record_media:
             candidate = _asset_registry_value_id(raw) or refs_by_url.get(url) or ""
             if not registry_is_asset_id(candidate):
@@ -16004,14 +16296,26 @@ def asset_registry_references(asset_id: str, _scan_cache: Optional[Dict[str, Any
 
 
 def asset_registry_reference_summary(asset_id: str, _scan_cache: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    refs = asset_registry_references(asset_id, _scan_cache)
+    scan_cache = _scan_cache if isinstance(_scan_cache, dict) else {}
+    refs = asset_registry_references(asset_id, scan_cache)
     canvas_ids = {str(item.get("canvas_id") or "") for item in refs if item.get("type") == "canvas"}
     histories = [item for item in refs if item.get("type") == "history"]
-    return {"total": len(refs), "canvas_count": len(canvas_ids - {""}), "history_count": len(histories), "references": refs}
+    # 扫描到的坏文件会让下面的引用数量偏小，必须一并返回，调用方才能判断结果是否完整。
+    problems = _asset_scan_problems(scan_cache)
+    return {
+        "total": len(refs),
+        "canvas_count": len(canvas_ids - {""}),
+        "history_count": len(histories),
+        "references": refs,
+        "scan_problems": problems[:ASSET_SCAN_PROBLEM_LIMIT],
+        "scan_problem_count": len(problems),
+        "scan_complete": not problems,
+    }
 
 
-def _asset_registry_batch_references(asset_ids: List[str]) -> Dict[str, List[Dict[str, Any]]]:
+def _asset_registry_batch_references(asset_ids: List[str], scan_cache: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
     """Find references for several assets in one canvas/history traversal."""
+    cache = scan_cache if isinstance(scan_cache, dict) else {}
     wanted = {str(item or "").strip() for item in asset_ids if registry_is_asset_id(item)}
     refs_by_id: Dict[str, List[Dict[str, Any]]] = {asset_id: [] for asset_id in wanted}
     if not wanted:
@@ -16054,15 +16358,9 @@ def _asset_registry_batch_references(asset_ids: List[str]) -> Dict[str, List[Dic
             return target_paths.get(os.path.normcase(os.path.realpath(path)), "")
         return ""
 
-    if os.path.isdir(CANVAS_DIR):
-        for filename in os.listdir(CANVAS_DIR):
-            if not filename.endswith(".json"):
-                continue
-            try:
-                with open(os.path.join(CANVAS_DIR, filename), "r", encoding="utf-8") as handle:
-                    canvas = json.load(handle)
-            except (OSError, json.JSONDecodeError):
-                continue
+    canvas_entries, _canvas_problems = _asset_scan_canvas_entries(cache)
+    if canvas_entries:
+        for filename, canvas in canvas_entries:
             if not isinstance(canvas, dict) or canvas.get("deleted_at"):
                 continue
             canvas_id = str(canvas.get("id") or os.path.splitext(filename)[0])
@@ -16106,13 +16404,9 @@ def _asset_registry_batch_references(asset_ids: List[str]) -> Dict[str, List[Dic
                             "node_title": str(log.get("title") or "生成日志"),
                             "source_path": source_path,
                         })
-    if os.path.isfile(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, "r", encoding="utf-8-sig") as handle:
-                history = json.load(handle)
-        except (OSError, json.JSONDecodeError):
-            history = []
-        for record in history if isinstance(history, list) else []:
+    history_records, _history_problems = _asset_scan_history_records(cache)
+    if history_records:
+        for record in history_records:
             if not isinstance(record, dict):
                 continue
             refs_by_url = {
@@ -16143,6 +16437,8 @@ def _asset_registry_batch_references(asset_ids: List[str]) -> Dict[str, List[Dic
 
 def asset_registry_require_unreferenced(asset_id: str, _scan_cache: Optional[Dict[str, Any]] = None) -> None:
     summary = asset_registry_reference_summary(asset_id, _scan_cache)
+    # 引用核对不完整时不能当成“没有被引用”：先让用户修好坏文件，再来删除。
+    _asset_scan_require_readable(summary.get("scan_problems") or [])
     if not summary["total"]:
         return
     parts = []
@@ -16156,7 +16452,9 @@ def asset_registry_require_unreferenced(asset_id: str, _scan_cache: Optional[Dic
 
 def asset_registry_require_unreferenced_many(asset_ids: List[str]) -> None:
     """Check a batch of assets while reusing one canvas/history scan."""
-    refs_by_id = _asset_registry_batch_references(asset_ids)
+    scan_cache: Dict[str, Any] = {}
+    refs_by_id = _asset_registry_batch_references(asset_ids, scan_cache)
+    _asset_scan_require_readable(_asset_scan_problems(scan_cache))
     for asset_id in asset_ids:
         refs = refs_by_id.get(str(asset_id or ""), [])
         if not refs:
@@ -28749,6 +29047,119 @@ def gpt_image_2_edit_semaphore(provider_id="", model=""):
         return semaphore
 
 
+# Gemini 原生路由（nano-banana / gemini-*-image 等）同样是一次请求长时间占住
+# 连接的同步生图调用。实测部分聚合平台（6789API）在同一个 Key 并发提交多张
+# 生图、或两次提交间隔过短时，会在返回任何字节之前直接掐断连接：客户端只能
+# 看到 httpx.RemoteProtocolError("Server disconnected without sending a
+# response.")，既没有状态码也没有错误体，无法从响应内容判断原因。
+# 因此在请求入口就按平台+模型串行化，并允许配置最小请求间隔，
+# 避免并发把上游的连接保护撞出来。
+try:
+    GEMINI_IMAGE_CONCURRENCY = max(
+        1,
+        min(
+            8,
+            int(os.getenv("GEMINI_IMAGE_CONCURRENCY", "") or read_api_env_value("GEMINI_IMAGE_CONCURRENCY") or "1"),
+        ),
+    )
+except (TypeError, ValueError):
+    GEMINI_IMAGE_CONCURRENCY = 1
+try:
+    GEMINI_IMAGE_MIN_INTERVAL = max(0.0, min(300.0, float(
+        os.getenv("GEMINI_IMAGE_MIN_INTERVAL", "") or read_api_env_value("GEMINI_IMAGE_MIN_INTERVAL") or "0"
+    )))
+except (TypeError, ValueError):
+    GEMINI_IMAGE_MIN_INTERVAL = 0.0
+# 生图是可能计费的 POST，平台没有确认端到端幂等去重之前不自动重提，
+# 与 GPT-Image-2 编辑的策略保持一致；需要时由用户显式打开。
+try:
+    GEMINI_IMAGE_TRANSPORT_RETRIES = max(0, min(2, int(
+        os.getenv("GEMINI_IMAGE_TRANSPORT_RETRIES", "") or read_api_env_value("GEMINI_IMAGE_TRANSPORT_RETRIES") or "0"
+    )))
+except (TypeError, ValueError):
+    GEMINI_IMAGE_TRANSPORT_RETRIES = 0
+try:
+    GEMINI_IMAGE_RETRY_DELAY = max(0.2, min(30.0, float(
+        os.getenv("GEMINI_IMAGE_RETRY_DELAY", "") or read_api_env_value("GEMINI_IMAGE_RETRY_DELAY") or "3"
+    )))
+except (TypeError, ValueError):
+    GEMINI_IMAGE_RETRY_DELAY = 3.0
+GEMINI_IMAGE_SEMAPHORES = {}
+GEMINI_IMAGE_SEMAPHORES_LOCK = Lock()
+GEMINI_IMAGE_LAST_REQUEST = {}
+
+
+def gemini_image_slot_key(provider_id="", model=""):
+    return (str(provider_id or "").strip().lower(), str(model or "").strip().lower())
+
+
+def gemini_image_semaphore(provider_id="", model=""):
+    """返回当前事件循环内、按平台/模型隔离的 Gemini 原生生图限流器。"""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        # 正常请求一定运行在事件循环中；没有事件循环时不创建全局锁，
+        # 让调用方保持原有行为，也便于离线单元测试辅助函数。
+        return None
+    concurrency = CANVAS_IMAGE_BATCH_CONCURRENCY.get() or GEMINI_IMAGE_CONCURRENCY
+    key = (id(loop), *gemini_image_slot_key(provider_id, model), concurrency)
+    with GEMINI_IMAGE_SEMAPHORES_LOCK:
+        semaphore = GEMINI_IMAGE_SEMAPHORES.get(key)
+        if semaphore is None:
+            semaphore = asyncio.Semaphore(concurrency)
+            GEMINI_IMAGE_SEMAPHORES[key] = semaphore
+        return semaphore
+
+
+async def acquire_gemini_image_slot(provider_id="", model=""):
+    """占用一次 Gemini 生图名额，并保证同平台的两次提交之间留够间隔。"""
+    semaphore = gemini_image_semaphore(provider_id, model)
+    if semaphore is None:
+        return None
+    await semaphore.acquire()
+    slot_key = gemini_image_slot_key(provider_id, model)
+    try:
+        if GEMINI_IMAGE_MIN_INTERVAL > 0:
+            with GEMINI_IMAGE_SEMAPHORES_LOCK:
+                last = GEMINI_IMAGE_LAST_REQUEST.get(slot_key, 0.0)
+            wait = GEMINI_IMAGE_MIN_INTERVAL - (time.monotonic() - last)
+            if wait > 0:
+                await asyncio.sleep(wait)
+        with GEMINI_IMAGE_SEMAPHORES_LOCK:
+            GEMINI_IMAGE_LAST_REQUEST[slot_key] = time.monotonic()
+    except BaseException:
+        semaphore.release()
+        raise
+    return semaphore
+
+
+def release_gemini_image_slot(semaphore):
+    if semaphore is not None:
+        semaphore.release()
+
+
+async def post_gemini_image_with_retry(client, endpoint, headers, body):
+    """提交 Gemini 生图请求；只有显式打开重试时才在传输中断后重提。
+
+    httpx 把「Server disconnected without sending a response.」归类为
+    RemoteProtocolError，属于 TransportError；但它同样可能是上游已经计费、
+    只是响应没回来，因此默认不自动重提（GEMINI_IMAGE_TRANSPORT_RETRIES=0）。
+    读取超时也不重试：继续重试只会把一次超时放大成多次长等待。
+    """
+    attempts = GEMINI_IMAGE_TRANSPORT_RETRIES + 1
+    for attempt in range(attempts):
+        try:
+            return await client.post(endpoint, headers=headers, json=body)
+        except httpx.TimeoutException:
+            raise
+        except httpx.TransportError as exc:
+            if attempt >= attempts - 1:
+                raise
+            log_net_error(f"Gemini 生图传输中断，准备重试 attempt={attempt + 1}/{attempts}", exc)
+            await asyncio.sleep(GEMINI_IMAGE_RETRY_DELAY)
+    raise HTTPException(status_code=502, detail="请求上游生图接口失败：连接被中断")
+
+
 def httpx_exception_chain(exc):
     """将 httpx 异常及其底层 socket/SSL 原因整理成可显示的短文本。"""
     parts = []
@@ -28849,7 +29260,7 @@ def append_gpt_image_edit_diagnostic(**fields):
     for key in ("url", "error", "error_message"):
         if key in record: record[key] = _redact_image_edit_text(record[key])
     try:
-        path = os.path.join(BASE_DIR, "logs", "gpt-image-edits.jsonl")
+        path = os.path.join(RUNTIME_ROOT, "logs", "gpt-image-edits.jsonl")
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with GPT_IMAGE_EDIT_LOG_LOCK:
             with open(path, "a", encoding="utf-8") as handle:
@@ -29240,6 +29651,45 @@ def friendly_image_error_detail(text, size="", model=""):
         return f"上游平台找不到模型「{model}」可用通道。可能该模型未在此账号开通，请换一个已开通的模型。"
     return ""
 
+def friendly_image_network_error_detail(exc, provider_name="", model=""):
+    """把生图请求的网络/协议层异常翻译成用户能判断下一步动作的说明。
+
+    httpx 把「Server disconnected without sending a response.」归类为
+    RemoteProtocolError：连接在收到任何响应字节之前就被对端关闭，
+    既没有状态码也没有错误体可以参考，只能按异常类型给出可执行建议。
+    """
+    name = str(provider_name or "").strip() or "上游平台"
+    text = str(exc or "")
+    lower_text = text.lower()
+    if (
+        isinstance(exc, httpx.RemoteProtocolError)
+        or "server disconnected" in lower_text
+        or "remoteprotocolerror" in lower_text
+    ):
+        return (
+            f"{name} 在返回结果之前直接断开了连接（上游没有给出状态码或错误信息）。"
+            "实测这类聚合平台在同一个 API Key 并发提交多张生图、或两次提交间隔过短时，"
+            "会主动掐掉连接；也可能是上游网关等待超时。这不是本机网络或画布的故障。"
+            "建议：①把批量生图并发降到 1（在 API/.env 里设置 CANVAS_IMAGE_TASK_CONCURRENCY=1 后重启小美画布）；"
+            "②两次生成之间留出间隔，再点「重新生成」；"
+            "③如果频繁发生，改用其他生图平台或模型。"
+            "本次请求上游可能仍在处理，请先到该平台后台核对是否已经扣费。"
+        )
+    if isinstance(exc, httpx.TimeoutException) or "timeout" in lower_text:
+        return (
+            f"{name} 读取生图结果超时，本次没有拿到图片。"
+            "可能是上游排队过久或网关提前断开，请稍后重试；"
+            "若频繁超时，请降低生图并发或改用更快的模型。"
+        )
+    if isinstance(exc, httpx.ProxyError) or "proxy" in lower_text:
+        return (
+            f"{name} 的请求经过本机代理（HTTP_PROXY / HTTPS_PROXY）时失败：{text[:200]}。"
+            "请确认代理软件正在运行、节点可用。"
+        )
+    if isinstance(exc, httpx.ConnectError):
+        return f"{name} 连接失败：{text[:200]}。请检查网络、系统代理和上游平台状态。"
+    return f"请求上游生图接口失败：{text[:200]}"
+
 def parse_error_payload_text(text):
     body = str(text or "").strip()
     if not body:
@@ -29504,11 +29954,17 @@ async def generate_gemini_provider_image(prompt, size, model, reference_images=N
     # 强制 4:3 只会在“遵守 imageConfig”的通道上稳定产出错误比例；改为始终提交
     # 用户意图对应的最近枚举比例（适配原图 = 由 size 推导的原图比例）。
     request_aspect_ratio = aspect_ratio
+    # 扩图上传的底图就是用户摆好的目标画布，画幅必须显式声明。部分通道
+    # （如 6789API 的 nano-banana）在 imageConfig 缺少 aspectRatio 时不会跟随
+    # 参考图，而是按默认 1:1 出图——2880x3840 的扩图会回来 4096x4096。
+    outpaint_canvas = any(
+        isinstance(ref, dict) and ref.get("outpaint_canvas") for ref in (reference_images or [])
+    )
     image_config = gemini_image_config(
         size,
         request_aspect_ratio,
         reference_part_count > 0,
-        require_aspect_ratio=is_comfly_provider(provider),
+        require_aspect_ratio=is_comfly_provider(provider) or outpaint_canvas,
     )
     if any(ref.get('fidelity_reference') for ref in (reference_images or [])):
         caps = product_fidelity_capabilities(provider, model_name)
@@ -29528,7 +29984,15 @@ async def generate_gemini_provider_image(prompt, size, model, reference_images=N
         },
     }
     async with httpx.AsyncClient(timeout=httpx.Timeout(connect=20.0, read=1800.0, write=120.0, pool=20.0)) as client:
-        response = await client.post(endpoint, headers=api_headers(provider=provider, model=model_name), json=body)
+        # 按平台+模型串行化提交，避免上游在高并发时直接掐断连接。
+        # 名额在拿到响应后立刻释放，后续的异步任务轮询不占用名额。
+        slot = await acquire_gemini_image_slot(provider_id, model_name)
+        try:
+            response = await post_gemini_image_with_retry(
+                client, endpoint, api_headers(provider=provider, model=model_name), body
+            )
+        finally:
+            release_gemini_image_slot(slot)
         response.raise_for_status()
         raw = response.json()
         if isinstance(raw, dict):
@@ -34760,7 +35224,7 @@ async def codex_install(request: Request):
     powershell = shutil.which("powershell.exe")
     if not powershell:
         raise HTTPException(status_code=400, detail="未找到 Windows PowerShell，请修复系统 PowerShell 后重试。")
-    log_dir = os.path.join(BASE_DIR, "logs")
+    log_dir = os.path.join(RUNTIME_ROOT, "logs")
     os.makedirs(log_dir, exist_ok=True)
     log_path = os.path.join(log_dir, f"codex-install-{uuid.uuid4().hex}.log")
     command = [powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-NonInteractive"]
@@ -34880,7 +35344,7 @@ async def start_cli_install(kind: str, request: Request):
     if not powershell:
         raise HTTPException(status_code=400, detail="未找到 Windows PowerShell，请修复系统 PowerShell 后重试。")
 
-    log_dir = os.path.join(BASE_DIR, "logs")
+    log_dir = os.path.join(RUNTIME_ROOT, "logs")
     os.makedirs(log_dir, exist_ok=True)
     log_path = os.path.join(log_dir, f"{kind}-install-{uuid.uuid4().hex}.log")
     command = [powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-NonInteractive"]
@@ -36526,7 +36990,8 @@ async def build_online_image_result(payload: OnlineImageRequest, history_source=
             raise upstream_error from exc
         if isinstance(exc, httpx.HTTPError):
             log_net_error(f"生图 网络/TLS错误 provider={provider.get('id')} model={model}", exc)
-            raise HTTPException(status_code=502, detail=f"请求上游生图接口失败：{exc}") from exc
+            detail = friendly_image_network_error_detail(exc, provider.get("name") or provider.get("id") or "", model)
+            raise HTTPException(status_code=502, detail=detail) from exc
         raise exc
 
     local_urls = [url for urls, _items, _raw in generated for url in (urls or []) if url]
@@ -41027,9 +41492,36 @@ async def get_agent_skills(response: Response):
     with AGENT_SKILLS_LOCK:
         registry = load_agent_skill_package_registry()
         records = list_agent_skill_records()
+        facts = agent_skill_capability_facts()
+        skills = []
+        for item in records:
+            record = _agent_skill_public_record(item)
+            if not record:
+                continue
+            record["capability_status"] = shared_evaluate_capabilities(record.get("capability_ids") or [], facts)
+            skills.append(record)
         return {
-            "skills": [_agent_skill_public_record(item) for item in records],
+            "skills": skills,
             "categories": _agent_skill_public_categories(registry, records),
+            "capability_catalog": shared_capability_catalog(),
+            "capability_contract_version": CAPABILITY_CONTRACT_VERSION,
+        }
+
+
+@app.get("/api/agent-skills/capabilities")
+async def get_agent_skill_capabilities(response: Response):
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    with AGENT_SKILLS_LOCK:
+        records = list_agent_skill_records()
+        facts = agent_skill_capability_facts()
+        return {
+            "contract_version": CAPABILITY_CONTRACT_VERSION,
+            "catalog": shared_capability_catalog(),
+            "skills": {
+                str(item.get("id")): shared_evaluate_capabilities(item.get("capability_ids") or [], facts)
+                for item in records
+                if item.get("id")
+            },
         }
 
 
@@ -41706,10 +42198,10 @@ async def purge_project(project_id: str):
         raise HTTPException(status_code=404, detail="回收站中没有这个项目")
     remaining = [p for p in projects if p.get("id") != project_id]
     with CANVAS_LOCK:
-        moved = _move_project_canvases_to_default_unlocked(project_id)
+        trashed = _soft_delete_project_canvases_unlocked(project_id)
         _write_projects_unlocked(remaining)
     PROJECT_AGENT_STORE.purge(project_id)
-    return {"ok": True, "moved": moved}
+    return {"ok": True, "trashed": trashed}
 
 
 # Project Agent keeps user-confirmed notes outside canvas JSON and browser chat history.
@@ -47393,13 +47885,24 @@ async def delete_canvas_log(canvas_id: str, payload: DeleteCanvasLogRequest, req
 async def delete_canvas(canvas_id: str):
     def soft_delete():
         with CANVAS_LOCK:
-            canvas = load_canvas_any(canvas_id)
+            path = canvas_path(canvas_id)
+            if not os.path.exists(path):
+                raise HTTPException(status_code=404, detail="画布不存在")
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    canvas = json.load(f)
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+                # 文件已经坏了，写不回 deleted_at，回收站也恢复不了它。
+                # 直接删除这个坏文件，让用户能继续操作，其余数据不受影响。
+                os.remove(path)
+                return True
             if not canvas.get("deleted_at"):
                 canvas["deleted_at"] = now_ms()
                 _write_canvas_file_locked(canvas)
+            return False
 
-    await asyncio.to_thread(soft_delete)
-    return {"ok": True}
+    purged = await asyncio.to_thread(soft_delete)
+    return {"ok": True, "purged": purged}
 
 @app.post("/api/canvases/{canvas_id}/restore")
 async def restore_canvas(canvas_id: str):
@@ -47408,6 +47911,13 @@ async def restore_canvas(canvas_id: str):
             canvas = load_canvas_any(canvas_id)
             if canvas.get("deleted_at"):
                 canvas.pop("deleted_at", None)
+                # 原项目可能已被彻底删除：恢复时归入默认项目，避免画布恢复后无处可见。
+                project_id = str(canvas.get("project") or "").strip()
+                if project_id and not any(
+                    str(p.get("id") or "") == project_id and not p.get("deleted_at")
+                    for p in load_projects()
+                ):
+                    canvas["project"] = DEFAULT_PROJECT_ID
                 _write_canvas_file_locked(canvas)
             return canvas
 
@@ -47531,7 +48041,8 @@ async def chat(payload: ChatRequest, request: Request, x_user_id: str = Header(d
             raise HTTPException(status_code=exc.response.status_code, detail=detail) from exc
         except httpx.HTTPError as exc:
             log_net_error(f"对话生图 网络/TLS错误 model={model}", exc)
-            raise HTTPException(status_code=502, detail=f"请求上游生图接口失败：{exc}") from exc
+            detail = friendly_image_network_error_detail(exc, provider.get("name") or provider.get("id") or "", model)
+            raise HTTPException(status_code=502, detail=detail) from exc
         assistant_message = {
             "id": uuid.uuid4().hex,
             "role": "assistant",
@@ -47823,7 +48334,8 @@ async def chat_agent(payload: ChatRequest, request: Request, x_user_id: str = He
                 raise HTTPException(status_code=exc.response.status_code, detail=detail) from exc
             except httpx.HTTPError as exc:
                 log_net_error(f"对话生图 网络/TLS错误 model={model}", exc)
-                raise HTTPException(status_code=502, detail=f"请求上游生图接口失败：{exc}") from exc
+                detail = friendly_image_network_error_detail(exc, image_provider.get("name") or image_provider.get("id") or "", model)
+                raise HTTPException(status_code=502, detail=detail) from exc
             local_url = local_urls[0] if local_urls else ""
             assistant_message = {
                 "id": uuid.uuid4().hex,
@@ -48918,46 +49430,42 @@ def _storage_cleanup_walk_urls(value: Any, referenced: set, depth: int = 0) -> N
             _storage_cleanup_note_url(url, referenced)
 
 
-def _storage_cleanup_referenced_paths() -> set:
+def _storage_cleanup_referenced_paths():
     """文件路径集合：仍被历史、画布、素材收藏或工作台数据引用的本地媒体。
 
     用本地路径（realpath）而不是 URL 字符串比对，避免编码差异造成漏配。
     画布回收站里的画布也算引用：恢复画布时文件必须还在。
+
+    返回 (引用路径集合, 软问题列表)。画布或历史文件读不出来时直接拒绝清理：
+    读不到就等于引用核对不完整，此时把文件当“未引用”清掉，会让还引用着它的
+    画布或历史失效。data 顶层 json 这类辅助数据读不出来只上报不阻断，避免
+    一个次要文件让整条清理链路不可用。
     """
     referenced = set()
+    scan_cache: Dict[str, Any] = {}
 
     # 历史：输出媒体 + params 输入图 + workflow 内部引用。
-    if os.path.isfile(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, "r", encoding="utf-8-sig") as handle:
-                history = json.load(handle)
-        except (OSError, json.JSONDecodeError):
-            history = []
-        for record in history if isinstance(history, list) else []:
-            if not isinstance(record, dict):
-                continue
-            _storage_cleanup_walk_urls(record, referenced)
-            workflow = record.get("workflow_json")
-            if isinstance(workflow, str) and workflow.lstrip().startswith("{"):
-                try:
-                    _storage_cleanup_walk_urls(json.loads(workflow), referenced)
-                except json.JSONDecodeError:
-                    pass
+    history_records, _history_problems = _asset_scan_history_records(scan_cache)
+    for record in history_records:
+        _storage_cleanup_walk_urls(record, referenced)
+        workflow = record.get("workflow_json")
+        if isinstance(workflow, str) and workflow.lstrip().startswith("{"):
+            try:
+                _storage_cleanup_walk_urls(json.loads(workflow), referenced)
+            except json.JSONDecodeError:
+                pass
 
     # 画布（含回收站中的画布，恢复时需要文件仍在）。
-    if os.path.isdir(CANVAS_DIR):
-        for filename in os.listdir(CANVAS_DIR):
-            if not filename.endswith(".json"):
-                continue
-            try:
-                with open(os.path.join(CANVAS_DIR, filename), "r", encoding="utf-8") as handle:
-                    canvas = json.load(handle)
-            except (OSError, json.JSONDecodeError):
-                continue
-            if isinstance(canvas, dict):
-                _storage_cleanup_walk_urls(canvas, referenced)
+    canvas_entries, _canvas_problems = _asset_scan_canvas_entries(scan_cache)
+    for _filename, canvas in canvas_entries:
+        if isinstance(canvas, dict):
+            _storage_cleanup_walk_urls(canvas, referenced)
+
+    # 画布或历史读不出来就停止：引用集合不完整，不能据此清理。
+    _asset_scan_require_readable(_asset_scan_problems(scan_cache))
 
     # 其他工作台/收藏数据：data 顶层 json、对话、电商分析。
+    soft_problems = []
     scan_files = []
     try:
         for filename in os.listdir(DATA_DIR):
@@ -48976,14 +49484,18 @@ def _storage_cleanup_referenced_paths() -> set:
             with open(path, "r", encoding="utf-8-sig") as handle:
                 _storage_cleanup_walk_urls(json.load(handle), referenced)
         except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-            continue
-    return referenced
+            # 辅助数据读不出来只上报：它可能引用了媒体，但不该让整条清理链路停摆。
+            soft_problems.append({
+                "file": os.path.basename(path),
+                "error": "文件无法读取或解析，其中引用的媒体可能未被计入",
+            })
+    return referenced, soft_problems
 
 
 def _storage_cleanup_unreferenced_sync() -> Dict[str, Any]:
-    referenced = _storage_cleanup_referenced_paths()
+    referenced, soft_problems = _storage_cleanup_referenced_paths()
     cleaned_ids = []
-    errors = []
+    errors = list(soft_problems)
     freed_bytes = 0
     for kind in ("upload", "generated", "local"):
         try:

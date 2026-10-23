@@ -163,6 +163,11 @@ let promptDetailContext = 'manager'; // 'manager' = 提示词模板标签页 | '
 let storageFolderPickerBusy = false;
 let storageFolderPickerRequestId = 0;
 let imageSpaceSettings = {root:'', dirs:{}, legacyDirs:{}, unified:false};
+let imageStoragePreferences = {
+    mode:'local',
+    provider:'qiniu',
+    providers:{qiniu:{bucket:'', region:'', domain:''}}
+};
 
 const LOCAL_MEDIA_EXTS = /\.(png|jpe?g|webp|gif|bmp|avif|svg|mp4|webm|mov|m4v|mp3|wav|flac|ogg|m4a|aac)(\?|#|$)/i;
 const ASSET_CATEGORY_DRAG_TYPE = 'application/x-xiaomei-asset-category';
@@ -206,6 +211,42 @@ async function apiJson(url, options={}){
     if(!res.ok) throw new Error(data.detail || data.message || '操作失败');
     return data;
 }
+function defaultImageStoragePreferences(){
+    return {mode:'local', provider:'qiniu', providers:{qiniu:{bucket:'', region:'', domain:''}}};
+}
+function normalizeImageStoragePreferences(raw){
+    const source = raw && typeof raw === 'object' ? raw : {};
+    const mode = source.mode === 'cloud' ? 'cloud' : 'local';
+    const provider = source.provider === 'qiniu' ? 'qiniu' : 'qiniu';
+    const qiniu = source.providers?.qiniu && typeof source.providers.qiniu === 'object' ? source.providers.qiniu : {};
+    return {
+        mode,
+        provider,
+        providers:{qiniu:{
+            bucket:String(qiniu.bucket || '').trim(),
+            region:String(qiniu.region || '').trim(),
+            domain:String(qiniu.domain || '').trim()
+        }}
+    };
+}
+async function fetchImageStoragePreferences(){
+    const res = await fetch('/api/image-storage-preferences');
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok){
+        const error = new Error(data.detail || data.message || '加载图片存储偏好失败');
+        error.status = res.status;
+        throw error;
+    }
+    return normalizeImageStoragePreferences(data);
+}
+async function loadImageStoragePreferences(){
+    try {
+        return await fetchImageStoragePreferences();
+    } catch(err){
+        if(err?.status === 404 || err?.status === 405) return defaultImageStoragePreferences();
+        throw err;
+    }
+}
 const STORAGE_KIND_LABELS = {upload:'上传素材', generated:'生成素材', local:'本地素材'};
 const IMAGE_SPACE_TABS = new Set(['assets','generated','local']);
 function syncImageSpaceSubtabs(){
@@ -237,9 +278,20 @@ async function openStorageSettings(options={}){
         storageSettingsState.defaults = data.defaults || {};
         storageSettingsState.classificationPrompt = promptData.prompt || '';
         storageSettingsState.defaultClassificationPrompt = promptData.default_prompt || '';
-        await loadStorageFiles(storageSettingsState.kind || 'generated');
     } catch(err){
         setStatus(err.message || '加载存储设置失败');
+        renderStorageSettingsModal();
+        return;
+    }
+    try {
+        imageStoragePreferences = await loadImageStoragePreferences();
+    } catch(err){
+        setStatus(err.message || '加载图片存储偏好失败');
+    }
+    try {
+        await loadStorageFiles(storageSettingsState.kind || 'generated');
+    } catch(err){
+        setStatus(err.message || '加载素材目录失败');
         renderStorageSettingsModal();
     }
 }
@@ -265,15 +317,36 @@ function syncStorageSettingsInputsToState(){
     if(captionEl) localCaptionPrompt = captionEl.value || '描述图片';
     if(classifyEl) localClassifyPrompt = classifyEl.value || '';
     if(ruleEl) storageSettingsState.classificationPrompt = ruleEl.value || '';
+    const modeEl = document.querySelector('[data-image-storage-mode]:checked');
+    const imageStorageProviderEl = document.getElementById('imageStorageProvider');
+    const bucketEl = document.getElementById('imageStorageQiniuBucket');
+    const regionEl = document.getElementById('imageStorageQiniuRegion');
+    const domainEl = document.getElementById('imageStorageQiniuDomain');
+    if(modeEl || imageStorageProviderEl || bucketEl || regionEl || domainEl){
+        const qiniu = imageStoragePreferences.providers?.qiniu || {};
+        imageStoragePreferences = normalizeImageStoragePreferences({
+            ...imageStoragePreferences,
+            mode:modeEl?.value || imageStoragePreferences.mode,
+            provider:imageStorageProviderEl?.value || imageStoragePreferences.provider,
+            providers:{qiniu:{
+                bucket:bucketEl ? bucketEl.value : qiniu.bucket,
+                region:regionEl ? regionEl.value : qiniu.region,
+                domain:domainEl ? domainEl.value : qiniu.domain
+            }}
+        });
+    }
 }
 async function saveStorageSettings(options={}){
     syncStorageSettingsInputsToState();
-    normalizeLocalCaptionSettings();
-    writeLocalCaptionSettings();
     const hasDirInputs = Boolean(document.getElementById('storageImageSpaceRoot')) || ['upload','generated','local'].some(kind => document.getElementById(`storageDir_${kind}`));
     const hasClassificationInput = Boolean(document.getElementById('prefClassificationRulePrompt'));
     const shouldSaveDirs = options.saveDirs ?? hasDirInputs;
     const shouldSaveClassification = options.saveClassification ?? hasClassificationInput;
+    const shouldSaveImageStorage = Boolean(options.saveImageStorage);
+    if(!shouldSaveImageStorage || shouldSaveDirs || shouldSaveClassification){
+        normalizeLocalCaptionSettings();
+        writeLocalCaptionSettings();
+    }
     const tasks = {};
     if(shouldSaveDirs){
         const payload = {image_space:storageSettingsState.imageSpace || imageSpaceSettings.root || '', migrate_legacy:true};
@@ -290,10 +363,18 @@ async function saveStorageSettings(options={}){
             body:JSON.stringify({prompt:storageSettingsState.classificationPrompt || ''})
         });
     }
+    if(shouldSaveImageStorage){
+        tasks.imageStorage = apiJson('/api/image-storage-preferences', {
+            method:'PATCH',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify(imageStoragePreferences)
+        });
+    }
     const [data, promptData] = await Promise.all([
         tasks.dirs || Promise.resolve(null),
         tasks.classification || Promise.resolve(null)
     ]);
+    const imageStorageData = tasks.imageStorage ? await tasks.imageStorage : null;
     if(data){
         storageSettingsState.dirs = data.dirs || storageSettingsState.dirs || {};
         storageSettingsState.imageSpace = data.image_space || data.root || storageSettingsState.imageSpace || '';
@@ -301,9 +382,10 @@ async function saveStorageSettings(options={}){
         imageSpaceSettings = {root:storageSettingsState.imageSpace, dirs:storageSettingsState.dirs, legacyDirs:data.legacy_dirs || {}, unified:Boolean(data.unified)};
     }
     if(promptData) storageSettingsState.classificationPrompt = promptData.prompt || storageSettingsState.classificationPrompt || '';
+    if(imageStorageData) imageStoragePreferences = normalizeImageStoragePreferences(imageStorageData);
     storageSettingsState.selected = new Set();
     if(data) await loadStorageFiles(storageSettingsState.kind);
-    setStatus('偏好设置已保存');
+    setStatus(imageStorageData ? '图片存储设置已保存' : '偏好设置已保存');
 }
 async function loadStorageFiles(kind, options={}){
     const append = Boolean(options.append);
@@ -399,7 +481,53 @@ function renderStorageSettingsModal(){
     const activePrefTab = storageSettingsState.tab || 'prefs';
     const captionOpen = storageSettingsState.editor === 'caption';
     const classifyOpen = storageSettingsState.editor === 'classify';
+    const imageStorage = normalizeImageStoragePreferences(imageStoragePreferences);
+    const qiniuStorage = imageStorage.providers.qiniu;
+    const imageStoragePrefs = `
+        <div class="asset-pref-section image-storage-preference-section">
+            <div class="asset-pref-title"><i data-lucide="cloud-cog"></i><span>图片存储位置</span></div>
+            <div class="asset-pref-grid image-storage-mode-grid">
+                <label class="image-storage-mode-card ${imageStorage.mode === 'local' ? 'active' : ''}">
+                    <input type="radio" name="imageStorageMode" value="local" data-image-storage-mode="local" ${imageStorage.mode === 'local' ? 'checked' : ''}>
+                    <span><b>本地存储</b><em>沿用现有图片空间和三个素材目录。</em></span>
+                </label>
+                <label class="image-storage-mode-card ${imageStorage.mode === 'cloud' ? 'active' : ''}">
+                    <input type="radio" name="imageStorageMode" value="cloud" data-image-storage-mode="cloud" ${imageStorage.mode === 'cloud' ? 'checked' : ''}>
+                    <span><b>云端存储</b><em>当前仅保存七牛云 Kodo 偏好，上传流程尚未接入。</em></span>
+                </label>
+            </div>
+            ${imageStorage.mode === 'cloud' ? `
+                <div class="asset-pref-editor image-storage-cloud-editor">
+                    <div class="asset-pref-grid">
+                        <label class="storage-dir-row">
+                            <span>存储服务商</span>
+                            <select id="imageStorageProvider" data-image-storage-input="provider">
+                                <option value="qiniu" selected>七牛云 Kodo</option>
+                            </select>
+                        </label>
+                        <label class="storage-dir-row">
+                            <span>Bucket</span>
+                            <input id="imageStorageQiniuBucket" data-image-storage-input="bucket" value="${escapeAttr(qiniuStorage.bucket)}" placeholder="例如：xiaomei-assets">
+                        </label>
+                        <label class="storage-dir-row">
+                            <span>Region</span>
+                            <input id="imageStorageQiniuRegion" data-image-storage-input="region" value="${escapeAttr(qiniuStorage.region)}" placeholder="例如：z2">
+                        </label>
+                        <label class="storage-dir-row">
+                            <span>存储桶域名</span>
+                            <input id="imageStorageQiniuDomain" data-image-storage-input="domain" value="${escapeAttr(qiniuStorage.domain)}" placeholder="例如：https://media.example.com">
+                        </label>
+                    </div>
+                    <div class="image-space-hint">切换存储位置不会迁移历史图片，也不会改变现有本地图片空间。</div>
+                </div>
+            ` : ''}
+            <div class="storage-settings-actions inline">
+                <button class="asset-btn primary" type="button" data-image-storage-save><i data-lucide="save"></i><span>保存存储设置</span></button>
+            </div>
+        </div>
+    `;
     const prefsBody = `
+        ${imageStoragePrefs}
         <div class="asset-pref-section">
             <button class="asset-pref-fold ${captionOpen ? 'open' : ''}" type="button" data-pref-editor="caption">
                 <span><i data-lucide="message-square-text"></i><b>反推提示词</b></span>
@@ -4040,7 +4168,8 @@ function renderPromptTreeInlineEdit(kind){
 function promptSceneDescription(item){
     const scene = String(item.scene || '').trim();
     const positive = String(item.positive || '').trim();
-    return scene.replace(/\s+/g, ' ') === positive.replace(/\s+/g, ' ') ? '' : scene;
+    // 用途说明可能是保存时被截断的正文摘要。
+    return positive.replace(/\s+/g, ' ').startsWith(scene.replace(/\s+/g, ' ')) ? '' : scene;
 }
 function renderPromptRow(item, readonly){
     const scene = promptSceneDescription(item);
@@ -5544,6 +5673,15 @@ async function handleClick(event){
         event.preventDefault();
         event.stopPropagation();
         await browseStorageFolder(storageBrowseBtn.dataset.storageBrowse || '');
+        return;
+    }
+    if(target.closest?.('[data-image-storage-save]')){
+        try {
+            await saveStorageSettings({saveDirs:false, saveClassification:false, saveImageStorage:true});
+            renderStorageSettingsModal();
+        } catch(err){
+            setStatus(err.message || '保存图片存储设置失败');
+        }
         return;
     }
     const prefTabBtn = target.closest?.('[data-pref-tab]');
@@ -7359,6 +7497,17 @@ root.addEventListener('change', event => {
 });
 document.addEventListener('change', event => {
     if(!event.target?.closest?.('#storageSettingsOverlay')) return;
+    const imageStorageMode = event.target.closest?.('[data-image-storage-mode]');
+    if(imageStorageMode){
+        syncStorageSettingsInputsToState();
+        imageStoragePreferences.mode = imageStorageMode.value === 'cloud' ? 'cloud' : 'local';
+        renderStorageSettingsModal();
+        return;
+    }
+    if(event.target.closest?.('[data-image-storage-input]')){
+        syncStorageSettingsInputsToState();
+        return;
+    }
     if(event.target?.id === 'prefCaptionProvider'){
         localCaptionProvider = event.target.value || '';
         localCaptionModel = '';
@@ -7368,6 +7517,10 @@ document.addEventListener('change', event => {
     if(event.target?.id === 'prefCaptionModel'){
         localCaptionModel = event.target.value || '';
     }
+});
+document.addEventListener('input', event => {
+    if(!event.target?.closest?.('#storageSettingsOverlay')) return;
+    if(event.target.closest?.('[data-image-storage-input]')) syncStorageSettingsInputsToState();
 });
 root.addEventListener('dragstart', event => {
     const storageKind = activeStorageFileKind();

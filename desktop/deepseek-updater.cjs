@@ -160,6 +160,9 @@ class DeepSeekHarnessUpdater {
 
     const backupDir = path.join(this.dataRoot, 'deepseek-harness-updates', new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14));
     const patchFile = path.join(backupDir, 'xiaomei-adapter.patch');
+    // 时间戳目录只保留「这一次」的备份，事后不好找。同时写一份稳定路径的副本，
+    // 冲突时 desktop/harness-patch.cjs 和人工恢复都能直接拿到最新适配补丁。
+    const stablePatchFile = path.join(this.dataRoot, 'deepseek-harness-adapter.patch');
     const untrackedBackupRoot = path.join(backupDir, 'untracked');
     const previousCommit = check.commit;
     fs.mkdirSync(backupDir, { recursive: true });
@@ -171,6 +174,7 @@ class DeepSeekHarnessUpdater {
       const diff = await run('git', ['diff', '--binary', 'HEAD'], { cwd: this.root, timeout: 30_000 });
       if (diff.stdout.trim()) {
         fs.writeFileSync(patchFile, diff.stdout, 'utf8');
+        try { fs.writeFileSync(stablePatchFile, diff.stdout, 'utf8'); } catch {}
         patchSaved = true;
       }
       report('download', '正在获取 DeepSeek Harness 上游更新');
@@ -195,7 +199,7 @@ class DeepSeekHarnessUpdater {
             await run('git', ['apply', '--3way', patchFile], { cwd: probeDir, timeout: 60_000 });
           } catch (error) {
             const conflicts = await run('git', ['diff', '--name-only', '--diff-filter=U'], { cwd: probeDir, timeout: 10_000 });
-            throw new Error(`适配补丁与上游冲突：${conflicts.stdout.trim() || short(error?.message || error)}`);
+            throw new Error(`适配补丁与上游冲突：${conflicts.stdout.trim() || short(error?.message || error)}（补丁已存于 ${patchFile}；处理步骤见 desktop/harness-patches/README.md）`);
           }
         }
         for (const rel of check.untracked_files || []) {
@@ -226,7 +230,7 @@ class DeepSeekHarnessUpdater {
           await run('git', ['apply', '--3way', patchFile], { cwd: this.root, timeout: 60_000 });
         } catch (error) {
           const conflicts = await run('git', ['diff', '--name-only', '--diff-filter=U'], { cwd: this.root, timeout: 10_000 });
-          throw new Error(`适配补丁与上游冲突：${conflicts.stdout.trim() || short(error?.message || error)}`);
+          throw new Error(`适配补丁与上游冲突：${conflicts.stdout.trim() || short(error?.message || error)}（补丁已存于 ${patchFile}；处理步骤见 desktop/harness-patches/README.md）`);
         }
       }
       for (const item of movedUntracked) {

@@ -12,7 +12,10 @@ const snapshotPath = path.join(releaseRoot, 'source-snapshot.json');
 const capture = process.argv.includes('--capture');
 const local = process.argv.includes('--local');
 const criticalPackagedPaths = [
-  'main.py', 'desktop/main.cjs', 'desktop/preload.cjs',
+  'main.py', 'runtime_paths.py', 'skill_capabilities.py', 'desktop/main.cjs', 'desktop/preload.cjs',
+  'desktop/harness-mcp-entry.js',
+  'desktop/harness-patches/manifest.json', 'desktop/harness-patches/README.md',
+  'desktop/harness-patches/xiaomei-adapter.patch',
   'static/index.html', 'static/smart-canvas.html',
   'static/js/smart-canvas.js', 'static/css/smart-canvas.css',
   'static/inspiration.html', 'static/js/inspiration.js',
@@ -36,9 +39,16 @@ function isProductSource(file, tracked) {
   const extension = path.extname(file).toLowerCase();
   if (/^[^/]+\.py$/.test(file) && file !== 'get-pip.py') return true;
   if (file === 'requirements.txt' || file === 'requirements-lock.txt' || file === 'API/.env.example') return true;
-  if (/^desktop\/[^/]+\.cjs$/.test(file)) return true;
+  if (/^desktop\/[^/]+\.(?:cjs|js)$/.test(file)) {
+    return !/^desktop\/(?:_probe|_argv)(?:[_./]|$)/i.test(file);
+  }
+  if (/^desktop\/harness-patches\/[^/]+$/.test(file)) {
+    return ['.json', '.md', '.patch'].includes(extension);
+  }
   if (file.startsWith('static/')) {
-    if (['.html', '.js', '.css', '.svg', '.json'].includes(extension)) return true;
+    if (['.html', '.js', '.css', '.svg', '.json'].includes(extension)) {
+      return !/^static\/_probe(?:[_./]|$)/i.test(file) && !/\.bak-/i.test(file);
+    }
     return ['.png', '.jpg', '.jpeg', '.gif', '.ico'].includes(extension)
       && (tracked || /^static\/images\/(?:file-icons|inspiration)\//.test(file));
   }
@@ -47,6 +57,9 @@ function isProductSource(file, tracked) {
   }
   if (/^tools\/chrome-model-downloader\/[^/]+$/.test(file)) {
     return ['.js', '.json', '.html', '.css', '.md'].includes(extension);
+  }
+  if (/^tools\/skill-capabilities\/[^/]+$/.test(file)) {
+    return ['.py', '.js', '.json', '.md'].includes(extension);
   }
   if (/^(?:tools|workflows)\//.test(file)) {
     return tracked && ['.py', '.js', '.cjs', '.mjs', '.json', '.html', '.css', '.svg', '.yaml', '.yml'].includes(extension);

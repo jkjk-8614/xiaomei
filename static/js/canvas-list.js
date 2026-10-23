@@ -444,6 +444,8 @@ function autoLayoutNulls(items){
         c.board_x = X0 + col * XSTRIDE;
         c.board_y = Y0 + rowIdx * YSTRIDE;
         i++;
+        // 坏画布只做临时排布，不写回：文件本身已经读不了，写元数据必然失败。
+        if(c.corrupt) return;
         persistMeta(c.id, { board_x: c.board_x, board_y: c.board_y });
     });
 }
@@ -1395,11 +1397,14 @@ async function deleteCanvas(id){
     try {
         const res = await fetch(`/api/canvases/${encodeURIComponent(id)}`, { method: 'DELETE' });
         if(!res.ok) throw new Error('delete failed');
+        const data = await res.json().catch(() => ({}));
         canvases = canvases.filter(x => x.id !== id);
         renderBoard();
         renderProjects();
         refreshTrashCount();
-        setStatus(L('已移入回收站','Moved to trash'));
+        setStatus(data.purged
+            ? L('损坏的画布已彻底删除','Corrupt canvas permanently deleted')
+            : L('已移入回收站','Moved to trash'));
     } catch(e){ console.error(e); setStatus(L('删除失败','Delete failed')); }
 }
 
@@ -1486,7 +1491,7 @@ function renderTrash(){
                 <button class="ws-trash-act purge" type="button"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i><span>${L('彻底删除','Delete')}</span></button>
             </div>
             <div class="ws-trash-confirm">
-                <div class="ws-trash-confirm-title">${isProject ? L('彻底删除项目？其中画布将移回默认项目','Delete project permanently? Its canvases will move to Default.') : L('彻底删除？不可恢复','Delete permanently?')}</div>
+                <div class="ws-trash-confirm-title">${isProject ? L('彻底删除项目？其中画布将一并移入回收站','Delete project permanently? Its canvases will move to Trash too.') : L('彻底删除？不可恢复','Delete permanently?')}</div>
                 <div class="ws-trash-confirm-actions">
                     <button class="ws-trash-confirm-yes" type="button">${L('删除','Delete')}</button>
                     <button class="ws-trash-confirm-no" type="button">${L('取消','Cancel')}</button>
@@ -1540,7 +1545,7 @@ async function purgeProject(id){
         await loadAll();
         renderTrash();
         updateTrashBadge();
-        setStatus(L('项目已彻底删除，画布已移回默认项目','Project deleted; canvases moved to Default'));
+        setStatus(L('项目已彻底删除，画布已一并移入回收站','Project deleted; canvases moved to Trash'));
     } catch(e){ console.error(e); setStatus(L('项目删除失败','Project deletion failed')); }
 }
 

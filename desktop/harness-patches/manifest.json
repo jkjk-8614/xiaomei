@@ -1,0 +1,85 @@
+{
+  "saved_at": "2026-10-23T03:00:22.026Z",
+  "base_commit": "687f282e8625c6b8d11ff58211a90524be2e4317",
+  "base_branch": "master",
+  "files": [
+    {
+      "path": "apps/desktop-host/src/index.ts",
+      "insertions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "docs/config-catalog.md",
+      "insertions": 3,
+      "deletions": 1
+    },
+    {
+      "path": "docs/config-catalog.zh.md",
+      "insertions": 3,
+      "deletions": 1
+    },
+    {
+      "path": "packages/client/ui-model-selection/src/client/ModelSelect.module.css",
+      "insertions": 74,
+      "deletions": 0
+    },
+    {
+      "path": "packages/client/ui-model-selection/src/client/ModelSelect.tsx",
+      "insertions": 155,
+      "deletions": 90
+    },
+    {
+      "path": "packages/client/ui-model-selection/src/client/locales.ts",
+      "insertions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "packages/client/ui-model-selection/tests/model-select.client.spec.tsx",
+      "insertions": 103,
+      "deletions": 45
+    },
+    {
+      "path": "packages/llm/llm-pi-ai/README.md",
+      "insertions": 5,
+      "deletions": 0
+    },
+    {
+      "path": "packages/llm/llm-pi-ai/README.zh.md",
+      "insertions": 5,
+      "deletions": 0
+    },
+    {
+      "path": "packages/llm/llm-pi-ai/src/adapter.ts",
+      "insertions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "packages/llm/llm-pi-ai/src/completions-fetch.ts",
+      "insertions": 54,
+      "deletions": 0
+    },
+    {
+      "path": "packages/llm/llm-pi-ai/src/config.ts",
+      "insertions": 7,
+      "deletions": 0
+    },
+    {
+      "path": "packages/llm/llm-pi-ai/tests/completions-fetch.spec.ts",
+      "insertions": 94,
+      "deletions": 0
+    },
+    {
+      "path": "packages/llm/llm-pi-ai/tests/config.spec.ts",
+      "insertions": 15,
+      "deletions": 0
+    },
+    {
+      "path": "packages/llm/llm-pi-ai/tests/loader-composition.spec.ts",
+      "insertions": 73,
+      "deletions": 0
+    }
+  ],
+  "insertions": 598,
+  "deletions": 138,
+  "bytes": 74126
+}

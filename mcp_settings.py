@@ -1,5 +1,6 @@
 """Local MCP configuration and short-lived connection diagnostics."""
 import asyncio
+import hashlib
 import ipaddress
 import json
 import os
@@ -16,8 +17,9 @@ from urllib.parse import urlsplit
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel, Field, model_validator
+from runtime_paths import resolve_roots
 
-ROOT = Path(sys.executable if getattr(sys, "frozen", False) else __file__).resolve().parent
+_, ROOT = resolve_roots(Path(sys.executable if getattr(sys, "frozen", False) else __file__).resolve().parent)
 CONFIG_PATH = ROOT / "data" / "mcp_servers.json"
 LOCK = threading.RLock()
 
@@ -112,10 +114,50 @@ async def search_market(q: str = Query(default="", max_length=160),
         raise HTTPException(502, "无法读取 MCP 官方目录，请检查网络后重试。")
 
 
+# DeepSeek Harness namespaces MCP tools as mcp__<serverName>__<tool> and only
+# accepts [A-Za-z0-9_-]{1,32} as the namespace, so every service needs a
+# stable tool prefix that survives restarts and permission rules.
+SERVER_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+
+
+def suggest_server_name(name: str) -> str:
+    """Derive a tool prefix from a display name.
+
+    Names without ASCII letters or digits (for example Chinese ones) fall
+    back to a short digest of the name, so the prefix stays stable while the
+    display name is edited.
+    """
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "-", name).strip("-_")
+    if not slug:
+        slug = "mcp-" + hashlib.sha1(name.encode("utf-8")).hexdigest()[:6]
+    return slug[:32]
+
+
+def assign_server_names(servers: "list[ServerConfig]") -> None:
+    """Give every service a unique tool prefix, keeping explicit ones intact."""
+    explicit = [s.server_name for s in servers if s.server_name]
+    if len(set(explicit)) != len(explicit):
+        raise ValueError("工具名前缀不能重复")
+    used = set(explicit)
+    for server in servers:
+        if server.server_name:
+            continue
+        candidate = suggest_server_name(server.name)
+        unique = candidate
+        counter = 2
+        while unique in used:
+            suffix = f"-{counter}"
+            unique = candidate[: 32 - len(suffix)] + suffix
+            counter += 1
+        server.server_name = unique
+        used.add(unique)
+
+
 class ServerConfig(BaseModel):
     name: str = Field(min_length=1, max_length=80, pattern=r"^[\w .-]+$")
     transport: Literal["stdio", "http"] = "stdio"
     enabled: bool = True
+    server_name: str = Field(default="", max_length=32)
     command: str = Field(default="", max_length=4096)
     args: list[str] = Field(default_factory=list, max_length=100)
     cwd: str = Field(default="", max_length=4096)
@@ -128,8 +170,11 @@ class ServerConfig(BaseModel):
         self.name = self.name.strip()
         self.command = self.command.strip()
         self.url = self.url.strip()
+        self.server_name = self.server_name.strip()
         if not self.name:
             raise ValueError("请填写服务名称")
+        if self.server_name and not SERVER_NAME_PATTERN.match(self.server_name):
+            raise ValueError("工具名前缀只能包含字母、数字、下划线和短横线，且不超过 32 个字符")
         if self.transport == "stdio" and not self.command:
             raise ValueError("请填写启动命令")
         if self.transport == "http":
@@ -149,6 +194,7 @@ class Settings(BaseModel):
         names = [s.name.casefold() for s in self.servers]
         if len(names) != len(set(names)):
             raise ValueError("服务名称不能重复")
+        assign_server_names(self.servers)
         return self
 
 
@@ -163,8 +209,23 @@ def read_settings():
             raise HTTPException(500, "MCP 配置读取失败，请检查 data/mcp_servers.json；原配置已保留")
 
 
+def first_error_message(exc: ValueError) -> str:
+    """Return the first readable message of a pydantic validation failure."""
+    errors = getattr(exc, "errors", None)
+    if callable(errors):
+        for error in errors():
+            message = str(error.get("msg") or "").replace("Value error, ", "").strip()
+            if message:
+                return message
+    return "配置格式有误，请检查必填项、服务名称和 JSON 格式。"
+
+
 @router.put("/settings")
-def save_settings(settings: Settings):
+def save_settings(payload: dict):
+    try:
+        settings = Settings.model_validate(payload)
+    except ValueError as exc:
+        raise HTTPException(422, first_error_message(exc))
     with LOCK:
         CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
         fd, name = tempfile.mkstemp(prefix=".mcp-", dir=CONFIG_PATH.parent)
@@ -175,7 +236,8 @@ def save_settings(settings: Settings):
         finally:
             if os.path.exists(name):
                 os.unlink(name)
-    return {"saved": True}
+    # 回写最终生效的工具名前缀，前端据此展示 DeepSeek 对话里的调用名。
+    return {"saved": True, "servers": settings.model_dump()["servers"]}
 
 
 async def probe(config: ServerConfig):

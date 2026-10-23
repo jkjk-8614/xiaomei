@@ -78,7 +78,9 @@
   function filteredSkills() {
     const query = state.query.toLocaleLowerCase();
     return state.skills.filter((skill) => {
-      const haystack = [skillName(skill), skillDescription(skill), skill?.slug, skill?.category, categoryLabel(skill), statusLabel(skill)]
+      const haystack = [skillName(skill), skillDescription(skill), skill?.slug, skill?.category, categoryLabel(skill), statusLabel(skill),
+        (Array.isArray(skill?.capabilities) ? skill.capabilities.join(' ') : ''),
+        (Array.isArray(skill?.capability_ids) ? skill.capability_ids.join(' ') : '')]
         .filter(Boolean).join(' ').toLocaleLowerCase();
       return (!query || haystack.includes(query))
         && (state.category === 'all' || clean(skill?.category || 'other') === state.category)
@@ -94,6 +96,17 @@
   function statusMarkup(skill) {
     const key = statusKey(skill);
     return `<span class="skill-market-status skill-market-status-${esc(key)}"><i></i>${esc(statusLabel(skill))}</span>`;
+  }
+
+  function capabilityMarkup(skill) {
+    const ids = Array.isArray(skill.capability_ids) ? skill.capability_ids : [];
+    if (!ids.length) return '<span>未声明宿主能力，宿主无法预检当前环境能否使用。</span>';
+    const status = Array.isArray(skill.capability_status) ? skill.capability_status : [];
+    const missing = status.filter((item) => item && item.available === false).map((item) => item.label || item.id);
+    const text = missing.length
+      ? `宿主能力：${ids.join(' · ')}；当前缺少：${missing.join('、')}`
+      : `宿主能力：${ids.join(' · ')}`;
+    return `<span>${esc(text)}</span>`;
   }
 
   function skillCard(skill) {
@@ -159,7 +172,7 @@
     else if (state.detailTab === 'example') content = resources.example ? `<pre>${esc(resources.example)}</pre>` : '<div class="skill-market-detail-empty">这个 Skill 没有附带对话示例。</div>';
     else content = detail.instructions ? `<pre>${esc(String(detail.instructions).slice(0, 14000))}${String(detail.instructions).length > 14000 ? '\n\n…内容较长，已在界面中截断。' : ''}</pre>` : '<div class="skill-market-detail-empty">没有可显示的指令正文。</div>';
     const refs = Array.isArray(resources.reference_files) ? resources.reference_files : []; const scripts = Array.isArray(resources.script_files) ? resources.script_files : []; const enabled = skill.enabled !== false;
-    return `<div class="skill-market-root skill-market-detail-view"><button type="button" class="skill-market-back" data-skill-market-back>‹ 返回 Skill 列表</button><div class="skill-market-detail-head"><span class="skill-market-detail-icon">✦</span><div><span class="skill-market-kicker">SKILL DETAIL</span><h3>${esc(skillName(skill))}</h3><p>${esc(skillDescription(skill))}</p><div class="skill-market-detail-meta">${statusMarkup(skill)}<em>${esc(versionLabel(skill))}</em><em>${esc(categoryLabel(skill))}</em></div></div><button type="button" class="skill-market-button primary" data-skill-market-select="${esc(skillId(skill))}" ${enabled ? '' : 'disabled'}>${state.selectedId === skillId(skill) ? '已选择' : enabled ? '选择这个 Skill' : '请先启用'}</button></div><div class="skill-market-detail-facts"><div><small>能力</small><strong>${esc((skill.capabilities || ['对话指令']).join(' · '))}</strong></div><div><small>参考资料</small><strong>${refs.length} 个文件</strong></div><div><small>脚本</small><strong>${scripts.length ? `${scripts.length} 个（不自动执行）` : '无'}</strong></div></div><nav class="skill-market-detail-tabs" role="tablist"><button type="button" class="${state.detailTab === 'examples' ? 'is-active' : ''}" data-skill-detail-tab="examples">指令预览</button><button type="button" class="${state.detailTab === 'example' ? 'is-active' : ''}" data-skill-detail-tab="example">对话示例</button><button type="button" class="${state.detailTab === 'tutorial' ? 'is-active' : ''}" data-skill-detail-tab="tutorial">使用教程</button></nav><section class="skill-market-detail-content">${content}</section><div class="skill-market-detail-files"><strong>资源状态</strong><span>${refs.length ? `参考资料：${refs.slice(0, 4).map(esc).join('、')}` : '无已登记参考资料'}</span><span>${scripts.length ? '包含脚本，但宿主不会自动运行脚本、CLI 或安装依赖。' : '未发现脚本依赖。'}</span></div><div class="skill-market-detail-actions"><button type="button" class="skill-market-button" data-skill-market-rename="${esc(skillId(skill))}">重命名</button><button type="button" class="skill-market-button skill-market-delete" data-skill-market-delete="${esc(skillId(skill))}">删除 Skill</button></div></div>`;
+    return `<div class="skill-market-root skill-market-detail-view"><button type="button" class="skill-market-back" data-skill-market-back>‹ 返回 Skill 列表</button><div class="skill-market-detail-head"><span class="skill-market-detail-icon">✦</span><div><span class="skill-market-kicker">SKILL DETAIL</span><h3>${esc(skillName(skill))}</h3><p>${esc(skillDescription(skill))}</p><div class="skill-market-detail-meta">${statusMarkup(skill)}<em>${esc(versionLabel(skill))}</em><em>${esc(categoryLabel(skill))}</em></div></div><button type="button" class="skill-market-button primary" data-skill-market-select="${esc(skillId(skill))}" ${enabled ? '' : 'disabled'}>${state.selectedId === skillId(skill) ? '已选择' : enabled ? '选择这个 Skill' : '请先启用'}</button></div><div class="skill-market-detail-facts"><div><small>能力</small><strong>${esc((skill.capabilities || ['对话指令']).join(' · '))}</strong></div><div><small>参考资料</small><strong>${refs.length} 个文件</strong></div><div><small>脚本</small><strong>${scripts.length ? `${scripts.length} 个（不自动执行）` : '无'}</strong></div></div><nav class="skill-market-detail-tabs" role="tablist"><button type="button" class="${state.detailTab === 'examples' ? 'is-active' : ''}" data-skill-detail-tab="examples">指令预览</button><button type="button" class="${state.detailTab === 'example' ? 'is-active' : ''}" data-skill-detail-tab="example">对话示例</button><button type="button" class="${state.detailTab === 'tutorial' ? 'is-active' : ''}" data-skill-detail-tab="tutorial">使用教程</button></nav><section class="skill-market-detail-content">${content}</section><div class="skill-market-detail-files"><strong>资源状态</strong><span>${refs.length ? `参考资料：${refs.slice(0, 4).map(esc).join('、')}` : '无已登记参考资料'}</span><span>${scripts.length ? '包含脚本，但宿主不会自动运行脚本、CLI 或安装依赖。' : '未发现脚本依赖。'}</span>${capabilityMarkup(skill)}</div><div class="skill-market-detail-actions"><button type="button" class="skill-market-button" data-skill-market-rename="${esc(skillId(skill))}">重命名</button><button type="button" class="skill-market-button skill-market-delete" data-skill-market-delete="${esc(skillId(skill))}">删除 Skill</button></div></div>`;
   }
 
   function installMarkup() {
