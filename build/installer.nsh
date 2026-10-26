@@ -11,7 +11,6 @@
 ; %LOCALAPPDATA%\小美画布 on first start.
 Var /GLOBAL XiaomeiPreserveRoot
 Var /GLOBAL XiaomeiPreservedAnything
-Var /GLOBAL XiaomeiLegacyDir
 Var /GLOBAL XiaomeiInstallCompleted
 
 ; Move $R0 to $R1.  Sets $R9=1 when a move fails and
