@@ -1,9 +1,8 @@
-"""Start the desktop API with the official Windows embedded Python runtime.
+"""Start the API with the bundled Windows Python runtime.
 
-The embedded interpreter is deliberately kept separate from the application
-source tree.  This small entry point adds the source root before importing
-``main.py`` so local modules work while the interpreter remains isolated from
-any Python installation on the user's machine.
+The embedded interpreter keeps its own standard library and site-packages.
+This entry point adds the application root before loading ``main.py`` so the
+same backend works from an installed package and from a source checkout.
 """
 
 import os
@@ -12,8 +11,7 @@ import sys
 from pathlib import Path
 
 
-project_root = Path(os.environ.get("XIAOMEI_CANVAS_PROJECT_ROOT") or Path(__file__).resolve().parent)
-project_root = project_root.resolve()
+project_root = Path(os.environ.get("XIAOMEI_CANVAS_PROJECT_ROOT") or Path(__file__).resolve().parent).resolve()
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 

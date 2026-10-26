@@ -8,6 +8,50 @@ so the result must remain useful when a custom node is not installed yet.
 
 from ComfyUI.integration.comfy_node_registry import frontend_node_available
 
+# Purpose inference only trusts well-known node names.  A graph that matches
+# none of these stays a generic workflow instead of getting a guessed label.
+PURPOSE_VIDEO_OUTPUT_TYPES = {"VHS_VideoCombine", "SaveVideo", "SaveAnimatedWEBP", "SaveAnimatedPNG"}
+PURPOSE_LATENT_TYPES = {"EmptyLatentImage", "EmptySD3LatentImage", "EmptyQwenImageLatent",
+                        "EmptyMochiLatentVideo", "EmptyHunyuanLatentVideo", "EmptyLatent"}
+PURPOSE_SAMPLER_TYPES = {"KSampler", "KSamplerAdvanced", "SamplerCustom", "SamplerCustomAdvanced"}
+
+
+def infer_workflow_purpose(kinds):
+    """Return a conservative purpose label with the node types it is based on.
+
+    Every rule matches explicit node names that ComfyUI itself exposes, so the
+    basis list can be shown to the user as evidence instead of a guess.
+    """
+    kinds = {str(kind) for kind in kinds if isinstance(kind, str) and kind}
+
+    def matching(predicate):
+        return [kind for kind in sorted(kinds) if predicate(kind)]
+
+    video_out = sorted(kinds & PURPOSE_VIDEO_OUTPUT_TYPES) + matching(
+        lambda kind: kind.endswith("VideoUpscaler"))
+    latent = sorted(kinds & PURPOSE_LATENT_TYPES)
+    samplers = sorted(kinds & PURPOSE_SAMPLER_TYPES)
+    inpaint = matching(lambda kind: "inpaint" in kind.casefold())
+    upscale = matching(lambda kind: "upscale" in kind.casefold() or "seedvr" in kind.casefold())
+    if "SeeThrough_GenerateLayers" in kinds:
+        return {"label": "透明图层分层", "summary": "把单张图拆分为多个透明图层并导出 PSD",
+                "basis": ["SeeThrough_GenerateLayers"]}
+    if video_out:
+        label = "视频生成" if latent or samplers else "视频处理"
+        return {"label": label, "summary": "生成或合成视频/动图结果", "basis": video_out[:4]}
+    if inpaint:
+        return {"label": "局部重绘", "summary": "按遮罩修改图片的指定区域", "basis": inpaint[:4]}
+    if upscale:
+        return {"label": "图片放大", "summary": "提高图片分辨率并保留细节", "basis": upscale[:4]}
+    if samplers and "LoadImage" in kinds and not latent:
+        return {"label": "图生图", "summary": "按输入图片和提示词生成新图，可改写商品参考图",
+                "basis": (["LoadImage"] + samplers)[:4]}
+    if latent and samplers:
+        return {"label": "文生图", "summary": "按提示词从空白画布生成图片",
+                "basis": (latent + samplers)[:4]}
+    return {"label": "", "summary": "", "basis": []}
+
+
 SWARM_INPUT_TYPES = {
     "SwarmWorkflowDescription",
     "SwarmInputGroup",
@@ -317,6 +361,7 @@ def inspect_workflow(workflow, object_info):
             choices = spec[0] if spec and isinstance(spec[0], list) else (spec[1].get("options", []) if len(spec) > 1 and isinstance(spec[1], dict) else [])
             if isinstance(value, str) and value not in choices:
                 missing_models.add(value)
+    kinds = {str(node.get("type" if ui_format else "class_type") or "") for _, node in records}
     return {"format": "UI" if ui_format else "API", "node_count": len(nodes),
             "missing_nodes": sorted(missing_nodes), "missing_models": sorted(missing_models),
             "review_nodes": sorted(review_nodes),
@@ -324,4 +369,5 @@ def inspect_workflow(workflow, object_info):
             "swarm_inputs": swarm_inputs,
             "workflow_description": workflow_description,
             "backend_available": backend_available,
+            "purpose": infer_workflow_purpose(kinds),
             "note": "检查覆盖已知加载器；自定义节点内部的模型下载、网络调用和许可证需另行确认。"}

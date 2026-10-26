@@ -107,13 +107,17 @@ function normalizeProductFidelityNode(node){
     if(!node.fidelityConfig) node.fidelityConfig=fidelityConfig(node.runSettings?.productFidelity||{enabled:true});
     if(node.fidelityConfig.dimensions?.version!==2||!node.fidelityConfig.identification||!node.fidelityConfig.advanced)node.fidelityConfig=fidelityConfig(node.fidelityConfig);
     node.fidelityConfig.enabled=true;
-    node.w=Math.max(760,Number(node.w)||980);node.h=Math.max(650,Number(node.h)||820);
+    node.w=Math.max(760,Number(node.w)||980);node.h=Math.max(560,Number(node.h)||720);
     node.title='产品保护';
     return node;
 }
 function createProductFidelityNodeAt(point){
-    const node=createNode((point?.x||0)-490,(point?.y||0)-410,[],{nodeType:SMART_PRODUCT_FIDELITY_NODE_TYPE,title:'产品保护',skipSave:true});
+    const height=Math.max(560,Math.min(720,window.innerHeight-160));
+    const node=createNode((point?.x||0)-490,(point?.y||0)-height/2,[],{nodeType:SMART_PRODUCT_FIDELITY_NODE_TYPE,title:'产品保护',skipSave:true});
     if(!node)return null;
+    node.h=height;
+    const top=clientToWorldPoint(0,76).y,bottom=clientToWorldPoint(0,window.innerHeight-20).y;
+    if(bottom-top>=height)node.y=Math.max(top,Math.min(node.y,bottom-height));
     normalizeProductFidelityNode(node);
     node.fidelityConfig.detail.autoCrops=true;
     render();updateComposer();scheduleSave();
@@ -146,7 +150,10 @@ function fidelityLinkedChangeMessage(before,after,directKey){
     const affected=labels.filter(([key])=>key!==directKey&&fidelityGetValue(before,key)!==fidelityGetValue(after,key));
     const expectedMode=before.mode==='strict'?'background':before.mode==='view'?'view':'lighting';
     const needsConfirmation=affected.filter(([key])=>key!=='generation.allowedEdits'||before.generation.allowedEdits!==expectedMode);
-    return needsConfirmation.length?'继续后会调整'+needsConfirmation.map(([,label])=>label).join('、')+'。':'';
+    if(!needsConfirmation.length)return '';
+    const names={strict:'仅换背景',structure:'光影融合',view:'换拍摄角度'};
+    const change=before.mode!==after.mode?'将从「'+names[before.mode]+'」切换为「'+names[after.mode]+'」。':'';
+    return change+'同时调整：'+needsConfirmation.map(([,label])=>label).join('、')+'。';
 }
 function fidelityConfigurationWarning(config,effective){
     if(config.identification.enabled===false&&config.dimensions.enabled)return '产品信息已关闭，已填写的产品尺寸暂时不生效。';
@@ -155,13 +162,16 @@ function fidelityConfigurationWarning(config,effective){
 }
 function fidelityHasCustomSettings(config){
     const base=productFidelityDefaults();
+    fidelityChangeMode(base,config.mode);
     return ['category','categoryCustom','geometry','geometryCustom','structure.lockRatio','structure.lockOutline','structure.lockLines','structure.lockSymmetry','structure.lockLayout','detail.inputMode','detail.cropCount','detail.restoreMode','detail.restoreStrength','view.yaw','view.pitch','view.roll','view.framing','view.fov','generation.allowedEdits','validation.enabled','validation.ratioTolerancePct','advanced.enabled','maskFeatherPx','alignmentThreshold'].some(key=>fidelityGetValue(config,key)!==fidelityGetValue(base,key));
 }
 function fidelityConfirmReplacement(message){
     return new Promise(resolve=>{
         const dialog=document.createElement('dialog');
         dialog.className='pf-confirm-dialog';
-        dialog.innerHTML='<h2>要替换当前设置吗？</h2><p></p><div><button type="button" data-pf-confirm="cancel">取消</button><button type="button" data-pf-confirm="accept">继续</button></div>';
+        dialog.setAttribute('aria-labelledby','pfConfirmTitle');
+        dialog.setAttribute('aria-describedby','pfConfirmDescription');
+        dialog.innerHTML='<h2 id="pfConfirmTitle">确认调整保护设置</h2><p id="pfConfirmDescription"></p><div><button type="button" data-pf-confirm="cancel">取消</button><button type="button" data-pf-confirm="accept">确认调整</button></div>';
         dialog.querySelector('p').textContent=message;
         const finish=value=>{if(dialog.open)dialog.close();dialog.remove();resolve(value);};
         dialog.querySelector('[data-pf-confirm="cancel"]').onclick=()=>finish(false);
@@ -311,24 +321,26 @@ function productFidelityNodeBodyHtml(node){
     const current=refs.find(ref=>config.referenceIds[ref.url]===config.productReferenceId);
     const assets=fresh?previous.generatedAssets||[]:[];
     const productChoices=[...(!current?[[config.productReferenceId||'',refs.length?'请重新选择产品主图':'请先连接产品图片']]:[]),...refs.map((ref,index)=>[config.referenceIds[ref.url],fidelityReferenceLabel(ref,index)])];
-    const modeChoices=[['strict','仅换背景'],['structure','光影融合'],['view','换拍摄角度']];
+    const modeChoices=[['strict','仅换背景','保留标记区原图，保持原机位'],['structure','光影融合','同角度调整光照，颜色和细节可能变化'],['view','换拍摄角度','按新机位重绘，未见面由 AI 推测']];
     const dimensions=config.dimensions;
     const simpleDimension=(key,label)=>`<label class="pf-simple-dimension"><span>${label}</span><input type="number" min="0" step="any" data-pf-simple-dimension="${key}" value="${dimensions[key]===null?'':escapeAttr(Number(XiaomeiPhysicalDimensions.convertFromMillimeters(dimensions[key],dimensions.unit).toPrecision(12)))}" placeholder="未知"></label>`;
     return `<div class="pf-workbench" data-pf-root>
-        <header class="pf-heading"><div><strong>商品防变形保护</strong><span>选择原图 → 标记保留区域 → 选择出图方式</span></div><div class="pf-heading-actions"><nav class="pf-ui-modes" role="tablist" aria-label="设置模式"><button type="button" role="tab" id="pf-ui-${escapeAttr(node.id)}-simple" aria-controls="pf-ui-panel-${escapeAttr(node.id)}-simple" data-pf-ui-mode="simple" aria-selected="true">简单设置</button><button type="button" role="tab" id="pf-ui-${escapeAttr(node.id)}-all" aria-controls="pf-ui-panel-${escapeAttr(node.id)}-all" data-pf-ui-mode="all" aria-selected="false">全部设置</button></nav></div></header>
+        <header class="pf-heading"><div><strong>商品保护设置</strong></div><div class="pf-heading-actions"><nav class="pf-ui-modes" role="tablist" aria-label="设置模式"><button type="button" role="tab" id="pf-ui-${escapeAttr(node.id)}-simple" aria-controls="pf-ui-panel-${escapeAttr(node.id)}-simple" data-pf-ui-mode="simple" aria-selected="true">简单设置</button><button type="button" role="tab" id="pf-ui-${escapeAttr(node.id)}-all" aria-controls="pf-ui-panel-${escapeAttr(node.id)}-all" data-pf-ui-mode="all" aria-selected="false">全部设置</button></nav></div></header>
         <div class="pf-layout"><div class="pf-image-column">
             <div class="pf-image-heading"><strong>1. 选择商品原图</strong></div>
             <div class="pf-source-picker"><img data-pf-source-thumb alt="" ${current?`src="${escapeAttr(current.url)}"`:'hidden'}><div class="pf-source-copy"><label class="pf-field" data-pf-source-select ${current&&refs.length===1?'hidden':''}><span>选择商品原图</span><select data-pf-field="productReferenceId">${productChoices.map(([value,label])=>`<option value="${escapeAttr(value)}" ${config.productReferenceId===value?'selected':''}>${escapeHtml(label)}</option>`).join('')}</select></label><strong data-pf-source-name ${current&&refs.length===1?'':'hidden'}>${current?escapeHtml(fidelityReferenceLabel(current,refs.indexOf(current))):''}</strong><span data-pf-source-info>${current?'正在读取图片尺寸…':'请先连接商品原图'}</span></div></div>
             <div class="pf-image-heading pf-editor-title"><strong>2. 标记保留区域</strong><button type="button" data-pf-expand aria-expanded="false">放大编辑</button></div>
             <div class="pf-editor-region"><div class="pf-toolbar-card"><div class="pf-tools" role="group" aria-label="标记工具"><button type="button" data-pf-tool="mask">涂抹商品</button><button type="button" data-pf-tool="erase">橡皮擦</button><button type="button" data-pf-tool="rect">框选商品</button></div>
-            <div class="pf-editor-controls"><div class="pf-control-context"><label class="pf-brush">画笔大小<input type="range" min="1" max="20" value="4" data-pf-brush><output data-pf-brush-size></output></label><span class="pf-roi-hint" data-pf-roi-hint hidden>在图上拖出商品保护区</span></div></div></div>
+            <div class="pf-editor-controls"><div class="pf-control-context"><label class="pf-brush">画笔大小<input type="range" min="1" max="20" value="4" data-pf-brush><output data-pf-brush-size></output></label><span class="pf-roi-hint" data-pf-roi-hint hidden>在图上拖出商品保护区</span></div>
+            <div class="pf-control-actions"><div class="pf-history-actions"><button type="button" data-pf-history="undo" title="撤销画布上一步操作">撤销</button><button type="button" data-pf-history="redo" title="重做画布上一步操作">重做</button></div><div class="pf-secondary-actions"><button type="button" data-pf-action="clear-mask">清空保护区</button><button type="button" data-pf-action="clear-rois" hidden>清空细节框</button></div></div>
+            </div><p class="pf-image-note" data-pf-roi-info>涂成灰色的商品区域将被标记为保留区，背景留空。</p></div>
             <div class="pf-canvas-stage"><canvas data-pf-canvas tabindex="0" aria-label="产品图片与保护区域"></canvas><p data-pf-empty ${current?'hidden':''}>请将商品图片连到节点左侧输入口<br>选好主图，再涂抹需要保留的区域</p></div>
-            <div class="pf-editor-footer"><p class="pf-image-note" data-pf-roi-info>涂成灰色的商品区域将被标记为保留区，背景留空。</p><div class="pf-control-actions"><div class="pf-history-actions"><button type="button" data-pf-history="undo" title="撤销画布上一步操作">撤销</button><button type="button" data-pf-history="redo" title="重做画布上一步操作">重做</button></div><div class="pf-secondary-actions"><button type="button" data-pf-action="clear-mask">清空保护区</button><button type="button" data-pf-action="clear-rois" hidden>清空细节框</button></div></div></div></div>
-            <div class="pf-roi-list" data-pf-rois></div><details class="pf-asset-panel" hidden ${assets.length?'open':''}><summary>查看已锁定的商品参考图 <span data-pf-asset-count>${assets.filter(asset=>asset.role!=='product-mask').length} 张</span></summary><p class="pf-help" data-pf-assets-empty ${assets.some(asset=>asset.role!=='product-mask')?'hidden':''}>点击底部「应用并生成锁定图」后可在这里查看。</p><div class="pf-assets" data-pf-assets>${assets.filter(asset=>asset.role!=='product-mask').map(asset=>fidelityAssetHtml(asset,fidelityAssetLabel(asset))).join('')}</div></details>
+            </div>
+            <div class="pf-roi-list" data-pf-rois></div><details class="pf-asset-panel" hidden ${assets.length?'open':''}><summary>查看保护参考图 <span data-pf-asset-count>${assets.filter(asset=>asset.role!=='product-mask').length} 张</span></summary><p class="pf-help" data-pf-assets-empty ${assets.some(asset=>asset.role!=='product-mask')?'hidden':''}>点击底部「生成保护参考图」后可在这里查看。</p><div class="pf-assets" data-pf-assets>${assets.filter(asset=>asset.role!=='product-mask').map(asset=>fidelityAssetHtml(asset,fidelityAssetLabel(asset))).join('')}</div></details>
         </div><div class="pf-settings-column"><div class="pf-settings-content">
-            <div class="pf-simple" data-pf-ui-panel="simple" role="tabpanel" id="pf-ui-panel-${escapeAttr(node.id)}-simple" aria-labelledby="pf-ui-${escapeAttr(node.id)}-simple"><h2>3. 选择出图方式</h2><div class="pf-preset-list">${modeChoices.map(([mode,label],index)=>`<button type="button" class="pf-preset" data-pf-preset="${mode}" aria-pressed="${config.mode===mode}"><span class="pf-preset-radio" aria-hidden="true"></span><span><strong>${label}</strong><small>${['保留已标记的商品原图区域','让新背景的光照融入商品','从新角度重新绘制商品'][index]}</small></span></button>`).join('')}</div>
-                <div class="pf-mode-explanation" data-pf-mode-explanation role="status" aria-live="polite"><strong data-pf-mode-title></strong><p data-pf-mode-effect></p><p class="pf-mode-original">左侧仍显示商品原图，用来涂抹保留区；选项效果会在下游「绘画（AI 生图）」出图时看到。</p><div class="pf-mode-view" data-pf-mode-view hidden><span data-pf-simple-view-summary></span><button type="button" data-pf-simple-view-open>设置拍摄角度</button></div><p class="pf-mode-next" data-pf-mode-next></p></div>
-                <p class="pf-custom-warning" data-pf-custom-warning hidden>你改过全部设置。切换上方选项会替换部分设置。</p>
+            <div class="pf-simple" data-pf-ui-panel="simple" role="tabpanel" id="pf-ui-panel-${escapeAttr(node.id)}-simple" aria-labelledby="pf-ui-${escapeAttr(node.id)}-simple"><h2>3. 选择出图方式</h2><div class="pf-preset-list">${modeChoices.map(([mode,label,description])=>`<button type="button" class="pf-preset" data-pf-preset="${mode}" aria-pressed="${config.mode===mode}"><span class="pf-preset-radio" aria-hidden="true"></span><span><strong>${label}</strong><small>${description}</small></span></button>`).join('')}</div>
+                <div class="pf-mode-explanation" data-pf-mode-explanation role="status" aria-live="polite"><strong class="pf-sr-only" data-pf-mode-title></strong><div class="pf-mode-view" data-pf-mode-view hidden><span data-pf-simple-view-summary></span><button type="button" data-pf-simple-view-open>设置拍摄角度</button></div><p class="pf-mode-next" data-pf-mode-next hidden></p></div>
+                <p class="pf-custom-warning" data-pf-custom-warning hidden>当前含微调参数，切换方式前会提示关联调整。</p>
                 <div class="pf-simple-options"><label class="pf-simple-toggle"><span><strong>保护文字和花纹</strong><small>为 Logo、标签、纹理增加细节参考</small></span><input type="checkbox" data-pf-simple-detail ${config.detail.enabled?'checked':''}></label><label class="pf-simple-toggle"><span><strong>填写商品实物尺寸</strong><small>宽、高与尺寸单位</small></span><input type="checkbox" data-pf-simple-dimensions ${dimensions.enabled?'checked':''}></label></div>
                 <div class="pf-simple-dimensions" data-pf-simple-dimensions-content ${dimensions.enabled?'':'hidden'}><div class="pf-simple-dimensions-grid">${simpleDimension('width','宽')}${simpleDimension('height','高')}<label class="pf-simple-dimension"><span>单位</span><select data-pf-simple-dimension="unit">${[['mm','毫米'],['cm','厘米'],['m','米'],['in','英寸']].map(([unit,label])=>`<option value="${unit}" ${dimensions.unit===unit?'selected':''}>${label}</option>`).join('')}</select></label></div><p data-pf-simple-dimension-error role="status"></p></div>
                 <p class="pf-simple-note" data-pf-simple-note></p>
@@ -343,7 +355,7 @@ function productFidelityNodeBodyHtml(node){
                 ${group('check','出图后检查',section('06','validation','结果检查','启用',`<div class="pf-results" data-pf-results></div><details class="pf-options"><summary>比例偏差提醒</summary>${number('validation.ratioTolerancePct','允许的外形比例偏差',1,20,1,'%')}<p class="pf-help">遮挡或匹配不足时会显示无法判断；文字和接缝仍需人工检查。</p></details>`))}
                 ${group('more','微调参数',section('07','advanced','本地处理（日常无需修改）','启用',number('detail.highPassRadiusPx','纹理提取粗细',.5,8,.5,'px')+number('detail.highPassGain','纹理图清晰度',.5,4,.25)+number('maskFeatherPx','商品边缘过渡',0,8,.5,'px')+number('alignmentThreshold','原图纹理匹配门槛',.7,1,.05)+`<details class="pf-debug"><summary>查看模型与实际参考图</summary><pre data-pf-debug></pre></details>`))}
             </div>
-        </div></div></div><footer class="pf-footer"><div><p data-pf-status role="status">${fresh?'锁定设置已确认':refs.length?'设置已就绪，点击右侧按钮即可生效':'请先连接商品图片'}</p><p class="pf-footer-validation" data-pf-validation-status role="status" hidden></p><span data-pf-route>将本节点连线至「AI生图」节点即可开始出图</span></div><div class="pf-footer-action"><button type="button" class="pf-update" data-pf-action="preview">应用并生成锁定图</button></div></footer></div>`;
+        </div></div></div><footer class="pf-footer"><div><p data-pf-status role="status">${fresh?'保护参考图已更新':refs.length?'保护设置已更新，可生成参考图':'请先连接商品图片'}</p><p class="pf-footer-validation" data-pf-validation-status role="status" hidden></p><span class="pf-output-note">左侧为原图，最终图片在下游「绘画」节点生成</span><span data-pf-route hidden></span></div><div class="pf-footer-action"><button type="button" class="pf-update" data-pf-action="preview">生成保护参考图</button></div></footer></div>`;
 }
 function fidelityCanEdit(node){
     return collabCanMutateCanvas()&&(typeof collabCanEditNode!=='function'||collabCanEditNode(node.id,true));
@@ -417,7 +429,7 @@ function openProductViewEditor(session){
     const dialog=document.createElement('dialog');
     dialog.className='pf-view-dialog';
     dialog.setAttribute('aria-labelledby','pfViewDialogTitle');
-    dialog.innerHTML=`<header class="pf-view-dialog-head"><div><span>商品拍摄角度</span><h2 id="pfViewDialogTitle">选择新的拍摄角度</h2><p>以原图角度为 0°，拖动球体查看相机方向。</p></div><button type="button" data-pf-view-close aria-label="关闭视角编辑器">×</button></header>
+    dialog.innerHTML=`<header class="pf-view-dialog-head"><div><h2 id="pfViewDialogTitle">选择新的拍摄角度</h2><p>以原图机位为 0°；球面表示相机方向，不是生成预览。</p></div><button type="button" data-pf-view-close aria-label="关闭视角编辑器">×</button></header>
         <div class="pf-view-dialog-body"><div class="pf-view-presets" aria-label="常用机位">${FIDELITY_VIEW_PRESETS.map(([key,label])=>`<button type="button" data-pf-view-preset="${key}">${label}</button>`).join('')}</div>
         <div class="pf-view-dialog-grid"><div class="pf-view-orbit-column"><div class="pf-view-orbit" data-pf-view-orbit tabindex="0" role="group" aria-label="拖动或使用方向键调整机位">${fidelitySphereGridSvg(draft)}<img src="${escapeAttr(source.url)}" alt="原图产品主图"><span class="pf-view-marker" data-pf-view-marker aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7h3l1.5-2h7L17 7h3v12H4V7Z"/><circle cx="12" cy="13" r="3.3"/></svg></span><button type="button" class="pf-view-nudge pf-view-nudge-left" data-pf-view-nudge="left" aria-label="相机向左环绕 15 度">‹</button><button type="button" class="pf-view-nudge pf-view-nudge-right" data-pf-view-nudge="right" aria-label="相机向右环绕 15 度">›</button><button type="button" class="pf-view-nudge pf-view-nudge-up" data-pf-view-nudge="up" aria-label="相机向上俯拍 15 度">⌃</button><button type="button" class="pf-view-nudge pf-view-nudge-down" data-pf-view-nudge="down" aria-label="相机向下仰拍 15 度">⌄</button></div><p>景别缩放会同时改变球面线框和球心原图；球面为机位示意。</p><strong data-pf-view-orbit-label></strong></div>
         <div class="pf-view-controls"><label><span>水平环绕</span><div><input type="range" min="-180" max="180" step="1" data-pf-view-range="yaw"><input type="number" min="-180" max="180" step="1" data-pf-view-number="yaw" aria-label="水平环绕角度">°</div></label><label><span>垂直俯仰</span><div><input type="range" min="-90" max="90" step="1" data-pf-view-range="pitch"><input type="number" min="-90" max="90" step="1" data-pf-view-number="pitch" aria-label="垂直俯仰角度">°</div></label><label><span>景别缩放</span><div><input type="range" min="0" max="4" step="1" data-pf-view-framing><output data-pf-view-framing-label></output></div></label><details class="pf-view-advanced"><summary>镜头与示意图</summary><label><span>画面旋转</span><div><input type="range" min="-90" max="90" step="1" data-pf-view-range="roll"><input type="number" min="-90" max="90" step="1" data-pf-view-number="roll" aria-label="画面旋转角度">°</div></label><label class="pf-view-check"><input type="checkbox" data-pf-view-fisheye>鱼眼广角效果</label><label class="pf-view-check"><input type="checkbox" data-pf-view-proxy>增加平面角度示意图</label><p data-pf-view-proxy-note></p></details></div></div>
@@ -527,15 +539,15 @@ function fidelitySyncSimple(session){
     const root=session.root,config=session.node.fidelityConfig,d=config.dimensions;
     root.querySelectorAll('[data-pf-preset]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.pfPreset===config.mode)));
     const modeCopy={
-        strict:['已选：仅换背景','保留涂抹区域内的商品原图，只更换周围背景。','下一步：在左侧涂抹要保留的商品区域，再点击底部「应用并生成锁定图」。'],
-        structure:['已选：光影融合','让新背景的光照融入商品。商品的颜色和细节可能变化，出图后请核对。','下一步：检查左侧的保留区域，再点击底部「应用并生成锁定图」。'],
-        view:['已选：换拍摄角度','按新机位重新绘制商品。原图未拍到的侧面、背面需要 AI 推测。','下一步：设置拍摄角度，再点击底部「应用并生成锁定图」。']
-    }[config.mode]||[];
-    root.querySelector('[data-pf-mode-title]').textContent=modeCopy[0]||'';
-    root.querySelector('[data-pf-mode-effect]').textContent=modeCopy[1]||'';
-    root.querySelector('[data-pf-mode-next]').textContent=config.mode==='view'&&config.view.mode==='target'?'下一步：角度已设置，点击底部「应用并生成锁定图」，再到「绘画（AI 生图）」节点出图。':modeCopy[2]||'';
+        strict:'已选：仅换背景',structure:'已选：光影融合',view:'已选：换拍摄角度'
+    }[config.mode]||'';
+    root.querySelector('[data-pf-mode-title]').textContent=modeCopy;
+    const viewChanged=config.view.enabled&&(['yaw','pitch','roll'].some(key=>Number(config.view[key])!==0)||config.view.framing!=='medium'||Number(config.view.fov)!==50);
+    const next=root.querySelector('[data-pf-mode-next]');
+    next.hidden=config.mode!=='view';
+    next.textContent=viewChanged?'目标机位已设置，生成时将按该角度重绘。':'要换机位，请先设置拍摄角度。';
     root.querySelector('[data-pf-mode-view]').hidden=config.mode!=='view';
-    root.querySelector('[data-pf-simple-view-summary]').textContent='当前角度：'+(config.view.enabled?fidelityViewSummary(config.view):'保持原图角度');
+    root.querySelector('[data-pf-simple-view-summary]').textContent=viewChanged?fidelityViewSummary(config.view):'当前：原图角度（0°）';
     root.querySelector('[data-pf-simple-detail]').checked=config.detail.enabled;
     root.querySelector('[data-pf-simple-dimensions]').checked=d.enabled;
     root.querySelector('[data-pf-simple-dimensions-content]').hidden=!d.enabled;
@@ -546,7 +558,9 @@ function fidelitySyncSimple(session){
     });
     const errors=d.enabled?XiaomeiPhysicalDimensions.validatePhysicalDimensions(d).errors:[];
     root.querySelector('[data-pf-simple-dimension-error]').textContent=errors.join('；');
-    root.querySelector('[data-pf-simple-note]').textContent=fidelityConfigurationWarning(config,fidelityEffectiveConfig(config))||(config.mode==='view'?'新角度会重绘商品，请检查形状、Logo 和文字。':config.mode==='structure'?'商品光照可能变化，出图后请核对颜色。':'出图后请核对商品边缘、文字和比例。');
+    const note=root.querySelector('[data-pf-simple-note]');
+    note.textContent=fidelityConfigurationWarning(config,fidelityEffectiveConfig(config));
+    note.hidden=!note.textContent;
 }
 async function fidelityApplyFieldChange(session,key,value,{preset=false}={}){
     const config=session.node.fidelityConfig,proposed=cloneSmartSettings(config);
@@ -564,7 +578,7 @@ async function fidelityApplyFieldChange(session,key,value,{preset=false}={}){
     if(key==='productReferenceId'){proposed.rois=[];proposed.maskStrokes=[];delete proposed.maskUrl;}
     if(JSON.stringify(config)===JSON.stringify(proposed)){fidelitySyncFields(session);return false;}
     const linked=fidelityLinkedChangeMessage(config,proposed,key);
-    const warning=(preset&&session.customized?'你改过全部设置。继续后会应用所选改动方式。':'')+linked;
+    const warning=(preset&&session.customized?'当前含微调参数，将应用所选出图方式。':'')+linked;
     if(warning&&!(await fidelityConfirmReplacement(warning))){fidelitySyncFields(session);session.root.querySelector('[data-pd-root]')?.pdRefresh?.();return false;}
     if(!session.root.isConnected||!fidelityCanEdit(session.node))return false;
     pushUndo();fidelityAssignConfig(config,proposed);
@@ -577,7 +591,7 @@ async function fidelityApplyFieldChange(session,key,value,{preset=false}={}){
 }
 function fidelityCommit(session,withRender=false,skipEditor=false){
     session.controller?.abort();session.detectedRois=[];delete session.node.fidelityPreview;
-    fidelityStatus(session,'设置已就绪，点击右侧按钮即可生效');
+    fidelityStatus(session,'保护设置已更新，可生成参考图');
     session.root.querySelector('[data-pf-assets]')?.replaceChildren();scheduleSave();
     fidelitySyncAssetSummary(session);
     session.node.fidelityConfig.dimensions.guideAssetId=null;
@@ -629,7 +643,7 @@ function fidelitySyncAvailability(session){
     validationStatus.hidden=!dimensionErrors.length&&!conflict;
     validationStatus.textContent=[dimensionErrors.length?'产品尺寸需要修改：'+dimensionErrors.join('；')+'。':'',conflict].filter(Boolean).join(' ');
     session.root.querySelector('[data-pf-action="preview"]').disabled||=dimensionErrors.length>0;
-    session.root.querySelector('[data-pf-action="preview"]').textContent=session.busy?'正在处理…':'应用并生成锁定图';
+    session.root.querySelector('[data-pf-action="preview"]').textContent=session.busy?'正在生成参考图…':'生成保护参考图';
     session.root.querySelectorAll('[data-pf-view-open],[data-pf-simple-view-open]').forEach(button=>button.disabled=!config.view.enabled||!viewRef||Boolean(session.busy));
     session.root.querySelectorAll('[data-pf-preset],[data-pf-simple-detail],[data-pf-simple-dimensions],[data-pf-simple-dimension]').forEach(el=>el.disabled=Boolean(session.busy));
     fidelitySyncSimple(session);
@@ -862,7 +876,7 @@ async function fidelityPreview(session){
         list.innerHTML=(preview.generatedAssets||[]).filter(a=>a.role!=='product-mask').map(a=>fidelityAssetHtml(a,fidelityAssetLabel(a))).join('');
         fidelitySyncAssetSummary(session);
         session.root.querySelector('.pf-asset-panel').open=list.childElementCount>0;
-        const note='锁定设置已确认；请到「AI生图」节点查看最终出图。';
+        const note='保护参考图已更新';
         fidelityStatus(session,note+(preview.warnings.length?'\n'+preview.warnings.join('\n'):''));
         session.root.querySelector('[data-pf-debug]').textContent=JSON.stringify({localReferences:preview.reference_images.map((r,i)=>({order:i+1,id:r.reference_id,role:r.role||'user',parent:r.parentReferenceId}))},null,2);
         scheduleSave();void fidelityInspectDownstream(session);
@@ -895,6 +909,7 @@ function fidelityRenderResults(session){
 }
 async function fidelityInspectDownstream(session){
     const targets=fidelityDownstream(session.node),route=session.root.querySelector('[data-pf-route]');
+    route.hidden=!targets.length;
     route.textContent=targets.length?'已连接 '+targets.length+' 个绘画（AI 生图）节点 · '+session.refs.length+' 张商品原图':'将本节点连线至「AI生图」节点即可开始出图';
     const key=JSON.stringify({targets:targets.map(node=>{const s=smartSettingsForNode(node);return [node.id,s.engine,s.apiKind,s.provider_id,s.model,referenceImagesFor(node).map(r=>r.url)];}),preview:session.node.fidelityPreview?.signature||''});
     if(session.capabilityKey===key)return;session.capabilityKey=key;
@@ -923,7 +938,7 @@ function bindProductFidelityNode(el,node){
     const refs=fidelityEnsureReferences(node),key=JSON.stringify(refs.map(r=>r.url));
     const old=productFidelitySessions.get(node.id);
     if(old?.root===root&&old.node===node){
-        if(old.refsKey!==key){old.refs=refs;old.refsKey=key;old.controller?.abort();fidelityStatus(old,'商品图片已更改，请重新应用并生成锁定图');void fidelityLoadEditor(old);}
+        if(old.refsKey!==key){old.refs=refs;old.refsKey=key;old.controller?.abort();fidelityStatus(old,'商品图片已更改，请重新生成保护参考图');void fidelityLoadEditor(old);}
         fidelityRenderResults(old);void fidelityInspectDownstream(old);return;
     }
     old?.controller?.abort();old?.capabilitiesController?.abort();old?.editorObserver?.disconnect();

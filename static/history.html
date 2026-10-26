@@ -11,9 +11,9 @@
             if(params.get('manager') === '1') document.documentElement.classList.add('manager-mode');
         } catch(e) {}
     </script>
-    <script src="/static/vendor/js/lucide.js?v=2026.10.23.1784161005"></script>
-    <script src="/static/js/theme.js?v=2026.10.23.1791335865"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.23.1792161228">
+    <script src="/static/vendor/js/lucide.js?v=2026.10.26.1784161005"></script>
+    <script src="/static/js/theme.js?v=2026.10.26.1791335865"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.26.1792900345">
     <style>
         *{box-sizing:border-box}
         :root{--bg:#f7faf6;--card:#fff;--text:#111827;--muted:#8993a4;--line:#e5ebe4;--soft:#eef5ec;--accent:#111827;--danger:#d94b4b}
@@ -341,9 +341,9 @@
             html.manager-mode body > .page > .filters{padding:10px 16px !important}
         }
     </style>
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.23.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.23.1792414216">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.23.1790178173"></script>
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.26.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.26.1792843621">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.26.1790178173"></script>
 </head>
 <body>
     <div class="page">
@@ -415,6 +415,9 @@
                 <button id="managerDeleteSelected" class="manager-action-button danger" type="button" hidden disabled onclick="deleteSelectedRecords()">
                     <i data-lucide="trash-2"></i><span>删除所选</span>
                 </button>
+                <button id="managerDistillSelected" class="manager-action-button" type="button" hidden disabled onclick="distillSelectedToDesignBrain()" title="把所选记录作为证据，在设计大脑中提炼项目经验">
+                    <i data-lucide="lightbulb"></i><span>提炼到设计大脑</span>
+                </button>
                 <button id="managerExitSelection" class="manager-action-button primary" type="button" hidden onclick="toggleSelectionMode(false)">完成</button>
             </div>
             <button id="managerCleanupButton" class="manager-cleanup-button manager-action-button" type="button" onclick="cleanupUnreferencedFiles()" title="把图片空间中不再被历史记录、画布或素材收藏引用的文件移入回收站（可恢复）">
@@ -477,7 +480,7 @@
 
         const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
         const VIDEO_URL_RE = /\.(mp4|webm|mov|m4v|avi|mkv|flv)(?:[?#].*)?$/i;
-        const GROUP_LABELS = {online:'生成记录',chat:'DeepSeek 对话',canvas:'小美画布',comfyui:'ComfyUI 工作台',commerce:'电商工作台',video:'视频'};
+        const GROUP_LABELS = {online:'生成记录',chat:'DeepSeek 对话',canvas:'小美画布',comfyui:'ComfyUI 工作台',commerce:'电商工作台',design_brain:'设计大脑',video:'视频'};
         const COMFYUI_PROJECT_ID = '__comfyui__';
         const UNASSIGNED_PROJECT_ID = '__unassigned__';
         function mediaUrl(value){
@@ -550,6 +553,7 @@
             if(source === 'chat' || source === 'gpt_chat' || source === 'gpt') return 'chat';
             if(source === 'canvas' || source === 'smart_canvas') return 'canvas';
             if(source === 'commerce' || source === 'commerce_workbench' || source === 'ecommerce') return 'commerce';
+            if(source === 'design_brain' || source === 'design_brain_bot' || source === 'design_bot') return 'design_brain';
             if(hintedGroup) return hintedGroup;
             if(type === 'online') return 'online';
             if(type === 'chat' || type === 'gpt-chat' || type === 'gpt_chat') return 'chat';
@@ -1070,6 +1074,143 @@
             });
             return `<div class="history-date-groups">${groups.map(group => `<section class="history-date-group"><div class="history-date-group-head"><i data-lucide="calendar-days" aria-hidden="true"></i><strong>${esc(group.label)}</strong><span>${group.records.length} 条</span><button class="history-date-group-select" type="button" data-date-group="${esc(group.key)}" aria-label="选择${esc(group.label)}的记录" aria-pressed="false" onclick="event.stopPropagation();toggleDateGroupSelection('${esc(group.key)}')"><i data-lucide="check-square"></i><span>选择本日</span></button></div><div class="grid">${group.records.map(cardHtml).join('')}</div></section>`).join('')}</div>`;
         }
+        let designReferenceToastTimer = null;
+        function showDesignReferenceToast(message, error){
+            let node = document.getElementById('designReferenceToast');
+            if(!node){
+                node = document.createElement('div');
+                node.id = 'designReferenceToast';
+                node.style.cssText = 'position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:400;max-width:80vw;color:#fff;border-radius:11px;padding:10px 18px;font-size:13px;box-shadow:0 10px 28px rgba(10,40,37,.35);transition:opacity .25s;';
+                document.body.appendChild(node);
+            }
+            node.style.background = error ? '#7c2f2c' : '#193e3b';
+            node.textContent = message;
+            node.style.opacity = '1';
+            clearTimeout(designReferenceToastTimer);
+            designReferenceToastTimer = setTimeout(() => { node.style.opacity = '0'; }, 3200);
+        }
+        async function saveDesignReference(button, ts){
+            const record = allRecords.find(item => Math.abs(Number(item.timestamp || 0) - Number(ts)) < 0.001);
+            const media = record ? recordMediaEntries(record)[0] : null;
+            if(!record || !media || media.kind !== 'image'){
+                showDesignReferenceToast('仅支持收藏图片记录', true);
+                return;
+            }
+            button.disabled = true;
+            try{
+                const promptText = String(record.prompt || '').trim();
+                const response = await fetch('/api/prompt-cases',{
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({
+                        media_mode:'refs',
+                        title: promptText ? promptText.split('\n')[0].slice(0,40) : '生成参考',
+                        prompt:{display:promptText, request:promptText},
+                        settings:{model:record.model || record.params?.model || '', provider_name:record.provider_name || ''},
+                        variants:[{url:media.url, name:media.name || '生成图'}],
+                        origin:{type:'history_pick', history_timestamp:Number(record.timestamp || 0)}
+                    })
+                });
+                const data = await response.json();
+                if(!response.ok) throw new Error(data.detail || '收藏失败');
+                showDesignReferenceToast(data.existing ? '这张图已在设计大脑灵感库中' : '已收藏到设计大脑灵感库（不复制图片文件）');
+            }catch(error){
+                showDesignReferenceToast(error.message || '收藏失败', true);
+            }finally{
+                button.disabled = false;
+            }
+        }
+        let qualityReviewState = {timestamp: 0, url: '', rating: 0};
+        function openQualityReview(ts, url){
+            const record = allRecords.find(item => Math.abs(Number(item.timestamp || 0) - Number(ts)) < 0.001);
+            if(!record){ showDesignReferenceToast('找不到对应的历史记录', true); return; }
+            qualityReviewState = {timestamp: Number(record.timestamp || 0), url: String(url || ''), rating: 0};
+            let overlay = document.getElementById('qualityReviewOverlay');
+            if(!overlay){
+                overlay = document.createElement('div');
+                overlay.id = 'qualityReviewOverlay';
+                overlay.style.cssText = 'position:fixed;inset:0;z-index:420;display:flex;align-items:center;justify-content:center;background:rgba(20,38,35,.55);';
+                overlay.innerHTML = `
+                    <div role="dialog" aria-modal="true" aria-labelledby="qualityReviewTitle" style="width:min(420px,92vw);background:#fff;border-radius:16px;padding:20px 22px;box-shadow:0 24px 60px rgba(15,23,42,.3);color:#252b2c;font-size:14px;">
+                        <h3 id="qualityReviewTitle" style="margin:0 0 4px;font-size:17px;">质量评价</h3>
+                        <p id="qualityReviewContext" style="margin:0 0 12px;font-size:12px;color:#7b8685;"></p>
+                        <div id="qualityReviewStars" style="display:flex;gap:6px;margin-bottom:12px;"></div>
+                        <select id="qualityReviewIssue" style="width:100%;margin-bottom:10px;padding:8px 10px;border:1px solid #dce3e1;border-radius:9px;">
+                            <option value="">问题类型（可选）</option>
+                            <option value="composition">构图</option>
+                            <option value="color">色彩</option>
+                            <option value="text">文字</option>
+                            <option value="subject">主体</option>
+                            <option value="texture">质感</option>
+                            <option value="background">背景</option>
+                            <option value="other">其他</option>
+                        </select>
+                        <textarea id="qualityReviewComment" rows="3" maxlength="500" placeholder="问题描述或改进想法（可选）" style="width:100%;margin-bottom:10px;padding:8px 10px;border:1px solid #dce3e1;border-radius:9px;font:inherit;"></textarea>
+                        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:14px;"><input id="qualityReviewFinal" type="checkbox"> 标记为成品（代表当前最优结果）</label>
+                        <div style="display:flex;justify-content:flex-end;gap:8px;">
+                            <button type="button" id="qualityReviewCancel" style="border:1px solid #dce3e1;background:#fff;border-radius:9px;padding:8px 14px;cursor:pointer;">取消</button>
+                            <button type="button" id="qualityReviewSubmit" style="border:1px solid #0b817b;background:#0b817b;color:#fff;border-radius:9px;padding:8px 14px;cursor:pointer;" disabled>提交评价</button>
+                        </div>
+                    </div>`;
+                overlay.addEventListener('click', event => { if(event.target === overlay) overlay.style.display = 'none'; });
+                overlay.querySelector('#qualityReviewCancel').onclick = () => { overlay.style.display = 'none'; };
+                overlay.querySelector('#qualityReviewSubmit').onclick = submitQualityReview;
+                document.body.appendChild(overlay);
+            }
+            const contextParts = [record.model || (record.params && record.params.model) || '未知模型'];
+            if(record.skill_name) contextParts.push(`Skill：${record.skill_name}`);
+            overlay.querySelector('#qualityReviewContext').textContent = contextParts.join(' · ');
+            overlay.querySelector('#qualityReviewComment').value = '';
+            overlay.querySelector('#qualityReviewIssue').value = '';
+            overlay.querySelector('#qualityReviewFinal').checked = false;
+            renderQualityStars();
+            overlay.style.display = 'flex';
+        }
+        function renderQualityStars(){
+            const overlay = document.getElementById('qualityReviewOverlay');
+            const stars = overlay.querySelector('#qualityReviewStars');
+            stars.innerHTML = '';
+            for(let index = 1; index <= 5; index += 1){
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.textContent = index <= qualityReviewState.rating ? '★' : '☆';
+                button.dataset.value = index;
+                button.style.cssText = 'width:38px;height:38px;border:1px solid #dce3e1;background:#fff;border-radius:9px;font-size:18px;cursor:pointer;color:' + (index <= qualityReviewState.rating ? '#edaf23' : '#8b9694');
+                button.onclick = () => {
+                    qualityReviewState.rating = index;
+                    renderQualityStars();
+                    overlay.querySelector('#qualityReviewSubmit').disabled = false;
+                };
+                stars.appendChild(button);
+            }
+            overlay.querySelector('#qualityReviewSubmit').disabled = !qualityReviewState.rating;
+        }
+        async function submitQualityReview(){
+            const overlay = document.getElementById('qualityReviewOverlay');
+            const button = overlay.querySelector('#qualityReviewSubmit');
+            button.disabled = true;
+            try{
+                const response = await fetch('/api/design-brain/reviews',{
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({
+                        history_timestamp: qualityReviewState.timestamp,
+                        image_url: qualityReviewState.url,
+                        rating: qualityReviewState.rating,
+                        comment: overlay.querySelector('#qualityReviewComment').value || '',
+                        issue_tag: overlay.querySelector('#qualityReviewIssue').value || '',
+                        selected_as_final: overlay.querySelector('#qualityReviewFinal').checked,
+                    })
+                });
+                const data = await response.json();
+                if(!response.ok) throw new Error(data.detail || '提交失败');
+                overlay.style.display = 'none';
+                showDesignReferenceToast('已记录质量评价；可在设计大脑 → 质量反馈中查看');
+            }catch(error){
+                showDesignReferenceToast(error.message || '提交失败', true);
+                button.disabled = false;
+            }
+        }
         function cardHtml(item){
             const mediaItems = recordMediaEntries(item);
             const media = mediaItems[0];
@@ -1084,6 +1225,8 @@
                 ? `<video class="thumb-media" src="${esc(media.url)}" poster="${esc(historyThumbUrl(media.url,'image'))}" muted controls preload="none" playsinline onclick="event.stopPropagation()" onmousedown="event.stopPropagation()"></video>`
                 : `<img class="thumb-media" src="${esc(thumbUrl)}" data-original-src="${esc(media.url)}" alt="生成图片" loading="lazy" decoding="async" fetchpriority="low" onerror="this.onerror=null;this.src=this.dataset.originalSrc">`;
             const copyButton = media.kind === 'video' ? '' : `<button class="icon-btn" title="复制图片" aria-label="复制图片" onclick="copyImage(this.closest('.card').querySelector('.thumb').dataset.mediaUrl,this)"><i data-lucide="clipboard"></i></button>`;
+            const collectButton = media.kind === 'image' ? `<button class="icon-btn" title="收藏到设计大脑灵感库" aria-label="收藏到设计大脑灵感库" onclick="saveDesignReference(this,${ts})"><i data-lucide="bookmark"></i></button>` : '';
+            const reviewButton = media.kind === 'image' ? `<button class="icon-btn" title="质量评价" aria-label="质量评价" onclick="openQualityReview(${ts},this.closest('.card').querySelector('.thumb').dataset.mediaUrl)"><i data-lucide="star"></i></button>` : '';
             const dragHint = media.kind === 'image' ? '<span class="drag-hint">拖到画布 · 拖出自动压缩</span>' : '';
             const countBadge = mediaItems.length > 1 ? `<span class="multi">${mediaItems.length} 个</span>` : '';
             const redrawBadge = mediaItems.some(entry => entry.outpaint_original_redrawn) ? '<span class="outpaint-redraw" title="扩图模型重新绘制了原图区域；请与原图核对细节">原图已重绘</span>' : '';
@@ -1093,7 +1236,7 @@
                 </div>
                 <div class="body"><div class="prompt" data-full="${esc(prompt)}">${esc(prompt)}</div>
                     <div class="meta"><span>${esc(formatTime(ts))}</span><b>·</b><span>${esc(model)}</span></div>
-                    <div class="actions"><button class="icon-btn" title="预览" aria-label="预览" onclick="openPreview(this.closest('.card').querySelector('.thumb').dataset.mediaUrl,this.closest('.card').querySelector('.prompt').dataset.full,this.closest('.card').querySelector('.thumb').dataset.mediaKind)"><i data-lucide="maximize-2"></i></button><button class="icon-btn" title="下载" aria-label="下载" onclick="downloadMedia(this.closest('.card').querySelector('.thumb').dataset.mediaUrl,this.closest('.card').querySelector('.thumb').dataset.mediaKind)"><i data-lucide="download"></i></button>${copyButton}<button class="icon-btn" title="复制提示词" aria-label="复制提示词" onclick="copyPrompt(this)"><i data-lucide="copy"></i></button><span class="spacer"></span><button class="icon-btn danger" title="从历史记录移除" aria-label="从历史记录移除" onclick="deleteRecord(${ts},this)"><i data-lucide="trash-2"></i></button></div>
+                    <div class="actions"><button class="icon-btn" title="预览" aria-label="预览" onclick="openPreview(this.closest('.card').querySelector('.thumb').dataset.mediaUrl,this.closest('.card').querySelector('.prompt').dataset.full,this.closest('.card').querySelector('.thumb').dataset.mediaKind)"><i data-lucide="maximize-2"></i></button><button class="icon-btn" title="下载" aria-label="下载" onclick="downloadMedia(this.closest('.card').querySelector('.thumb').dataset.mediaUrl,this.closest('.card').querySelector('.thumb').dataset.mediaKind)"><i data-lucide="download"></i></button>${copyButton}<button class="icon-btn" title="复制提示词" aria-label="复制提示词" onclick="copyPrompt(this)"><i data-lucide="copy"></i></button>${collectButton}${reviewButton}<span class="spacer"></span><button class="icon-btn danger" title="从历史记录移除" aria-label="从历史记录移除" onclick="deleteRecord(${ts},this)"><i data-lucide="trash-2"></i></button></div>
                 </div></article>`;
         }
         function setManagerCount(id, value){
@@ -1141,12 +1284,27 @@
                 deleteButton.hidden = !selectionMode;
                 deleteButton.disabled = count === 0;
             }
+            const distillButton = document.getElementById('managerDistillSelected');
+            if(distillButton){
+                distillButton.hidden = !selectionMode;
+                distillButton.disabled = count === 0;
+            }
             if(exitButton) exitButton.hidden = !selectionMode;
             if(modeButton){
                 modeButton.setAttribute('aria-pressed', selectionMode ? 'true' : 'false');
                 modeButton.classList.toggle('active', selectionMode);
             }
             refreshDateGroupSelectionUi();
+        }
+        function distillSelectedToDesignBrain(){
+            const timestamps = [...selectedTimestamps].map(value => Number(value)).filter(value => value > 0);
+            if(!timestamps.length){ showDesignReferenceToast('请先选择要提炼的历史记录', true); return; }
+            try{
+                window.parent.postMessage({type:'design-brain-experiences-pick', timestamps}, '*');
+                showDesignReferenceToast(`已把 ${timestamps.length} 条记录发送到设计大脑`);
+            }catch(error){
+                showDesignReferenceToast('发送失败，请从设计大脑页面手动选择', true);
+            }
         }
         function toggleSelectionMode(force){
             const next = typeof force === 'boolean' ? force : !selectionMode;

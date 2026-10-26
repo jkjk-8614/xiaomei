@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-studio-skin="minimal">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设计大脑</title>
+    <link rel="icon" href="/static/images/logo.png?v=2026.10.26" type="image/png">
+    <script src="/static/js/theme.js?v=2026.10.26.1791335865"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.26.1792900345">
+    <link rel="stylesheet" href="/static/css/design-brain.css?v=2026.10.26.quality-flow.1">
+    <link rel="stylesheet" href="/static/css/skill-market.css?v=2026.10.26.1792128842">
+    <script src="/static/vendor/js/lucide.js?v=2026.10.26.1784161005"></script>
+</head>
+<body>
+    <div class="db-page" data-section="team">
+        <aside class="db-sidebar" id="dbSidebar" aria-label="设计大脑导航">
+            <div class="db-brand"><span class="db-brand-mark"><i data-lucide="aperture"></i></span><strong>设计大脑</strong><span class="db-brand-caption">工作室</span></div>
+            <button id="teamNewDiscussion" class="db-new-design" type="button"><i data-lucide="plus"></i>开始新设计</button>
+        <nav class="db-groups" aria-label="设计大脑模块">
+            <button class="db-group-tab active" type="button" data-db-group="team" aria-current="page"><i data-lucide="messages-square"></i>设计讨论</button>
+            <button class="db-group-tab" type="button" data-db-group="asset"><i data-lucide="images"></i>灵感与资产</button>
+            <button class="db-group-tab" type="button" data-db-group="log"><i data-lucide="history"></i>项目记录</button>
+        </nav>
+            <div id="dbTeamNav" class="db-context-nav">
+                <aside class="team-left">
+                    <div class="team-side-head">
+                        <span>最近的设计</span>
+                        <button id="teamNewGroup" class="subtle-button" type="button" title="开始新设计" aria-label="开始新设计">＋</button>
+                    </div>
+                    <div id="teamGroupList" class="team-group-list"></div>
+                    <details class="team-roster" id="teamRoster">
+                        <summary><i data-lucide="users-round"></i>设计团队<i class="team-roster-chevron" data-lucide="chevron-down"></i></summary>
+                        <div class="team-side-head"><span>也可以和成员单独聊</span><button id="teamNewBot" class="subtle-button" type="button" title="添加设计成员" aria-label="添加设计成员">＋</button></div>
+                        <div id="teamBotList" class="team-bot-list"></div>
+                    </details>
+                </aside>
+            </div>
+            <div id="dbStudioNav" class="db-context-nav db-task-nav is-empty">
+                <aside class="studio-tasks" aria-label="任务列表">
+                    <div class="studio-tasks-head"><span>设计任务</span><b id="studioTaskCount">0 个</b></div>
+                    <label class="studio-task-search"><span aria-hidden="true">⌕</span>
+                        <input id="studioTaskSearch" type="search" placeholder="搜索任务" autocomplete="off"></label>
+                    <div id="studioTaskList" class="studio-task-list" aria-label="任务历史"></div>
+                </aside>
+            </div>
+            <div class="db-sidebar-foot"><i data-lucide="hard-drive"></i>档案与项目保存在本机</div>
+        </aside>
+        <button id="dbNavBackdrop" class="db-nav-backdrop" type="button" aria-label="关闭设计导航" hidden></button>
+        <div class="db-main">
+        <div class="db-toolbar">
+        <button id="dbNavToggle" class="subtle-button db-mobile-nav" type="button" aria-label="打开设计导航" aria-expanded="false" aria-controls="dbSidebar"><i data-lucide="panel-left"></i></button>
+        <header class="page-head">
+            <div class="db-page-heading"><h1 id="dbPageTitle">设计讨论</h1><span id="dbPageHint">从想法到方案，一起完成设计</span></div>
+            <div class="page-actions" id="dbAssetActions" hidden>
+                <button id="addReferenceButton" class="subtle-button" type="button">新增参考</button>
+                <button id="newExperienceButton" class="subtle-button" type="button">新建经验</button>
+                <button id="pickHistoryButton" class="subtle-button" type="button">从历史提炼</button>
+            </div>
+            <div id="teamHeaderActions" class="team-head-actions">
+                <span id="teamTurnStatus" class="profile-status" role="status" aria-live="polite"></span>
+                <button id="teamWorkToggle" class="subtle-button" type="button" aria-controls="teamGlobalWork" title="查看团队工作进度"><i data-lucide="activity"></i>动态<span id="teamWorkCount"></span></button>
+                <button id="teamUsage" class="subtle-button team-icon-button" type="button" title="查看用量" aria-label="查看用量"><i data-lucide="chart-no-axes-column"></i></button>
+                <button id="teamInspectorToggle" class="subtle-button" type="button" aria-expanded="false" aria-controls="teamInspector"><i data-lucide="users-round"></i>团队</button>
+                <button id="studioWorkspaceToggle" class="subtle-button" type="button" aria-expanded="false" aria-controls="studioPanel"><i data-lucide="panel-right"></i>方案与成图</button>
+                <button id="teamStop" class="subtle-button" type="button" hidden>停止</button>
+            </div>
+        </header>
+        <div class="db-subrow" id="dbSubRow" hidden>
+            <nav class="db-tabs" id="dbSubTabs" aria-label="设计大脑子模块">
+                <button id="tabCases" type="button" data-db-group="asset">灵感库</button>
+                <button id="tabReferences" type="button" data-db-group="asset">参考素材</button>
+                <button id="tabExperiences" type="button" data-db-group="asset">项目经验</button>
+                <button id="tabProfile" type="button" data-db-group="asset">审美档案</button>
+                <button id="tabTeam" class="active" type="button" data-db-group="team">讨论</button>
+                <button id="tabSkills" type="button" data-db-group="team">设计技能</button>
+                <button id="tabRuns" type="button" data-db-group="log">执行记录</button>
+                <button id="tabReviews" type="button" data-db-group="log">质量反馈</button>
+            </nav>
+            <span class="tab-note" id="profileSummary"></span>
+        </div>
+        </div>
+
+        <section id="teamPanel" class="db-panel team-panel" aria-label="设计讨论">
+            <div class="team-split">
+
+                <main class="team-main is-loading">
+                    <header class="team-head">
+                        <div class="team-head-title">
+                            <h2 id="teamTitle">设计讨论</h2>
+                            <p id="teamSubtitle" class="muted">从一个想法开始，和团队一起完成设计。</p>
+                        </div>
+                    </header>
+                    <div id="teamMessages" class="team-messages" aria-live="polite"></div>
+                    <div id="teamPausedBar" class="team-paused" hidden>
+                        <span id="teamPausedText">团队已暂停讨论，等你确认下一步。</span>
+                        <button id="teamContinue" class="subtle-button" type="button">继续</button>
+                    </div>
+                    <div id="teamWorkStatus" class="team-work-status" aria-label="当前工作进度" hidden></div>
+                    <div class="team-composer" aria-label="设计需求与参考图">
+                        <div class="team-drop-hint" aria-hidden="true"><i data-lucide="image-plus"></i><span>放开，添加参考图</span></div>
+                        <div id="teamProductImages" class="studio-product-images" aria-label="已添加的商品图"></div>
+                        <input id="teamProductFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/bmp" multiple hidden>
+
+                        <div class="studio-models-adv" id="teamModelsAdv" popover="auto" role="dialog" aria-labelledby="teamModelsTitle">
+                            <div class="studio-models-head"><strong id="teamModelsTitle">模型选择</strong><button id="teamModelsClose" class="studio-models-close" type="button" aria-label="关闭模型选择"><i data-lucide="x"></i></button></div>
+                            <section class="studio-model-group" data-model-kind="Chat" aria-label="对话模型设置">
+                                <div class="studio-model-fields">
+                                    <label class="studio-model-field"><span>平台</span><select id="teamChatProvider" class="inline-input" aria-label="对话平台"></select></label>
+                                    <label class="studio-model-field"><span>模型</span><select id="teamChatModel" class="inline-input" aria-label="对话模型"></select></label>
+                                </div>
+                            </section>
+                            <section class="studio-model-group" data-model-kind="Image" aria-label="生图模型设置" hidden>
+                                <div class="studio-model-fields">
+                                    <label class="studio-model-field"><span>平台</span><select id="teamImageProvider" class="inline-input" aria-label="生图平台"></select></label>
+                                    <label class="studio-model-field"><span>模型</span><select id="teamImageModel" class="inline-input" aria-label="生图模型"></select></label>
+                                </div>
+                            </section>
+                        </div>
+                        <textarea id="teamInput" rows="2" aria-label="告诉设计团队你的想法" placeholder="说说你想做的设计，也可以拖入参考图…"></textarea>
+                        <div id="teamMentionMenu" class="team-mention-menu" hidden></div>
+                        <div class="team-composer-foot">
+                            <div class="team-composer-controls" role="group" aria-label="图片、模型与发送">
+                                <div class="team-attach-actions">
+                                    <button id="teamUploadProduct" class="subtle-button" type="button"><i data-lucide="plus"></i>添加图片</button>
+                                    <button id="teamAddProductImage" class="subtle-button team-icon-button" type="button" title="从图片空间选择" aria-label="从图片空间选择"><i data-lucide="images"></i></button>
+                                </div>
+                                <div class="studio-model-triggers">
+                                    <button id="teamModelToggle" class="studio-model-summary" type="button" popovertarget="teamModelsAdv" aria-expanded="false" aria-controls="teamModelsAdv" aria-haspopup="dialog" title="选择对话模型"><i data-lucide="messages-square"></i><span class="studio-model-kind">对话</span><span id="teamModelSummary" class="studio-model-name">读取中…</span><i class="chev" data-lucide="chevron-down"></i></button>
+                                    <button id="teamImageModelToggle" class="studio-model-summary" type="button" popovertarget="teamModelsAdv" aria-expanded="false" aria-controls="teamModelsAdv" aria-haspopup="dialog" title="选择生图模型"><i data-lucide="image"></i><span class="studio-model-kind">生图</span><span id="teamImageModelSummary" class="studio-model-name">读取中…</span><i class="chev" data-lucide="chevron-down"></i></button>
+                                </div>
+                                <button id="teamSend" class="primary-button" type="button" title="发送（Enter）" aria-label="发送"><i data-lucide="arrow-up"></i></button>
+                            </div>
+                            <div class="team-composer-meta">
+                                <span id="teamHint" class="muted"></span>
+                                <span id="teamSendStatus" class="profile-status" role="status" aria-live="polite"></span>
+                            </div>
+                        </div>
+                    </div>
+                </main>
+                <aside id="studioPanel" class="studio-workspace" hidden aria-label="方案与成图">
+                    <header class="workspace-head">
+                        <div class="workspace-title">
+                            <h2 id="studioTaskTitle">方案与成图</h2>
+                            <span id="studioTaskStatus" class="studio-status-badge"></span>
+                        </div>
+                        <button id="studioWorkspaceClose" class="subtle-button" type="button" aria-label="收起方案与成图">×</button>
+                    </header>
+                    <div class="studio-stepper" id="studioStepper" aria-label="执行阶段" hidden></div>
+                    <nav class="workspace-tabs" id="studioWorkspaceTabs" aria-label="工作区"></nav>
+                    <div id="studioWorkspaceBody" class="workspace-body"></div>
+                    <div id="studioTaskActions" class="workspace-foot"></div>
+                </aside>
+                <aside class="team-right" id="teamInspector" aria-labelledby="teamInspectorTitle" hidden>
+                    <div class="team-inspector-head"><strong id="teamInspectorTitle">项目与团队</strong><button id="teamInspectorClose" type="button" class="subtle-button" aria-label="关闭侧栏">×</button></div>
+                    <section id="teamGlobalWork" class="team-global-work" aria-label="跨群工作状态"></section>
+                    <div id="teamSideBody" class="team-side-body">
+                        <h3>会话信息</h3>
+                        <p class="muted">选择会话后显示成员、群公告与设置。</p>
+                    </div>
+                </aside>
+            </div>
+        </section>
+
+        <section id="casesPanel" class="db-panel" hidden aria-label="灵感案例">
+            <div class="filter-line">
+                <label class="search-box"><span aria-hidden="true">⌕</span><input id="caseSearch" type="search" placeholder="搜索标题、提示词、标签或模型" autocomplete="off"></label>
+                <select id="categoryFilter" aria-label="分类"><option value="">全部分类</option></select>
+                <label class="favorite-toggle"><input id="favoriteFilter" type="checkbox"> 只看收藏</label>
+            </div>
+            <div id="tagChips" class="tag-chips" aria-label="标签筛选"></div>
+            <div class="list-head"><span id="caseCount">正在读取案例…</span><span id="caseStatus" role="status" aria-live="polite"></span></div>
+            <main id="caseGrid" class="case-grid"></main>
+        </section>
+
+        <section id="referencesPanel" class="db-panel" hidden aria-label="参考素材">
+            <div class="filter-line">
+                <label class="search-box"><span aria-hidden="true">⌕</span><input id="refSearch" type="search" placeholder="搜索标题、标签、来源目录或分析内容" autocomplete="off"></label>
+                <select id="refCategoryFilter" aria-label="品类"><option value="">全部品类</option></select>
+                <select id="refPurposeFilter" aria-label="设计用途"><option value="">全部用途</option></select>
+                <select id="refExpressionFilter" aria-label="视觉表达"><option value="">全部表达</option></select>
+                <select id="refAnalysisFilter" aria-label="分析状态">
+                    <option value="">全部分析状态</option>
+                    <option value="none">未分析</option>
+                    <option value="ready">已分析</option>
+                    <option value="failed">分析失败</option>
+                </select>
+                <label class="favorite-toggle"><input id="refFavoriteFilter" type="checkbox"> 只看收藏</label>
+            </div>
+            <div class="filter-line">
+                <button id="refImportButton" class="primary-button" type="button">导入图片</button>
+                <button id="refImportFolderButton" class="subtle-button" type="button">导入文件夹</button>
+                <button id="refAnalyzeButton" class="subtle-button" type="button">AI 分析未分析</button>
+                <select id="refProvider" class="inline-input" aria-label="分析对话平台"></select>
+                <select id="refModel" class="inline-input" aria-label="分析对话模型"></select>
+                <input id="refFileInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/bmp" multiple hidden>
+                <input id="refFolderInput" type="file" webkitdirectory hidden>
+                <span class="spacer"></span>
+                <span id="refStatus" class="profile-status" role="status" aria-live="polite"></span>
+            </div>
+            <div id="refImportProgress" class="import-progress" hidden>
+                <div class="import-progress-head">
+                    <strong>导入本地参考图</strong>
+                    <span id="refImportCount" class="muted"></span>
+                    <span class="spacer"></span>
+                    <button id="refImportHide" class="subtle-button" type="button">收起</button>
+                </div>
+                <div class="progress-track"><div id="refImportBar" class="progress-fill"></div></div>
+                <p id="refImportSummary" class="muted">重复图片会按内容自动去重跳过；原图与来源目录信息完整保留在本机，不进入图片空间。</p>
+                <div id="refImportFailures" class="import-failures"></div>
+            </div>
+            <div id="refAnalysisProgress" class="import-progress" hidden>
+                <div class="import-progress-head">
+                    <strong>AI 设计分析</strong>
+                    <span id="refAnalysisCount" class="muted"></span>
+                    <span class="spacer"></span>
+                    <button id="refAnalysisCancel" class="subtle-button" type="button">停止</button>
+                </div>
+                <div class="progress-track"><div id="refAnalysisBar" class="progress-fill"></div></div>
+                <p id="refAnalysisSummary" class="muted">分析会把图片逐张发送给你选择的对话模型；失败会记录在图片上，可单独重试。</p>
+            </div>
+            <div id="refBatchBar" class="batch-bar" hidden>
+                <span id="refBatchCount" class="muted"></span>
+                <button id="refBatchClassify" class="subtle-button" type="button">批量分类</button>
+                <button id="refBatchAnalyze" class="subtle-button" type="button">分析所选</button>
+                <button id="refBatchFavorite" class="subtle-button" type="button">收藏所选</button>
+                <button id="refBatchDelete" class="subtle-button danger" type="button">删除所选</button>
+            </div>
+            <div class="list-head"><span id="refCount">正在读取参考素材…</span></div>
+            <main id="refGrid" class="ref-grid"></main>
+            <datalist id="refCategoryOptions"></datalist>
+            <datalist id="refPurposeOptions"></datalist>
+            <datalist id="refExpressionOptions"></datalist>
+        </section>
+
+        <section id="experiencesPanel" class="db-panel" hidden aria-label="项目经验">
+            <div class="status-chips" id="experienceStatusChips" aria-label="经验状态筛选"></div>
+            <div class="list-head"><span id="experienceCount">正在读取经验…</span><span id="experienceStatus" role="status" aria-live="polite"></span></div>
+            <main id="experienceGrid" class="experience-grid"></main>
+        </section>
+
+        <section id="skillsPanel" class="db-panel" hidden aria-label="Skill 管理">
+            <p class="group-hint">与画布、对话和资产管理共用已安装技能。选择后供团队使用；清除选择后按当前需求自动匹配已启用技能。</p>
+            <div id="installedSkillLibrary"></div>
+            <h3>从项目经验提炼的技能</h3>
+            <div class="list-head"><span id="skillCount">正在读取 Skill…</span><span id="skillStatus" role="status" aria-live="polite"></span></div>
+            <main id="skillGrid" class="experience-grid"></main>
+        </section>
+
+        <section id="runsPanel" class="db-panel" hidden aria-label="执行记录">
+            <div class="list-head"><span id="runCount">正在读取执行记录…</span><span id="runStatus" role="status" aria-live="polite"></span></div>
+            <main id="runGrid" class="experience-grid"></main>
+        </section>
+
+        <section id="reviewsPanel" class="db-panel" hidden aria-label="质量反馈">
+            <div class="filter-line">
+                <select id="reviewSkillFilter" aria-label="Skill 筛选"><option value="">全部评价</option></select>
+                <span class="spacer"></span>
+                <button id="compareToggleButton" class="subtle-button" type="button">对照测试</button>
+            </div>
+            <div id="skillStatsBox"></div>
+            <div id="compareBar" hidden style="border:1px solid #e5eae8;border-radius:12px;padding:12px 14px;margin-bottom:14px;">
+                <h3 style="margin:0 0 8px;font-size:14px;">对照测试（验证 Skill 升级前后的可比结果）</h3>
+                <div class="picker-bar" style="margin-top:0">
+                    <select id="compareA" class="inline-input" aria-label="对照 A"></select>
+                    <select id="compareB" class="inline-input" aria-label="对照 B"></select>
+                    <button id="compareRunButton" class="subtle-button" type="button">比较</button>
+                </div>
+                <div id="compareVerdict" class="muted"></div>
+            </div>
+            <div class="list-head"><span id="reviewCount">正在读取评价…</span><span id="reviewStatus" role="status" aria-live="polite"></span></div>
+            <main id="reviewGrid" class="experience-grid"></main>
+        </section>
+
+        <section id="profilePanel" class="db-panel" hidden aria-label="审美档案">
+            <div id="profileForm"></div>
+            <div class="db-group" id="dataManagement">
+                <h3>数据管理</h3>
+                <p class="group-hint">全部数据仅保存在本机。导出为 JSON 快照下载；删除需输入确认文字，物理 Skill 包与图片、历史记录不受影响。</p>
+                <div class="picker-bar">
+                    <button id="exportDataButton" class="subtle-button" type="button">导出数据</button>
+                    <select id="deleteScopeSelect" class="inline-input" aria-label="删除范围">
+                        <option value="all">全部设计大脑数据</option>
+                        <option value="profile">仅审美档案</option>
+                        <option value="references">仅参考素材（含图片文件）</option>
+                        <option value="experiences">仅项目经验</option>
+                        <option value="runs">仅执行记录</option>
+                        <option value="reviews">仅质量评价</option>
+                        <option value="skill_links">仅 Skill 版本记录</option>
+                    </select>
+                    <input id="deleteConfirmInput" class="inline-input" type="text" placeholder="输入「删除」确认">
+                    <button id="deleteDataButton" class="subtle-button" type="button" style="border-color:#e3c9c7;color:#a8463f;">删除</button>
+                </div>
+                <p id="dataStatus" class="profile-status" role="status" aria-live="polite"></p>
+            </div>
+            <div class="profile-foot">
+                <button id="saveProfileButton" class="primary-button" type="button">保存档案</button>
+                <span id="profileStatus" class="profile-status" role="status" aria-live="polite"></span>
+            </div>
+        </section>
+        </div>
+    </div>
+
+    <div id="caseOverlay" class="overlay" hidden>
+        <div class="backdrop" data-close-case></div>
+        <aside class="detail-panel" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+            <button class="close-button" type="button" data-close-case aria-label="关闭详情">×</button>
+            <div id="detailBody"></div>
+        </aside>
+    </div>
+
+    <div id="experienceOverlay" class="overlay" hidden>
+        <div class="backdrop" data-close-experience></div>
+        <aside class="detail-panel wide-panel" role="dialog" aria-modal="true" aria-labelledby="experienceTitle">
+            <button class="close-button" type="button" data-close-experience aria-label="关闭经验">×</button>
+            <div id="experienceBody"></div>
+        </aside>
+    </div>
+
+    <div id="skillOverlay" class="overlay" hidden>
+        <div class="backdrop" data-close-skill></div>
+        <aside class="detail-panel wide-panel" role="dialog" aria-modal="true" aria-labelledby="skillTitle">
+            <button class="close-button" type="button" data-close-skill aria-label="关闭 Skill">×</button>
+            <div id="skillBody"></div>
+        </aside>
+    </div>
+
+    <div id="historyOverlay" class="overlay" hidden>
+        <div class="backdrop" data-close-history></div>
+        <aside class="picker-panel wide-panel" role="dialog" aria-modal="true" aria-labelledby="historyTitle">
+            <button class="close-button" type="button" data-close-history aria-label="关闭选录">×</button>
+            <p class="eyebrow">历史记录</p>
+            <h2 id="historyTitle">选择要提炼的记录</h2>
+            <p class="muted">选择若干条生成记录作为经验证据；只保存提示词、参数与图片引用，不复制图片文件。</p>
+            <label class="search-box" style="max-width:420px"><span aria-hidden="true">⌕</span><input id="historySearch" type="search" placeholder="搜索提示词或模型" autocomplete="off"></label>
+            <div id="historyList" class="history-pick-list" role="list"></div>
+            <div class="picker-bar">
+                <span id="historyPickCount" class="muted">已选 0 条</span>
+                <span class="spacer"></span>
+                <button id="historyConfirm" class="primary-button" type="button" disabled>创建候选经验</button>
+            </div>
+        </aside>
+    </div>
+
+    <div id="referenceOverlay" class="overlay" hidden>
+        <div class="backdrop" data-close-reference></div>
+        <aside class="detail-panel wide-panel" role="dialog" aria-modal="true" aria-labelledby="referenceTitle">
+            <button class="close-button" type="button" data-close-reference aria-label="关闭详情">×</button>
+            <div id="referenceBody"></div>
+        </aside>
+    </div>
+
+    <div id="refClassifyOverlay" class="overlay" hidden>
+        <div class="backdrop" data-close-classify></div>
+        <aside class="picker-panel" role="dialog" aria-modal="true" aria-labelledby="refClassifyTitle">
+            <button class="close-button" type="button" data-close-classify aria-label="关闭批量分类">×</button>
+            <p class="eyebrow">批量分类</p>
+            <h2 id="refClassifyTitle">给所选图片设置分类</h2>
+            <p class="muted">只应用填写的维度，留空保持不变；可直接输入自定义值，也可从下拉建议选择。</p>
+            <div class="form-grid" style="margin-top:14px">
+                <div class="form-field"><label for="refBatchCategory">品类（如：家居、相框）</label>
+                    <input id="refBatchCategory" class="inline-input wide-input" list="refCategoryOptions" autocomplete="off" placeholder="留空保持不变"></div>
+                <div class="form-field"><label for="refBatchPurpose">设计用途（如：主图）</label>
+                    <input id="refBatchPurpose" class="inline-input wide-input" list="refPurposeOptions" autocomplete="off" placeholder="留空保持不变"></div>
+                <div class="form-field"><label for="refBatchExpression">视觉表达（如：材质表现、创意展示）</label>
+                    <input id="refBatchExpression" class="inline-input wide-input" list="refExpressionOptions" autocomplete="off" placeholder="留空保持不变"></div>
+            </div>
+            <div class="form-field" style="margin-top:12px"><label for="refBatchTags">追加标签（可选，合并到原有标签）</label>
+                <input id="refBatchTags" class="inline-input wide-input" type="text" placeholder="用逗号分隔，例如：暖色, 静物"></div>
+            <div class="picker-bar"><span class="spacer"></span><button id="refClassifyApply" class="primary-button" type="button">应用</button></div>
+        </aside>
+    </div>
+
+    <div id="pickerOverlay" class="overlay image-picker-overlay" hidden>
+        <div class="backdrop" data-close-picker></div>
+        <section class="picker-panel image-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="pickerTitle" aria-describedby="pickerDescription">
+            <header class="image-picker-head">
+                <div><h2 id="pickerTitle">新增参考</h2><p id="pickerDescription">选择图片，收藏为可复用的设计参考。</p></div>
+                <button class="subtle-button picker-close" type="button" data-close-picker aria-label="关闭选图"><i data-lucide="x"></i></button>
+            </header>
+            <div class="image-picker-body">
+                <aside class="image-picker-sidebar" aria-label="图片来源与文件夹">
+                    <nav id="pickerSources" aria-label="图片来源">
+                        <button type="button" data-picker-source="upload"><i data-lucide="image-up"></i>上传素材</button>
+                        <button type="button" data-picker-source="generated"><i data-lucide="images"></i>生成素材</button>
+                        <button type="button" data-picker-source="local"><i data-lucide="folder"></i>本地素材</button>
+                    </nav>
+                    <div class="picker-folder-label">文件夹</div>
+                    <nav id="pickerFolders" aria-label="文件夹"></nav>
+                </aside>
+                <div class="image-picker-browser">
+                    <div class="image-picker-tools">
+                        <label class="picker-search"><i data-lucide="search"></i><input id="pickerSearch" type="search" placeholder="搜索图片名称或标签" aria-label="搜索图片" autocomplete="off"></label>
+                        <button id="pickerReload" class="subtle-button" type="button" aria-label="刷新图片列表"><i data-lucide="refresh-cw"></i></button>
+                    </div>
+                    <div class="picker-location-row"><nav id="pickerBreadcrumb" aria-label="当前文件夹"></nav><span id="pickerResultCount" role="status"></span></div>
+                    <div class="picker-scroll" id="pickerScroll">
+                        <div id="pickerGrid" class="picker-grid" aria-label="可选择的图片"></div>
+                        <div id="pickerLoadState" class="picker-load-state" role="status" aria-live="polite"></div>
+                        <button id="pickerLoadMore" class="subtle-button picker-load-more" type="button" hidden>加载更多图片</button>
+                    </div>
+                </div>
+            </div>
+            <footer class="image-picker-foot">
+                <div class="picker-selection-head"><strong id="pickerSelectedCount">尚未选择图片</strong><button id="pickerClear" class="picker-text-button" type="button" disabled>清空选择</button></div>
+                <div id="pickerSelected" class="picker-selected" aria-label="已选图片"></div>
+                <div class="picker-case-fields" id="pickerCaseFields">
+                    <input id="pickerTitleInput" class="inline-input" type="text" aria-label="案例标题" placeholder="案例标题（必填）">
+                    <input id="pickerTagsInput" class="inline-input" type="text" aria-label="案例标签" placeholder="标签，用逗号分隔（可选）">
+                </div>
+                <div class="picker-confirm-row"><p id="pickerStatus" class="profile-status" role="status" aria-live="polite"></p><span class="spacer"></span><button class="subtle-button" type="button" data-close-picker>取消</button><button id="pickerCreate" class="primary-button" type="button" disabled>收藏所选</button></div>
+            </footer>
+            <div id="pickerPreview" class="picker-preview" role="dialog" aria-modal="true" aria-labelledby="pickerPreviewName" hidden>
+                <div class="picker-preview-head"><strong id="pickerPreviewName"></strong><button id="pickerPreviewClose" class="subtle-button" type="button" aria-label="关闭图片预览"><i data-lucide="x"></i></button></div>
+                <div class="picker-preview-stage"><button id="pickerPreviewPrev" class="subtle-button" type="button" aria-label="上一张图片"><i data-lucide="chevron-left"></i></button><img id="pickerPreviewImage" alt=""><p id="pickerPreviewStatus" role="status"></p><button id="pickerPreviewNext" class="subtle-button" type="button" aria-label="下一张图片"><i data-lucide="chevron-right"></i></button></div>
+                <div class="picker-preview-foot"><span id="pickerPreviewPosition"></span><button id="pickerPreviewSelect" class="primary-button" type="button">选中这张</button></div>
+            </div>
+        </section>
+    </div>
+
+    <div id="usageOverlay" class="overlay" hidden>
+        <div class="backdrop" data-close-usage></div>
+        <aside class="detail-panel wide-panel" role="dialog" aria-modal="true" aria-labelledby="usageTitle">
+            <button class="close-button" type="button" data-close-usage aria-label="关闭用量">×</button>
+            <div id="usageBody"></div>
+        </aside>
+    </div>
+
+    <div id="memoryOverlay" class="overlay" hidden>
+        <div class="backdrop" data-close-memory></div>
+        <aside class="detail-panel wide-panel" role="dialog" aria-modal="true" aria-labelledby="memoryTitle">
+            <button class="close-button" type="button" data-close-memory aria-label="关闭记忆">×</button>
+            <div id="memoryBody"></div>
+        </aside>
+    </div>
+
+    <script src="/static/vendor/deepseek-bot/characters.js?v=2026.10.26.1792916956"></script>
+    <script src="/static/js/design-brain-progress.js?v=2026.10.26.direction-flow.1"></script>
+    <script src="/static/js/shared-agent-skill.js?v=2026.10.26.1791504727"></script>
+    <script src="/static/js/skill-market.js?v=2026.10.26.1792935456"></script>
+    <script src="/static/js/design-brain.js?v=2026.10.26.quality-flow.1"></script>
+    <script src="/static/js/design-brain-team.js?v=2026.10.26.1792975191"></script>
+</body>
+</html>

@@ -132,6 +132,7 @@ const promptTemplateLibrarySelect = document.getElementById('promptTemplateLibra
 const promptTemplateCats = document.getElementById('promptTemplateCats');
 const promptTemplateBody = document.getElementById('promptTemplateBody');
 const composerTemplateBtn = document.getElementById('composerTemplateBtn');
+const composerFindBtn = document.getElementById('composerFindBtn');
 const canvasCollabStatus = document.getElementById('canvasCollabStatus');
 const canvasCollabToggle = document.getElementById('canvasCollabToggle');
 const canvasCollabPanel = document.getElementById('canvasCollabPanel');
@@ -1037,9 +1038,11 @@ function smartColorMediaItemForStorage(item){
 }
 function prepareSmartNodeMediaForStorage(node){
     if(Array.isArray(node.images)){
-        node.images = node.images.map(image => isSmartColorNode(node) || image?.local_storage || image?.local_db_id
-            ? smartColorMediaItemForStorage(image)
-            : mediaItemForStorage(image));
+        node.images = node.images
+            .filter(image => !isStaleSmartPasteMedia(image))
+            .map(image => isSmartColorNode(node) || image?.local_storage || image?.local_db_id
+                ? smartColorMediaItemForStorage(image)
+                : mediaItemForStorage(image));
     }
     if(isSmartColorNode(node) || node.collapsed){
         delete node.colorProcessing;
@@ -4364,7 +4367,7 @@ function activeGenerationLayout(node, count=0){
     };
 }
 function imageLayout(images, scale=1, node=null){
-    if(isProductFidelityNode(node)) return {cols:1, rows:1, width:Math.max(760,Number(node.w)||980), height:Math.max(650,Number(node.h)||820), thumb:96, single:true};
+    if(isProductFidelityNode(node)) return {cols:1, rows:1, width:Math.max(760,Number(node.w)||980), height:Math.max(560,Number(node.h)||720), thumb:96, single:true};
     if(isSmartAiRenderNode(node)){
         normalizeSmartAiRenderNode(node);
         return {cols:1, rows:1, width:Math.max(440, Math.round(Number(node.w) || 480)), height:Math.max(430, Math.round(Number(node.h) || 470)), thumb:96, single:true};
@@ -10490,6 +10493,7 @@ async function loadCanvas(){
             if(node.type === 'smart-loop') node.aiSplitRunning = false;
         });
         migrateSmartGroupImageMembers();
+        const removedStalePasteImages = cleanupStaleSmartPasteImages();
         canvas.connections = Array.isArray(canvas.connections) ? canvas.connections : [];
         loadSmartConnectionDeletionTombstones();
         // 删除记录在本地持久化，刷新后先挡住旧客户端回写的边，再把这个差异交给保存流程。
@@ -10560,7 +10564,7 @@ async function loadCanvas(){
         render();
         if(!sharedCanvasMode) void window.SmartExpertWorkflow?.restore?.(nodes);
         window.ProjectAgent?.openCanvas(canvas);
-        if(migratedLegacySmartUploadNodes || migratedInvalidImageTaskRecoveries || cleanedDetachedInputs || interruptedRunState || cleanedCompletedState || recoveredLoggedOutputs || hiddenCompletedTimers || protectedConnectionsRemovedOnLoad || repairedDetailStitchConnections || restoredLegacyAgentTextStacks) scheduleSave();
+        if(migratedLegacySmartUploadNodes || migratedInvalidImageTaskRecoveries || cleanedDetachedInputs || interruptedRunState || cleanedCompletedState || recoveredLoggedOutputs || hiddenCompletedTimers || protectedConnectionsRemovedOnLoad || repairedDetailStitchConnections || restoredLegacyAgentTextStacks || removedStalePasteImages) scheduleSave();
         startCanvasMetaPoll();
     } catch(e) { toast(tr('smart.toastCanvasFail')); }
 }
@@ -12273,6 +12277,20 @@ async function imageBlobToPng(blob){
         URL.revokeObjectURL(objectUrl);
     }
 }
+function previewImageElectronApi(){
+    if(window.electronAPI?.writeImageToClipboard) return window.electronAPI;
+    try {
+        if(window.parent !== window && window.parent.electronAPI?.writeImageToClipboard) return window.parent.electronAPI;
+    } catch(error) {}
+    return null;
+}
+async function loadPreviewImagePng(image){
+    const response = await fetch(displayMediaUrl(image), {credentials:'same-origin', signal:AbortSignal.timeout(30000)});
+    if(!response.ok) throw new Error(`图片读取失败（${response.status}）`);
+    const blob = await response.blob();
+    if(!/^image\//i.test(String(blob.type || ''))) throw new Error('读取到的内容不是图片');
+    return imageBlobToPng(blob);
+}
 async function copyPreviewImage(){
     const image = currentEditImage().image;
     const button = document.getElementById('previewCopyBtn');
@@ -12280,21 +12298,25 @@ async function copyPreviewImage(){
     if(button?.disabled) return;
     if(button) button.disabled = true;
     try {
-        const ClipboardItemCtor = window.ClipboardItem;
-        if(!navigator.clipboard?.write || typeof ClipboardItemCtor !== 'function') {
-            throw new Error('当前浏览器不支持复制图片');
+        const electron = previewImageElectronApi();
+        if(electron){
+            const png = await loadPreviewImagePng(image);
+            const result = await electron.writeImageToClipboard(await png.arrayBuffer());
+            if(!result?.ok) throw new Error(result?.message || '桌面剪贴板写入失败');
+        } else {
+            const ClipboardItemCtor = window.ClipboardItem;
+            if(!navigator.clipboard?.write || typeof ClipboardItemCtor !== 'function') {
+                throw new Error('当前浏览器不支持复制图片');
+            }
+            // 在点击时立即发起写入，图片读取与格式转换通过 Promise 延后完成，保留临时授权。
+            const pngPromise = loadPreviewImagePng(image);
+            pngPromise.catch(() => {});
+            await navigator.clipboard.write([new ClipboardItemCtor({'image/png':pngPromise})]);
         }
-        const source = displayMediaUrl(image);
-        const response = await fetch(source, {credentials:'same-origin'});
-        if(!response.ok) throw new Error(`图片读取失败（${response.status}）`);
-        const blob = await response.blob();
-        if(!/^image\//i.test(String(blob.type || ''))) throw new Error('读取到的内容不是图片');
-        const png = await imageBlobToPng(blob);
-        await navigator.clipboard.write([new ClipboardItemCtor({'image/png':png})]);
         toast('图片已复制，可直接粘贴');
     } catch(error) {
         console.warn('[smart-canvas] copy preview image failed', error);
-        toast('复制图片失败，请使用下载按钮');
+        toast('复制图片失败，请重试或下载图片', 5000);
     } finally {
         if(button) button.disabled = false;
     }
@@ -12784,16 +12806,410 @@ function promptNodeBodyHtml(node){
             <input class="agent-skill-folder" type="file" webkitdirectory directory multiple hidden>
             <button class="prompt-node-pill prompt-llm-toggle ${node.llmEnabled ? 'active' : ''}" type="button"><i data-lucide="sparkles"></i><span>LLM</span></button>
             ${node.llmEnabled ? `<button class="prompt-node-pill prompt-node-control prompt-system-toggle ${node.llmSystemEnabled ? 'active' : ''}" type="button"><i data-lucide="${node.llmSystemEnabled ? 'toggle-right' : 'toggle-left'}"></i><span>${escapeHtml(tr('smart.promptSystemLabel'))}</span></button>` : ''}
+            <button class="prompt-node-pill prompt-node-control prompt-find-toggle" type="button" aria-pressed="false" title="${escapeHtml(tr('smart.promptFindOpen'))}"><i data-lucide="search"></i><span>${escapeHtml(tr('smart.promptFind'))}</span></button>
         </div>
         ${agentSkillLibraryHtml(node)}</div>
         ${agentSkillChipsHtml(node)}
         ${inputThumbs}
         ${llmInput}
-        <label class="prompt-node-field prompt-node-output-field"><span>${escapeHtml(tr('smart.promptOutputLabel'))}</span>
-            <textarea class="prompt-node-text prompt-node-control" ${readonly} placeholder="${escapeHtml(tr('smart.promptPlaceholderNode'))}">${escapeHtml(node.text || '')}</textarea>
-        </label>
+        <div class="prompt-node-field prompt-node-output-field"><span>${escapeHtml(tr('smart.promptOutputLabel'))}</span>
+            <div class="prompt-text-find-host"><textarea class="prompt-node-text prompt-node-control" ${readonly} placeholder="${escapeHtml(tr('smart.promptPlaceholderNode'))}">${escapeHtml(node.text || '')}</textarea></div>
+        </div>
         ${llmFooter}
     </div>`;
+}
+// 提示词节点「查找」：搜索状态只存在于这两个模块级变量里，
+// 不写入节点数据、画布 JSON 或任何持久化存储。
+let promptFindState = null;
+let promptFindUi = null;
+function promptFindMatchRanges(text, keyword){
+    const haystack = String(text || '').toLowerCase();
+    const needle = String(keyword || '').toLowerCase();
+    if(!needle) return [];
+    const ranges = [];
+    let at = haystack.indexOf(needle);
+    while(at >= 0){
+        ranges.push([at, at + needle.length]);
+        at = haystack.indexOf(needle, at + needle.length);
+    }
+    return ranges;
+}
+function promptFindOverlayHtml(text, matches, currentIndex){
+    let html = '';
+    let cursor = 0;
+    matches.forEach(([start, end], i) => {
+        html += escapeHtml(text.slice(cursor, start));
+        html += `<mark class="prompt-find-hit${i === currentIndex ? ' current' : ''}">${escapeHtml(text.slice(start, end))}</mark>`;
+        cursor = end;
+    });
+    return html + escapeHtml(text.slice(cursor));
+}
+function syncPromptNodeFindMetrics(){
+    const ui = promptFindUi;
+    if(!ui || !ui.textarea.isConnected) return;
+    const styles = getComputedStyle(ui.textarea);
+    ['fontFamily','fontSize','fontWeight','fontStyle','letterSpacing','wordSpacing','lineHeight','textTransform','textAlign','textIndent','tabSize','direction','paddingTop','paddingRight','paddingBottom','paddingLeft'].forEach(prop => { ui.contentEl.style[prop] = styles[prop]; });
+    // clientWidth 已扣除滚动条，镜像与它同宽可保证换行位置一致。
+    ui.overlayEl.style.left = styles.borderLeftWidth;
+    ui.overlayEl.style.top = styles.borderTopWidth;
+    ui.overlayEl.style.width = `${ui.textarea.clientWidth}px`;
+    ui.overlayEl.style.height = `${ui.textarea.clientHeight}px`;
+    ui.overlayEl.scrollTop = ui.textarea.scrollTop;
+    ui.overlayEl.scrollLeft = ui.textarea.scrollLeft;
+}
+function refreshPromptNodeFind({scrollToCurrent = true} = {}){
+    const ui = promptFindUi;
+    if(!ui || !promptFindState || promptFindState.nodeId !== ui.nodeId || !ui.textarea.isConnected) return;
+    const text = ui.textarea.value;
+    promptFindState.matches = promptFindMatchRanges(text, promptFindState.keyword);
+    // 当前匹配项因编辑失效时回到第一个有效匹配。
+    if(promptFindState.index >= promptFindState.matches.length) promptFindState.index = 0;
+    if(!String(promptFindState.keyword || '')){
+        ui.countEl.textContent = '';
+        ui.countEl.classList.remove('no-match');
+        ui.contentEl.textContent = '';
+        return;
+    }
+    if(!promptFindState.matches.length){
+        ui.countEl.textContent = tr('smart.promptFindNoMatch');
+        ui.countEl.classList.add('no-match');
+        ui.contentEl.textContent = '';
+        return;
+    }
+    ui.countEl.textContent = `${promptFindState.index + 1}/${promptFindState.matches.length}`;
+    ui.countEl.classList.remove('no-match');
+    ui.contentEl.innerHTML = promptFindOverlayHtml(text, promptFindState.matches, promptFindState.index);
+    syncPromptNodeFindMetrics();
+    if(scrollToCurrent) scrollPromptNodeFindToCurrent();
+}
+function scrollPromptNodeFindToCurrent(){
+    const ui = promptFindUi;
+    if(!ui || !ui.textarea.isConnected) return;
+    const mark = ui.contentEl.querySelector('mark.current');
+    if(!mark) return;
+    const top = mark.offsetTop;
+    const bottom = top + mark.offsetHeight;
+    const view = ui.textarea.clientHeight;
+    const margin = 8;
+    let target = ui.textarea.scrollTop;
+    if(top < target) target = Math.max(0, top - margin);
+    else if(bottom > target + view - margin) target = Math.min(top - margin, bottom + margin - view);
+    const max = Math.max(0, ui.textarea.scrollHeight - view);
+    ui.textarea.scrollTop = Math.max(0, Math.min(target, max));
+    ui.overlayEl.scrollTop = ui.textarea.scrollTop;
+    ui.overlayEl.scrollLeft = ui.textarea.scrollLeft;
+}
+function stepPromptNodeFind(delta){
+    if(!promptFindState?.matches.length) return;
+    const total = promptFindState.matches.length;
+    promptFindState.index = (promptFindState.index + delta + total) % total;
+    refreshPromptNodeFind();
+}
+function destroyPromptNodeFindUi(){
+    const ui = promptFindUi;
+    promptFindUi = null;
+    if(!ui) return;
+    ui.resizeObserver?.disconnect();
+    ui.toggleBtn?.classList.remove('active');
+    ui.toggleBtn?.setAttribute('aria-pressed', 'false');
+    ui.barEl?.remove();
+    ui.overlayEl?.remove();
+}
+function closePromptNodeFind({refocus = true} = {}){
+    const ui = promptFindUi;
+    destroyPromptNodeFindUi();
+    promptFindState = null;
+    if(refocus && ui?.textarea?.isConnected) ui.textarea.focus({preventScroll:true});
+}
+function promptFindBarInnerHtml(){
+    return `<i data-lucide="search"></i>
+        <input class="prompt-find-input" type="text" spellcheck="false" placeholder="${escapeAttr(tr('smart.promptFindPlaceholder'))}" aria-label="${escapeAttr(tr('smart.promptFindPlaceholder'))}">
+        <span class="prompt-find-count"></span>
+        <button class="prompt-find-btn" type="button" data-prompt-find="prev" title="${escapeAttr(tr('smart.promptFindPrev'))}" aria-label="${escapeAttr(tr('smart.promptFindPrev'))}"><i data-lucide="chevron-up"></i></button>
+        <button class="prompt-find-btn" type="button" data-prompt-find="next" title="${escapeAttr(tr('smart.promptFindNext'))}" aria-label="${escapeAttr(tr('smart.promptFindNext'))}"><i data-lucide="chevron-down"></i></button>
+        <button class="prompt-find-btn" type="button" data-prompt-find="clear" title="${escapeAttr(tr('smart.promptFindClear'))}" aria-label="${escapeAttr(tr('smart.promptFindClear'))}"><i data-lucide="eraser"></i></button>
+        <button class="prompt-find-btn prompt-find-close" type="button" data-prompt-find="close" title="${escapeAttr(tr('smart.promptFindClose'))}" aria-label="${escapeAttr(tr('smart.promptFindClose'))}"><i data-lucide="x"></i></button>`;
+}
+function mountPromptNodeFindUi(nodeEl, node, {focus = false} = {}){
+    if(!promptFindState) return;
+    const textarea = nodeEl.querySelector('.prompt-node-text');
+    if(!textarea){
+        promptFindState = null;
+        return;
+    }
+    destroyPromptNodeFindUi();
+    const host = textarea.parentElement;
+    const barEl = document.createElement('div');
+    barEl.className = 'prompt-find-bar prompt-node-control';
+    barEl.innerHTML = promptFindBarInnerHtml();
+    const overlayEl = document.createElement('div');
+    overlayEl.className = 'prompt-find-overlay';
+    overlayEl.setAttribute('aria-hidden', 'true');
+    const contentEl = document.createElement('div');
+    contentEl.className = 'prompt-find-overlay-content';
+    overlayEl.appendChild(contentEl);
+    host.appendChild(overlayEl);
+    // 搜索栏放在输入框上方（VSCode 查找栏的位置习惯）：节点右下角的
+    // 缩放手柄 (z-index:9) 悬浮在节点底部，放底部会挡住关闭/清空按钮。
+    host.insertAdjacentElement('beforebegin', barEl);
+    const inputEl = barEl.querySelector('.prompt-find-input');
+    const countEl = barEl.querySelector('.prompt-find-count');
+    inputEl.value = promptFindState.keyword || '';
+    barEl.addEventListener('keydown', e => e.stopPropagation());
+    inputEl.addEventListener('keydown', e => {
+        e.stopPropagation();
+        if(e.key === 'Escape'){
+            e.preventDefault();
+            closePromptNodeFind();
+        } else if(e.key === 'Enter'){
+            e.preventDefault();
+            stepPromptNodeFind(e.shiftKey ? -1 : 1);
+        }
+    });
+    inputEl.addEventListener('input', () => {
+        promptFindState.keyword = inputEl.value;
+        promptFindState.index = 0;
+        refreshPromptNodeFind();
+    });
+    barEl.querySelectorAll('[data-prompt-find]').forEach(btn => {
+        btn.addEventListener('click', e => {
+            e.preventDefault();
+            const action = btn.dataset.promptFind;
+            if(action === 'prev') stepPromptNodeFind(-1);
+            else if(action === 'next') stepPromptNodeFind(1);
+            else if(action === 'close') closePromptNodeFind();
+            else if(action === 'clear'){
+                inputEl.value = '';
+                promptFindState.keyword = '';
+                promptFindState.index = 0;
+                refreshPromptNodeFind();
+                inputEl.focus();
+            }
+        });
+    });
+    textarea.addEventListener('scroll', () => {
+        if(!promptFindUi?.overlayEl) return;
+        promptFindUi.overlayEl.scrollTop = textarea.scrollTop;
+        promptFindUi.overlayEl.scrollLeft = textarea.scrollLeft;
+    });
+    const resizeObserver = new ResizeObserver(syncPromptNodeFindMetrics);
+    resizeObserver.observe(textarea);
+    promptFindUi = {nodeId:node.id, textarea, barEl, inputEl, countEl, overlayEl, contentEl, toggleBtn:nodeEl.querySelector('.prompt-find-toggle'), resizeObserver};
+    promptFindUi.toggleBtn?.classList.add('active');
+    promptFindUi.toggleBtn?.setAttribute('aria-pressed', 'true');
+    refreshIcons();
+    refreshPromptNodeFind();
+    if(focus){
+        inputEl.focus();
+        inputEl.select();
+    }
+}
+function togglePromptNodeFind(node){
+    if(promptFindState?.nodeId === node.id){
+        closePromptNodeFind();
+        return;
+    }
+    // 搜索一次只属于一个节点；切换节点先彻底关闭上一个，避免匹配位置串节点。
+    closePromptNodeFind({refocus:false});
+    const nodeEl = [...world.querySelectorAll('.image-node')].find(el => el.dataset.id === node.id);
+    if(!nodeEl?.querySelector('.prompt-node-text')) return;
+    promptFindState = {nodeId:node.id, keyword:'', matches:[], index:0};
+    mountPromptNodeFindUi(nodeEl, node, {focus:true});
+}
+function bindPromptNodeFindControls(el, node){
+    const toggleBtn = el.querySelector('.prompt-find-toggle');
+    if(toggleBtn) toggleBtn.onclick = e => {
+        e.preventDefault();
+        e.stopPropagation();
+        togglePromptNodeFind(node);
+    };
+    if(promptFindState && !nodes.some(item => item.id === promptFindState.nodeId)){
+        closePromptNodeFind({refocus:false});
+        return;
+    }
+    if(promptFindState?.nodeId !== node.id) return;
+    // 渲染管线重建节点内容后按既有状态恢复搜索栏；DOM 未变时沿用，避免打断输入。
+    if(promptFindUi?.nodeId === node.id && promptFindUi.barEl?.isConnected && el.contains(promptFindUi.textarea)) return;
+    mountPromptNodeFindUi(el, node);
+}
+// 底部创作面板提示词框（contenteditable）的「查找」。与节点版共用匹配与搜索栏，
+// 高亮改用 CSS Custom Highlight API：零 DOM 改写，不干扰输入法、撤销和提词组装。
+let composerFindState = null;
+let composerFindUi = null;
+const COMPOSER_FIND_HIGHLIGHT_ALL = 'smart-composer-find';
+const COMPOSER_FIND_HIGHLIGHT_CURRENT = 'smart-composer-find-current';
+function composerFindSupportsHighlight(){
+    // Chromium 的 CSS.highlights 是 HighlightRegistry（不通过 instanceof Map 判断）。
+    return typeof Highlight !== 'undefined' && typeof CSS?.highlights?.set === 'function';
+}
+function composerFindTextParts(){
+    const parts = [];
+    const walker = document.createTreeWalker(promptInput, NodeFilter.SHOW_TEXT);
+    let node;
+    let start = 0;
+    while((node = walker.nextNode())){
+        const text = node.nodeValue || '';
+        if(!text) continue;
+        parts.push({node, text, start});
+        start += text.length;
+    }
+    return parts;
+}
+function composerFindRangeFor(parts, start, end){
+    const range = document.createRange();
+    let started = false;
+    for(const part of parts){
+        const partEnd = part.start + part.text.length;
+        if(!started){
+            if(end > part.start && start < partEnd){
+                range.setStart(part.node, Math.max(0, start - part.start));
+                started = true;
+                if(end <= partEnd){
+                    range.setEnd(part.node, end - part.start);
+                    return range;
+                }
+            }
+        } else if(end <= partEnd){
+            range.setEnd(part.node, end - part.start);
+            return range;
+        }
+    }
+    if(!started || !parts.length) return null;
+    const last = parts[parts.length - 1];
+    range.setEnd(last.node, last.text.length);
+    return range;
+}
+function composerFindClearHighlights(){
+    if(!composerFindSupportsHighlight()) return;
+    CSS.highlights.delete(COMPOSER_FIND_HIGHLIGHT_ALL);
+    CSS.highlights.delete(COMPOSER_FIND_HIGHLIGHT_CURRENT);
+}
+function refreshComposerFind({scrollToCurrent = true} = {}){
+    if(!composerFindState || !composerFindUi) return;
+    const parts = composerFindTextParts();
+    const text = parts.map(part => part.text).join('');
+    composerFindState.matches = promptFindMatchRanges(text, composerFindState.keyword);
+    if(composerFindState.index >= composerFindState.matches.length) composerFindState.index = 0;
+    const keyword = String(composerFindState.keyword || '');
+    const countEl = composerFindUi.countEl;
+    if(!keyword){
+        countEl.textContent = '';
+        countEl.classList.remove('no-match');
+        composerFindClearHighlights();
+        return;
+    }
+    if(!composerFindState.matches.length){
+        countEl.textContent = tr('smart.promptFindNoMatch');
+        countEl.classList.add('no-match');
+        composerFindClearHighlights();
+        return;
+    }
+    countEl.textContent = `${composerFindState.index + 1}/${composerFindState.matches.length}`;
+    countEl.classList.remove('no-match');
+    if(composerFindSupportsHighlight()){
+        const all = new Highlight();
+        const current = new Highlight();
+        composerFindState.matches.forEach(([start, end], i) => {
+            const range = composerFindRangeFor(parts, start, end);
+            if(!range) return;
+            (i === composerFindState.index ? current : all).add(range);
+        });
+        composerFindClearHighlights();
+        CSS.highlights.set(COMPOSER_FIND_HIGHLIGHT_ALL, all);
+        CSS.highlights.set(COMPOSER_FIND_HIGHLIGHT_CURRENT, current);
+    }
+    if(scrollToCurrent) scrollComposerFindToCurrent(parts);
+}
+function scrollComposerFindToCurrent(parts){
+    if(!composerFindState?.matches.length) return;
+    const [start, end] = composerFindState.matches[composerFindState.index];
+    const range = composerFindRangeFor(parts || composerFindTextParts(), start, end);
+    if(!range) return;
+    const rect = range.getBoundingClientRect();
+    const box = promptInput.getBoundingClientRect();
+    const margin = 8;
+    if(rect.top < box.top + margin) promptInput.scrollTop -= box.top + margin - rect.top;
+    else if(rect.bottom > box.bottom - margin) promptInput.scrollTop += rect.bottom - box.bottom + margin;
+}
+function stepComposerFind(delta){
+    if(!composerFindState?.matches.length) return;
+    const total = composerFindState.matches.length;
+    composerFindState.index = (composerFindState.index + delta + total) % total;
+    refreshComposerFind();
+}
+function closeComposerFind({refocus = true} = {}){
+    const ui = composerFindUi;
+    composerFindUi = null;
+    composerFindState = null;
+    composerFindClearHighlights();
+    if(!ui) return;
+    ui.observer?.disconnect();
+    ui.barEl?.remove();
+    ui.toggleBtn?.classList.remove('active');
+    ui.toggleBtn?.setAttribute('aria-pressed', 'false');
+    if(refocus && promptInput?.isConnected) promptInput.focus({preventScroll:true});
+}
+function toggleComposerFind(){
+    if(composerFindState){
+        closeComposerFind();
+        return;
+    }
+    const row = promptInput?.closest?.('.prompt-row');
+    if(!row || !promptInput) return;
+    composerFindState = {keyword:'', matches:[], index:0};
+    const barEl = document.createElement('div');
+    barEl.className = 'prompt-find-bar composer-find-bar';
+    barEl.innerHTML = promptFindBarInnerHtml();
+    // 搜索栏放在输入框下方：行的右上角有绝对定位的「模板库/查找」悬浮按钮，放顶部会互相遮挡。
+    row.appendChild(barEl);
+    const inputEl = barEl.querySelector('.prompt-find-input');
+    const countEl = barEl.querySelector('.prompt-find-count');
+    const toggleBtn = document.getElementById('composerFindBtn');
+    barEl.addEventListener('keydown', e => e.stopPropagation());
+    inputEl.addEventListener('keydown', e => {
+        e.stopPropagation();
+        if(e.key === 'Escape'){
+            e.preventDefault();
+            closeComposerFind();
+        } else if(e.key === 'Enter'){
+            e.preventDefault();
+            stepComposerFind(e.shiftKey ? -1 : 1);
+        }
+    });
+    inputEl.addEventListener('input', () => {
+        composerFindState.keyword = inputEl.value;
+        composerFindState.index = 0;
+        refreshComposerFind();
+    });
+    barEl.querySelectorAll('[data-prompt-find]').forEach(btn => {
+        btn.addEventListener('click', e => {
+            e.preventDefault();
+            const action = btn.dataset.promptFind;
+            if(action === 'prev') stepComposerFind(-1);
+            else if(action === 'next') stepComposerFind(1);
+            else if(action === 'close') closeComposerFind();
+            else if(action === 'clear'){
+                inputEl.value = '';
+                composerFindState.keyword = '';
+                composerFindState.index = 0;
+                refreshComposerFind();
+                inputEl.focus();
+            }
+        });
+    });
+    // contenteditable 的内容可能被模板、优化、上游同步等代码整体替换（不触发 input），
+    // 用 MutationObserver 统一感知任何内容变化并重算匹配；不带动滚动，避免打断编辑。
+    const observer = new MutationObserver(() => refreshComposerFind({scrollToCurrent:false}));
+    observer.observe(promptInput, {childList:true, subtree:true, characterData:true});
+    composerFindUi = {barEl, inputEl, countEl, toggleBtn, observer};
+    toggleBtn?.classList.add('active');
+    toggleBtn?.setAttribute('aria-pressed', 'true');
+    // 按钮位于底部操作区，提示词收起时也能点击；打开查找的同时强制展开提示词行。
+    syncComposerPromptCompactPreview(activeComposerNode());
+    refreshIcons();
+    refreshComposerFind();
+    inputEl.focus();
+    inputEl.select();
 }
 function loopNumberControlHtml({label, value, key, min=1, max=100, quick=[1,2,3,4,5,6,8,10], suffix=''}){
     const v = Math.max(min, Math.min(max, Number(value) || min));
@@ -16905,6 +17321,8 @@ function rememberInlineVideoActivations(){
 const smartRenderedNodeMarkup = new Map();
 function render(options={}){
     paintInputRefDragCancel?.();
+    // 提示词查找是纯前端瞬态：节点被删除或画布切换后立即丢弃，防止悬空监听。
+    if(promptFindState && !nodes.some(node => node.id === promptFindState.nodeId)) closePromptNodeFind({refocus:false});
     const dirtyNodeIds = options?.nodeIds
         ? new Set((Array.isArray(options.nodeIds) ? options.nodeIds : [...options.nodeIds]).filter(Boolean).map(String))
         : null;
@@ -17314,7 +17732,15 @@ function bindPromptNodeControls(el, node){
         textEl.oninput = e => {
             node.text = e.target.value;
             scheduleSave();
+            if(promptFindState?.nodeId === node.id) refreshPromptNodeFind({scrollToCurrent:false});
         };
+        textEl.addEventListener('keydown', e => {
+            if(e.key === 'Escape' && promptFindState?.nodeId === node.id){
+                e.preventDefault();
+                e.stopPropagation();
+                closePromptNodeFind();
+            }
+        });
     }
     const presetEdit = el.querySelector('.prompt-preset-edit');
     if(presetEdit) presetEdit.onclick = e => {
@@ -17377,6 +17803,7 @@ function bindPromptNodeControls(el, node){
     });
     const runEl = el.querySelector('.prompt-node-run');
     if(runEl) runEl.onclick = e => { e.preventDefault(); e.stopPropagation(); runPromptLLMNode(node.id); };
+    bindPromptNodeFindControls(el, node);
 }
 function bindNodeSkillControls(el, node){
     const skillLibrarySearch = el.querySelector('.agent-skill-library-search-input');
@@ -23534,7 +23961,10 @@ async function applyImageCrop(){
     if(!cropState) return;
     const {node, image, index} = currentEditImage();
     const img = document.getElementById('cropImage');
-    if(!node || !image || !img.naturalWidth || !img.naturalHeight){ toast('裁剪失败：当前图片尚未加载，请稍后重试'); return; }
+    // 三种失联原因给不同的提示：节点被删、图片被生成结果替换、原图还在解码，只有第三种才值得“稍后重试”。
+    if(!node){ toast('裁剪失败：原图节点已不在画布上，请关闭编辑器后重试'); return; }
+    if(!image){ toast('裁剪失败：原图已被更新，请关闭编辑器后重新打开'); return; }
+    if(!img.naturalWidth || !img.naturalHeight){ toast('裁剪失败：当前图片尚未加载，请稍后重试'); return; }
     const scaleX = img.naturalWidth / (img.clientWidth || 1), scaleY = img.naturalHeight / (img.clientHeight || 1);
     const sx = Math.max(0, Math.round(cropState.x * scaleX)), sy = Math.max(0, Math.round(cropState.y * scaleY));
     const sw = Math.max(1, Math.round(cropState.w * scaleX)), sh = Math.max(1, Math.round(cropState.h * scaleY));
@@ -23710,6 +24140,22 @@ let ocrRecognitionSelectionLoaded = false;
 let ocrPanelPositionRaf = 0;
 let ocrActiveRegion = -1;
 let ocrRequestController = null;
+let ocrElapsedTimer = 0;
+function setOcrRecognizeButtonBusy(busy){
+    const btn=document.getElementById('ocrRecognizeBtn');
+    if(!btn) return;
+    const label=btn.querySelector('span');
+    if(label) label.textContent=busy?'取消识别':'识别文字';
+}
+function startOcrElapsedTimer(model){
+    stopOcrElapsedTimer();
+    const status=document.getElementById('ocrStatus');
+    const startedAt=Date.now();
+    ocrElapsedTimer=window.setInterval(()=>{
+        if(status) status.textContent=`正在使用 ${model} 识别文字…（已等待 ${Math.round((Date.now()-startedAt)/1000)} 秒，CLI 平台可能需要 1-3 分钟）`;
+    },1000);
+}
+function stopOcrElapsedTimer(){ if(ocrElapsedTimer){ clearInterval(ocrElapsedTimer); ocrElapsedTimer=0; } }
 function positionOcrPanel(){
     ocrPanelPositionRaf = 0;
     if(imageEditMode !== 'ocr' || !imageEditModal?.classList.contains('open')) return;
@@ -23791,7 +24237,11 @@ function syncOcrRecognitionModelOptions(){
     select.disabled = !!ocrRequestController || !models.length;
     const active = provider && model ? {...ocrRecognitionSelection} : null;
     const btn = document.getElementById('ocrRecognizeBtn');
-    if(btn) btn.disabled = !!ocrRequestController || !active;
+    if(btn) btn.disabled = !active && !ocrRequestController;
+    const cliHint = document.querySelector('#ocrModelSettings > p.ocr-model-hint');
+    if(cliHint) cliHint.textContent = (String(provider?.protocol || '').toLowerCase() === 'gemini-cli' || String(provider?.protocol || '').toLowerCase() === 'codex')
+        ? '当前 CLI 平台为代理式识别（先启动代理再读图），通常需要 1-3 分钟；选 OpenAI 兼容平台的视觉模型更快。'
+        : '请选择支持图片输入的 API 或 CLI 模型。CLI 使用已有登录状态识字。';
     if(!providerSelect.dataset.bound){
         providerSelect.dataset.bound='1';
         providerSelect.addEventListener('change',()=>{
@@ -23946,6 +24396,7 @@ function renderImageOcrRegions(){
 }
 function resetImageOcrState(){
     ocrRequestController?.abort(); ocrRequestController = null;
+    stopOcrElapsedTimer(); setOcrRecognizeButtonBusy(false);
     ocrActiveRegion = -1;
     const recognizeBtn=document.getElementById('ocrRecognizeBtn'); if(recognizeBtn) recognizeBtn.disabled=false;
     document.getElementById('imageOcrTools')?.classList.remove('is-busy'); document.getElementById('ocrTextList')?.removeAttribute('aria-busy');
@@ -23973,15 +24424,16 @@ function renderImageOcrItems(){
 }
 function syncImageOcrGenerate(){ const btn=document.getElementById('ocrGenerateBtn'); if(btn) btn.disabled=!!ocrRequestController || !imageOcrItems.some(x=>String(x.replacement||'').trim() && String(x.replacement).trim() !== String(x.text || '').trim()); syncOcrCount(); }
 async function recognizeImageText(){
-    const status=document.getElementById('ocrStatus'); const btn=document.getElementById('ocrRecognizeBtn');
-    if(ocrRequestController) return;
+    const status=document.getElementById('ocrStatus');
+    if(ocrRequestController){ ocrRequestController.abort(); stopOcrElapsedTimer(); return; }
     const recognition = syncOcrRecognitionModelOptions();
     if(!recognition){ if(status) status.textContent='请选择 API 平台和识字模型；暂无模型时请在 API 设置中配置'; toggleOcrModelSettings(true); return; }
     const data=ocrSourceDataUrl(); if(!data){ if(status) status.textContent='图片尚未加载，请稍后点击识别文字'; return; }
     const controller = new AbortController(); ocrRequestController = controller;
     syncOcrRecognitionModelOptions();
     syncImageOcrGenerate();
-    if(btn) btn.disabled=true; document.getElementById('imageOcrTools')?.classList.add('is-busy'); document.getElementById('ocrTextList')?.setAttribute('aria-busy','true'); if(status) status.textContent=`正在使用 ${recognition.model} 识别文字…`;
+    document.getElementById('imageOcrTools')?.classList.add('is-busy'); document.getElementById('ocrTextList')?.setAttribute('aria-busy','true'); if(status) status.textContent=`正在使用 ${recognition.model} 识别文字…（已等待 0 秒）`;
+    setOcrRecognizeButtonBusy(true); startOcrElapsedTimer(recognition.model);
     try{
         const res=await fetch('/api/image-ocr',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data,filename:'canvas-ocr.png',provider:recognition.provider_id,model:recognition.model}),signal:controller.signal});
         const payload=await res.json();
@@ -23991,7 +24443,7 @@ async function recognizeImageText(){
         ocrActiveRegion = imageOcrItems.length ? 0 : -1;
         renderImageOcrItems(); if(status) status.textContent=imageOcrItems.length?`识别到 ${imageOcrItems.length} 组文字，直接修改右侧内容即可`:'没有识别到可编辑文字'; syncImageOcrGenerate();
     }catch(error){ if(!controller.signal.aborted && ocrRequestController === controller && status) status.textContent=error?.message||'OCR 识别失败'; }
-    finally{if(ocrRequestController === controller){ocrRequestController=null;syncOcrRecognitionModelOptions(); document.getElementById('imageOcrTools')?.classList.remove('is-busy'); document.getElementById('ocrTextList')?.removeAttribute('aria-busy');syncImageOcrGenerate();}}
+    finally{stopOcrElapsedTimer(); setOcrRecognizeButtonBusy(false); if(ocrRequestController === controller){ocrRequestController=null;syncOcrRecognitionModelOptions(); document.getElementById('imageOcrTools')?.classList.remove('is-busy'); document.getElementById('ocrTextList')?.removeAttribute('aria-busy');syncImageOcrGenerate();}}
 }
 async function applyImageOcrEdit(){
     const edits=imageOcrItems.filter(x=>String(x.replacement||'').trim() && String(x.replacement).trim() !== String(x.text || '').trim()); if(!edits.length) return;
@@ -24501,6 +24953,8 @@ function composerPromptNeedsCompactPreview(text=''){
 }
 function collapseComposerPromptAfterEditing(){
     if(document.activeElement === promptInput) return;
+    // 查找打开期间保持提示词展开，否则高亮和定位都无从谈起。
+    if(composerFindState) return;
     composerPromptCompactState.expanded = false;
     syncComposerPromptCompactPreview(activeComposerNode());
 }
@@ -24521,7 +24975,9 @@ function syncComposerPromptCompactPreview(node, options={}){
     const preserveExpandedWhileEditing = options.preserveExpandedWhileEditing === true
         && document.activeElement === promptInput
         && composerPromptCompactState.nodeId === nodeId;
-    const expanded = samePrompt ? composerPromptCompactState.expanded : preserveExpandedWhileEditing;
+    let expanded = samePrompt ? composerPromptCompactState.expanded : preserveExpandedWhileEditing;
+    // 查找打开期间保持提示词展开：收起态下既看不到高亮也无从定位。
+    if(composerFindState) expanded = true;
     composerPromptCompactState = {nodeId, text, expanded};
     row.classList.toggle('is-prompt-collapsed', !expanded);
     promptCompactPreview.hidden = expanded;
@@ -25411,20 +25867,69 @@ async function replaceSmartImportedPreviewWithThumbnail(original, preview){
         // Keep the local preview when the thumbnail service cannot read this image.
     }
 }
-function removeSmartPendingPasteImages(node, tokens, removeCreatedNode=false){
-    if(!node) return;
-    const tokenSet = new Set(tokens || []);
-    node.images = (node.images || []).filter(image => {
-        const pending = tokenSet.has(image?._smartPasteToken);
-        if(pending) releaseSmartImportedPreview(image.url);
-        return !pending;
-    });
-    if(removeCreatedNode && !node.images.length){
-        nodes = nodes.filter(item => item.id !== node.id);
-        if(selectedId === node.id) selectedId = '';
-        if(deferredComposerNodeId === node.id) deferredComposerNodeId = '';
+function isStaleSmartPasteMedia(image){
+    if(!image || typeof image !== 'object') return false;
+    if(image._smartPastePending === true) return true;
+    // Blob URL 只在创建它的页面会话里有效；色彩还原等本地结果会用
+    // local_db_id 重新水合，没有本地记录的 blob 已经无法显示。
+    return String(image.url || '').startsWith('blob:') && !image.local_db_id && image._localBlobReady !== true;
+}
+// 粘贴时图片会先挂到临时图片节点上；如果把图片拖进智能分组，节点会被吸收，
+// 真正的副本已经移到 group.images。上传完成/失败后必须按 token 找到实际容器，
+// 否则会更新或吊销已不在画布上的临时节点，让分组里留下无法加载的 Blob 地址。
+function findSmartPasteImageByToken(token){
+    if(!token) return null;
+    for(const node of nodes){
+        const images = Array.isArray(node.images) ? node.images : [];
+        const index = images.findIndex(image => image?._smartPasteToken === token);
+        if(index >= 0) return {node, index, image:images[index]};
     }
-    render();
+    return null;
+}
+function removeSmartPendingPasteImages(tokens, createdNode=null){
+    const tokenSet = new Set((tokens || []).filter(Boolean));
+    if(!tokenSet.size) return;
+    let removed = 0;
+    nodes.forEach(node => {
+        if(!Array.isArray(node.images) || !node.images.length) return;
+        const kept = node.images.filter(image => {
+            if(!tokenSet.has(image?._smartPasteToken)) return true;
+            releaseSmartImportedPreview(image.url);
+            removed += 1;
+            return false;
+        });
+        if(kept.length !== node.images.length){
+            node.images = kept;
+            if(isSmartGroupNode(node)){ delete node.w; delete node.h; }
+        }
+    });
+    // 若这次粘贴新建的独立节点一张图都没留下，则整个临时节点也移除。
+    // 被智能分组吸收的节点已不在 nodes 中，不能据此删除分组本身。
+    if(createdNode && nodes.includes(createdNode) && !(createdNode.images || []).length){
+        nodes = nodes.filter(item => item.id !== createdNode.id);
+        if(selectedId === createdNode.id) selectedId = '';
+        if(deferredComposerNodeId === createdNode.id) deferredComposerNodeId = '';
+        if(selectedImage.nodeId === createdNode.id) selectedImage = {nodeId:'', index:-1};
+    }
+    if(removed) render();
+}
+function cleanupStaleSmartPasteImages(){
+    let removed = 0;
+    nodes.forEach(node => {
+        if(!Array.isArray(node.images) || !node.images.length) return;
+        const kept = node.images.filter(image => {
+            if(!isStaleSmartPasteMedia(image)) return true;
+            releaseSmartImportedPreview(image.url);
+            removed += 1;
+            return false;
+        });
+        if(kept.length !== node.images.length){
+            node.images = kept;
+            if(isSmartGroupNode(node)){ delete node.w; delete node.h; }
+        }
+    });
+    if(removed) toast(tr('smart.pasteUploadIncomplete'));
+    return removed > 0;
 }
 async function handleFiles(files, targetId='', opts={}){
     const fileList = [...(files || [])].filter(isSupportedUploadFile);
@@ -25457,8 +25962,9 @@ async function handleFiles(files, targetId='', opts={}){
             const uploadedTokens = new Set();
             uploaded.forEach((item, index) => {
                 const local = localItems[index];
-                const image = node.images?.find(candidate => candidate?._smartPasteToken === local?._smartPasteToken);
-                if(!image || !item?.url) return;
+                const target = findSmartPasteImageByToken(local?._smartPasteToken);
+                if(!target || !item?.url) return;
+                const image = target.image;
                 const localUrl = image.url;
                 Object.assign(image, item, {kind:item.kind || local.kind || 'image'});
                 delete image._smartPastePending;
@@ -25468,11 +25974,11 @@ async function handleFiles(files, targetId='', opts={}){
                 replaceSmartImportedPreviewWithThumbnail(item.url, localUrl);
             });
             const missingTokens = localItems.map(item => item._smartPasteToken).filter(token => !uploadedTokens.has(token));
-            if(missingTokens.length) removeSmartPendingPasteImages(node, missingTokens, createdNode);
+            if(missingTokens.length) removeSmartPendingPasteImages(missingTokens, createdNode);
             render();
             scheduleSave();
         } catch(error) {
-            removeSmartPendingPasteImages(node, localItems.map(item => item._smartPasteToken), createdNode);
+            removeSmartPendingPasteImages(localItems.map(item => item._smartPasteToken), createdNode);
             toast(error.message || tr('smart.toastUploadFail'));
         } finally {
             smartPendingPasteUploads = Math.max(0, smartPendingPasteUploads - 1);
@@ -30582,6 +31088,9 @@ async function runApiGeneration(prompt, refs, runSettings=settings){
     // 1:1 或相邻比例。其它协议仍会收到精确 size。
     const aspectRatio = outpaintSourceCanvas ? 'source' : aspectRatioForRun(runSettings);
     const payload = {prompt:requestPrompt, provider_id:runSettings.provider_id, model:runSettings.model, history_source:'canvas', project_id:currentSmartProjectId(), size:sizeForRun(runSettings), aspect_ratio:aspectRatio, n:1, reference_images:imageRefsOnly(refs)};
+    if(['1k','2k','4k'].includes(runSettings.resolution) && !outpaintSourceCanvas){
+        payload.resolution = runSettings.resolution;
+    }
     if(runSettings.multiAgentActionId){
         payload.client_request_id=runSettings.multiAgentActionId;
         payload.multi_agent_action_id=runSettings.multiAgentActionId;
@@ -30602,6 +31111,8 @@ async function runApiGeneration(prompt, refs, runSettings=settings){
         payload.skill_name=String(runSettings.agentSkillName||'').trim();
         payload.skill_applied=true;
     }
+    const designRunId=String(runSettings.designRunId||'').trim();
+    if(designRunId) payload.design_run_id=designRunId;
     if(imageModelSupportsQuality(runSettings)) payload.quality = runSettings.quality || 'auto';
     if(imageModelSupportsBackground(runSettings)) payload.background = normalizeSmartBackground(runSettings.background);
     if(outpaintSourceCanvas){
@@ -32277,7 +32788,7 @@ window.onmousemove = e => {
         const dx = (e.clientX - resizeState.startX) / viewport.scale;
         const dy = (e.clientY - resizeState.startY) / viewport.scale;
         const minW = isProductFidelityNode(node) ? 760 : node.type === 'smart-agent' ? 360 : node.type === 'smart-prompt' ? 260 : node.type === 'smart-loop' ? 252 : node.type === SMART_COMFY_WORKFLOW_NODE_TYPE ? 340 : node.type === 'smart-group' ? SMART_GROUP_MIN_WIDTH : isSmartColorNode(node) ? 320 : isSmartTableNode(node) ? 380 : isSmartTimelineNode(node) ? 420 : 48;
-        const minH = isProductFidelityNode(node) ? 650 : node.type === 'smart-agent' ? 360 : node.type === 'smart-prompt' ? resizeState.promptMinH : node.type === 'smart-loop' ? 132 : node.type === SMART_COMFY_WORKFLOW_NODE_TYPE ? 320 : node.type === 'smart-group' ? SMART_GROUP_MIN_HEIGHT : isSmartColorNode(node) ? 360 : isSmartTableNode(node) ? 280 : isSmartTimelineNode(node) ? 360 : 48;
+        const minH = isProductFidelityNode(node) ? 560 : node.type === 'smart-agent' ? 360 : node.type === 'smart-prompt' ? resizeState.promptMinH : node.type === 'smart-loop' ? 132 : node.type === SMART_COMFY_WORKFLOW_NODE_TYPE ? 320 : node.type === 'smart-group' ? SMART_GROUP_MIN_HEIGHT : isSmartColorNode(node) ? 360 : isSmartTableNode(node) ? 280 : isSmartTimelineNode(node) ? 360 : 48;
         if(isSmartDrawingBoardNode(node) && resizeState.drawingLayout && window.SmartDrawingBoard?.resizeNode){
             const widthDelta = Math.abs(dx / resizeState.startW) >= Math.abs(dy / resizeState.startH)
                 ? dx : dy * resizeState.startW / resizeState.startH;
@@ -32758,6 +33269,8 @@ shell.ondrop = async e => {
     await handleSmartImageDropPayload(payload, '', {point:p, forceNew:true});
 };
 window.addEventListener('paste', e => {
+    // 图片编辑器打开时，粘贴是编辑器内部输入框的事，不能往被遮住的画布上贴节点或图片。
+    if(imageEditModal.classList.contains('open')) return;
     if(!isEditableTarget(e.target)){
         const storedClipboard = nodeClipboardFromPasteEvent(e);
         if(storedClipboard?.nodes?.length){
@@ -32787,6 +33300,9 @@ window.addEventListener('paste', e => {
 nodeClipboard = readStoredNodeClipboard();
 function handleCanvasRemoveKey(e){
     if(!isCanvasRemoveKey(e)) return;
+    // 图片编辑器打开时 Delete/Backspace 属于编辑器，不能删掉被遮挡画布上正在编辑的节点，
+    // 否则编辑器里的 currentEditImage() 失去目标，应用裁剪会报“图片尚未加载”。
+    if(imageEditModal.classList.contains('open')) return;
     if(e.target.closest?.('[data-pf-canvas]')) return;
     if(isEditableTarget(e.target) || isEditableTarget(document.activeElement)) return;
     const ids = selectedNodeIdsForDelete();
@@ -32800,14 +33316,21 @@ window.addEventListener('keydown', e => {
     if(e.key === 'Control' || e.key === 'Meta') connectionEraseModifierHeld = true;
     const key = String(e.key || '').toLowerCase();
     if(key === 'r' && !isEditableTarget(e.target)) isRKeyDown = true;
-    if(imageEditModal.classList.contains('open') && imageEditMode === 'preview' && !isEditableTarget(e.target)){
-        if(e.key === 'ArrowLeft' || e.key === 'ArrowRight'){
+    if(imageEditModal.classList.contains('open')){
+        if(e.key === 'Escape'){
+            closeImageEditor();
+            return;
+        }
+        if(imageEditMode === 'preview' && !isEditableTarget(e.target) && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')){
             e.preventDefault();
             if(!seekPreviewVideoFrames(e.key === 'ArrowLeft' ? -1 : 1)){
                 navigatePreviewImage(e.key === 'ArrowLeft' ? -1 : 1);
             }
-            return;
         }
+        // 编辑器打开时，画布级快捷键（缩放、素材库、复制、粘贴、撤销、重做、成组）一律让位：
+        // 它们会在被遮住的画布上替换或移除节点，让仍然打开的编辑器丢失 currentEditImage()
+        // 的目标（应用裁剪会报“图片尚未加载”），用户也看不到画布上实际发生了什么。
+        return;
     }
     if(!e.ctrlKey && !e.metaKey && !e.altKey && !isEditableTarget(e.target)){
         if(key === 'z'){
@@ -32837,10 +33360,6 @@ window.addEventListener('keydown', e => {
             if(lastNodePasteAt >= requestedAt) return;
             pasteNodes();
         }, 90);
-    }
-    if(e.key === 'Escape' && imageEditModal.classList.contains('open')){
-        closeImageEditor();
-        return;
     }
     if((e.ctrlKey || e.metaKey) && (key === 'z' || key === 'y') && !isEditableTarget(e.target)){
         e.preventDefault();
@@ -33122,6 +33641,11 @@ if(composerTemplateBtn) composerTemplateBtn.onclick = event => {
         return;
     }
     openPromptTemplatePanel(activeComposerNode()?.id || selectedNode()?.id || '', promptTemplateSelectedId, {target:'composer'});
+};
+if(composerFindBtn) composerFindBtn.onclick = event => {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleComposerFind();
 };
 if(promptPresetSelect) promptPresetSelect.onchange = () => renderPromptPresetPanel(promptPresetSelect.value);
 [promptPresetName, promptPresetText].forEach(input => {
@@ -33421,7 +33945,10 @@ promptInput.addEventListener('mousedown', event => {
     setCaretBesideToken(token, event.clientX < rect.left + rect.width / 2 ? 'before' : 'after');
 });
 promptInput.addEventListener('keydown', event => {
-    if(event.key === 'Escape') closeMentionPicker();
+    if(event.key === 'Escape'){
+        closeMentionPicker();
+        if(composerFindState) closeComposerFind();
+    }
     if(event.isComposing || event.altKey || event.shiftKey) return;
     // 光标万一仍在胶囊内部（双击、拖选、恢复草稿），退格/Delete 直接删掉整颗胶囊。
     const caret = promptInput.dataset.promptLocked === '1' ? null : promptCaretRange();

@@ -280,6 +280,9 @@ const productViews = new Map();
 const sharedCanvasWindows = new Map();
 let activeProductTabId = '';
 let apiProcess;
+let apiProcessError = '';
+let apiProcessExit = '';
+let apiStartupLogging = false;
 let updateWindow;
 let desktopUpdateCheckPromise = null;
 let desktopUpdatePromptPromise = null;
@@ -3151,30 +3154,62 @@ function safeAgentAction(raw) {
   return { action, module, target, amount, direction, max_items: Math.max(1, Math.min(200, Number(value.max_items) || 40)) };
 }
 
+function apiRuntimeCandidates() {
+  const bundledWindowsPython = path.join(PROJECT_ROOT, 'bundled', 'win-api', 'python.exe');
+  const bundledWindowsEntry = path.join(PROJECT_ROOT, 'windows_api_entry.py');
+  const legacyWindowsApi = path.join(PROJECT_ROOT, 'build', 'win-api', 'xiaomei-api.exe');
+  const portableWindowsPython = path.join(PROJECT_ROOT, 'python', 'python.exe');
+  const bundledMacApi = path.join(PROJECT_ROOT, 'bundled', 'mac-api', 'xiaomei-api');
+  const legacyMacApi = path.join(PROJECT_ROOT, 'build', 'mac-api', 'xiaomei-api');
+  const allowSystemPython = !app.isPackaged || process.env.XIAOMEI_CANVAS_ALLOW_SYSTEM_PYTHON === '1';
+  return process.platform === 'win32'
+    ? [
+        { command: bundledWindowsPython, args: [bundledWindowsEntry], label: 'Windows 便携 Python' },
+        { command: legacyWindowsApi, args: [], label: '旧版 Windows API' },
+        { command: portableWindowsPython, args: ['main.py'], label: '项目内 Python' },
+        ...(allowSystemPython ? [{ command: 'python', args: ['main.py'], label: '系统 Python' }] : []),
+      ]
+    : process.platform === 'darwin'
+      ? [
+          { command: bundledMacApi, args: [], label: 'macOS API' },
+          { command: legacyMacApi, args: [], label: '旧版 macOS API' },
+          ...(allowSystemPython ? [{ command: 'python3', args: ['main.py'], label: '系统 Python' }] : []),
+        ]
+      : (allowSystemPython ? [{ command: 'python3', args: ['main.py'], label: '系统 Python' }] : []);
+}
+
+function selectedApiRuntime() {
+  const candidate = apiRuntimeCandidates().find((item) => {
+    // PATH commands are resolved by the child process. Packaged runtimes and
+    // entry scripts must both exist before selecting the candidate.
+    if (!path.isAbsolute(item.command)) return true;
+    return fs.existsSync(item.command) && item.args.every((arg) => !path.isAbsolute(arg) || fs.existsSync(arg));
+  });
+  if (!candidate) {
+    throw new Error('未找到随应用提供的本地 Python 运行时，请重新下载安装包。');
+  }
+  return candidate;
+}
+
 function choosePython() {
-  const bundled = path.join(PROJECT_ROOT, 'bundled', 'win-api', 'python.exe');
-  const bundledWin = path.join(PROJECT_ROOT, 'bundled', 'win-api', 'python.exe');
-  const bundledMac = path.join(PROJECT_ROOT, 'bundled', 'mac-api', 'xiaomei-api');
-  return process.platform === 'win32' && fs.existsSync(bundledWin)
-    ? bundledWin
-    : process.platform === 'win32' && fs.existsSync(bundled)
-      ? bundled
-    : process.platform === 'darwin' && fs.existsSync(bundledMac)
-      ? bundledMac
-      : (process.platform === 'win32' ? 'python' : 'python3');
+  return selectedApiRuntime().command;
 }
 
 function chooseApiArguments(command) {
-  const bundledWin = path.join(PROJECT_ROOT, 'bundled', 'win-api', 'python.exe');
-  const bundledMac = path.join(PROJECT_ROOT, 'build', 'mac-api', 'xiaomei-api');
-  return command === bundledMac ? [] : command === bundledWin ? [path.join(PROJECT_ROOT, 'windows_api_entry.py')] : ['main.py'];
+  const normalized = path.resolve(command);
+  const candidate = apiRuntimeCandidates().find((item) => {
+    if (!path.isAbsolute(item.command)) return item.command === command;
+    return path.resolve(item.command) === normalized;
+  });
+  return candidate ? candidate.args : ['main.py'];
 }
 
 function xiaomeiApiConfigRoot() {
-  const command = choosePython();
   // 与 main.py 的 _runtime_root / BASE_DIR 一致：源码运行取项目目录，
   // frozen 后端取可执行文件目录。Electron 的用户数据目录另有用途。
-  return TEST_RUNTIME_DATA_ROOT;
+  if (TEST_RUNTIME_DATA_ROOT) return TEST_RUNTIME_DATA_ROOT;
+  const command = choosePython();
+  return chooseApiArguments(command).length ? PROJECT_ROOT : path.dirname(command);
 }
 
 async function probeApiAt(port, timeout = 900) {
@@ -4138,8 +4173,25 @@ async function refreshDeepSeekHarness() {
   }
 }
 
+function apiStartupLogPath() {
+  return path.join(TEST_RUNTIME_DATA_ROOT, 'logs', 'api-startup.log');
+}
+
+function appendApiStartupLog(text) {
+  try {
+    const value = String(text || '')
+      .replace(/([?&](?:token|api[_-]?key)=)[^&\s]+/gi, '$1<redacted>')
+      .replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1<redacted>')
+      .replace(/((?:api[_-]?key|secret|access[_-]?token)\s*[:=]\s*)[^\s,;}]+/gi, '$1<redacted>');
+    if (!value) return;
+    const logPath = apiStartupLogPath();
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${value}`, 'utf8');
+  } catch {}
+}
+
 function startApi(port = API_PORT) {
-  if (process.env.XIAOMEI_CANVAS_DESKTOP_NO_API === '1') return;
+  if (process.env.XIAOMEI_CANVAS_DESKTOP_NO_API === '1') return false;
   setApiEndpoint(port);
   const bundledNode = chooseHarnessNode();
   let bundledBrowsers = path.join(PROJECT_ROOT, 'bundled', 'playwright-browsers');
@@ -4175,10 +4227,34 @@ function startApi(port = API_PORT) {
   };
   if (fs.existsSync(bundledBrowsers)) env.PLAYWRIGHT_BROWSERS_PATH = bundledBrowsers;
   try {
-    const command = choosePython();
-    apiProcess = spawn(command, chooseApiArguments(command), { cwd: PROJECT_ROOT, env, windowsHide: true, stdio: 'ignore' });
-    apiProcess.on('error', () => { apiProcess = null; });
-  } catch { apiProcess = null; }
+    const runtime = selectedApiRuntime();
+    const command = runtime.command;
+    const args = runtime.args;
+    apiProcessError = '';
+    apiProcessExit = '';
+    apiStartupLogging = true;
+    appendApiStartupLog(`启动后端（${runtime.label}）：${command} ${args.join(' ')}\n`);
+    const child = spawn(command, args, { cwd: PROJECT_ROOT, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    apiProcess = child;
+    child.stdout?.on('data', (chunk) => { if (apiStartupLogging) appendApiStartupLog(String(chunk)); });
+    child.stderr?.on('data', (chunk) => { if (apiStartupLogging) appendApiStartupLog(String(chunk)); });
+    child.on('error', (error) => {
+      apiProcessError = String(error?.message || error);
+      appendApiStartupLog(`后端进程启动失败：${apiProcessError}\n`);
+      if (apiProcess === child) apiProcess = null;
+    });
+    child.on('exit', (code, signal) => {
+      apiProcessExit = `后端进程已退出（code=${code ?? 'null'}, signal=${signal || 'null'}）`;
+      appendApiStartupLog(`${apiProcessExit}\n`);
+      if (apiProcess === child) apiProcess = null;
+    });
+    return true;
+  } catch (error) {
+    apiProcessError = String(error?.message || error);
+    appendApiStartupLog(`后端进程启动失败：${apiProcessError}\n`);
+    apiProcess = null;
+    return false;
+  }
 }
 
 async function ensureApi() {
@@ -4189,17 +4265,17 @@ async function ensureApi() {
     return true;
   }
   const port = await findFreeApiPort(CONFIGURED_API_PORT);
-  startApi(port);
-  return waitForApi();
+  if (!startApi(port)) return false;
+  const ready = await waitForApi();
+  if (ready) apiStartupLogging = false;
+  return ready;
 }
 
-async function waitForApi(timeout = 60000) {
+async function waitForApi(timeout = 120000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
-    try {
-      const response = await fetch(`${LOCAL_ORIGIN}/api/app-info`);
-      if (response.ok && (await response.json()).desktop_session_id === API_SESSION_ID) return true;
-    } catch {}
+    if (await probeApiAt(API_PORT, 1200)) return true;
+    if (!apiProcess && (apiProcessError || apiProcessExit)) return false;
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   return false;
@@ -6937,7 +7013,10 @@ app.whenReady().then(async () => {
     // 避免按 Alt 或窗口状态变化时菜单栏再次弹出。
     Menu.setApplicationMenu(null);
     const apiReady = await ensureApi();
-    if (!apiReady) throw new Error('本地服务启动超时，请检查 Python 环境和项目依赖。');
+    if (!apiReady) {
+      const detail = apiProcessError || apiProcessExit || '本地服务未在 120 秒内启动';
+      throw new Error(`本地服务启动失败：${detail}。详细日志：${apiStartupLogPath()}`);
+    }
     await configureCommerceSessions();
     createWindow();
     scheduleDesktopUpdateCheck();

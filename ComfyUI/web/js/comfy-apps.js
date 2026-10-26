@@ -2,6 +2,7 @@
   const $ = id => document.getElementById(id);
   let active = null, polling = null, submitting = false, requestId = null, opening = 0, uploading = 0;
   let catalogEntries = [];
+  let restoreValues = null;
   const values = {};
   const autoConverted = new Set();
   const elapsed = seconds => `${Math.floor(seconds / 60)} 分 ${Math.floor(seconds % 60)} 秒`;
@@ -757,6 +758,18 @@
     } else {
       input.value = field.default ?? ''; values[field.id] = field.default;
     }
+    const saved = restoreValues ? restoreValues[field.id] : undefined;
+    if (saved !== undefined && saved !== null) {
+      if (field.type === 'dropdown' && (field.options || []).some(option => String(option) === String(saved))) {
+        input.value = String(saved); values[field.id] = saved;
+      } else if (field.type === 'number' && Number.isFinite(Number(saved))) {
+        input.value = String(saved); values[field.id] = Number(saved);
+      } else if (field.type === 'boolean' && typeof saved === 'boolean') {
+        input.checked = saved; values[field.id] = saved;
+      } else if ((field.type === 'text' || field.type === 'textarea') && typeof saved === 'string') {
+        input.value = saved; values[field.id] = saved;
+      }
+    }
     input.oninput = () => {
       values[field.id] = field.type === 'number' ? Number(input.value) : field.type === 'boolean' ? input.checked : input.value;
       requestId = null;
@@ -904,6 +917,7 @@
     }
     if (turn !== opening) return;
     for (const k of Object.keys(values)) delete values[k];
+    restoreValues = item.values && typeof item.values === 'object' && !Array.isArray(item.values) ? item.values : null;
     const key = entryKey(item); active = key;
     sessionStorage.removeItem('comfy-app-selected'); sessionStorage.removeItem('comfy-workflow-selected');
     if (item.entry_type === 'workflow') sessionStorage.setItem('comfy-workflow-selected', item.workflow_ref);
@@ -928,7 +942,11 @@
     let left = el('div', '', 'app-panel app-run-panel');
     const intro = el('div', '', 'app-run-intro');
     intro.append(el('p', item.description));
+    if (item.purpose?.label) {
+      intro.append(el('p', `用途：${item.purpose.label}${item.purpose.basis?.length ? `（依据：${item.purpose.basis.join('、')}）` : ''}`, 'app-purpose'));
+    }
     intro.append(el('p', item.profile ? (/8GB|省显存/.test(item.profile) ? '省显存配置' : '原工作流配置') : '本地运行', 'app-profile'));
+    left.append(intro);
     if (!ready) left.append(readinessPanel(item));
     const preparation = el('details', '', 'app-preparation-details');
     preparation.append(el('summary', ready ? '模型与运行环境' : '查看缺失项 / 下载模型'));
@@ -1028,11 +1046,16 @@
       more.append(button('使用省显存配置', async () => { await post('/' + item.id + '/profile', { profile: 'low-vram' }); await open(item.id); }), button('恢复原工作流配置', async () => { await post('/' + item.id + '/profile', { profile: 'original' }); await open(item.id); }));
     }
     if (item.entry_type === 'app') for (const field of item.fields.filter(field => field.advanced)) fieldControl(field, more, item.id, ready);
+    if (item.entry_type === 'app' && item.fields.some(field => field.advanced)) {
+      more.append(el('small', '未列出的参数保持工作流原值；可在高级编辑中修改。', 'app-field-help'));
+    }
+    restoreValues = null;
     if (more.children.length > 1) left.append(more);
     const run = button('生成', async () => {
       if (submitting) return;
       submitting = true; run.disabled = true; requestId ||= crypto.randomUUID();
       try {
+        try { await post('/' + item.id + '/values', { values }); } catch (_) { /* 保存上次参数失败不阻塞生成 */ }
         await post('/' + item.id + '/run', { request_id: requestId, fields: values });
         notice('任务已提交到本机。可以离开页面，回来查看结果。');
         clearTimeout(polling); polling = null;

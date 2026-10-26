@@ -33,7 +33,7 @@ async function walk(directory, relative = '') {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const next = relative ? `${relative}/${entry.name}` : entry.name;
     if (relative === '' && ['.git', 'node_modules', 'dist-package', 'build', 'python'].includes(entry.name)) continue;
-    if (!/(?:^|\/)\.env\.example$/i.test(next) && forbidden.some((pattern) => pattern.test(next))) {
+    if (!/(?:^|\/)\.env(?:\.[^/]+)?\.example$/i.test(next) && forbidden.some((pattern) => pattern.test(next))) {
       violations.push(`${next}: 运行数据路径`);
       continue;
     }

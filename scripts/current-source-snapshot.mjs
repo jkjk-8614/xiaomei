@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -86,7 +87,9 @@ async function sourcePaths() {
   const tracked = gitFiles(['ls-files', '--cached', '-z']);
   const untracked = gitFiles(['ls-files', '--others', '--exclude-standard', '-z']);
   return [...new Set([
-    ...tracked.filter(file => isProductSource(file, true)),
+    // A deleted tracked file is still returned by `git ls-files`; do not turn
+    // an intentional source deletion into a release snapshot failure.
+    ...tracked.filter(file => existsSync(path.join(sourceRoot, file)) && isProductSource(file, true)),
     ...untracked.filter(file => isProductSource(file, false)),
   ])].sort();
 }

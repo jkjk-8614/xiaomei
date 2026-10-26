@@ -29,10 +29,9 @@
   };
 
   const g = {
-    mode: 'api',           // api | ms | rh | comfy
+    mode: 'api',           // api | rh | comfy
     providersLoaded: false,
     apiProviders: [],
-    msProvider: null,
     addingRef: false,
     fields: [],
     values: {},
@@ -96,7 +95,7 @@
   function setMode(mode) {
     saveCurrentMode();                 // 先存当前模式
     g.mode = mode;
-    const apiLike = (mode === 'api' || mode === 'ms');
+    const apiLike = (mode === 'api');
     els.modes.querySelectorAll('.seg').forEach((b) => b.classList.toggle('active', b.getAttribute('data-mode') === mode));
     els.apiBar.classList.toggle('hidden', !apiLike);
     els.provider.classList.toggle('hidden', mode !== 'api');
@@ -115,20 +114,18 @@
     renderResults();
     if (apiLike) renderRefs();
     if (mode === 'api') loadApi(mem);
-    else if (mode === 'ms') loadMs(mem);
     else if (mode === 'rh') loadRhWorkflows(mem);
     else if (mode === 'comfy') loadComfyWorkflows(mem);
     updateRun();
   }
 
-  /* ---------- API 平台 / ModelScope ---------- */
+  /* ---------- API 平台 ---------- */
   async function ensureProviders() {
     if (g.providersLoaded || !state.connected) return;
     const data = await net.apiGet('/api/providers');
     const all = (data.providers || data.api_providers || []).filter((p) => Array.isArray(p.image_models) && p.image_models.length);
-    // API 模式排除 RunningHub 与 ModelScope（它们是独立模式）
+    // RunningHub 使用独立工作流入口
     g.apiProviders = all.filter((p) => p.protocol !== 'runninghub' && p.id !== 'runninghub' && p.id !== 'modelscope');
-    g.msProvider = all.find((p) => p.id === 'modelscope') || null;
     g.providersLoaded = true;
   }
   async function loadApi(mem) {
@@ -147,22 +144,7 @@
     } catch (err) { setMsg(`加载平台失败：${err.message || err}`, 'err'); }
     updateRun();
   }
-  async function loadMs(mem) {
-    setMsg('正在加载 ModelScope …');
-    try {
-      await ensureProviders();
-      if (!g.msProvider) { setMsg('未配置 ModelScope 平台，请先在网页端配置。', 'err'); els.params.innerHTML = ''; return; }
-      DX.ui.fillPicker(els.model, (g.msProvider.image_models || []).map((m) => ({ value: m, label: m })), mem && mem.modelVal);
-      if (mem && mem.fields && mem.fields.length) {
-        g.fields = mem.fields; g.values = mem.values; g.imgPreview = mem.imgPreview || {};
-        renderParams();
-      } else { await loadSchema(); }
-      setMsg('');
-    } catch (err) { setMsg(`加载 ModelScope 失败：${err.message || err}`, 'err'); }
-    updateRun();
-  }
   function currentProvider() {
-    if (g.mode === 'ms') return g.msProvider;
     const v = DX.ui.pickerValue(els.provider);
     return g.apiProviders.find((p) => p.id === v) || g.apiProviders[0] || null;
   }
@@ -567,14 +549,14 @@
   /* ---------- 生成（非阻塞 + 队列：提交后台轮询，UI 仍可操作/再次生成） ---------- */
   function updateRun() {
     let ok = state.connected;
-    if (g.mode === 'api' || g.mode === 'ms') ok = ok && currentProvider() && DX.ui.pickerValue(els.model) && els.prompt.value.trim();
+    if (g.mode === 'api') ok = ok && currentProvider() && DX.ui.pickerValue(els.model) && els.prompt.value.trim();
     else if (g.mode === 'rh') ok = ok && g.rhWorkflowId;
     else if (g.mode === 'comfy') ok = ok && g.comfyName;
     els.run.disabled = !ok;
   }
   function run() {
     let p;
-    if (g.mode === 'api' || g.mode === 'ms') p = runApi();
+    if (g.mode === 'api') p = runApi();
     else if (g.mode === 'rh') p = runRh();
     else if (g.mode === 'comfy') p = runComfy();
     if (p && p.catch) p.catch((err) => setMsg(`生成失败：${err.message || err}`, 'err'));
@@ -696,7 +678,7 @@
   DX.generate = {
     ensureLoaded() { if (state.connected) setMode(g.mode); },
     reset() {
-      g.providersLoaded = false; g.apiProviders = []; g.msProvider = null;
+      g.providersLoaded = false; g.apiProviders = [];
       g.fields = []; g.values = {}; g.imgPreview = {}; g.randomActive = {};
       g.rhWorkflows = []; g.rhWorkflowId = ''; g.comfyWorkflows = []; g.comfyName = ''; g.comfyConfig = null;
       g.refs = []; g.results = []; g.jobs = 0;

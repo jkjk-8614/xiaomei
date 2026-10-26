@@ -3472,9 +3472,15 @@
         }
         return {finalNode,executedCount:executionTargets.length};
     }
-    async function executePlanOption(option,provider,model,scopeSnapshot,taskText='',requestedGeneration={},skillId='',skillName=''){
+    async function executePlanOption(option,provider,model,scopeSnapshot,taskText='',requestedGeneration={},skillId='',skillName='',designRunId=''){
         const workflow=option?.workflow&&typeof option.workflow==='object'?option.workflow:{};
         const editMode=String(workflow.mode||'').trim().toLowerCase()==='edit';
+        const designRun=String(designRunId||'').trim();
+        const tagDesignRun=node=>{
+            if(!designRun||!node)return;
+            node.runSettings=node.runSettings||{};
+            node.runSettings.designRunId=designRun;
+        };
         const scope=currentTaskScope(scopeSnapshot);
         if(!scope.valid)throw new Error(scope.reason||'原任务范围已不可用，请重新选择画布节点后再试。');
         // 方案中的正式连线、节点创建、提示词写入和后续启动共用一份撤销快照。
@@ -3505,6 +3511,7 @@
             applyPlanNodeSpec(node,spec,provider,model,fallbackPrompt);
             applyRequestedGenerationToNode(node,requestedGeneration);
             applyAgentSkillMetadataToNode(node,{skill_id:skillId,skill_name:skillName});
+            tagDesignRun(node);
         });
         const operationResult=applyPlanOperations(normalizePlanOperations(workflow.operations),map,current,workflow,provider,model,skillId,skillName,anchor,createdNodes,sourceNodes,fallbackPrompt,requestedGeneration);
         // 当前上传节点只是参考图来源，不能作为最终执行目标。若模型只复用 current、
@@ -3520,6 +3527,7 @@
                 applyPlanNodeSpec(node,fallbackSpec,provider,model,fallbackPrompt);
                 applyRequestedGenerationToNode(node,requestedGeneration);
                 applyAgentSkillMetadataToNode(node,{skill_id:skillId,skill_name:skillName});
+                tagDesignRun(node);
                 ensuredOutput={key,node};
             }
         }
@@ -4759,4 +4767,279 @@
     input.onkeydown=event=>{if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){event.preventDefault();send();}};
     syncComposerRunUi();
     syncComposerFileUi();
+
+    /* ---- 设计大脑方案（阶段 3）：档案 + 相似案例 + Skill → 可审核方案 → 用户确认后才执行生图。
+       方案生成与执行完全复用 requestPlan / executePlanOption / 画布任务管线；
+       执行记录经 design_run_id 由后端在任务终态回写。失败只提示，不自动重试。 ---- */
+    const designState={profile:null,revision:0,cases:[],agentSkills:[],skillLinks:new Map(),loaded:false,runId:'',options:[],busy:false,autoShown:new Set()};
+    const designSection=$('canvasAgentDesignBrain'),designHint=$('designBrainNewHint'),
+          designBrief=$('designBrainBrief'),designSkill=$('designBrainSkill'),
+          designStatus=$('designBrainStatus'),designOptions=$('designBrainOptions'),
+          designMeta=$('designBrainMeta');
+    function designJson(path,options={}){
+        const init={method:options.method||'GET',headers:{}};
+        if(options.body!==undefined){init.headers['Content-Type']='application/json';init.body=JSON.stringify(options.body);}
+        return fetch(path,init).then(async response=>{
+            let data=null;try{data=await response.json();}catch(error){data=null;}
+            if(!response.ok)throw new Error((data&&(data.detail||data.message))||`请求失败（${response.status}）`);
+            return data;
+        });
+    }
+    const DESIGN_PROFILE_GROUPS=[['style_tags','风格'],['color_preferences','色彩'],['composition','构图'],['lighting','光线'],['mood','氛围']];
+    function designProfileTags(){
+        const aesthetics=(designState.profile||{}).aesthetics||{};
+        const tags=[];
+        for(const [key] of DESIGN_PROFILE_GROUPS)for(const item of (aesthetics[key]||[]))tags.push(String(item.tag||'').trim());
+        return [...new Set(tags)].filter(Boolean);
+    }
+    function designAvoidTags(){
+        return (((designState.profile||{}).aesthetics||{}).avoid_tags||[]).map(item=>String(item.tag||'').trim()).filter(Boolean);
+    }
+    function keywordTokens(text){
+        return String(text||'').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(token=>token.length>=2).slice(0,120);
+    }
+    // 中文没有空格分词：把任务文本拆成短语，再取 2-3 字滑窗做子串匹配。
+    function briefWindows(text){
+        const parts=String(text||'').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(part=>part.length>=2).slice(0,20);
+        const windows=new Set();
+        for(const part of parts){
+            if(part.length<=4){windows.add(part);continue;}
+            for(let size=2;size<=3;size+=1)for(let start=0;start+size<=part.length;start+=1)windows.add(part.slice(start,start+size));
+        }
+        return [...windows].slice(0,120);
+    }
+    function designMatchedCases(brief){
+        const profileTags=designProfileTags(),windows=briefWindows(brief);
+        const scored=designState.cases.map(item=>{
+            const tags=[...(item.tags||[]),...(item.profile_links||[]).map(link=>link.tag)];
+            const tagHits=tags.filter(tag=>profileTags.includes(tag)).length;
+            const text=(`${item.title||''} ${(item.prompt||{}).display||''}`).toLowerCase();
+            const wordHits=windows.filter(token=>text.includes(token)).length;
+            const score=Math.min(1,tagHits*0.18+wordHits*0.08+(item.favorite?0.25:0));
+            return {item,score};
+        }).filter(entry=>entry.score>0).sort((a,b)=>b.score-a.score).slice(0,3);
+        return scored;
+    }
+    function designPickSkill(brief){
+        const select=designSkill;
+        const value=String(select?.value||'');
+        if(value&&value!=='auto'){
+            const skill=designState.agentSkills.find(item=>item.id===value)||null;
+            if(skill)return {skill_id:skill.id,name:skill.display_name||skill.name,version:designSkillVersion(skill.id),selection_reason:'手动选择'};
+        }
+        const hay=`${brief} ${designProfileTags().join(' ')}`.toLowerCase();
+        let best=null,bestScore=0;
+        for(const skill of designState.agentSkills){
+            const terms=keywordTokens(`${skill.display_name||skill.name||''} ${skill.description||''}`);
+            const hits=terms.filter(term=>hay.includes(term)).length;
+            if(hits>bestScore){bestScore=hits;best=skill;}
+        }
+        if(!best)return {skill_id:'',name:'',version:'',selection_reason:'没有匹配的已启用 Skill'};
+        return {skill_id:best.id,name:best.display_name||best.name,version:designSkillVersion(best.id),selection_reason:`名称/描述与任务重合 ${bestScore} 处`};
+    }
+    function designSkillVersion(skillId){
+        const link=designState.skillLinks.get(skillId);
+        return link?`v${link.current_version}`:'';
+    }
+    function designEsc(value){
+        return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    }
+    async function designEnsureData(force=false){
+        if(designState.loaded&&!force)return;
+        designMeta.textContent='正在读取设计大脑数据…';
+        try{
+            const [profileData,caseData,skillData,linkData]=await Promise.all([
+                designJson('/api/design-brain/profile'),
+                designJson('/api/prompt-cases?media_mode=refs&limit=120'),
+                designJson('/api/agent-skills'),
+                designJson('/api/design-brain/skills').catch(()=>({skills:[]})),
+            ]);
+            designState.profile=profileData.profile||{};
+            designState.revision=Number(profileData.revision||0);
+            designState.cases=caseData.cases||[];
+            const skillList=Array.isArray(skillData.skills)?skillData.skills:(Array.isArray(skillData)?skillData:[]);
+            designState.agentSkills=skillList.filter(item=>item&&item.enabled!==false);
+            designState.skillLinks=new Map((linkData.skills||[]).map(item=>[item.skill_id,item]));
+            designState.loaded=true;
+            renderDesignMeta();
+        }catch(error){
+            designMeta.textContent=`设计大脑数据读取失败：${error.message}`;
+        }
+    }
+    function renderDesignMeta(){
+        const tags=designProfileTags(),avoid=designAvoidTags();
+        const parts=[];
+        if(tags.length)parts.push(`档案标签 ${tags.slice(0,6).join('、')}${tags.length>6?'…':''}`);
+        if(avoid.length)parts.push(`避免 ${avoid.slice(0,3).join('、')}`);
+        parts.push(`参考案例 ${designState.cases.length} 个`);
+        designMeta.textContent=parts.join(' · ')||'档案还没有标签；可到设计大脑页面完善';
+        const current=designSkill?String(designSkill.value||'auto'):'auto';
+        const options=[`<option value="auto">自动选择 Skill</option>`,
+            ...designState.agentSkills.map(skill=>`<option value="${designEsc(skill.id)}"${current===skill.id?' selected':''}>${designEsc(skill.display_name||skill.name)}${designSkillVersion(skill.id)?`（${designEsc(designSkillVersion(skill.id))}）`:''}</option>`)];
+        if(designSkill)designSkill.innerHTML=options.join('');
+    }
+    function setDesignStatus(text,error){
+        if(!designStatus)return;
+        designStatus.textContent=text||'';
+        designStatus.classList.toggle('error',Boolean(error));
+    }
+    async function generateDesignPlan(){
+        if(designState.busy)return;
+        const brief=String(designBrief?.value||'').trim();
+        if(!brief){setDesignStatus('请先描述这个项目要做什么',true);return;}
+        const provider=providerEl?.value||'',model=modelEl?.value||'';
+        if(!provider||!model){setDesignStatus('请先在 Agent 设置中选择对话模型',true);return;}
+        await designEnsureData();
+        if(!designState.loaded){setDesignStatus('设计大脑数据未就绪，无法生成方案',true);return;}
+        if(!(((designState.profile||{}).privacy||{}).allow_cloud_analysis)){
+            setDesignStatus('生成方案需要把任务描述、档案标签与案例提示词发送给对话模型；请先到「设计大脑 → 审美档案」打开隐私开关',true);
+            return;
+        }
+        const matched=designMatchedCases(brief),skillPick=designPickSkill(brief);
+        const profileLine=designProfileTags().slice(0,10).join('、')||'（无）';
+        const avoidLine=designAvoidTags().slice(0,6).join('、')||'（无）';
+        const caseLines=matched.map((entry,index)=>`案例${index+1}「${entry.item.title}」提示词节选：${String((entry.item.prompt||{}).display||'').slice(0,240)}`);
+        const designMessage=[
+            `设计任务：${brief}`,
+            `个人审美档案（本地档案摘要，作为风格约束）：偏好 ${profileLine}；避免 ${avoidLine}`,
+            ...(caseLines.length?['相似参考案例（来自个人灵感库）：',...caseLines]:[]),
+        ].join('\n');
+        const providerName=(providerEl.selectedOptions?.[0]?.textContent||provider).trim();
+        if(!window.confirm(`将把任务描述、${designProfileTags().length} 个档案标签和 ${matched.length} 条案例提示词文本发送给「${providerName}」的 ${model} 用于生成方案。确认继续？`))return;
+        designState.busy=true;designState.options=[];designState.runId='';
+        designOptions.innerHTML='';setDesignStatus('正在生成设计方案（不执行生图）…');
+        $('canvasAgentSend').disabled=true;
+        const runToken=beginAgentRun();
+        try{
+            assertAgentRunActive(runToken);
+            const scope=designBuildScope();
+            const requestedGeneration=requestedGenerationPreferences(brief);
+            const planResult=await requestPlan(designMessage,provider,model,[],skillPick.skill_id,scope,requestedGeneration);
+            assertAgentRunActive(runToken);
+            const plan=planResult.plan||{};
+            designState.options=plan.options||[];
+            if(!designState.options.length)throw new Error(plan.clarification||'模型没有返回可用方案，请补充任务描述后重试');
+            const run=await designJson('/api/design-brain/runs',{method:'POST',body:{
+                title:brief.slice(0,40),
+                brief,
+                canvas_id:String(canvas?.id||''),
+                project_id:String(canvas?.project||''),
+                profile_revision:designState.revision,
+                profile_summary:{style_tags:designProfileTags().slice(0,12),avoid_tags:designAvoidTags().slice(0,12)},
+                case_ids:matched.map(entry=>({id:entry.item.id,title:entry.item.title,score:entry.score})),
+                skill:skillPick,
+                plan:{
+                    summary:String(plan.analysis||'').slice(0,500),
+                    prompt:'',
+                    options:designState.options.map(option=>({id:option.id,label:option.label,summary:option.summary,reason:option.reason,steps:option.steps})),
+                },
+            }});
+            designState.runId=run.run.id;
+            renderDesignOptions(skillPick,matched);
+            setDesignStatus(`已生成 ${designState.options.length} 个方案；确认后才会执行生图`);
+        }catch(error){
+            setDesignStatus(`方案生成失败：${isAgentCancelled(error)?'已停止':(error.message||'未知错误')}。不会自动重试，可调整描述后再试。`,true);
+        }finally{
+            finishAgentRun(runToken);
+            designState.busy=false;
+            $('canvasAgentSend').disabled=false;
+        }
+    }
+    function designBuildScope(){
+        const live=currentTaskScope();
+        if(live?.valid)return serializedTaskScope(live);
+        return {valid:true,mode:'canvas',selectedNodeIds:[],targetNodeId:'',sourceNodeIds:[],formalInputNodeIds:[],upstreamNodeIds:[],referenceImages:[],generationSettings:{}};
+    }
+    function renderDesignOptions(skillPick,matched){
+        if(!designOptions)return;
+        designOptions.innerHTML=designState.options.map((option,index)=>`
+            <article class="design-option" data-design-option="${index}">
+                <header><b>${designEsc(option.label||`方案 ${index+1}`)}</b><button type="button" data-design-confirm="${index}">确认并执行</button></header>
+                <p class="design-option-summary">${designEsc(option.summary||'')}</p>
+                ${option.reason?`<p class="design-option-reason">${designEsc(option.reason)}</p>`:''}
+                ${(option.steps&&option.steps.length)?`<ol class="design-option-steps">${option.steps.slice(0,8).map(step=>`<li>${designEsc(step)}</li>`).join('')}</ol>`:''}
+            </article>`).join('')+`
+            <p class="design-option-meta">依据：档案 v${designState.revision}（${designProfileTags().length} 标签）${matched.length?` · 案例 ${matched.map(entry=>`「${designEsc(entry.item.title)}」`).join('')}`:''}${skillPick.skill_id?` · Skill ${designEsc(skillPick.name)} ${designEsc(skillPick.version)}（${designEsc(skillPick.selection_reason)}）`:''}</p>`;
+    }
+    async function confirmDesignOption(index){
+        if(designState.busy||!designState.runId)return;
+        const option=designState.options[index];
+        if(!option)return;
+        const provider=providerEl?.value||'',model=modelEl?.value||'';
+        if(!provider||!model){setDesignStatus('请先在 Agent 设置中选择对话模型',true);return;}
+        if(!window.confirm(`执行「${option.label||`方案 ${index+1}`}」？将按现有画布工作流创建节点并开始生图。`))return;
+        designState.busy=true;
+        setDesignStatus('已确认，正在按画布工作流执行…');
+        document.querySelectorAll('[data-design-confirm]').forEach(button=>{button.disabled=true;});
+        $('canvasAgentSend').disabled=true;
+        const runToken=beginAgentRun();
+        try{
+            assertAgentRunActive(runToken);
+            const run=await designJson(`/api/design-brain/runs/${encodeURIComponent(designState.runId)}/confirm`,{method:'POST',body:{selected_index:index}});
+            const skillInfo=run.run?.skill||{};
+            const scopeSnapshot=designBuildScope();
+            const requestedGeneration=requestedGenerationPreferences(String(designBrief?.value||''));
+            const result=await executePlanOption(option,provider,model,scopeSnapshot,String(designBrief?.value||''),requestedGeneration,skillInfo.skill_id||'',skillInfo.name||'',designState.runId);
+            assertAgentRunActive(runToken);
+            await designJson(`/api/design-brain/runs/${encodeURIComponent(designState.runId)}/complete`,{method:'POST',body:{
+                success:true,
+                note:`已创建 ${result.createdCount||0} 个节点，执行 ${result.executedCount||0} 个阶段`,
+                node_ids:[],
+            }});
+            setDesignStatus(`方案已执行：创建 ${result.createdCount||0} 个节点，执行 ${result.executedCount||0} 个阶段；结果与执行记录已回写设计大脑`);
+        }catch(error){
+            const cancelled=isAgentCancelled(error);
+            setDesignStatus(`${cancelled?'已停止':'执行失败'}：${error.message||'未知错误'}。已完成的画布任务保持不变，不会自动重试。`,true);
+            try{
+                await designJson(`/api/design-brain/runs/${encodeURIComponent(designState.runId)}/complete`,{method:'POST',body:{success:false,error:String(error.message||'执行失败').slice(0,500),note:cancelled?'用户停止执行':''}});
+            }catch(innerError){console.warn('[DesignBrain] run complete failed:',innerError);}
+        }finally{
+            finishAgentRun(runToken);
+            designState.busy=false;
+            $('canvasAgentSend').disabled=false;
+            document.querySelectorAll('[data-design-confirm]').forEach(button=>{button.disabled=false;});
+        }
+    }
+    async function cancelDesignRun(){
+        if(!designState.runId)return;
+        try{
+            await designJson(`/api/design-brain/runs/${encodeURIComponent(designState.runId)}/cancel`,{method:'POST'});
+            setDesignStatus('已取消本次设计执行记录（已提交的画布任务不受影响）');
+            designState.runId='';
+        }catch(error){setDesignStatus(error.message||'取消失败',true);}
+    }
+    function designSectionVisible(){return designSection&&!designSection.hidden;}
+    function openDesignSection(open=true){
+        if(!designSection)return;
+        designSection.hidden=!open;
+        const toggle=$('canvasAgentDesignToggle');
+        if(toggle)toggle.classList.toggle('active',open);
+        if(open){
+            if(designHint)designHint.hidden=true;
+            designEnsureData();
+        }
+    }
+    function maybeAutoOpenDesign(){
+        // 新项目（空画布）只显示引导条并点亮入口，不强制展开遮罩，
+        // 避免挡住 Agent 面板里其他常用操作。
+        const canvasId=String(canvas?.id||'');
+        if(!canvasId||designState.autoShown.has(canvasId))return;
+        if(Array.isArray(nodes)&&nodes.length)return;
+        designState.autoShown.add(canvasId);
+        if(designHint)designHint.hidden=false;
+        const toggle=$('canvasAgentDesignToggle');
+        if(toggle)toggle.classList.add('active');
+    }
+    $('canvasAgentDesignToggle')?.addEventListener('click',()=>openDesignSection(Boolean(designSection&&designSection.hidden)));
+    $('designBrainHintOpen')?.addEventListener('click',()=>openDesignSection(true));
+    designOptions?.addEventListener('click',event=>{
+        const button=event.target.closest('[data-design-confirm]');
+        if(!button)return;
+        confirmDesignOption(Number(button.dataset.designConfirm));
+    });
+    $('designBrainPlanButton')?.addEventListener('click',generateDesignPlan);
+    $('designBrainCancelButton')?.addEventListener('click',cancelDesignRun);
+    designBrief?.addEventListener('keydown',event=>{if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){event.preventDefault();generateDesignPlan();}});
+    agentToggleEl?.addEventListener('click',()=>setTimeout(maybeAutoOpenDesign,120));
+    maybeAutoOpenDesign();
 })();

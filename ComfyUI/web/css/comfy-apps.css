@@ -162,6 +162,8 @@ iframe{border:0;width:100%;height:100%;background:#202020}
 .app-run-intro p+p{margin-top:8px}
 .app-profile{display:flex;align-items:center;gap:8px;margin-top:15px;color:var(--app-muted);font-size:12px}
 .app-profile::before{content:"本地";padding:3px 6px;background:#edf2f4;color:var(--app-text);border-radius:5px;font-size:10px;font-weight:700}
+.app-purpose{display:flex;align-items:center;gap:8px;margin-top:10px;color:var(--app-muted);font-size:12px}
+.app-purpose::before{content:"用途";padding:3px 6px;background:#edf2f4;color:var(--app-text);border-radius:5px;font-size:10px;font-weight:700}
 .app-section-title{display:flex;align-items:center;justify-content:space-between;margin:22px 0 9px}
 .app-field-label{display:block;margin:16px 0 7px;color:var(--app-text);font-size:13px;font-weight:700}
 .app-field-help{display:block;margin:-2px 0 7px;color:var(--app-muted);font-size:11px;line-height:1.5}

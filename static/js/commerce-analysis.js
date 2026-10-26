@@ -2425,11 +2425,12 @@
     const nativeDesktop = Boolean(shellApi()?.openProduct);
     const targetUrl = safeCommerceUrl(tab?.requestedUrl || tab?.url || '');
     const hasTarget = Boolean(targetUrl);
-    const loading = Boolean(commerce && nativeDesktop && hasTarget && !tab.loadError
+    const loading = Boolean(commerce && nativeDesktop && hasTarget && !tab.loadError && !tab.ready
       && (tab.browserNav?.loading || (tab.requestedUrl && !tab.ready)));
     const failed = Boolean(commerce && nativeDesktop && hasTarget && tab.loadError);
     center?.classList.toggle('is-commerce-loading', loading);
     center?.classList.toggle('is-commerce-error', failed);
+    if (commerce && tab.id === state.activeTabId && (failed || tab.ready || tab.collectionError)) renderResources();
     if (!commerce || (!loading && !failed) || tab.id !== state.activeTabId) return;
     const platform = platformForUrl(targetUrl) || (isTaobaoHomeUrl(targetUrl) ? taobaoHomePlatform : null);
     const pageLabel = platform?.label || (isDetailCommerceUrl(targetUrl) ? '商品详情' : tab.title || '官方页面');
@@ -2440,7 +2441,7 @@
     if (failed) {
       if (status) status.textContent = '页面加载失败';
       if (title) title.textContent = `${pageLabel}加载失败`;
-      if (description) description.textContent = '页面没有成功打开。请点击右上角刷新按钮重试。';
+      if (description) description.textContent = `页面没有成功打开：${tab.loadError}。请刷新重试；若仍失败，请检查网络或系统代理。`;
       if (mediaLabel) mediaLabel.textContent = '无法显示页面';
       return;
     }
@@ -3000,6 +3001,7 @@
   function resourcePendingLabel(item) {
     const id = String(item?.id || '');
     const status = String(item?.status || '').toLowerCase();
+    if (status === 'waiting') return '等待商品页加载';
     if (status === 'deferred' && ['reviews', 'questions'].includes(id)) return '点击采集正文';
     if (status === 'running') return '采集中…';
     if (status === 'login_required' || status === 'verification_required') return '需登录/验证';
@@ -3044,6 +3046,9 @@
     if (!isDetailCommerceUrl(activeProductUrl()) && !isDetailCommerceUrl(state.productUrl)) return [];
     const deferredIds = new Set(['reviews', 'questions']);
     const reportIds = new Set(['operations', 'people']);
+    const tab = activeCommerceTab();
+    const failed = Boolean(tab?.loadError || tab?.collectionError);
+    const running = !failed && (state.analysisStarting || ['queued', 'running'].includes(state.job?.status));
     return resourceOrder.map((id) => {
       const deferred = deferredIds.has(id);
       const report = reportIds.has(id);
@@ -3051,17 +3056,17 @@
         id,
         title: resourceLabels[id],
         kind: id,
-        status: deferred ? 'deferred' : report ? 'not_requested' : 'running',
+        status: deferred ? 'deferred' : report ? 'not_requested' : failed ? 'failed' : running ? 'running' : tab?.ready ? 'missing' : 'waiting',
         sampleCount: 0,
         totalCount: null,
         displayCount: '',
         downloadable: false,
-        pending: !deferred && !report,
+        pending: running && !deferred && !report,
         reason: deferred
           ? `页面数量可见，点击后采集${resourceLabels[id]}正文`
           : report
             ? '点击后打开对应官方报表并采集当前可见数据'
-            : '商品页打开后会自动读取基础数据，完成后可引用该资源',
+            : failed ? (tab.loadError || tab.collectionError) : '商品页打开后会自动读取基础数据，完成后可引用该资源',
       };
     });
   }
@@ -3287,7 +3292,7 @@
     if (!result) {
       const pending = pendingResourceItems();
       if (!pending.length) { list.innerHTML = ''; updateContextChip(); renderResourcePicker(); return; }
-       list.innerHTML = `<div class="resource-heading"><strong>商品页资源</strong><span>基础商品数据自动读取；评价和问大家按需采集</span></div><div class="resource-grid">${pending.map((item) => { const deferred = ['reviews', 'questions'].includes(item.id); const report = ['operations', 'people'].includes(item.id); const actionable = deferred || report; const label = resourcePendingLabel(item); const title = report ? '点击打开对应官方报表并采集' : deferred ? '点击采集正文' : '基础数据正在自动读取'; return `<div class="resource-card is-missing is-pending ${actionable ? 'is-deferred' : 'is-running'}"><button class="resource-card-main" type="button" data-resource-id="${escapeHtml(item.id)}" title="${escapeHtml(item.reason)}"><span class="resource-icon">${commerceIcon(resourceIcons[item.id])}</span><span class="resource-copy"><span class="resource-title">${escapeHtml(item.title)}</span><span class="resource-count">${escapeHtml(label)}</span></span></button><span class="resource-actions"><span class="resource-trigger" title="${escapeHtml(title)}">${commerceIcon(actionable ? 'Play' : 'LoaderCircle')}</span></span></div>`; }).join('')}</div>`;
+       list.innerHTML = `<div class="resource-heading"><strong>商品页资源</strong><span>基础商品数据自动读取；评价和问大家按需采集</span></div><div class="resource-grid">${pending.map((item) => { const deferred = ['reviews', 'questions'].includes(item.id); const report = ['operations', 'people'].includes(item.id); const actionable = deferred || report || item.status !== 'running'; const label = resourcePendingLabel(item); const title = report ? '点击打开对应官方报表并采集' : deferred ? '点击采集正文' : item.reason; return `<div class="resource-card is-missing is-pending ${resourceStateClass(item)}"><button class="resource-card-main" type="button" data-resource-id="${escapeHtml(item.id)}" title="${escapeHtml(item.reason)}"><span class="resource-icon">${commerceIcon(resourceIcons[item.id])}</span><span class="resource-copy"><span class="resource-title">${escapeHtml(item.title)}</span><span class="resource-count">${escapeHtml(label)}</span></span></button><span class="resource-actions"><span class="resource-trigger" title="${escapeHtml(title)}">${commerceIcon(actionable ? 'Play' : 'LoaderCircle')}</span></span></div>`; }).join('')}</div>`;
       groupResearchResources(list); updateContextChip(); renderResourcePicker(); return;
     }
     ensureResourceSelection(result);
@@ -3643,6 +3648,9 @@
       return null;
     }
     state.analysisStarting = true;
+    const collectionTab = activeCommerceTab();
+    if (collectionTab) collectionTab.collectionError = '';
+    renderResources();
     try {
       const requestToken = `${requestedKey}:${Date.now()}`; state.analysisRequestToken = requestToken;
       const shell = shellApi();
@@ -3705,6 +3713,7 @@
         // 造成重复登录/验证任务、旧商品串数据和并发采集。
         const failureStatus = String(snapshot?.status || '').trim().toLowerCase();
         const failureMessage = snapshot?.message || '桌面商品页未返回可采集内容，请确认页面已加载并完成登录/验证后重试';
+        if (collectionTab) collectionTab.collectionError = failureMessage;
         setJobState(failureMessage, 'error');
         setSiteState(
           ['login_required', 'verification_required', 'needs_login'].includes(failureStatus)
@@ -3714,9 +3723,10 @@
         );
         toast(failureMessage);
         return snapshot;
-      } catch (error) { setJobState(error.message, 'error'); toast(error.message); return null; }
+      } catch (error) { if (collectionTab) collectionTab.collectionError = error.message; setJobState(error.message, 'error'); toast(error.message); return null; }
     } finally {
       state.analysisStarting = false;
+      renderResources();
     }
   }
   async function clearCommerceSession() { const shell = shellApi(); const target = activeCommerceLoginTarget(); if (!target.supported) return toast(`${target.label}使用站点自己的登录会话，不能清除淘宝/1688会话`); if (!shell?.clearCommerceSession) return toast(`会话清除仅支持小美画布桌面版；浏览器采集会话请在商品分析专用 Edge 中自行退出登录`); if (!window.confirm(`确认清除小美画布桌面版淘宝/1688登录会话？不会删除商品分析报告。`)) return; try { const result = await shell.clearCommerceSession(); state.browserSession = result; setSiteState('淘宝/1688会话已清除', 'busy'); toast(result.message || '淘宝/1688会话已清除'); } catch (error) { toast(error.message); } }
@@ -4074,7 +4084,7 @@
     streaming.innerHTML = `<div class="message-avatar">小</div><div class="message-bubble"><div class="md-content message-thinking"><p>${initialThinking}</p></div></div>`;
     const answerNode = streaming.querySelector('.md-content'); box.appendChild(streaming); scrollChatToBottom(box, { force: true });
     try {
-      const response = await fetch('/api/chat/stream', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-ID': chatUserId }, body: JSON.stringify({ conversation_id: requestConversationId, message, model: state.chatModel || '', provider: state.chatProvider || '', ms_model: state.chatProvider === 'modelscope' ? state.chatModel || '' : '', reference_images: pendingAttachments, link_job_ids: requestJobId ? [requestJobId] : [], link_resource_ids: selectedIds, page_context: pageContext, skill_id: merchantMode ? '' : (state.skillId || ''), mode: merchantMode ? 'merchant-agent' : 'commerce-analysis' }) });
+      const response = await fetch('/api/chat/stream', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-ID': chatUserId }, body: JSON.stringify({ conversation_id: requestConversationId, message, model: state.chatModel || '', provider: state.chatProvider || '', reference_images: pendingAttachments, link_job_ids: requestJobId ? [requestJobId] : [], link_resource_ids: selectedIds, page_context: pageContext, skill_id: merchantMode ? '' : (state.skillId || ''), mode: merchantMode ? 'merchant-agent' : 'commerce-analysis' }) });
       if (!response.ok || !response.body) { const data = await response.json().catch(() => ({})); throw new Error(data.detail || data.message || `请求失败（${response.status}）`); }
       answerNode.innerHTML = '<p>商品资料已发送给模型，正在等待首段回复…</p>';
       const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let answer = ''; let streamError = ''; let merchantChanges = []; let completedMessages = null;

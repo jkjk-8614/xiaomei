@@ -17,6 +17,25 @@ function pnpmCommand(root) {
   return { command: process.platform === 'win32' ? 'corepack.cmd' : 'corepack', prefix: ['pnpm'] };
 }
 
+/**
+ * Capture the complete adapter worktree, including files that are not tracked
+ * yet. A plain `git diff HEAD` silently omits new adapter modules, which would
+ * make a successful upstream update drop them after the temporary backup is
+ * removed. An intent-to-add index keeps the real index and worktree untouched.
+ */
+async function captureWorktreePatch(root, dataRoot) {
+  const index = path.join(dataRoot, `harness-update-index-${process.pid}-${Date.now()}`);
+  const env = { ...process.env, GIT_INDEX_FILE: index };
+  try {
+    await run('git', ['read-tree', 'HEAD'], { cwd: root, env, timeout: 30_000 });
+    await run('git', ['add', '-N', '.'], { cwd: root, env, timeout: 30_000 });
+    return await run('git', ['diff', '--binary', 'HEAD'], { cwd: root, env, timeout: 30_000 });
+  } finally {
+    try { fs.rmSync(index, { force: true }); } catch {}
+    try { fs.rmSync(`${index}.lock`, { force: true }); } catch {}
+  }
+}
+
 function run(command, args, options = {}) {
   const timeout = Number(options.timeout || 30_000);
   return new Promise((resolve, reject) => {
@@ -60,6 +79,18 @@ function run(command, args, options = {}) {
 
 function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
+}
+
+function sameFileContents(leftPath, rightPath) {
+  const left = fs.readFileSync(leftPath);
+  const right = fs.readFileSync(rightPath);
+  if (left.equals(right)) return true;
+  // Git may normalize line endings when a patch is applied in a Windows
+  // checkout. Adapter additions are normally text, so compare their logical
+  // contents while keeping binary files byte exact.
+  if (left.includes(0) || right.includes(0)) return false;
+  return left.toString('utf8').replace(/\r\n/g, '\n')
+    === right.toString('utf8').replace(/\r\n/g, '\n');
 }
 
 function isHash(value) {
@@ -171,7 +202,7 @@ class DeepSeekHarnessUpdater {
     const movedUntracked = [];
     try {
       report('backup', '正在保存小美画布适配补丁');
-      const diff = await run('git', ['diff', '--binary', 'HEAD'], { cwd: this.root, timeout: 30_000 });
+      const diff = await captureWorktreePatch(this.root, this.dataRoot);
       if (diff.stdout.trim()) {
         fs.writeFileSync(patchFile, diff.stdout, 'utf8');
         try { fs.writeFileSync(stablePatchFile, diff.stdout, 'utf8'); } catch {}
@@ -206,7 +237,7 @@ class DeepSeekHarnessUpdater {
           const source = path.resolve(this.root, rel);
           const target = path.resolve(probeDir, rel);
           if (!source.startsWith(`${this.root}${path.sep}`) || !fs.existsSync(source) || !fs.existsSync(target)) continue;
-          if (!fs.readFileSync(source).equals(fs.readFileSync(target))) throw new Error(`未跟踪适配文件与上游冲突：${rel}`);
+          if (!sameFileContents(source, target)) throw new Error(`未跟踪适配文件与上游冲突：${rel}`);
         }
       } finally {
         fs.rmSync(probeDir, { recursive: true, force: true });
@@ -220,8 +251,8 @@ class DeepSeekHarnessUpdater {
         fs.renameSync(source, target);
         movedUntracked.push({ rel, source, target });
       }
-      // Only tracked source changes are part of the adapter patch. Ignored
-      // node_modules and generated lib/ output stay in place until the build.
+      // Ignored node_modules and generated lib/ output stay in place until the
+      // build; tracked and newly added adapter source came through the patch.
       await run('git', ['reset', '--hard', 'HEAD'], { cwd: this.root, timeout: 30_000 });
       await run('git', ['merge', '--ff-only', 'FETCH_HEAD'], { cwd: this.root, timeout: 60_000 });
       if (patchSaved) {
@@ -236,9 +267,7 @@ class DeepSeekHarnessUpdater {
       for (const item of movedUntracked) {
         const target = path.resolve(this.root, item.rel);
         if (fs.existsSync(target)) {
-          const upstream = fs.readFileSync(target);
-          const local = fs.readFileSync(item.target);
-          if (!upstream.equals(local)) throw new Error(`未跟踪适配文件与上游冲突：${item.rel}`);
+          if (!sameFileContents(target, item.target)) throw new Error(`未跟踪适配文件与上游冲突：${item.rel}`);
           fs.rmSync(item.target, { force: true });
         } else {
           fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -256,7 +285,7 @@ class DeepSeekHarnessUpdater {
       const result = await this.localState();
       return { ...result, updated: true, previous_commit: previousCommit, backup_dir: backupDir };
     } catch (error) {
-      if (!worktreeChanged) throw new Error(`DeepSeek Harness 更新失败：${short(error?.message || error)}`);
+      if (!worktreeChanged) throw new Error(`DeepSeek Harness 更新失败：${short(error?.message || error, 1000)}`);
       report('rollback', '更新失败，正在恢复原版本');
       try {
         await run('git', ['reset', '--hard', previousCommit], { cwd: this.root, timeout: 30_000 });
@@ -269,9 +298,9 @@ class DeepSeekHarnessUpdater {
           }
         }
       } catch (rollbackError) {
-        throw new Error(`DeepSeek Harness 更新失败，且恢复失败：${short(rollbackError?.message || rollbackError)}`);
+        throw new Error(`DeepSeek Harness 更新失败，且恢复失败：${short(rollbackError?.message || rollbackError, 1000)}`);
       }
-      throw new Error(`DeepSeek Harness 更新失败：${short(error?.message || error)}`);
+      throw new Error(`DeepSeek Harness 更新失败：${short(error?.message || error, 1000)}`);
     }
   }
 }

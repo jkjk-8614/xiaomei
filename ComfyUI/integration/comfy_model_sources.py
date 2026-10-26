@@ -60,7 +60,7 @@ class ModelSourceResolver:
             return None
 
     def link(self, url, label):
-        if public_url(url, {'huggingface.co', 'civitai.com', 'www.runninghub.cn', 'www.runninghub.ai', 'github.com', 'modelscope.cn', 'www.liblib.art'}):
+        if public_url(url, {'huggingface.co', 'civitai.com', 'www.runninghub.cn', 'www.runninghub.ai', 'github.com', 'www.liblib.art'}):
             if not any(x['url'] == url for x in self.links):
                 self.links.append({'url': url, 'label': label})
 

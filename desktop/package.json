@@ -1,7 +1,7 @@
 {
   "name": "xiaomei-canvas-desktop",
   "productName": "小美画布",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "private": true,
   "description": "小美画布桌面端",
   "main": "main.cjs",
@@ -13,5 +13,5 @@
     "electron": "^31.7.7",
     "electron-builder": "^26.15.3"
   },
-  "displayVersion": "1.14"
+  "displayVersion": "1.15"
 }

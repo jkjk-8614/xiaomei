@@ -3,26 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="/static/images/logo.png?v=2026.10.23" type="image/png">
+    <link rel="icon" href="/static/images/logo.png?v=2026.10.26" type="image/png">
     <title data-i18n="smart.title">智能画布</title>
-    <script src="/static/vendor/js/lucide.js?v=2026.10.23.1784161005"></script>
-    <script src="/static/vendor/js/perfect-freehand-1.2.3.js?v=2026.10.23.1789185308"></script>
-    <script src="/static/js/theme.js?v=2026.10.23.1791335865"></script>
-    <script src="/static/js/touch-mouse.js?v=2026.10.23.1784161005"></script>
-    <script src="/static/js/i18n.js?v=2026.10.23.1792560414&detail-stitch=2026.10.17.6&upload-documents=2026.10.14.1&document-images=2026.10.14.1&prompt-layout=2026.10.15.1&alt-copy=2026.10.19.1&text-stack=2026.10.21.2"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.23.1792161228">
-    <link rel="stylesheet" href="/static/css/canvas-editor-common.css?v=2026.10.23.1786168693">
-<link rel="stylesheet" href="/static/css/smart-canvas.css?v=2026.10.23.1792747073&prompt-dock=2026.10.19.1&image-cancel=2026.10.19.2&detail-stitch=2026.10.17.1&prompt-optimize=2026.10.16.3&ps-open=2026.10.15.1&agent-resize=2026.10.13.1&popover-clip=2026.10.12.1&input-hover=2026.10.12.1&agent-surfaces=2026.10.12.1&node-refs=2026.10.12.1&ocr=2026.10.13.4&agent-cancel=2026.10.14.1&upload-documents=2026.10.14.1&document-icons=2026.10.14.1&document-images=2026.10.14.1&document-order=2026.10.14.2&prompt-layout=2026.10.15.1&skill-favorites=2026.10.15.1&prompt-skill-layout=2026.10.15.1&composer-scale=2026.10.15.1&reference-picker=2026.10.19.2&reference-layout=2026.10.19.1&skill-manager=2026.10.19.1&prompt-collapse=2026.10.20.1&text-stack=2026.10.21.2&ai-render=2026.10.23.10&settings-position=2026.10.23.2">
-    <link rel="stylesheet" href="/static/css/smart-expert-workflow.css?v=2026.10.23.1792198885">
-    <link rel="stylesheet" href="/static/css/canvas-folder-batch.css?v=2026.10.23.1789432724">
-    <script src="/static/js/background-removal-bridge.js?v=2026.10.23.1789009721"></script>
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.23.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.23.1792414216&agent-model-picker=2026.09.28.1&reference-layout=2026.10.19.1&skill-manager=2026.10.19.1">
-    <link rel="stylesheet" href="/static/css/smart-canvas-agent.css?v=2026.10.23.1792388178&dark-model-picker=2026.10.12.2&dark-agent-contrast=2026.10.12.6&reference-picker=2026.10.19.2">
-    <link rel="stylesheet" href="/static/css/project-agent.css?v=2026.10.23.1792413477&memory-layout=2026.10.19.1">
-    <link rel="stylesheet" href="/static/css/canvas-multi-agent.css?v=2026.10.23.1792370914">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.23.1790178173"></script>
-    <link rel="stylesheet" href="/static/css/image-layers.css?v=2026.10.23.1790738147">
+    <script src="/static/vendor/js/lucide.js?v=2026.10.26.1784161005"></script>
+    <script src="/static/vendor/js/perfect-freehand-1.2.3.js?v=2026.10.26.1789185308"></script>
+    <script src="/static/js/theme.js?v=2026.10.26.1791335865"></script>
+    <script src="/static/js/touch-mouse.js?v=2026.10.26.1784161005"></script>
+    <script src="/static/js/i18n.js?v=2026.10.26.1792832273&prompt-find=2026.10.24.4&detail-stitch=2026.10.17.6&upload-documents=2026.10.14.1&document-images=2026.10.14.1&prompt-layout=2026.10.15.1&alt-copy=2026.10.19.1&text-stack=2026.10.21.2"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.26.1792900345">
+    <link rel="stylesheet" href="/static/css/canvas-editor-common.css?v=2026.10.26.1786168693">
+<link rel="stylesheet" href="/static/css/smart-canvas.css?v=2026.10.26.1792843242&prompt-find=2026.10.24.4&prompt-dock=2026.10.19.1&image-cancel=2026.10.19.2&detail-stitch=2026.10.17.1&prompt-optimize=2026.10.16.3&ps-open=2026.10.15.1&agent-resize=2026.10.13.1&popover-clip=2026.10.12.1&input-hover=2026.10.12.1&agent-surfaces=2026.10.12.1&node-refs=2026.10.12.1&ocr=2026.10.24.1&agent-cancel=2026.10.14.1&upload-documents=2026.10.14.1&document-icons=2026.10.14.1&document-images=2026.10.14.1&document-order=2026.10.14.2&prompt-layout=2026.10.15.1&skill-favorites=2026.10.15.1&prompt-skill-layout=2026.10.15.1&composer-scale=2026.10.15.1&reference-picker=2026.10.19.2&reference-layout=2026.10.19.1&skill-manager=2026.10.19.1&prompt-collapse=2026.10.20.1&text-stack=2026.10.21.2&ai-render=2026.10.23.10&settings-position=2026.10.23.2&design-brain=2026.10.25">
+    <link rel="stylesheet" href="/static/css/smart-expert-workflow.css?v=2026.10.26.1792198885">
+    <link rel="stylesheet" href="/static/css/canvas-folder-batch.css?v=2026.10.26.1789432724">
+    <script src="/static/js/background-removal-bridge.js?v=2026.10.26.1789009721"></script>
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.26.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.26.1792843621&agent-model-picker=2026.09.28.1&reference-layout=2026.10.19.1&skill-manager=2026.10.19.1">
+    <link rel="stylesheet" href="/static/css/smart-canvas-agent.css?v=2026.10.26.1792388178&dark-model-picker=2026.10.12.2&dark-agent-contrast=2026.10.12.6&reference-picker=2026.10.19.2">
+    <link rel="stylesheet" href="/static/css/project-agent.css?v=2026.10.26.1792413477&memory-layout=2026.10.19.1">
+    <link rel="stylesheet" href="/static/css/canvas-multi-agent.css?v=2026.10.26.1792370914">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.26.1790178173"></script>
+    <link rel="stylesheet" href="/static/css/image-layers.css?v=2026.10.26.1790738147">
 </head>
 <body>
     <div id="shell" class="shell">
@@ -54,6 +54,9 @@
                     </div>
                     <div class="composer-actions">
                         <button id="promptOptimizeRestore" class="prompt-optimize-btn prompt-optimize-restore" type="button" title="恢复上次替换前的提示词" aria-label="恢复上次替换前的提示词" hidden><i data-lucide="undo-2"></i><span>恢复原文</span></button>
+                        <button id="composerFindBtn" class="composer-find-btn" type="button" title="查找提示词内容" aria-label="查找提示词内容" aria-pressed="false" data-i18n-title="smart.promptFindOpen">
+                            <i data-lucide="search"></i><span data-i18n="smart.promptFind">查找</span>
+                        </button>
                         <button id="promptOptimizeBtn" class="prompt-optimize-btn" type="button" title="优化提示词" aria-label="优化提示词"><i data-lucide="wand-sparkles"></i><span>优化提示词</span></button>
                         <button id="runBtn" class="run-btn" type="button" title="运行（Ctrl/Cmd + Enter）" data-i18n-title="smart.runShortcut" aria-keyshortcuts="Control+Enter Meta+Enter"><i data-lucide="sparkles"></i><span data-i18n="smart.run">运行</span></button>
                     </div>
@@ -99,6 +102,7 @@
                     <button id="projectAgentOpen" type="button">项目记忆</button>
                 </div>
                 <nav>
+                    <button id="canvasAgentDesignToggle" type="button" title="设计大脑方案" aria-label="设计大脑方案"><i data-lucide="lightbulb"></i></button>
                     <button id="canvasAgentSettingsToggle" type="button" title="Agent 设置" aria-label="Agent 设置"><i data-lucide="sliders-horizontal"></i></button>
                     <button id="canvasAgentSkillsToggle" type="button" title="Skill 管理" aria-label="打开 Skill 管理"><i data-lucide="blocks"></i></button>
                     <button id="canvasAgentHistoryToggle" type="button" title="历史对话" aria-label="历史对话" aria-haspopup="dialog" aria-expanded="false"><i data-lucide="history"></i></button>
@@ -106,7 +110,23 @@
                     <button id="canvasAgentClose" type="button" title="关闭"><i data-lucide="x"></i></button>
                 </nav>
             </header>
+            <p id="designBrainNewHint" class="design-brain-hint" hidden>新项目：让设计大脑基于你的审美档案与灵感库生成第一版方案，<button type="button" id="designBrainHintOpen">开始</button></p>
             <div id="canvasAgentHistory" class="canvas-agent-history" role="dialog" aria-label="历史对话与批量任务" aria-hidden="true"></div>
+            <section id="canvasAgentDesignBrain" class="canvas-agent-design" aria-label="设计大脑方案" hidden>
+                <header>
+                    <strong><i data-lucide="lightbulb"></i>设计大脑方案</strong>
+                    <p class="design-brain-sub">读取审美档案与相似案例，选择 Skill 并生成可审核方案；确认后才会执行生图。</p>
+                </header>
+                <textarea id="designBrainBrief" rows="3" maxlength="2000" placeholder="描述这个项目要做什么：商品、风格、用途，例如「玻璃杯新品主图，浅色高级感」" aria-label="设计任务描述"></textarea>
+                <p id="designBrainMeta" class="design-brain-meta">正在读取设计大脑数据…</p>
+                <label class="design-brain-skill"><span>Skill</span><select id="designBrainSkill" aria-label="选择 Skill"></select></label>
+                <div class="design-brain-actions">
+                    <button id="designBrainPlanButton" type="button" class="primary">生成设计方案</button>
+                    <button id="designBrainCancelButton" type="button">取消执行记录</button>
+                </div>
+                <p id="designBrainStatus" class="design-brain-status" role="status" aria-live="polite"></p>
+                <div id="designBrainOptions" class="design-brain-options"></div>
+            </section>
             <section id="canvasAgentFolderBatch" class="canvas-folder-batch" aria-label="文件夹批量任务" hidden></section>
             <section id="projectAgentDrawer" class="project-agent-drawer" aria-label="当前项目" hidden>
                 <header><strong>当前项目</strong><button id="projectAgentClose" type="button" aria-label="关闭项目记忆">×</button></header>
@@ -1021,40 +1041,40 @@
         <div id="toast" class="toast"></div>
         <div id="mentionPreview" class="mention-preview"><img alt="preview"></div>
     </div>
-    <script src="/static/js/smart-canvas-reference-picker.js?v=2026.10.23.1792389372"></script>
-    <script src="/static/js/upstream-rerun-utils.js?v=2026.10.23.1785467783"></script>
-    <script src="/static/js/smart-camera-node.js?v=2026.10.23.1786063012"></script>
-    <script src="/static/js/smart-color-node.js?v=2026.10.23.1788945447"></script>
-    <script src="/static/js/smart-drawing-board-node.js?v=2026.10.23.1790491245&drawing-ratio=2026.09.27.2"></script>
-    <script src="/static/js/smart-canvas-data-video.js?v=2026.10.23.1792034502&connect-types=2"></script>
-<script src="/static/js/generation-notifications.js?v=2026.10.23.1787131165"></script>
-<script src="/static/js/image-task-client.js?v=2026.10.23.1791025940"></script>
-    <script src="/static/js/canvas-editor-core.js?v=2026.10.23.1786171437"></script>
-      <script src="/static/js/outpaint-geometry.js?v=2026.10.23.1790090615"></script>
-      <link rel="stylesheet" href="/static/css/workflow-save-dialog.css?v=2026.10.23.1791355337">
-      <link rel="stylesheet" href="/static/css/workflow-preview.css?v=2026.10.23.1791372473">
-      <script src="/static/js/workflow-preview.js?v=2026.10.23.1791372436"></script>
-      <script src="/static/js/workflow-save-dialog.js?v=2026.10.23.1791365029"></script>
-      <script src="/static/js/smart-expert-workflow.js?v=2026.10.23.1792457289"></script>
-       <script src="/static/js/smart-canvas.js?v=2026.10.23.1792747343&image-cancel=2026.10.19.1&detail-stitch=2026.10.17.6&prompt-optimize=2026.10.16.3&expert-workflow=2026.10.16.2&ps-open=2026.10.15.1&agent-default-size=2026.10.14.1&agent-resize=2026.10.13.1&batch-default=2026.10.12.2&input-hover=2026.10.20.1&upstream-run=2026.10.15.1&node-refs=2026.10.12.1&vector=2026.10.12.1&product-fidelity=2026.10.14.1&ocr=2026.10.13.4&agent-height=2026.10.13.1&dimensions=2026.10.13.1&alt-copy=2026.10.19.1&agent-cancel=2026.10.14.1&upload-documents=2026.10.14.1&crop=2026.10.14.1&document-icons=2026.10.14.1&document-images=2026.10.14.1&drag-position=2026.10.14.1&asset-drop=2026.10.15.2&document-order=2026.10.14.2&detail-grid=2026.10.14.1&connection-erase=2026.10.14.1&apimart-video=2026.10.14.1&outpaint=2026.10.16.1&prompt-layout=2026.10.15.1&skill-favorites=2026.10.15.1&prompt-skill-layout=2026.10.15.1&composer-scale=2026.10.15.1&toolbar-scale=2026.10.15.1&asset-delete=2026.10.15.1&agent-link-text=2026.10.16.2&viewport-perf=2026.10.16.1&detail-copy=2026.10.17.1&image-collapse=2026.10.19.3&reference-picker=2026.10.19.2&reference-layout=2026.10.19.1&prompt-collapse=2026.10.20.1&text-stack=2026.10.21.2&ai-render=2026.10.23.10&settings-position=2026.10.23.2"></script>
-    <link rel="stylesheet" href="/static/css/smart-image-vectorizer.css?v=2026.10.23.1791852537">
-    <script src="/static/js/smart-image-vectorizer.js?v=2026.10.23.1791852537"></script>
-    <link rel="stylesheet" href="/static/css/product-fidelity.css?v=2026.10.23.1792056133&dimensions=2026.10.13.1&editor=2026.10.15.2&ui=2026.10.14.1&view-editor=2026.10.13.5">
-    <script src="/static/js/physical-dimensions.js?v=2026.10.23.1791940295"></script>
-    <script src="/static/js/product-fidelity.js?v=2026.10.23.1792056133&dimensions=2026.10.13.1&editor=2026.10.15.2&ui=2026.10.14.1&view-editor=2026.10.13.6"></script>
-    <script src="/static/js/smart-canvas-edit-suite.js?v=2026.10.23.1791198166"></script>
-<script src="/static/js/local-bridge-ui.js?v=2026.10.23.1789536752"></script>
-    <script src="/static/js/shared-agent-skill.js?v=2026.10.23.1791504727"></script>
-<script src="/static/js/link-analysis-client.js?v=2026.10.23.1791637062"></script>
-    <script src="/static/js/canvas-folder-batch.js?v=2026.10.23.1789432948"></script>
-<script src="/static/js/canvas-agent-orb.js?v=2026.10.23.1791679756"></script>
-<script src="/static/js/canvas-agent.js?v=2026.10.23.1792402640&agent-default-size=2026.10.14.1&agent-pref-sync=2026.10.02.1&agent-model-picker=2026.09.28.1&canvas-wide-agent=2026.10.08.1&canvas-command-tools=2026.10.10.commerce-rules.1&prompt-skill-layout=2026.10.15.1&reference-picker=2026.10.19.2&send-feedback=2026.10.19.1"></script>
-<script src="/static/js/canvas-multi-agent.js?v=2026.10.23.1792370914"></script>
-<script src="/static/js/project-agent-events.js?v=2026.10.23.1792111552"></script>
-<script src="/static/js/project-agent.js?v=2026.10.23.1792113777"></script>
-<script src="/static/vendor/js/ag-psd-seethrough.bundle.js?v=2026.10.23.1790092014&layers=2026.09.22.3"></script>
-<script src="/static/js/image-layer-psd.js?v=2026.10.23.1790233758"></script>
-<script src="/static/js/smart-image-layers.js?v=2026.10.23.1790749439"></script>
+    <script src="/static/js/smart-canvas-reference-picker.js?v=2026.10.26.1792389372"></script>
+    <script src="/static/js/upstream-rerun-utils.js?v=2026.10.26.1785467783"></script>
+    <script src="/static/js/smart-camera-node.js?v=2026.10.26.1786063012"></script>
+    <script src="/static/js/smart-color-node.js?v=2026.10.26.1788945447"></script>
+    <script src="/static/js/smart-drawing-board-node.js?v=2026.10.26.1790491245&drawing-ratio=2026.09.27.2"></script>
+    <script src="/static/js/smart-canvas-data-video.js?v=2026.10.26.1792034502&connect-types=2"></script>
+<script src="/static/js/generation-notifications.js?v=2026.10.26.1787131165"></script>
+<script src="/static/js/image-task-client.js?v=2026.10.26.1791025940"></script>
+    <script src="/static/js/canvas-editor-core.js?v=2026.10.26.1786171437"></script>
+      <script src="/static/js/outpaint-geometry.js?v=2026.10.26.1790090615"></script>
+      <link rel="stylesheet" href="/static/css/workflow-save-dialog.css?v=2026.10.26.1791355337">
+      <link rel="stylesheet" href="/static/css/workflow-preview.css?v=2026.10.26.1791372473">
+      <script src="/static/js/workflow-preview.js?v=2026.10.26.1791372436"></script>
+      <script src="/static/js/workflow-save-dialog.js?v=2026.10.26.1791365029"></script>
+      <script src="/static/js/smart-expert-workflow.js?v=2026.10.26.1792457289"></script>
+       <script src="/static/js/smart-canvas.js?v=2026.10.26.1792974568&image-copy=2026.10.25.1&prompt-find=2026.10.24.4&image-cancel=2026.10.19.1&detail-stitch=2026.10.17.6&prompt-optimize=2026.10.16.3&expert-workflow=2026.10.16.2&ps-open=2026.10.15.1&agent-default-size=2026.10.14.1&agent-resize=2026.10.13.1&batch-default=2026.10.12.2&input-hover=2026.10.20.1&upstream-run=2026.10.15.1&node-refs=2026.10.12.1&vector=2026.10.12.1&product-fidelity=2026.10.14.1&ocr=2026.10.24.1&agent-height=2026.10.13.1&dimensions=2026.10.13.1&alt-copy=2026.10.19.1&agent-cancel=2026.10.14.1&upload-documents=2026.10.14.1&crop=2026.10.14.1&document-icons=2026.10.14.1&document-images=2026.10.14.1&drag-position=2026.10.14.1&asset-drop=2026.10.15.2&document-order=2026.10.14.2&detail-grid=2026.10.14.1&connection-erase=2026.10.14.1&apimart-video=2026.10.14.1&outpaint=2026.10.16.1&prompt-layout=2026.10.15.1&skill-favorites=2026.10.15.1&prompt-skill-layout=2026.10.15.1&composer-scale=2026.10.15.1&toolbar-scale=2026.10.15.1&asset-delete=2026.10.15.1&agent-link-text=2026.10.16.2&viewport-perf=2026.10.16.1&detail-copy=2026.10.17.1&image-collapse=2026.10.19.3&reference-picker=2026.10.19.2&reference-layout=2026.10.19.1&prompt-collapse=2026.10.20.1&text-stack=2026.10.21.2&ai-render=2026.10.23.10&settings-position=2026.10.23.2&design-brain=2026.10.25&batch-resolution=2026.10.25.1&protection-ui=2026.10.26.1"></script>
+    <link rel="stylesheet" href="/static/css/smart-image-vectorizer.css?v=2026.10.26.1791852537">
+    <script src="/static/js/smart-image-vectorizer.js?v=2026.10.26.1791852537"></script>
+    <link rel="stylesheet" href="/static/css/product-fidelity.css?v=2026.10.26.1792975252&dimensions=2026.10.13.1&editor=2026.10.15.2&ui=2026.10.14.1&view-editor=2026.10.13.5&protection-ui=2026.10.26.1">
+    <script src="/static/js/physical-dimensions.js?v=2026.10.26.1791940295"></script>
+    <script src="/static/js/product-fidelity.js?v=2026.10.26.1792974668&dimensions=2026.10.13.1&editor=2026.10.15.2&ui=2026.10.14.1&view-editor=2026.10.13.6&protection-ui=2026.10.26.1"></script>
+    <script src="/static/js/smart-canvas-edit-suite.js?v=2026.10.26.1791198166"></script>
+<script src="/static/js/local-bridge-ui.js?v=2026.10.26.1789536752"></script>
+    <script src="/static/js/shared-agent-skill.js?v=2026.10.26.1791504727"></script>
+<script src="/static/js/link-analysis-client.js?v=2026.10.26.1791637062"></script>
+    <script src="/static/js/canvas-folder-batch.js?v=2026.10.26.1789432948"></script>
+<script src="/static/js/canvas-agent-orb.js?v=2026.10.26.1791679756"></script>
+<script src="/static/js/canvas-agent.js?v=2026.10.26.1792806669&agent-default-size=2026.10.14.1&agent-pref-sync=2026.10.02.1&agent-model-picker=2026.09.28.1&canvas-wide-agent=2026.10.08.1&canvas-command-tools=2026.10.10.commerce-rules.1&prompt-skill-layout=2026.10.15.1&reference-picker=2026.10.19.2&send-feedback=2026.10.19.1&design-brain=2026.10.25"></script>
+<script src="/static/js/canvas-multi-agent.js?v=2026.10.26.1792370914"></script>
+<script src="/static/js/project-agent-events.js?v=2026.10.26.1792111552"></script>
+<script src="/static/js/project-agent.js?v=2026.10.26.1792113777"></script>
+<script src="/static/vendor/js/ag-psd-seethrough.bundle.js?v=2026.10.26.1790092014&layers=2026.09.22.3"></script>
+<script src="/static/js/image-layer-psd.js?v=2026.10.26.1790233758"></script>
+<script src="/static/js/smart-image-layers.js?v=2026.10.26.1790749439"></script>
 </body>
 </html>
 \n

@@ -1454,7 +1454,7 @@ body.studio-theme-dark ::placeholder {
     color: #64748b !important;
 }
 
-/* Z-image console polish: keep the prompt field open and make ModelScope readable. */
+/* Z-image console polish: keep the prompt field open and keep online controls readable. */
 html.studio-theme-dark body #prompt,
 body.studio-theme-dark #prompt {
     background: transparent !important;

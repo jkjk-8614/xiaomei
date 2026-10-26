@@ -561,7 +561,14 @@ def extract_fields(graph, info):
         'positive': '正向提示词', 'negative': '反向提示词', 'seed': '随机种子',
         'noise_seed': '随机种子', 'steps': '步数', 'cfg': '提示词强度',
         'denoise': '重绘强度', 'width': '宽度', 'height': '高度',
+        'batch_size': '生成数量',
     }
+    # 基础参数白名单：普通用户直接理解的输入；其余进入“生成参数”高级区。
+    basic_inputs = {'image', 'images', 'text', 'prompt', 'positive', 'negative',
+                    'denoise', 'width', 'height', 'batch_size'}
+    field_order = {'image': 0, 'images': 0, 'text': 1, 'prompt': 1, 'positive': 1,
+                   'denoise': 2, 'width': 3, 'height': 4, 'batch_size': 5,
+                   'seed': 6, 'noise_seed': 6}
     dlss_easy_labels = {
         'scenario': '处理场景', 'operation': '处理方式', 'scale': '放大倍率',
         'quality': '画质', 'look': '渲染风格', 'effect_strength': '效果强度',
@@ -595,8 +602,7 @@ def extract_fields(graph, info):
             field = {'id': f'{key}:{name}', 'node': key, 'input': name,
                      'name': label, 'type': field_type,
                      'default': None if image else value,
-                     'advanced': name not in ('image', 'images', 'text', 'prompt', 'positive', 'negative')
-                                 and kind != 'DLSS5EasyPipeline'}
+                     'advanced': name not in basic_inputs and kind != 'DLSS5EasyPipeline'}
             if name in ('text', 'prompt', 'positive', 'negative'):
                 roles, pending, visited = set(), [str(key)], set()
                 while pending:
@@ -623,6 +629,10 @@ def extract_fields(graph, info):
             if spec[0] == 'INT':
                 field['step'] = 1
             fields.append(field)
+    # 稳定排序让基础参数按“图片 → 提示词 → 强度 → 尺寸 → 数量”呈现；
+    # 高级参数保持原图顺序，未识别的输入继续留在工作流原值里。
+    fields.sort(key=lambda field: (bool(field.get('advanced')),
+                                   field_order.get(field.get('input'), 8), str(field.get('id'))))
     return fields
 
 
@@ -1185,6 +1195,7 @@ class AppLibrary:
             config = json.loads(config_path.read_text(encoding='utf-8'))
             item['fields'] = config.get('fields', item.get('fields', []))
             item['title'] = config.get('title') or item['title']
+            item['values'] = config.get('values') if isinstance(config.get('values'), dict) else {}
         preset = dlss5_preset_field(item)
         if preset:
             fields = item.setdefault('fields', [])
@@ -1475,6 +1486,56 @@ class AppLibrary:
         except (OSError, ValueError, TypeError):
             return {}
 
+    def write_workflow_config(self, item):
+        """Persist the form config while keeping last-used parameter values."""
+        path = Path(self.host.workflow_config_path(item['workflow']))
+        previous = self._workflow_config(item['workflow'])
+        write_json(path, {'title': item['title'], 'fields': item.get('fields', []),
+                          'mini_cards': {},
+                          'values': previous.get('values') if isinstance(previous.get('values'), dict) else {}})
+
+    @staticmethod
+    def _checked_saved_value(field, value):
+        kind = field.get('type')
+        name = str(field.get('name') or field.get('id') or '参数')
+        if kind == 'number':
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError(name + '：请输入有效数字')
+            return value
+        if kind == 'boolean':
+            if not isinstance(value, bool):
+                raise ValueError(name + '：开关值无效')
+            return value
+        if kind == 'dropdown':
+            for option in field.get('options') or []:
+                if str(option) == str(value):
+                    return option
+            raise ValueError(name + '：请选择有效选项')
+        if not isinstance(value, str) or len(value) > 100000:
+            raise ValueError(name + '：文字无效或过长')
+        return value
+
+    def save_values(self, app_id, supplied):
+        """Persist the last-used simple-form values without touching the workflow.
+
+        Uploaded file names are excluded: they belong to one backend session
+        and must be re-uploaded rather than silently restored.
+        """
+        with self.lock:
+            item = self.read(app_id)
+            fields = {str(field.get('id')): field for field in item.get('fields', [])
+                      if isinstance(field, dict) and field.get('id')}
+            saved = {}
+            for field_id, value in supplied.items():
+                field = fields.get(str(field_id))
+                if not field or field.get('type') in ('image', 'audio', 'video') or field.get('preset_links'):
+                    continue
+                saved[field['id']] = self._checked_saved_value(field, value)
+            config = self._workflow_config(item['workflow'])
+            config.update(title=item['title'], fields=item.get('fields', []), values=saved)
+            write_json(Path(self.host.workflow_config_path(item['workflow'])), config)
+            return {'ok': True, 'values': saved}
+
     def _load_workflow(self, name):
         name = unquote(name) if isinstance(name, str) else name
         if not isinstance(name, str) or not name or '\\' in name or '..' in Path(name).parts:
@@ -1515,15 +1576,19 @@ class AppLibrary:
         config = self._workflow_config(name)
         identity = hashlib.sha256(('workflow:' + name).encode('utf-8')).hexdigest()[:32]
         is_builtin = getattr(self.host, 'is_builtin_workflow', None)
+        purpose = initial.get('purpose') or {}
+        fallback = (purpose['label'] + '工作流：' + purpose['summary']) if purpose.get('label') else '本地 ComfyUI 工作流'
         item = {
             'id': identity,
             'title': config.get('title') or Path(name).stem,
-            'description': config.get('description') or '本地 ComfyUI 工作流',
+            'description': config.get('description') or fallback,
+            'purpose': purpose,
             'source': source,
             'api': api,
             'fields': config.get('fields') or (extract_fields(api, info) if api and info else []),
             'workflow': name,
             'uploads': [],
+            'values': config.get('values') if isinstance(config.get('values'), dict) else {},
             'created_at': 0,
             'source_kind': 'workflow',
             'entry_type': 'workflow',
@@ -1623,8 +1688,7 @@ class AppLibrary:
             # its actual node versions are checked there.
             item['needs_runtime_compile'] = True
             write_json(self.host.workflow_path_from_name(item['workflow']), item['api'])
-            write_json(self.host.workflow_config_path(item['workflow']), {
-                'title': item['title'], 'fields': item.get('fields', []), 'mini_cards': {}})
+            self.write_workflow_config(item)
         item['workflow_ref'] = name
         self.save(item)
         return self.read(identity)
@@ -2633,7 +2697,7 @@ class AppLibrary:
             item['workflow'] = owned_name
         name = item['workflow']
         write_json(self.host.workflow_path_from_name(name), graph)
-        write_json(self.host.workflow_config_path(name), {'title': item['title'], 'fields': item['fields'], 'mini_cards': {}})
+        self.write_workflow_config(item)
         self.save(item)
         return item
 
@@ -2923,12 +2987,20 @@ def install_comfy_apps(app, host):
             graph = payload['workflow']
             initial = inspect_workflow(graph, {})
             identity = uuid.uuid4().hex
+            purpose = initial.get('purpose') or {}
             item = {'id': identity, 'title': str(payload.get('name') or '未命名应用')[:120],
                     'description': '本地工作流应用', 'source': graph, 'api': None, 'fields': [],
-                    'workflow': 'custom/app_' + identity + '.json', 'uploads': [], 'created_at': time.time()}
+                    'workflow': 'custom/app_' + identity + '.json', 'uploads': [], 'created_at': time.time(),
+                    'purpose': purpose}
             if any(n.get('type', n.get('class_type', '')).startswith('SeeThrough_')
                    for n in (graph.get('nodes') if initial['format'] == 'UI' else graph.get('prompt', graph).values())):
                 item['description'] = 'SeeThrough 图像分层：主要面向动漫角色，真人和商品效果需实测，不保证还原原始设计文件。'
+            else:
+                author = (initial.get('workflow_description') or {}).get('description')
+                if isinstance(author, str) and author.strip():
+                    item['description'] = '作者说明：' + author.strip()[:300]
+                elif purpose.get('label'):
+                    item['description'] = purpose['label'] + '工作流：' + purpose.get('summary', '')
             service.save(item)
             try:
                 backend, info = await asyncio.to_thread(service.backend)
@@ -3257,7 +3329,7 @@ def install_comfy_apps(app, host):
                 item['fields'] = [{**original[f['id']], 'name': str(f.get('name') or original[f['id']]['name'])[:80]} for f in incoming]
             service.save(item)
             if item.get('api'):
-                write_json(host.workflow_config_path(item['workflow']), {'title': item['title'], 'fields': item['fields'], 'mini_cards': {}})
+                service.write_workflow_config(item)
             return item
 
     @router.post('/{app_id}/profile')
@@ -3285,9 +3357,9 @@ def install_comfy_apps(app, host):
             item['verified'] = False
             item['fields'] = extract_fields(graph, info)
             service.analyze(item, info)
-            write_json(host.workflow_path_from_name(item['workflow']), graph)
-            write_json(host.workflow_config_path(item['workflow']), {'title': item['title'], 'fields': item['fields'], 'mini_cards': {}})
-            service.save(item)
+            write_json(self.host.workflow_path_from_name(item['workflow']), graph)
+            self.write_workflow_config(item)
+            self.save(item)
             return item
 
     @router.post('/{app_id}/upload')
@@ -3443,6 +3515,23 @@ def install_comfy_apps(app, host):
                 'bytes': total, 'item': result,
                 'message': '模型已导入并完成复查' if result.get('workflow_status') == 'ready'
                            else '模型已导入，但工作流仍有其他项目需要处理'}
+
+    @router.post('/{app_id}/values')
+    async def save_field_values(app_id: str, request: Request):
+        try:
+            payload = await request.json()
+        except ValueError as exc:
+            raise HTTPException(400, '保存参数值失败：请求无效') from exc
+        supplied = payload.get('values') if isinstance(payload, dict) else None
+        if not isinstance(supplied, dict):
+            raise HTTPException(400, '保存参数值失败：参数值必须是对象')
+        item = service.read(app_id)
+        if not item.get('api'):
+            raise HTTPException(409, '请先生成操作表单，再保存参数值')
+        try:
+            return await asyncio.to_thread(service.save_values, app_id, supplied)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
 
     @router.post('/{app_id}/run')
     async def run(app_id: str, request: Request):

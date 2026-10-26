@@ -7,7 +7,7 @@
 
 上游更新**不会**让这些改动消失，`desktop/deepseek-updater.cjs` 已经处理了：
 
-1. 更新前 `git diff --binary HEAD` 存一份补丁；
+1. 更新前用临时索引捕获 `git diff --binary HEAD`，同时包含尚未跟踪的新适配文件；
 2. 在一个临时克隆里先 `git apply --3way` **预检**，冲突就在动真格之前中止，工作树一点不动；
 3. 真更新时 `reset --hard` → `merge --ff-only` → 重新 `apply --3way`；
 4. 失败则回滚到原提交并把补丁打回去。
