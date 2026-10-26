@@ -128,16 +128,16 @@ Function XiaomeiPreserveLegacyData
   ; attempt that left its preservation directory behind.
   ${GetTime} "" "L" $R0 $R1 $R2 $R3 $R4 $R5 $R6
   StrCpy $R3 "$R2$R1$R0$R4$R5$R6"
-  System::Call 'kernel32::GetTickCount() i .r7'
-  ${If} $R7 == ""
-    StrCpy $R7 "0"
+  System::Call 'kernel32::GetTickCount() i .r8'
+  ${If} $R8 == ""
+    StrCpy $R8 "0"
   ${EndIf}
   ; Pick a fresh directory even when two updates start in the same second.
-  StrCpy $R8 "0"
+  StrCpy $R6 "0"
   xiaomei_preserve_root_retry:
-    StrCpy $XiaomeiPreserveRoot "$R7\..\xiaomei-legacy-data-$R3-$R7-$R8"
+    StrCpy $XiaomeiPreserveRoot "$R7\..\xiaomei-legacy-data-$R3-$R8-$R6"
     IfFileExists "$XiaomeiPreserveRoot" 0 xiaomei_preserve_root_ready
-    IntOp $R8 $R8 + 1
+    IntOp $R6 $R6 + 1
     Goto xiaomei_preserve_root_retry
   xiaomei_preserve_root_ready:
   CreateDirectory "$XiaomeiPreserveRoot"
@@ -216,7 +216,7 @@ Function XiaomeiPreserveLegacyData
   ; later moved or renamed.  UTF-16 keeps Chinese installation paths intact.
   CreateDirectory "$LOCALAPPDATA\小美画布\.legacy-install-paths"
   ClearErrors
-  FileOpen $R0 "$LOCALAPPDATA\小美画布\.legacy-install-paths\$R3-$R7-$R8.txt" w
+  FileOpen $R0 "$LOCALAPPDATA\小美画布\.legacy-install-paths\$R3-$R8-$R6.txt" w
   ${If} ${Errors}
     StrCpy $R9 "1"
     Goto xiaomei_preserve_done
