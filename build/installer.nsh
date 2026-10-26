@@ -45,55 +45,55 @@ Function XiaomeiRestoreLegacyData
   Push $R0
   Push $R1
 
-  CreateDirectory "$XiaomeiLegacyDir\resources\app\ComfyUI"
-  CreateDirectory "$XiaomeiLegacyDir\resources\app"
-  CreateDirectory "$XiaomeiLegacyDir"
+  CreateDirectory "$R7\resources\app\ComfyUI"
+  CreateDirectory "$R7\resources\app"
+  CreateDirectory "$R7"
 
   StrCpy $R0 "$XiaomeiPreserveRoot\app\data"
-  StrCpy $R1 "$XiaomeiLegacyDir\resources\app\data"
+  StrCpy $R1 "$R7\resources\app\data"
   Call XiaomeiRestorePath
   StrCpy $R0 "$XiaomeiPreserveRoot\app\assets"
-  StrCpy $R1 "$XiaomeiLegacyDir\resources\app\assets"
+  StrCpy $R1 "$R7\resources\app\assets"
   Call XiaomeiRestorePath
   StrCpy $R0 "$XiaomeiPreserveRoot\app\output"
-  StrCpy $R1 "$XiaomeiLegacyDir\resources\app\output"
+  StrCpy $R1 "$R7\resources\app\output"
   Call XiaomeiRestorePath
   StrCpy $R0 "$XiaomeiPreserveRoot\app\history.json"
-  StrCpy $R1 "$XiaomeiLegacyDir\resources\app\history.json"
+  StrCpy $R1 "$R7\resources\app\history.json"
   Call XiaomeiRestorePath
   StrCpy $R0 "$XiaomeiPreserveRoot\app\global_config.json"
-  StrCpy $R1 "$XiaomeiLegacyDir\resources\app\global_config.json"
+  StrCpy $R1 "$R7\resources\app\global_config.json"
   Call XiaomeiRestorePath
   StrCpy $R0 "$XiaomeiPreserveRoot\app\API"
-  StrCpy $R1 "$XiaomeiLegacyDir\resources\app\API"
+  StrCpy $R1 "$R7\resources\app\API"
   Call XiaomeiRestorePath
   StrCpy $R0 "$XiaomeiPreserveRoot\app\.xiaomei-data"
-  StrCpy $R1 "$XiaomeiLegacyDir\resources\app\.xiaomei-data"
+  StrCpy $R1 "$R7\resources\app\.xiaomei-data"
   Call XiaomeiRestorePath
   StrCpy $R0 "$XiaomeiPreserveRoot\app\ComfyUI\workflows"
-  StrCpy $R1 "$XiaomeiLegacyDir\resources\app\ComfyUI\workflows"
+  StrCpy $R1 "$R7\resources\app\ComfyUI\workflows"
   Call XiaomeiRestorePath
 
   StrCpy $R0 "$XiaomeiPreserveRoot\root\data"
-  StrCpy $R1 "$XiaomeiLegacyDir\data"
+  StrCpy $R1 "$R7\data"
   Call XiaomeiRestorePath
   StrCpy $R0 "$XiaomeiPreserveRoot\root\assets"
-  StrCpy $R1 "$XiaomeiLegacyDir\assets"
+  StrCpy $R1 "$R7\assets"
   Call XiaomeiRestorePath
   StrCpy $R0 "$XiaomeiPreserveRoot\root\output"
-  StrCpy $R1 "$XiaomeiLegacyDir\output"
+  StrCpy $R1 "$R7\output"
   Call XiaomeiRestorePath
   StrCpy $R0 "$XiaomeiPreserveRoot\root\history.json"
-  StrCpy $R1 "$XiaomeiLegacyDir\history.json"
+  StrCpy $R1 "$R7\history.json"
   Call XiaomeiRestorePath
   StrCpy $R0 "$XiaomeiPreserveRoot\root\global_config.json"
-  StrCpy $R1 "$XiaomeiLegacyDir\global_config.json"
+  StrCpy $R1 "$R7\global_config.json"
   Call XiaomeiRestorePath
   StrCpy $R0 "$XiaomeiPreserveRoot\root\API"
-  StrCpy $R1 "$XiaomeiLegacyDir\API"
+  StrCpy $R1 "$R7\API"
   Call XiaomeiRestorePath
   StrCpy $R0 "$XiaomeiPreserveRoot\root\.xiaomei-data"
-  StrCpy $R1 "$XiaomeiLegacyDir\.xiaomei-data"
+  StrCpy $R1 "$R7\.xiaomei-data"
   Call XiaomeiRestorePath
 
   Pop $R1
@@ -135,7 +135,7 @@ Function XiaomeiPreserveLegacyData
   ; Pick a fresh directory even when two updates start in the same second.
   StrCpy $R8 "0"
   xiaomei_preserve_root_retry:
-    StrCpy $XiaomeiPreserveRoot "$XiaomeiLegacyDir\..\xiaomei-legacy-data-$R3-$R7-$R8"
+    StrCpy $XiaomeiPreserveRoot "$R7\..\xiaomei-legacy-data-$R3-$R7-$R8"
     IfFileExists "$XiaomeiPreserveRoot" 0 xiaomei_preserve_root_ready
     IntOp $R8 $R8 + 1
     Goto xiaomei_preserve_root_retry
@@ -146,51 +146,51 @@ Function XiaomeiPreserveLegacyData
   CreateDirectory "$XiaomeiPreserveRoot\root"
 
   ; Normal packaged layout: <install>\resources\app\data
-  StrCpy $R0 "$XiaomeiLegacyDir\resources\app\data"
+  StrCpy $R0 "$R7\resources\app\data"
   StrCpy $R1 "$XiaomeiPreserveRoot\app\data"
   Call XiaomeiMovePath
-  StrCpy $R0 "$XiaomeiLegacyDir\resources\app\assets"
+  StrCpy $R0 "$R7\resources\app\assets"
   StrCpy $R1 "$XiaomeiPreserveRoot\app\assets"
   Call XiaomeiMovePath
-  StrCpy $R0 "$XiaomeiLegacyDir\resources\app\output"
+  StrCpy $R0 "$R7\resources\app\output"
   StrCpy $R1 "$XiaomeiPreserveRoot\app\output"
   Call XiaomeiMovePath
-  StrCpy $R0 "$XiaomeiLegacyDir\resources\app\history.json"
+  StrCpy $R0 "$R7\resources\app\history.json"
   StrCpy $R1 "$XiaomeiPreserveRoot\app\history.json"
   Call XiaomeiMovePath
-  StrCpy $R0 "$XiaomeiLegacyDir\resources\app\global_config.json"
+  StrCpy $R0 "$R7\resources\app\global_config.json"
   StrCpy $R1 "$XiaomeiPreserveRoot\app\global_config.json"
   Call XiaomeiMovePath
-  StrCpy $R0 "$XiaomeiLegacyDir\resources\app\API"
+  StrCpy $R0 "$R7\resources\app\API"
   StrCpy $R1 "$XiaomeiPreserveRoot\app\API"
   Call XiaomeiMovePath
-  StrCpy $R0 "$XiaomeiLegacyDir\resources\app\.xiaomei-data"
+  StrCpy $R0 "$R7\resources\app\.xiaomei-data"
   StrCpy $R1 "$XiaomeiPreserveRoot\app\.xiaomei-data"
   Call XiaomeiMovePath
-  StrCpy $R0 "$XiaomeiLegacyDir\resources\app\ComfyUI\workflows"
+  StrCpy $R0 "$R7\resources\app\ComfyUI\workflows"
   StrCpy $R1 "$XiaomeiPreserveRoot\app\ComfyUI\workflows"
   Call XiaomeiMovePath
 
   ; Very old portable layout: data beside the executable.
-  StrCpy $R0 "$XiaomeiLegacyDir\data"
+  StrCpy $R0 "$R7\data"
   StrCpy $R1 "$XiaomeiPreserveRoot\root\data"
   Call XiaomeiMovePath
-  StrCpy $R0 "$XiaomeiLegacyDir\assets"
+  StrCpy $R0 "$R7\assets"
   StrCpy $R1 "$XiaomeiPreserveRoot\root\assets"
   Call XiaomeiMovePath
-  StrCpy $R0 "$XiaomeiLegacyDir\output"
+  StrCpy $R0 "$R7\output"
   StrCpy $R1 "$XiaomeiPreserveRoot\root\output"
   Call XiaomeiMovePath
-  StrCpy $R0 "$XiaomeiLegacyDir\history.json"
+  StrCpy $R0 "$R7\history.json"
   StrCpy $R1 "$XiaomeiPreserveRoot\root\history.json"
   Call XiaomeiMovePath
-  StrCpy $R0 "$XiaomeiLegacyDir\global_config.json"
+  StrCpy $R0 "$R7\global_config.json"
   StrCpy $R1 "$XiaomeiPreserveRoot\root\global_config.json"
   Call XiaomeiMovePath
-  StrCpy $R0 "$XiaomeiLegacyDir\API"
+  StrCpy $R0 "$R7\API"
   StrCpy $R1 "$XiaomeiPreserveRoot\root\API"
   Call XiaomeiMovePath
-  StrCpy $R0 "$XiaomeiLegacyDir\.xiaomei-data"
+  StrCpy $R0 "$R7\.xiaomei-data"
   StrCpy $R1 "$XiaomeiPreserveRoot\root\.xiaomei-data"
   Call XiaomeiMovePath
 
@@ -258,13 +258,13 @@ FunctionEnd
 
   ; Preserve the directory recorded by the old installation.  The user may
   ; have selected a different $INSTDIR for the new release in the installer.
-  StrCpy $XiaomeiLegacyDir "$INSTDIR"
+  StrCpy $R7 "$INSTDIR"
   IfFileExists "$INSTDIR\Uninstall 小美画布.exe" xiaomei_preserve
 
   ReadRegStr $R7 SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" "InstallLocation"
   StrCmp $R7 "" xiaomei_parse_uninstaller
   IfFileExists "$R7\Uninstall 小美画布.exe" 0 xiaomei_parse_uninstaller
-  StrCpy $XiaomeiLegacyDir "$R7"
+  StrCpy $R7 "$R7"
   Goto xiaomei_preserve
 
   xiaomei_parse_uninstaller:
@@ -275,25 +275,25 @@ FunctionEnd
   xiaomei_parse_parent:
     ${GetParent} "$R8" $R7
     StrCmp $R7 "" xiaomei_preserve
-    StrCpy $XiaomeiLegacyDir "$R7"
+    StrCpy $R7 "$R7"
 
   xiaomei_preserve:
-    StrCmp $XiaomeiLegacyDir "" 0 +2
-    StrCpy $XiaomeiLegacyDir "$INSTDIR"
+    StrCmp $R7 "" 0 +2
+    StrCpy $R7 "$INSTDIR"
     ; Move user data out of the old installation before its uninstaller
     ; deletes the directory.
     Call XiaomeiPreserveLegacyData
     StrCmp $R9 "1" xiaomei_preserve_failed
 
-    IfFileExists "$XiaomeiLegacyDir\Uninstall 小美画布.exe" 0 xiaomei_done
+    IfFileExists "$R7\Uninstall 小美画布.exe" 0 xiaomei_done
 
     InitPluginsDir
     ClearErrors
-    CopyFiles /SILENT "$XiaomeiLegacyDir\Uninstall 小美画布.exe" "$PLUGINSDIR\xiaomei-old-uninstaller.exe"
+    CopyFiles /SILENT "$R7\Uninstall 小美画布.exe" "$PLUGINSDIR\xiaomei-old-uninstaller.exe"
     IfErrors xiaomei_failed
-    ExecWait '"$PLUGINSDIR\xiaomei-old-uninstaller.exe" /S /KEEP_APP_DATA _?=$XiaomeiLegacyDir' $R8
+    ExecWait '"$PLUGINSDIR\xiaomei-old-uninstaller.exe" /S /KEEP_APP_DATA _?=$R7' $R8
     StrCmp $R8 0 0 xiaomei_failed
-    IfFileExists "$XiaomeiLegacyDir\resources\app\package.json" xiaomei_failed xiaomei_done
+    IfFileExists "$R7\resources\app\package.json" xiaomei_failed xiaomei_done
 
   xiaomei_failed:
     Call XiaomeiRestoreLegacyData
