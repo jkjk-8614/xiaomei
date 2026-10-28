@@ -15,6 +15,21 @@
   --designer-warm: #faf7f2;
 }
 
+html.studio-theme-dark {
+  --designer-bg: var(--colorNeutralBackground3);
+  --designer-sidebar: var(--colorNeutralBackground1);
+  --designer-surface: var(--colorNeutralBackground1);
+  --designer-surface-soft: var(--colorNeutralBackground2);
+  --designer-line: var(--colorNeutralStroke2);
+  --designer-text: var(--colorNeutralForeground1);
+  --designer-muted: var(--colorNeutralForeground2);
+  --designer-faint: var(--colorNeutralForeground3);
+  --designer-accent: var(--colorBrandBackground);
+  --designer-accent-deep: var(--colorBrandForeground1);
+  --designer-accent-soft: var(--colorBrandBackground2);
+  --designer-warm: var(--colorNeutralBackground2);
+}
+
 body.comfy-workspace {
   background: var(--designer-bg);
   color: var(--designer-text);
@@ -713,6 +728,62 @@ body.comfy-workspace {
 
 .app-history {
   border-top-color: var(--designer-line);
+}
+
+html.studio-theme-dark .workspace-guide,
+html.studio-theme-dark .app-card:hover,
+html.studio-theme-dark .app-main-result figure {
+  background: var(--designer-surface-soft);
+}
+
+html.studio-theme-dark .app-badge {
+  color: var(--designer-muted);
+  background: var(--designer-surface-soft);
+}
+
+html.studio-theme-dark .app-badge.ready {
+  color: var(--colorPaletteGreenForeground1);
+  background: var(--colorPaletteGreenBackground1);
+}
+
+html.studio-theme-dark .app-card-export,
+html.studio-theme-dark .app-export-canvas,
+html.studio-theme-dark .app-preview-replace {
+  border-color: var(--colorBrandStroke1);
+  background: var(--designer-accent-soft);
+}
+
+html.studio-theme-dark .app-empty-result {
+  border-color: var(--colorNeutralStroke1);
+  color: var(--designer-muted);
+}
+
+html.studio-theme-dark .app-empty-result::before {
+  color: var(--designer-faint);
+}
+
+html.studio-theme-dark .app-live-status,
+html.studio-theme-dark .app-prepare-live {
+  border-color: var(--designer-line);
+  background: var(--designer-surface-soft);
+}
+
+html.studio-theme-dark .app-prepare-log {
+  border-color: var(--designer-line);
+}
+
+html.studio-theme-dark .app-prepare-log pre {
+  background: var(--designer-bg);
+}
+
+html.studio-theme-dark .app-primary:hover,
+html.studio-theme-dark .workspace-nav .nav-action:hover {
+  background: var(--colorBrandBackgroundHover);
+  border-color: var(--colorBrandBackgroundHover);
+}
+
+html.studio-theme-dark .app-downloads .download-primary {
+  color: var(--colorNeutralForegroundInverted);
 }
 
 @media (min-width: 1450px) {

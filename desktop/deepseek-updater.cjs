@@ -11,6 +11,50 @@ function short(value, limit = 240) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
 }
 
+function isNetworkError(error) {
+  const message = String(error?.message || error || '');
+  if (error?.code === 'HARNESS_UPDATE_NETWORK') return true;
+  if (/returned error: (?:400|401|403|404)|authentication failed|certificate (?:problem|verify failed)|unable to get local issuer/i.test(message)) return false;
+  return /无法连接 GitHub|schannel:.*(?:handshake|SSL\/TLS)|SSL_ERROR_SYSCALL|OpenSSL SSL_(?:connect|read)|unexpected eof while reading|SSL connection|TLS connection|could not resolve (?:host|proxy)|failed to connect|connection (?:reset|timed out)|remote end hung up|HTTP\/2.*(?:error|closed)|RPC failed; curl|git .*\b(?:ls-remote|fetch)\b.*超时/i.test(message);
+}
+
+function proxyUrl(value) {
+  const first = String(value || '').split(';')[0].trim();
+  const match = /^(PROXY|HTTPS|SOCKS5?|SOCKS4)\s+(\S+)$/i.exec(first);
+  if (!match) return '';
+  const scheme = { PROXY: 'http', HTTPS: 'https', SOCKS: 'socks5h', SOCKS5: 'socks5h', SOCKS4: 'socks4a' }[match[1].toUpperCase()];
+  try {
+    const parsed = new URL(`${scheme}://${match[2]}`);
+    return parsed.hostname && parsed.port && !parsed.username && !parsed.password ? parsed.href : '';
+  } catch { return ''; }
+}
+
+async function runRemoteGit(args, { cwd, timeout, remote, resolveProxy, platform = process.platform, runCommand = run } = {}) {
+  const options = { cwd, timeout, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } };
+  try {
+    return await runCommand('git', args, options);
+  } catch (error) {
+    if (!/^https?:\/\//i.test(remote || '') || !isNetworkError(error)) throw error;
+    // Keep these settings local to this retry; never rewrite the user's Git config.
+    const retryArgs = ['-c', 'http.version=HTTP/1.1'];
+    if (platform === 'win32' && /schannel:.*(?:handshake|SSL\/TLS)/i.test(error.message)) {
+      retryArgs.push('-c', 'http.sslBackend=openssl');
+    }
+    try {
+      const proxy = proxyUrl(await resolveProxy?.(remote));
+      if (proxy) retryArgs.push('-c', `http.proxy=${proxy}`);
+    } catch {}
+    try {
+      return await runCommand('git', [...retryArgs, ...args], options);
+    } catch (retryError) {
+      if (!isNetworkError(retryError)) throw retryError;
+      const failed = new Error(`无法连接 GitHub，请检查网络或系统代理后重试。${short(retryError.message, 1000)}`);
+      failed.code = 'HARNESS_UPDATE_NETWORK';
+      throw failed;
+    }
+  }
+}
+
 function pnpmCommand(root) {
   const localPnpm = path.join(root, 'node_modules', 'pnpm', 'bin', 'pnpm.mjs');
   if (fs.existsSync(localPnpm)) return { command: 'node', prefix: [localPnpm] };
@@ -98,11 +142,12 @@ function isHash(value) {
 }
 
 class DeepSeekHarnessUpdater {
-  constructor({ root, dataRoot, remote = DEFAULT_REMOTE, branch = DEFAULT_BRANCH } = {}) {
+  constructor({ root, dataRoot, remote = DEFAULT_REMOTE, branch = DEFAULT_BRANCH, resolveProxy } = {}) {
     this.root = path.resolve(root || '');
     this.dataRoot = path.resolve(dataRoot || path.join(this.root, '.xiaomei-data'));
     this.remote = String(remote || DEFAULT_REMOTE).trim();
     this.branch = String(branch || DEFAULT_BRANCH).trim() || DEFAULT_BRANCH;
+    this.resolveProxy = resolveProxy;
   }
 
   available() {
@@ -141,7 +186,7 @@ class DeepSeekHarnessUpdater {
     const local = await this.localState();
     if (!local.available) return { ...local, update_available: false };
     try {
-      const remoteOutput = await run('git', ['ls-remote', this.remote, this.branch], { cwd: this.root, timeout: 20_000 });
+      const remoteOutput = await runRemoteGit(['ls-remote', this.remote, this.branch], { cwd: this.root, timeout: 20_000, remote: this.remote, resolveProxy: this.resolveProxy });
       const remoteCommit = short(remoteOutput.stdout.split(/\s+/)[0], 80);
       if (!isHash(remoteCommit)) throw new Error('上游没有返回有效的提交版本');
       const same = remoteCommit.toLowerCase() === String(local.commit || '').toLowerCase();
@@ -177,7 +222,7 @@ class DeepSeekHarnessUpdater {
         message: same ? 'DeepSeek Harness 已是最新版本' : (fastForward ? '发现 DeepSeek Harness 新版本' : '本地版本与上游分叉，需要手动处理'),
       };
     } catch (error) {
-      return { ...local, remote: this.remote, remote_branch: this.branch, update_available: false, status: 'unavailable', message: short(error?.message || error) };
+      return { ...local, remote: this.remote, remote_branch: this.branch, update_available: false, status: 'unavailable', error_code: error.code, message: short(error?.message || error, 1000) };
     }
   }
 
@@ -185,7 +230,11 @@ class DeepSeekHarnessUpdater {
     const report = (stage, message) => { try { onProgress?.({ stage, message }); } catch {} };
     const check = await this.check();
     if (!check.available) throw new Error(check.message || 'DeepSeek Harness 不可用');
-    if (check.status === 'unavailable') throw new Error(check.message || '无法检查 DeepSeek Harness 上游版本，请稍后重试');
+    if (check.status === 'unavailable') {
+      const error = new Error(check.message || '无法检查 DeepSeek Harness 上游版本，请稍后重试');
+      error.code = check.error_code;
+      throw error;
+    }
     if (!check.update_available) return { ...check, updated: false };
     if (!check.fast_forward) throw new Error('本地 DeepSeek Harness 与上游分叉，请先手动处理本地提交');
 
@@ -210,7 +259,7 @@ class DeepSeekHarnessUpdater {
       }
       report('download', '正在获取 DeepSeek Harness 上游更新');
       const shallow = short((await run('git', ['rev-parse', '--is-shallow-repository'], { cwd: this.root, timeout: 10_000 })).stdout) === 'true';
-      await run('git', shallow ? ['fetch', '--unshallow', this.remote, this.branch] : ['fetch', this.remote, this.branch], { cwd: this.root, timeout: 15 * 60_000 });
+      await runRemoteGit(shallow ? ['fetch', '--unshallow', this.remote, this.branch] : ['fetch', this.remote, this.branch], { cwd: this.root, timeout: 15 * 60_000, remote: this.remote, resolveProxy: this.resolveProxy });
       const fetchedCommit = short((await run('git', ['rev-parse', 'FETCH_HEAD'], { cwd: this.root, timeout: 10_000 })).stdout, 80);
       if (fetchedCommit !== check.remote_commit) throw new Error('检查更新期间上游版本发生变化，请重新检查');
       try {
@@ -285,7 +334,11 @@ class DeepSeekHarnessUpdater {
       const result = await this.localState();
       return { ...result, updated: true, previous_commit: previousCommit, backup_dir: backupDir };
     } catch (error) {
-      if (!worktreeChanged) throw new Error(`DeepSeek Harness 更新失败：${short(error?.message || error, 1000)}`);
+      if (!worktreeChanged) {
+        const failed = new Error(`DeepSeek Harness 更新失败：${short(error?.message || error, 1000)}`);
+        failed.code = error.code;
+        throw failed;
+      }
       report('rollback', '更新失败，正在恢复原版本');
       try {
         await run('git', ['reset', '--hard', previousCommit], { cwd: this.root, timeout: 30_000 });
@@ -305,4 +358,4 @@ class DeepSeekHarnessUpdater {
   }
 }
 
-module.exports = { DeepSeekHarnessUpdater, DEFAULT_REMOTE, DEFAULT_BRANCH, pnpmCommand };
+module.exports = { DeepSeekHarnessUpdater, DEFAULT_REMOTE, DEFAULT_BRANCH, pnpmCommand, runRemoteGit, isNetworkError };

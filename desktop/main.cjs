@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { DesktopUpdater, RELEASES_URL } = require('./updater.cjs');
 const { createDesktopUpdateFetch } = require('./update-network.cjs');
-const { DeepSeekHarnessUpdater } = require('./deepseek-updater.cjs');
+const { DeepSeekHarnessUpdater, isNetworkError } = require('./deepseek-updater.cjs');
 const { installWindowLifecycle } = require('./window-lifecycle.cjs');
 const { installDesktopTray } = require('./tray.cjs');
 const { marketplaceCaptureScript } = require('./marketplace-assistant.cjs');
@@ -82,6 +82,7 @@ const PACKAGED_DEEPSEEK_HARNESS = path.basename(DEEPSEEK_HARNESS_ROOT) === 'deep
 const deepSeekHarnessUpdater = new DeepSeekHarnessUpdater({
   root: DEEPSEEK_HARNESS_ROOT,
   dataRoot: path.join(TEST_RUNTIME_DATA_ROOT, '.xiaomei-data'),
+  resolveProxy: (url) => session.defaultSession.resolveProxy(url),
 });
 const DEEPSEEK_HARNESS_PORT_BASE = 19387;
 // Harness 启动会加载多个插件，首次启动可能超过几十秒。超时过短时，
@@ -2098,46 +2099,56 @@ async function updateDeepSeekHarness(result) {
   if (deepSeekHarnessUpdateOperationPromise) return deepSeekHarnessUpdateOperationPromise;
   deepSeekHarnessUpdateOperationPromise = (async () => {
     try {
-      // The Host loads generated modules directly from vendor/deepseek-harness.
-      // Stop it before replacing source or build output, then restore the view
-      // after a successful build.
-      terminateDeepSeekHarnessProcess(deepSeekHarnessProcess);
-      deepSeekHarnessProcess = null;
-      deepSeekHarnessReady = null;
-      deepSeekHarnessUrl = '';
-      const updated = await deepSeekHarnessUpdater.update({
-        onProgress: (progress) => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('deepseek-harness:update-progress', progress);
+      for (;;) {
+        try {
+          // The Host loads generated modules directly from vendor/deepseek-harness.
+          // Stop it before replacing source or build output, then restore the view
+          // after a successful build.
+          terminateDeepSeekHarnessProcess(deepSeekHarnessProcess);
+          deepSeekHarnessProcess = null;
+          deepSeekHarnessReady = null;
+          deepSeekHarnessUrl = '';
+          const updated = await deepSeekHarnessUpdater.update({
+            onProgress: (progress) => {
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('deepseek-harness:update-progress', progress);
+              }
+            },
+          });
+          deepSeekHarnessUpdateLastResult = updated;
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('deepseek-harness:update-status', updated);
+          if (updated.updated) {
+            writeDeepSeekHarnessUpdateState({ dismissedCommit: '', failedCommit: '', failedMessage: '', updatedCommit: updated.commit || '', updatedAt: Date.now() });
           }
-        },
-      });
-      deepSeekHarnessUpdateLastResult = updated;
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('deepseek-harness:update-status', updated);
-      if (updated.updated) {
-        writeDeepSeekHarnessUpdateState({ dismissedCommit: '', failedCommit: '', failedMessage: '', updatedCommit: updated.commit || '', updatedAt: Date.now() });
+          if (deepSeekHarnessVisible) await refreshDeepSeekHarness();
+          return updated;
+        } catch (error) {
+          if (deepSeekHarnessVisible) {
+            try { await refreshDeepSeekHarness(); } catch {}
+          }
+          const retryable = error.code === 'HARNESS_UPDATE_NETWORK' || isNetworkError(error);
+          const failed = { status: 'error', update_available: true, remote_commit: result?.remote_commit || '', message: String(error?.message || error), retryable };
+          deepSeekHarnessUpdateLastResult = failed;
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('deepseek-harness:update-status', failed);
+          writeDeepSeekHarnessUpdateState({ failedCommit: failed.remote_commit, failedAt: Date.now(), failedMessage: failed.message });
+          const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+          const options = {
+            type: 'error',
+            title: 'DeepSeek Harness · 更新失败',
+            message: 'DeepSeek Harness 更新未完成',
+            detail: retryable
+              ? `${failed.message}\n请检查网络或系统代理，然后点击“重试”。选择“稍后再说”后，24 小时内不再提醒同一版本。`
+              : `${failed.message}\n请根据错误原因处理后手动检查更新。同一上游版本不会在启动时重复提醒。`,
+            buttons: retryable ? ['重试', '稍后再说'] : ['知道了'],
+            defaultId: 0,
+            cancelId: retryable ? 1 : 0,
+            noLink: true,
+          };
+          const answer = owner ? await dialog.showMessageBox(owner, options) : await dialog.showMessageBox(options);
+          if (retryable && answer.response === 0) continue;
+          return failed;
+        }
       }
-      if (deepSeekHarnessVisible) await refreshDeepSeekHarness();
-      return updated;
-    } catch (error) {
-      if (deepSeekHarnessVisible) {
-        try { await refreshDeepSeekHarness(); } catch {}
-      }
-      const failed = { status: 'error', update_available: true, remote_commit: result?.remote_commit || '', message: String(error?.message || error) };
-      deepSeekHarnessUpdateLastResult = failed;
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('deepseek-harness:update-status', failed);
-      writeDeepSeekHarnessUpdateState({ failedCommit: failed.remote_commit, failedAt: Date.now(), failedMessage: failed.message });
-      const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
-      const options = {
-        type: 'error',
-        title: 'DeepSeek Harness · 更新失败',
-        message: 'DeepSeek Harness 更新未完成',
-        detail: `${failed.message}\n请根据错误原因处理后手动检查更新。同一上游版本不会在启动时重复提醒。`,
-        buttons: ['知道了'],
-        noLink: true,
-      };
-      if (owner) await dialog.showMessageBox(owner, options); else await dialog.showMessageBox(options);
-      return failed;
     } finally {
       deepSeekHarnessUpdateOperationPromise = null;
     }
@@ -2168,7 +2179,11 @@ async function checkDeepSeekHarnessUpdate({ manual = false } = {}) {
     const state = readDeepSeekHarnessUpdateState();
     const dismissedRecently = state.dismissedCommit === result.remote_commit
       && Number(state.dismissedAt || 0) > Date.now() - 24 * 60 * 60 * 1000;
-    if (!manual && state.failedCommit === result.remote_commit && !/\bpnpm\.cmd\b/i.test(state.failedMessage || '')) {
+    const failedNetworkRecently = isNetworkError(state.failedMessage)
+      && Number(state.failedAt || 0) > Date.now() - 24 * 60 * 60 * 1000;
+    if (!manual && state.failedCommit === result.remote_commit
+      && (!isNetworkError(state.failedMessage) || failedNetworkRecently)
+      && !/\bpnpm\.cmd\b/i.test(state.failedMessage || '')) {
       const failed = { ...result, status: 'error', message: state.failedMessage || '此版本上次更新失败，请手动检查更新后重试' };
       deepSeekHarnessUpdateLastResult = failed;
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('deepseek-harness:update-status', failed);
@@ -7126,7 +7141,7 @@ function createWindow() {
     scheduleCommerceSurfaceResync();
   });
   // Electron 的顶层页面必须是完整的小美画布；商品分析台通过 iframe 作为其中一个工作区加载。
-  mainWindow.loadURL(`${LOCAL_ORIGIN}/static/index.html?page=${encodeURIComponent(START_PAGE)}&v=2026.10.28.current-source.1`);
+  mainWindow.loadURL(`${LOCAL_ORIGIN}/static/index.html?page=${encodeURIComponent(START_PAGE)}&v=2026.10.28.current-source.2`);
 }
 
 app.whenReady().then(async () => {

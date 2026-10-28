@@ -34,7 +34,7 @@ test('batch text inlet, live text and settings groups survive toggles and reload
         return route.fulfill({json:{api_providers:[], skills:[], categories:[], libraries:[], items:[], workflows:[], batches:[]}});
     });
     await page.goto('http://batch-input.test/static/smart-canvas.html?id=batch-input');
-    await page.waitForFunction(() => smartConfigReady && canvas?.id === 'batch-input');
+    await page.waitForFunction(() => smartConfigReady && lastConfigRefreshAt > 0 && canvas?.id === 'batch-input');
     await page.addStyleTag({content:'#canvasNavPanel {display:none !important}'});
     await page.evaluate(() => {
         nodes = [
@@ -53,8 +53,13 @@ test('batch text inlet, live text and settings groups survive toggles and reload
     assert.equal(await source.inputValue(), '保持相框结构，使用暖光', 'automatic source skips empty and missing nodes');
     assert.equal(await source.getAttribute('readonly'), '');
     assert.equal(await batch.locator('[data-loop-commerce="requirements"]').count(), 0);
+    const copy = batch.locator('.batch-sec').filter({has:page.locator('.batch-sec-title', {hasText:'文案'})});
+    for(const selector of ['[data-loop-ai-provider]', '[data-loop-ai-model]', '[data-loop-detail-guide]']){
+        assert.equal(await copy.locator(selector).count(), 1, `${selector} belongs to the copy section`);
+        assert.equal(await copy.locator(selector).isVisible(), true);
+    }
     const picture = batch.locator('.batch-sec').filter({has:page.locator('.batch-sec-title', {hasText:'画面'})});
-    for(const selector of ['[data-loop-ai-provider]', '[data-loop-ai-model]', '[data-loop-commerce="model"]', '[data-loop-commerce="richness"]', '[data-loop-commerce="rhythm"]', '[data-loop-detail-guide]']){
+    for(const selector of ['[data-loop-commerce="model"]', '[data-loop-commerce="richness"]', '[data-loop-commerce="rhythm"]']){
         assert.equal(await picture.locator(selector).count(), 1, `${selector} belongs to the picture section`);
         assert.equal(await picture.locator(selector).isVisible(), true);
     }
@@ -66,7 +71,8 @@ test('batch text inlet, live text and settings groups survive toggles and reload
     await page.waitForFunction(() => document.querySelector('.batch-advanced')?.open && nodes.find(n => n.id === 'batch').batchAdvancedOpen);
     await page.waitForFunction(height => document.querySelector('[data-id="batch"]').offsetHeight > height, collapsedHeight);
     await batch.locator('.batch-manual > summary').click();
-    await batch.locator('[data-loop-prompt-separator]').fill('---');
+    await page.waitForFunction(() => document.querySelector('.batch-manual')?.open && nodes.find(n => n.id === 'batch')?.batchManualSplitOpen);
+    await page.evaluate(() => { nodes.find(n => n.id === 'batch').batchSplitSeparator = '---'; render(); });
     await summary.click();
     await page.waitForFunction(() => !document.querySelector('.batch-advanced')?.open && !nodes.find(n => n.id === 'batch').batchAdvancedOpen);
     assert.equal(await batch.locator('[data-loop-prompt-separator]').isVisible(), false);

@@ -21,6 +21,7 @@ async function openFixture(t){
     page.setDefaultTimeout(10000);
     const errors = [], requests = [], calls = [];
     let failLlm = false;
+    let failComfy = false;
     let savedCanvas = {
         id:'prompt-fixture', title:'Prompt fixture', connections:[], logs:[], settings:{},
         viewport:{x:0, y:0, scale:1}, nodes:[
@@ -61,6 +62,10 @@ async function openFixture(t){
         if(pathname === '/api/canvas-comfy-tasks' && request.method() === 'POST'){
             calls.push('comfy');
             requests.push(request.postDataJSON());
+            if(failComfy){
+                failComfy = false;
+                return route.fulfill({status:503, json:{detail:'模拟 ComfyUI 不可用'}});
+            }
             return route.fulfill({json:{task_id:`canvas_comfy_prompt_${requests.length}`, status:'queued'}});
         }
         if(pathname.startsWith('/api/canvas-comfy-tasks/')){
@@ -75,7 +80,7 @@ async function openFixture(t){
         ensureGenerationNotificationPermission = () => {};
         render(); applyViewport();
     });
-    return {page, errors, requests, calls, failLlm:() => {failLlm = true;}};
+    return {page, errors, requests, calls, failLlm:() => {failLlm = true;}, failNextComfy:() => {failComfy = true;}};
 }
 
 test('ComfyUI prompt height follows the handle at different zoom levels and survives saving', {timeout:30000}, async t => {
@@ -185,7 +190,16 @@ test('seed dice randomizes every submission and preserves fixed mode across relo
     assert.equal(await dice.getAttribute('aria-pressed'), 'true');
     assert.equal(await dice.locator('svg').count(), 1);
     assert.equal(await page.locator('[data-comfy-node-random="8:steps"]').count(), 0);
-    const first = await run(), second = await run();
+    const first = await run();
+    assert.equal(await input.inputValue(), String(first));
+    const second = await run();
+    assert.equal(await input.inputValue(), String(second));
+    assert.equal(await page.evaluate(() => nodes.find(node => node.id === 'workflow').runSettings.comfyParams['8:seed']), second);
+    assert(await page.evaluate(() => saveCanvas()));
+    await page.reload();
+    await page.waitForFunction(() => smartConfigReady && nodes.some(node => node.id === 'workflow'));
+    assert.equal(await dice.getAttribute('aria-pressed'), 'true');
+    assert.equal(await input.inputValue(), String(second));
     for(const seed of [first, second]){
         assert(Number.isSafeInteger(seed) && seed >= 1 && seed <= 4294967295);
     }
@@ -221,5 +235,34 @@ test('seed dice randomizes every submission and preserves fixed mode across relo
     ].map(comfyRandomEnabledField)), [true, true, true, true, false, false, false]);
     await page.evaluate(() => { viewport = {x:-400, y:0, scale:1}; render(); applyViewport(); });
     await page.screenshot({path:path.join(root, 'logs/comfy-node-seed-dice.png'), fullPage:true});
+    assert.deepEqual(errors, []);
+});
+
+test('random seed remains visible after submission failure and refreshes on retry and cascade execution', {timeout:30000}, async t => {
+    const {page, errors, requests, failNextComfy} = await openFixture(t);
+    const input = page.locator('[data-id="workflow"] [data-comfy-node-param="8:seed"]');
+    async function run(){
+        await page.locator('[data-id="workflow"] [data-comfy-node-run]').click();
+        await page.waitForFunction(() => !comfyNodeSubmissions.has('workflow') && !smartDependencyRuns.has('workflow'));
+        const seed = requests.at(-1).params['8'].seed;
+        assert.equal(await input.inputValue(), String(seed));
+        assert.equal(await page.evaluate(() => nodes.find(node => node.id === 'workflow').runSettings.comfyParams['8:seed']), seed);
+        return seed;
+    }
+    failNextComfy();
+    const failedSeed = await run();
+    assert(await page.evaluate(() => saveCanvas()));
+    await page.reload();
+    await page.waitForFunction(() => smartConfigReady && nodes.some(node => node.id === 'workflow'));
+    assert.equal(await input.inputValue(), String(failedSeed));
+    const retrySeed = await run();
+    assert.notEqual(retrySeed, failedSeed);
+    await page.evaluate(async () => {
+        const node = nodes.find(node => node.id === 'workflow');
+        await generateUrlsForCurrentSettings(node, '', [], cloneSmartSettings(node.runSettings));
+    });
+    const cascadeSeed = requests.at(-1).params['8'].seed;
+    assert.notEqual(cascadeSeed, retrySeed);
+    assert.equal(await input.inputValue(), String(cascadeSeed));
     assert.deepEqual(errors, []);
 });

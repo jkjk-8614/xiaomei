@@ -7718,6 +7718,24 @@ function smartComfyRandomValue(field){
     }
     return Math.floor(value);
 }
+function syncSmartComfyRandomValues(sourceNode, runSettings, fields, values){
+    const randomized = {};
+    fields.forEach(field => {
+        if(comfyRandomEnabledField(field) && smartComfyRandomActiveFor(runSettings, field.id)){
+            randomized[field.id] = values[field.id];
+        }
+    });
+    if(!Object.keys(randomized).length) return;
+    runSettings.comfyParams = {...(runSettings.comfyParams || {}), ...randomized};
+    if(!sourceNode?.runSettings || sourceNode.runSettings.comfyWorkflow !== runSettings.comfyWorkflow) return;
+    sourceNode.runSettings.comfyParams = {...(sourceNode.runSettings.comfyParams || {}), ...randomized};
+    if(activeSettingsSubject()?.id === sourceNode.id){
+        settings.comfyParams = {...(settings.comfyParams || {}), ...randomized};
+        renderDynamicParams();
+    }
+    render();
+    scheduleSave();
+}
 function setDynamicSetting(key, value){
     const numericKeys = new Set(['count','width','height','videoDuration','enhanceStrength','enhanceUpscaleRes','editUpscaleRes','customRatioWidth','customRatioHeight','customWidth','customHeight']);
     const layoutKeys = new Set(['engine','provider_id','model','resolution','ratio','imageOperation','upscaleResolution','videoProvider','videoModel','videoMode','videoAspect','videoResolution','comfyMode','comfyWorkflow','quality','background','count','enhanceUpscaleRes','editUpscaleRes','rhConfigKey','rhPayment','rhInstanceType']);
@@ -14520,11 +14538,6 @@ function smartLoopPairedBodyHtml(node){
                 <span class="batch-field-label">提示词 / 产品卖点<em>决定每屏画面内容</em></span>
                 <textarea class="batch-control loop-paired-prompts loop-detail-source" data-loop-detail-text ${node.batchSourceNodeId !== 'local' && inputs.length ? 'readonly' : ''} placeholder="输入产品卖点、画面要求，或连接已有分屏文案">${escapeHtml(source)}</textarea>
             </label>
-        </section>
-        <section class="batch-sec">
-            <div class="batch-sec-head"><span class="batch-sec-title">画面</span><span class="batch-sec-note">决定整套图的风格与信息量</span></div>
-            ${smartBatchDesignHtml(node)}
-            ${smartBatchDetailFieldsHtml(node)}
             <div class="batch-more-group">
                 <div class="batch-more-title">文本模型</div>
                 <div class="batch-grid">
@@ -14533,6 +14546,15 @@ function smartLoopPairedBodyHtml(node){
                 </div>
             </div>
             <label class="batch-field"><span>统一视觉要求</span><textarea class="batch-control loop-paired-prompts loop-detail-guide" data-loop-detail-guide ${node.batchGuideNodeId ? 'readonly' : ''}>${escapeHtml(smartLoopDetailVisualGuide(node))}</textarea></label>
+            <div class="batch-actions-row">
+                <button class="batch-btn is-accent" type="button" data-loop-commerce-plan ${node.aiSplitRunning || running ? 'disabled' : ''}><i data-lucide="sparkles"></i>${node.aiSplitRunning ? '正在生成提示词…' : '生成分屏提示词'}</button>
+                <button class="batch-btn" type="button" data-loop-ai-split ${!source || node.aiSplitRunning || running ? 'disabled' : ''}><i data-lucide="scissors"></i>拆分已有文案</button>
+            </div>
+        </section>
+        <section class="batch-sec">
+            <div class="batch-sec-head"><span class="batch-sec-title">画面</span><span class="batch-sec-note">决定整套图的风格与信息量</span></div>
+            ${smartBatchDesignHtml(node)}
+            ${smartBatchDetailFieldsHtml(node)}
         </section>
         <section class="batch-sec">
             <div class="batch-sec-head"><span class="batch-sec-title">输出</span><span class="batch-sec-note">应用到全部屏</span></div>
@@ -14561,10 +14583,6 @@ function smartLoopPairedBodyHtml(node){
         </details>
         ${node.aiSplitError ? `<p class="batch-notice is-blocked"><i data-lucide="alert-triangle"></i><span>${escapeHtml(node.aiSplitError)}</span></p>` : ''}
         <div class="batch-actions">
-            <div class="batch-actions-row">
-                <button class="batch-btn is-accent" type="button" data-loop-commerce-plan ${node.aiSplitRunning || running ? 'disabled' : ''}><i data-lucide="sparkles"></i>${node.aiSplitRunning ? '正在生成提示词…' : '生成分屏提示词'}</button>
-                <button class="batch-btn" type="button" data-loop-ai-split ${!source || node.aiSplitRunning || running ? 'disabled' : ''}><i data-lucide="scissors"></i>拆分已有文案</button>
-            </div>
             <div class="batch-notice loop-paired-summary ${state.ready || state.repairable ? 'is-ready' : 'is-blocked'}">
                 <i class="batch-notice-ok" data-lucide="check-circle-2"></i>
                 <i class="batch-notice-warn" data-lucide="alert-triangle"></i>
@@ -30102,13 +30120,13 @@ function buildPromptRequestForNode(node, defaultImages, ctx=smartLoopContext, co
         promptInput.innerHTML = oldHtml;
     }
 }
-async function generateUrlsForCurrentSettings(node, prompt, refs, runSettings=settings, ctx=smartLoopContext){
+async function generateUrlsForCurrentSettings(node, prompt, refs, runSettings=settings, ctx=smartLoopContext, sourceNode=node){
     cameraGenerationContextFor(node, refs, ctx);
     const activeSettings = apiOnlySettings(runSettings || settings);
     if(typeof validateProductFidelityRun === 'function') validateProductFidelityRun(node, activeSettings);
     const preserve = outpaintPreserveInfo(node);
     const requestSettings = preserve ? {...activeSettings, outpaintPreserve:preserve, outpaintMode:true} : activeSettings;
-    if(activeSettings.engine === 'comfy') return generateComfyUrlsWithSettings(activeSettings, prompt, refs, node);
+    if(activeSettings.engine === 'comfy') return generateComfyUrlsWithSettings(activeSettings, prompt, refs, node, sourceNode);
     if(activeSettings.engine === 'runninghub' && runningHubSelectedModel(activeSettings)){
         const taskResult = await runApiGeneration(prompt, refs, runningHubModelApiSettings(requestSettings));
         const taskIds = Array.isArray(taskResult?.taskIds) ? taskResult.taskIds : [];
@@ -30139,7 +30157,7 @@ async function generateUrlsForCurrentSettings(node, prompt, refs, runSettings=se
         : [];
     return {urls, kind:mediaKindForUrls(urls, 'image')};
 }
-async function generateComfyUrlsWithSettings(runSettings, prompt, refs, progressNode=null){
+async function generateComfyUrlsWithSettings(runSettings, prompt, refs, progressNode=null, sourceNode=progressNode){
     const allRefs = refs || [];
     const imageRefs = imageRefsOnly(allRefs);
     const mode = runSettings.comfyMode || 'text';
@@ -30189,6 +30207,7 @@ async function generateComfyUrlsWithSettings(runSettings, prompt, refs, progress
             values[field.id] = runSettings.comfyParams?.[field.id] ?? field.default;
         }
     });
+    syncSmartComfyRandomValues(sourceNode, runSettings, fields, values);
     const result = await runQueuedSmartComfyGenerate({prompt, workflow_json:workflowName, app_id:String(runSettings.comfyAppId || runSettings.workflowAppId || '').trim(), params:comfyParamsFromWorkflowValues(wf.config || {fields:[]}, values, runSettings.comfyParams || {}), type:'workflow-custom', client_id:smartClientId}, progressNode);
     const urls = resultMediaUrls(result);
     const fallbackKind = result.videos?.length ? 'video' : result.audios?.length ? 'audio' : result.texts?.length ? 'text' : 'image';
@@ -30262,7 +30281,7 @@ async function runCascadeStepIntoNode(sourceNode, targetNode, inputRefs, ctx=sma
     render();
     settings = previousSettings;
     try {
-        const result = await generateUrlsForCurrentSettings(outputNode, prompt, request.refs || [], runSettings, ctx);
+        const result = await generateUrlsForCurrentSettings(outputNode, prompt, request.refs || [], runSettings, ctx, requestNode);
         if(!result.urls?.length) throw new Error(result.kind === 'video' ? tr('smart.errNoOutVideos') : tr('smart.errNoOutImages'));
         if(outpaintSize) delete requestNode.outpaintSize;
         addSmartGenerationLog({run:{...runLog, kind:result.kind || logKind}, outputs:result.urls, runMs:nowMs() - runLogStart});
@@ -30397,7 +30416,7 @@ async function runLoopRoundIntoSlot(loopNode, rootNode, outputSlot, loopIndex, c
             }
             result = {urls:(outputSlot.images || []).map(img => img?.url ? img : null).filter(Boolean), kind:'image'};
         } else {
-            result = await generateUrlsForCurrentSettings(outputSlot, prompt, request.refs || [], runSettings, ctx);
+            result = await generateUrlsForCurrentSettings(outputSlot, prompt, request.refs || [], runSettings, ctx, rootNode);
         }
         if(!result.urls?.length) throw new Error(result.kind === 'video' ? tr('smart.errNoOutVideos') : tr('smart.errNoOutImages'));
         let additions;
@@ -31313,11 +31332,11 @@ async function runGenerationDirect(referenceMode='default', referenceOverride=nu
             if(!saved)throw new Error('结果节点尚未保存，请检查连接后继续');
         }
         if(imageRequestSettings.engine === 'comfy'){
-            await runComfyGeneration(pendingNode, prompt, refs, pendingNode, pendingMeta, {}, imageRequestSettings);
+            await runComfyGeneration(pendingNode, prompt, refs, pendingNode, pendingMeta, {sourceNode:node}, imageRequestSettings);
             if(!multiAgentCanvasCurrent())return {ok:false,error:'画布已切换，请回到原画布恢复生成结果'};
             if(sourceVisualState) restoreSourceVisualState(node, sourceVisualState);
             addSmartGenerationLog({run:runLog, outputs:pendingNode.images || [], runMs:nowMs() - runLogStart});
-            settings = previousSettings;
+            settings = comfyWorkflowRun && activeSettingsSubject()?.id === node.id ? cloneSmartSettings(node.runSettings) : previousSettings;
             return {ok:true};
         }
         if(isApiLikeEngine(imageRequestSettings.engine) && imageRequestSettings.apiKind === 'video'){
@@ -31397,7 +31416,7 @@ async function runGenerationDirect(referenceMode='default', referenceOverride=nu
         return {ok:true};
     } catch(e) {
         if(!multiAgentCanvasCurrent())return {ok:false,error:'画布已切换，请回到原画布恢复任务'};
-        settings = previousSettings;
+        settings = comfyWorkflowRun && activeSettingsSubject()?.id === node.id ? cloneSmartSettings(node.runSettings) : previousSettings;
         if(handleJimengPendingSignal(pendingNode, e)){
             if(sourceVisualState) restoreSourceVisualState(node, sourceVisualState);
             delete pendingNode._runMetaTargetId;
@@ -32217,6 +32236,8 @@ async function runComfyGeneration(node, prompt, refs, pendingNode, meta, options
             values[field.id] = settings.comfyParams?.[field.id] ?? field.default;
         }
     });
+    syncSmartComfyRandomValues(options.sourceNode || node, settings, fields, values);
+    if(meta?.settings) meta.settings.comfyParams = {...settings.comfyParams};
     const result = await runQueuedSmartComfyGenerate({prompt, workflow_json:workflowName, app_id:String(settings.comfyAppId || settings.workflowAppId || '').trim(), params:comfyParamsFromWorkflowValues(wf.config || {fields:[]}, values, settings.comfyParams || {}), type:'workflow-custom', client_id:smartClientId}, pendingNode,settings);
     const urls = resultMediaUrls(result);
     if(!urls.length) throw new Error(tr('smart.errComfyNoImages'));
