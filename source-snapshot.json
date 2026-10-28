@@ -226,23 +226,23 @@
     },
     {
       "path": "design_brain_team.py",
-      "sourceSha256": "4462aa70e85f9f5f460b3c570b40d9c75d8e05244c130f25994116637fb5bc84",
-      "releaseSha256": "4462aa70e85f9f5f460b3c570b40d9c75d8e05244c130f25994116637fb5bc84"
+      "sourceSha256": "004b844aa5f977378cb35d4945808f004a2a2b7efb89b858ae0ab2845f0f24c5",
+      "releaseSha256": "004b844aa5f977378cb35d4945808f004a2a2b7efb89b858ae0ab2845f0f24c5"
     },
     {
       "path": "design_brain_team_api.py",
-      "sourceSha256": "54d7cd200b234355069a37ebc5fdd469cb722e5677d09c90c5c43c3caf9af123",
-      "releaseSha256": "54d7cd200b234355069a37ebc5fdd469cb722e5677d09c90c5c43c3caf9af123"
+      "sourceSha256": "d1ee679ac2e635a0e145557427610c249c9a82a70b961cece8fc049ca5941033",
+      "releaseSha256": "d1ee679ac2e635a0e145557427610c249c9a82a70b961cece8fc049ca5941033"
     },
     {
       "path": "design_brain_tools.py",
-      "sourceSha256": "6984ef6aeac9ccd5eb98331d93f5155b4f09dcd11d112a2622610c9e7cd455fc",
-      "releaseSha256": "6984ef6aeac9ccd5eb98331d93f5155b4f09dcd11d112a2622610c9e7cd455fc"
+      "sourceSha256": "6d5ea0d56724210a3848eb8804a630adaa218950cedfd74d989776e2094fbe73",
+      "releaseSha256": "6d5ea0d56724210a3848eb8804a630adaa218950cedfd74d989776e2094fbe73"
     },
     {
       "path": "design_brain_turns.py",
-      "sourceSha256": "b97546790310495903c6be39e6398c4e3f2f3c4310c459e872babfb20f6171de",
-      "releaseSha256": "b97546790310495903c6be39e6398c4e3f2f3c4310c459e872babfb20f6171de"
+      "sourceSha256": "47943d121413bf1317eba8c8c3cca05d7a42b53f8ec902ff51933c7955be0bc5",
+      "releaseSha256": "47943d121413bf1317eba8c8c3cca05d7a42b53f8ec902ff51933c7955be0bc5"
     },
     {
       "path": "design_brain_usage.py",
@@ -471,8 +471,8 @@
     },
     {
       "path": "static/canvas.html",
-      "sourceSha256": "93d1523f052e3cfbb6bc225b2a905cc9548dc6fa80ff77163f6522fd0286c204",
-      "releaseSha256": "93d1523f052e3cfbb6bc225b2a905cc9548dc6fa80ff77163f6522fd0286c204"
+      "sourceSha256": "7d01f778459bdba4bdfa70b65b0cc82ae6de91ced56ee15258f467a8b2ef0192",
+      "releaseSha256": "7d01f778459bdba4bdfa70b65b0cc82ae6de91ced56ee15258f467a8b2ef0192"
     },
     {
       "path": "static/commerce-analysis.html",
@@ -536,8 +536,8 @@
     },
     {
       "path": "static/css/design-brain.css",
-      "sourceSha256": "55564ea6dcf5059d7556dbfb1988f5e94085f3acca698bf9421fed2dcd268e8c",
-      "releaseSha256": "55564ea6dcf5059d7556dbfb1988f5e94085f3acca698bf9421fed2dcd268e8c"
+      "sourceSha256": "177227641a9abf7ba9d3ea25b1f7b8eb2626673c3aecc4a76bae1d88415f3081",
+      "releaseSha256": "177227641a9abf7ba9d3ea25b1f7b8eb2626673c3aecc4a76bae1d88415f3081"
     },
     {
       "path": "static/css/fluent-ui.css",
@@ -641,8 +641,8 @@
     },
     {
       "path": "static/design-brain.html",
-      "sourceSha256": "451079ad6129142c3826c42dc9971cfa14756f8b065c86ceb9489999eb683b95",
-      "releaseSha256": "451079ad6129142c3826c42dc9971cfa14756f8b065c86ceb9489999eb683b95"
+      "sourceSha256": "71d3f487822936456819545c0da6d27368c543b1506a57d7e0a136a78ba0732b",
+      "releaseSha256": "71d3f487822936456819545c0da6d27368c543b1506a57d7e0a136a78ba0732b"
     },
     {
       "path": "static/enhance.html",
@@ -871,8 +871,8 @@
     },
     {
       "path": "static/js/design-brain-team.js",
-      "sourceSha256": "ee43c67e6691cfb28c01a3cdc6976679fffa99279d044bd52a258f3afc7dcc0c",
-      "releaseSha256": "ee43c67e6691cfb28c01a3cdc6976679fffa99279d044bd52a258f3afc7dcc0c"
+      "sourceSha256": "ac01dff5f401fcb17877505d9c724205f8ae381eb0cf55e8454c2a93f5ede3a3",
+      "releaseSha256": "ac01dff5f401fcb17877505d9c724205f8ae381eb0cf55e8454c2a93f5ede3a3"
     },
     {
       "path": "static/js/design-brain.js",
@@ -1156,8 +1156,8 @@
     },
     {
       "path": "static/smart-canvas.html",
-      "sourceSha256": "ecdb90bdb79ef6283a6992d5b3b3a8c01d8afba015b84bb1e98c2007c03a151d",
-      "releaseSha256": "ecdb90bdb79ef6283a6992d5b3b3a8c01d8afba015b84bb1e98c2007c03a151d"
+      "sourceSha256": "315446bbe5de48acbeb375c1a2b235bbbfc5cca7bdd2f5894886a75a4ea2727f",
+      "releaseSha256": "315446bbe5de48acbeb375c1a2b235bbbfc5cca7bdd2f5894886a75a4ea2727f"
     },
     {
       "path": "static/sw.js",

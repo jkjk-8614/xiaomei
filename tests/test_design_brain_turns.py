@@ -55,6 +55,58 @@ class FakeOrchestrator:
 
 
 class TurnEngineTest(unittest.TestCase):
+    def test_round_robin_custom_bots_respond_to_prior_messages(self):
+        bots = [self.team.create_bot({"name": name, "personality": personality, "task": task,
+                                      "model": {"provider": "p", "model": "m"}})
+                for name, personality, task in [("兔子", "喜欢追问", "找出需求缺口"),
+                                                ("小猫", "喜欢举例", "提出解决方法")]]
+        group = self.team.create_group({"name": "轮流讨论", "members": [bot["id"] for bot in bots],
+                                       "admin_bot_id": bots[0]["id"], "reply_mode": "round_robin"})
+        chat_id = group["chat"]["id"]
+        self.team.append_message(chat_id, role="user", text="一起讨论商品卖点")
+        engine = self._engine(['{"say":"卖点要先确认使用场景。","mentions":[]}',
+                               '{"say":"可以从书桌的使用场景入手。","mentions":[]}'])
+        self._run(engine, chat_id)
+        self.assertEqual(len(self.host.calls), 2)
+        self.assertIn("喜欢追问", self.host.calls[0].system_prompt)
+        self.assertIn("喜欢举例", self.host.calls[1].system_prompt)
+        self.assertIn("卖点要先确认使用场景", self.host.calls[1].message)
+        self.assertFalse(engine.status(chat_id)["running"])
+
+    def test_custom_personalities_and_tasks_follow_each_bot_in_group_relay(self):
+        curious = self.team.create_bot({
+            "name": "好奇的兔子", "personality": "先追问，再表达自己的观点", "task": "找出需求缺口",
+            "model": {"provider": "p", "model": "m"}, "instructions": "沿用原工作方法",
+        })
+        critic = self.team.create_bot({
+            "name": "挑剔的小猫", "personality": "直率，要求证据", "task": "指出方案的问题",
+            "model": {"provider": "p", "model": "m"},
+        })
+        group = self.team.create_group({"name": "自定义讨论", "members": [curious["id"], critic["id"]],
+                                       "admin_bot_id": curious["id"], "relay_limit": 8})
+        chat_id = group["chat"]["id"]
+        self.team.append_message(chat_id, role="user", text="讨论这张主图的构图")
+        import json
+        engine = self._engine([
+            json.dumps({"say": "构图需要先确认受众。", "mentions": [critic["id"]]}),
+            json.dumps({"say": "同意先确认，但还需要商品比例依据。", "mentions": [curious["id"]]}),
+            json.dumps({"say": "我来补充比例要求。", "mentions": []}),
+        ])
+        self._run(engine, chat_id)
+        self.assertEqual(len(self.host.calls), 3)
+        self.assertIn(curious["personality"], self.host.calls[0].system_prompt)
+        self.assertNotIn(critic["personality"], self.host.calls[0].system_prompt)
+        self.assertIn(critic["task"], self.host.calls[0].system_prompt)
+        self.assertIn("沿用原工作方法", self.host.calls[0].system_prompt)
+        self.assertIn(critic["personality"], self.host.calls[1].system_prompt)
+        self.assertIn("构图需要先确认受众", self.host.calls[1].message)
+        self.assertIn(curious["personality"], self.host.calls[2].system_prompt)
+        messages = self.team.list_messages(chat_id)["messages"]
+        self.assertEqual([item["bot_id"] for item in messages if item["role"] == "bot"],
+                         [curious["id"], critic["id"], curious["id"]])
+        dm = self.team.ensure_dm_chat(critic["id"])
+        self.assertIn(critic["personality"], engine._system_prompt(dm, None, self.team.get_bot(critic["id"])))
+
     def test_existing_custom_bot_instructions_receive_sku_rule_without_rewrite(self):
         self.team.update_bot("bot_director", {"instructions": "用户自己写的总监工作说明"})
         chat = self.team.ensure_dm_chat("bot_director")

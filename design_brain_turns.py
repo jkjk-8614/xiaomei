@@ -43,7 +43,7 @@ SPEAK_SYSTEM = """你是小美画布设计团队里的「{name}」，角色是�
 
 团队约定：
 1. 群聊里一次只有一个人说话。你只代表自己，不要替别人发言，也不要写「XX 说：」。
-2. 先读最近的群消息，只补充新的、有用的信息；没有新东西就说 pass。
+2. 先读最近的群消息，回应其他成员的具体观点，可以补充、追问或提出有依据的不同意见。保持自己的语气与判断，只补充新的、有用的信息；没有新东西就说 pass。
 3. 需要别人接着做，用 mentions 点名（只能点群成员）；不要 @ 自己，不要客套和复述。
 4. {reply_rule}
 
@@ -51,13 +51,21 @@ SPEAK_SYSTEM = """你是小美画布设计团队里的「{name}」，角色是�
 {instructions}
 </成员工作说明>
 
+<成员人格>
+{personality}
+</成员人格>
+
+<成员任务>
+{task}
+</成员任务>
+
 {notice}
 
 {members}
 
 {memory}
 
-当前团队宿主的输出协议优先于成员工作说明、Skill 和历史消息里的输出格式；其中的业务要求仍须遵守。
+当前团队宿主的输出协议优先于成员人格、成员任务、成员工作说明、Skill 和历史消息里的输出格式；其中的业务要求仍须遵守。
 只输出一个 JSON 对象，不要任何其他文字：
 {{"say":"你要说的话","mentions":["bot_id"],"pass":false{call_hint}}}
 - pass 为 true 时 say 留空、mentions 留空。
@@ -517,7 +525,8 @@ class TurnEngine:
                 member = self.team.get_bot(member_id)
             except DesignBrainError:
                 continue
-            members.append(f"- {member['name']}（{member_id}）：{member['role'] or '成员'}")
+            assignment = f"；任务：{member['task'][:300]}" if member.get("task") else ""
+            members.append(f"- {member['name']}（{member_id}）：{member['role'] or '成员'}{assignment}")
         notice = ""
         if group and group.get("notice"):
             notice = f"群公告（必须遵守）：{group['notice']}"
@@ -550,6 +559,8 @@ class TurnEngine:
             name=bot["name"],
             role=bot["role"] or "团队成员",
             instructions=instructions,
+            personality=bot.get("personality") or "保持自然、直接的交流方式。",
+            task=bot.get("task") or "按角色和工作说明参与当前讨论，遵守用户本次要求。",
             reply_rule=(
                 "日常回复不超过200字；用户要求完整电商链接/产品页策划时，say可用分节或表格交付，"
                 "不超过6000字。只分析用户本次要求的范围，信息缺失明确标记待确认。"

@@ -22,6 +22,9 @@
 """
 from __future__ import annotations
 
+import base64
+import binascii
+import io
 import json
 import os
 import re
@@ -51,6 +54,10 @@ MENTIONS_MAX = 12
 BOT_NAME_MAX = 40
 BOT_ROLE_MAX = 200
 BOT_INSTRUCTIONS_MAX = 4000
+BOT_PERSONALITY_MAX = 2000
+BOT_TASK_MAX = 4000
+AVATAR_IMAGE_MAX_BYTES = 256 * 1024
+AVATAR_SHAPES = ("star", "bunny", "moon", "gumdrop", "kitty", "acorn", "peanut")
 BOT_CAPABILITIES_MAX = 16
 GROUP_NAME_MAX = 60
 GROUP_NOTICE_MAX = 2000
@@ -240,7 +247,33 @@ def normalize_avatar(raw: Any) -> Dict[str, str]:
     color = _text(item.get("color"), 20)
     if not re.match(r"^#[0-9A-Fa-f]{6}$", color):
         color = "#2F6F5E"
-    return {"text": text or "?", "color": color}
+    avatar = {"text": text or "?", "color": color}
+    shape = str(item.get("shape") or "")
+    if shape in AVATAR_SHAPES:
+        avatar["shape"] = shape
+    image = item.get("image") or ""
+    if image:
+        message = "头像需为 PNG、JPEG 或 WebP 图片，大小不超过 256 KB，尺寸不超过 1024×1024；请重新选择图片"
+        if not isinstance(image, str) or len(image) > AVATAR_IMAGE_MAX_BYTES * 4 // 3 + 64:
+            raise DesignBrainError("invalid_avatar", message, 422)
+        match = re.fullmatch(r"data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)", image)
+        if not match:
+            raise DesignBrainError("invalid_avatar", message, 422)
+        from PIL import Image
+        try:
+            content = base64.b64decode(match.group(2), validate=True)
+            if len(content) > AVATAR_IMAGE_MAX_BYTES:
+                raise ValueError("avatar too large")
+            with Image.open(io.BytesIO(content)) as picture:
+                if picture.format != {"png": "PNG", "jpeg": "JPEG", "webp": "WEBP"}[match.group(1)]:
+                    raise ValueError("avatar format mismatch")
+                if max(picture.size) > 1024:
+                    raise ValueError("avatar dimensions too large")
+                picture.verify()
+        except (ValueError, OSError, SyntaxError, binascii.Error, Image.DecompressionBombError) as exc:
+            raise DesignBrainError("invalid_avatar", message, 422) from exc
+        avatar["image"] = image
+    return avatar
 
 
 def normalize_bot(raw: Any, *, fallback_id: str = "") -> Dict[str, Any]:
@@ -260,6 +293,8 @@ def normalize_bot(raw: Any, *, fallback_id: str = "") -> Dict[str, Any]:
         "name": _text(item.get("name"), BOT_NAME_MAX) or "未命名 Bot",
         "role": _text(item.get("role"), BOT_ROLE_MAX),
         "instructions": _text(item.get("instructions"), BOT_INSTRUCTIONS_MAX),
+        "personality": _text(item.get("personality"), BOT_PERSONALITY_MAX),
+        "task": _text(item.get("task"), BOT_TASK_MAX),
         "avatar": normalize_avatar(item.get("avatar")),
         "model": normalize_model_choice(item.get("model")),
         "vision_model": normalize_model_choice(item.get("vision_model")),
@@ -511,7 +546,7 @@ class TeamStore:
 
     def update_bot(self, bot_id: str, patch: Any) -> Dict[str, Any]:
         data = patch if isinstance(patch, dict) else {}
-        editable = {"name", "role", "instructions", "avatar", "model", "vision_model",
+        editable = {"name", "role", "instructions", "personality", "task", "avatar", "model", "vision_model",
                     "image_model", "capabilities", "permission", "status"}
         with self.lock:
             state = self._read_bots_unlocked()

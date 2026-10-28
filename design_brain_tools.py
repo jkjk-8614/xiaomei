@@ -76,15 +76,17 @@ TOOL_SPECS: Dict[str, Dict[str, Any]] = {
     },
     "brain.team.create_bot": {
         "pack": "pack.team",
-        "args": {"name": "名字", "role": "角色", "instructions": "工作说明",
+        "args": {"name": "名字", "role": "角色", "personality": "性格与说话方式", "task": "任务与交付要求", "instructions": "工作说明",
+                 "avatar": {"shape": "star|bunny|moon|gumdrop|kitty|acorn|peanut", "color": "#RRGGBB"},
                  "capabilities": ["pack.read"], "model": {"provider": "", "model": ""}},
         "desc": "新建一个 Bot（仅主 Bot）",
     },
     "brain.team.update_bot": {
         "pack": "pack.team",
-        "args": {"bot_id": "bot_ 开头", "name": "", "role": "", "instructions": "",
+        "args": {"bot_id": "bot_ 开头", "name": "", "role": "", "personality": "", "task": "", "instructions": "",
+                 "avatar": {"shape": "star|bunny|moon|gumdrop|kitty|acorn|peanut", "color": "#RRGGBB"},
                  "capabilities": [], "status": "active|archived"},
-        "desc": "修改 Bot 的名字、角色、说明、能力或归档（仅主 Bot）",
+        "desc": "修改 Bot 的名字、角色、人格、任务、说明、能力或归档（仅主 Bot）",
     },
     "brain.team.create_group": {
         "pack": "pack.team",

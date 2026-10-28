@@ -197,6 +197,10 @@
 
     let avatarSerial = 0;
     function avatar(bot, size = '', live = false) {
+        const image = bot?.avatar?.image || '';
+        if (/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(image)) {
+            return `<span class="team-avatar team-photo ${esc(size)}" data-avatar-bot="${esc(bot?.id || '')}" data-live="${live}" data-state="idle" aria-hidden="true"><img src="${esc(image)}" alt=""><i class="team-avatar-state"></i></span>`;
+        }
         const shapes = window.DesignBrainCharacters;
         const defaults = {bot_director: 'star', bot_reference: 'bunny', bot_planner: 'moon', bot_executor: 'gumdrop', bot_reviewer: 'kitty'};
         const hash = Array.from(bot?.id || 'bot').reduce((value, ch) => (Math.imul(value, 31) + ch.charCodeAt(0)) >>> 0, 0);
@@ -896,7 +900,7 @@
                 <h4>成员</h4>
                 <div class="team-members">${group.members.map((id) => {
                     const bot = botById(id);
-                    return `<div class="team-member">${avatar(bot, '', true)}<div class="team-member-info"><div class="team-member-name">${esc(bot?.name || id)}${group.admin_bot_id === id ? '<em>负责人</em>' : ''}</div><div data-member-work="${esc(id)}"></div></div></div>`;
+                    return `<div class="team-member">${avatar(bot, '', true)}<div class="team-member-info"><div class="team-member-name">${esc(bot?.name || id)}${group.admin_bot_id === id ? '<em>负责人</em>' : ''}</div>${bot?.task ? `<small class="team-member-task">${esc(bot.task)}</small>` : ''}<div data-member-work="${esc(id)}"></div></div><button type="button" class="subtle-button team-member-edit" data-team-edit-bot="${esc(id)}" aria-label="编辑${esc(bot?.name || id)}">编辑</button></div>`;
                 }).join('')}</div>
                 <h4>记忆</h4>
                 <div class="team-side-block"><span>项目记忆</span><strong id="teamMemCount">…</strong></div>
@@ -916,6 +920,8 @@
             <div class="team-side-block"><span>权限</span><strong>${esc(({full: '完整权限', workspace: '设计工作区', read: '只读'})[bot.permission] || bot.permission)}</strong></div>
             <h4>能力</h4>
             <div class="team-chips">${(bot.capabilities || []).map((id) => `<span>${esc(CAPABILITY_LABELS[id] || id)}</span>`).join('') || '<span>无</span>'}</div>
+            ${bot.personality ? `<details class="team-details" open><summary>人格</summary><pre>${esc(bot.personality)}</pre></details>` : ''}
+            ${bot.task ? `<details class="team-details" open><summary>任务</summary><pre>${esc(bot.task)}</pre></details>` : ''}
             ${bot.instructions ? `<details class="team-details"><summary>工作说明</summary><pre>${esc(bot.instructions)}</pre></details>` : ''}
             <h4>记忆</h4>
             <div class="team-side-block"><span>成员记忆</span><strong id="teamMemCount">…</strong></div>
@@ -925,6 +931,27 @@
         renderWorkStatus();
     }
 
+    async function prepareAvatar(file) {
+        if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) throw new Error('请选择 PNG、JPEG 或 WebP 头像');
+        if (file.size > 10 * 1024 * 1024) throw new Error('头像图片超过 10 MB，请选择较小的图片');
+        const url = URL.createObjectURL(file);
+        try {
+            const picture = new Image();
+            picture.src = url;
+            await picture.decode();
+            const canvas = document.createElement('canvas');
+            canvas.width = canvas.height = 256;
+            const edge = Math.min(picture.naturalWidth, picture.naturalHeight);
+            if (!edge) throw new Error('empty image');
+            canvas.getContext('2d').drawImage(picture, (picture.naturalWidth - edge) / 2, (picture.naturalHeight - edge) / 2, edge, edge, 0, 0, 256, 256);
+            return canvas.toDataURL('image/webp', 0.9);
+        } catch (_) {
+            throw new Error('无法读取这张头像，请重新选择 PNG、JPEG 或 WebP 图片');
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    }
+
     function openBotForm(bot) {
         toggleInspector(true);
         $('teamGlobalWork').hidden = true;
@@ -932,10 +959,22 @@
         $('teamInspectorTitle').textContent = editing ? '编辑设计成员' : '添加设计成员';
         const model = bot?.model || {};
         const body = $('teamSideBody');
+        const botAvatar = {...(bot?.avatar || {})};
+        const shapeLabels = {star: '星星', bunny: '兔子', moon: '月亮', gumdrop: '软糖', kitty: '小猫', acorn: '橡果', peanut: '花生'};
+        let saving = false;
+        let readingAvatar = false;
         body.innerHTML = `
+            <div class="team-field"><span>头像</span>
+                <div class="team-avatar-editor"><span id="teamBotAvatarPreview">${avatar(bot)}</span><div><button class="subtle-button" type="button" id="teamBotAvatarUpload">上传图片</button><button class="subtle-button" type="button" id="teamBotAvatarReset" ${botAvatar.image ? '' : 'hidden'}>使用小人</button><small>图片居中裁成正方形</small></div></div>
+                <input type="file" id="teamBotAvatarFile" accept="image/png,image/jpeg,image/webp" hidden>
+                <div class="team-avatar-choices" role="group" aria-label="小人造型">${Object.entries(shapeLabels).map(([shape, label]) => `<button type="button" class="team-avatar-choice" data-avatar-shape="${shape}" aria-label="${label}">${avatar({id: bot?.id || '', avatar: {...botAvatar, shape, image: ''}})}</button>`).join('')}</div>
+                <label class="team-avatar-color">小人颜色<input type="color" id="teamBotAvatarColor" value="${/^#[0-9a-f]{6}$/i.test(botAvatar.color || '') ? botAvatar.color : '#2F6F5E'}"></label>
+            </div>
             <label class="team-field"><span>名字</span><input id="teamBotName" maxlength="40" value="${esc(bot?.name || '')}" placeholder="例如：品牌文案"></label>
             <label class="team-field"><span>角色</span><input id="teamBotRole" maxlength="200" value="${esc(bot?.role || '')}" placeholder="一句话说明它负责什么"></label>
-            <label class="team-field"><span>工作说明</span><textarea id="teamBotInstructions" rows="6" placeholder="说明它的设计职责、工作方式和交付要求；留空用默认模板">${esc(bot?.instructions || '')}</textarea></label>
+            <label class="team-field"><span>人格</span><textarea id="teamBotPersonality" rows="3" maxlength="2000" placeholder="例如：嘴上挑剔但很热心，喜欢用短句，敢于提出不同意见">${esc(bot?.personality || '')}</textarea></label>
+            <label class="team-field"><span>任务</span><textarea id="teamBotTask" rows="3" maxlength="4000" placeholder="例如：为每个方案找出一个问题，再给出可执行的改法">${esc(bot?.task || '')}</textarea></label>
+            <details class="team-details" ${bot?.instructions ? 'open' : ''}><summary>工作说明</summary><label class="team-field"><textarea id="teamBotInstructions" aria-label="工作说明" rows="4" maxlength="4000" placeholder="补充工作方法、交付要求和约束">${esc(bot?.instructions || '')}</textarea></label></details>
             <label class="team-field"><span>对话模型</span>
                 <select id="teamBotProvider"></select>
                 <select id="teamBotModel"></select>
@@ -945,8 +984,47 @@
             <div class="team-form-actions">
                 <button class="primary-button" type="button" id="teamBotSave">保存</button>
                 <button class="subtle-button" type="button" id="teamBotCancel">取消</button>
-                <span id="teamBotStatus" class="profile-status"></span>
+                <span id="teamBotStatus" class="profile-status" role="status" aria-live="polite"></span>
             </div>`;
+        const saveButton = $('teamBotSave');
+        const status = $('teamBotStatus');
+        const refreshAvatar = () => {
+            if (!$('teamBotAvatarPreview')) return;
+            $('teamBotAvatarPreview').innerHTML = avatar({id: bot?.id || '', avatar: botAvatar});
+            const shape = $('teamBotAvatarPreview').querySelector('[data-character]')?.dataset.character;
+            if (shape && !botAvatar.shape) botAvatar.shape = shape;
+            body.querySelectorAll('[data-avatar-shape]').forEach(node => node.setAttribute('aria-pressed', String(!botAvatar.image && node.dataset.avatarShape === shape)));
+            $('teamBotAvatarReset').hidden = !botAvatar.image;
+        };
+        refreshAvatar();
+        body.querySelectorAll('[data-avatar-shape]').forEach(node => {
+            node.onclick = () => { botAvatar.shape = node.dataset.avatarShape; delete botAvatar.image; refreshAvatar(); };
+        });
+        $('teamBotAvatarColor').oninput = event => { botAvatar.color = event.target.value; refreshAvatar(); };
+        $('teamBotAvatarReset').onclick = () => { delete botAvatar.image; refreshAvatar(); };
+        $('teamBotAvatarUpload').onclick = () => $('teamBotAvatarFile').click();
+        $('teamBotAvatarFile').onchange = async event => {
+            const file = event.target.files[0];
+            if (!file || readingAvatar || saving) return;
+            readingAvatar = true;
+            saveButton.disabled = true;
+            status.textContent = '正在读取头像…';
+            body.querySelectorAll('.team-avatar-choices button, #teamBotAvatarReset, #teamBotAvatarUpload').forEach(node => { node.disabled = true; });
+            try {
+                const image = await prepareAvatar(file);
+                if (!status.isConnected) return;
+                botAvatar.image = image;
+                refreshAvatar();
+                status.textContent = '';
+            } catch (error) {
+                status.textContent = error.message;
+            } finally {
+                readingAvatar = false;
+                saveButton.disabled = false;
+                body.querySelectorAll('.team-avatar-choices button, #teamBotAvatarReset, #teamBotAvatarUpload').forEach(node => { node.disabled = false; });
+                event.target.value = '';
+            }
+        };
         const providers = providerList('chat_models');
         $('teamBotProvider').innerHTML = '<option value="">跟随会话</option>' + providers.map((provider) => `<option value="${esc(provider.id)}">${esc(provider.name || provider.id)}</option>`).join('');
         const fillBotModels = () => {
@@ -960,23 +1038,33 @@
         $('teamBotProvider').onchange = fillBotModels;
         $('teamBotCancel').onclick = () => renderSide(chatById(state.currentChat));
         $('teamBotSave').onclick = async () => {
+            if (saving || readingAvatar) return;
             const payload = {
                 name: $('teamBotName').value.trim(),
                 role: $('teamBotRole').value.trim(),
                 instructions: $('teamBotInstructions').value,
+                personality: $('teamBotPersonality').value.trim(),
+                task: $('teamBotTask').value.trim(),
+                avatar: botAvatar,
                 capabilities: [...body.querySelectorAll('.team-checks input:checked')].map((node) => node.value),
                 model: $('teamBotProvider').value && $('teamBotModel').value
                     ? {provider: $('teamBotProvider').value, model: $('teamBotModel').value}
                     : {provider: '', model: ''},
             };
-            if (!payload.name) { $('teamBotStatus').textContent = '名字不能为空'; return; }
+            if (!payload.name) { status.textContent = '名字不能为空'; $('teamBotName').focus(); return; }
+            saving = true;
+            saveButton.disabled = true;
+            status.textContent = '正在保存…';
             try {
                 if (editing) await api(`/api/design-brain/bots/${encodeURIComponent(bot.id)}`, {method: 'PATCH', body: JSON.stringify(payload)});
                 else await api('/api/design-brain/bots', {method: 'POST', body: JSON.stringify(payload)});
                 await loadTeam(true);
-                $('teamBotStatus').textContent = '已保存';
+                teamToast('成员已保存');
             } catch (error) {
-                $('teamBotStatus').textContent = error.message;
+                status.textContent = error.message;
+            } finally {
+                saving = false;
+                saveButton.disabled = false;
             }
         };
     }

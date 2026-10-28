@@ -31,6 +31,8 @@ from design_brain_tools import DesignToolbox
 from design_brain_usage import UsageStore, today_key
 from design_brain_team import (
     BOT_INSTRUCTIONS_MAX,
+    BOT_PERSONALITY_MAX,
+    BOT_TASK_MAX,
     GROUP_MEMBERS_MAX,
     GROUP_NOTICE_MAX,
     MESSAGE_LIMIT_DEFAULT,
@@ -67,6 +69,8 @@ class BotCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=40)
     role: str = Field(default="", max_length=200)
     instructions: str = Field(default="", max_length=BOT_INSTRUCTIONS_MAX)
+    personality: str = Field(default="", max_length=BOT_PERSONALITY_MAX)
+    task: str = Field(default="", max_length=BOT_TASK_MAX)
     avatar: Dict[str, Any] = Field(default_factory=dict)
     model: Dict[str, Any] = Field(default_factory=dict)
     vision_model: Dict[str, Any] = Field(default_factory=dict)
@@ -79,6 +83,8 @@ class BotUpdateRequest(BaseModel):
     name: Optional[str] = Field(default=None, max_length=40)
     role: Optional[str] = Field(default=None, max_length=200)
     instructions: Optional[str] = Field(default=None, max_length=BOT_INSTRUCTIONS_MAX)
+    personality: Optional[str] = Field(default=None, max_length=BOT_PERSONALITY_MAX)
+    task: Optional[str] = Field(default=None, max_length=BOT_TASK_MAX)
     avatar: Optional[Dict[str, Any]] = None
     model: Optional[Dict[str, Any]] = None
     vision_model: Optional[Dict[str, Any]] = None

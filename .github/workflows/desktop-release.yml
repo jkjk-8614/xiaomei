@@ -405,6 +405,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Previous app did not check or download the new version' }
           $result = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
           Write-Output "Installing downloaded version $version (build $($result.buildRevision)) over $($result.oldVersion)"
+          $installerDiagnostic = Join-Path $env:RUNNER_TEMP 'xiaomei-installer-diagnostic.txt'
+          [Environment]::SetEnvironmentVariable('XIAOMEI_INSTALL_DIAGNOSTIC', $installerDiagnostic, 'Process')
           $newInstall = Start-Process -FilePath $result.installerPath -ArgumentList @('--updated', '/S', "/D=$installDir") -WindowStyle Hidden -PassThru
           if (-not $newInstall.WaitForExit(300000)) {
             $installedPackage = Join-Path $installDir 'resources/app/package.json'
@@ -420,7 +422,12 @@ jobs:
             Stop-Process -Id $newInstall.Id -Force -ErrorAction SilentlyContinue
             throw 'New installer did not finish within five minutes'
           }
-          if ($newInstall.ExitCode -ne 0) { throw "New installer failed: $($newInstall.ExitCode)" }
+          if ($newInstall.ExitCode -ne 0) {
+            if (Test-Path -LiteralPath $installerDiagnostic -PathType Leaf) {
+              Write-Output "Installer stage: $(Get-Content -LiteralPath $installerDiagnostic -Raw)"
+            }
+            throw "New installer failed: $($newInstall.ExitCode)"
+          }
           $newPackage = Get-Content -LiteralPath (Join-Path $installDir 'resources/app/package.json') -Raw | ConvertFrom-Json
           if ($newPackage.version -ne $version -or $newPackage.buildRevision -ne $result.buildRevision) { throw 'Installed version or build revision is wrong after upgrade' }
           if (-not (Test-Path -LiteralPath $sentinel -PathType Leaf)) { throw 'Upgrade removed local user data' }
