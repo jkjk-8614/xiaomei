@@ -1,5 +1,6 @@
 !ifndef XIAOMEI_INSTALLER_NSH
 !define XIAOMEI_INSTALLER_NSH
+!ifndef BUILD_UNINSTALLER
 
 !include "LogicLib.nsh"
 !include "FileFunc.nsh"
@@ -335,4 +336,5 @@ FunctionEnd
   xiaomei_done:
 !macroend
 
+!endif
 !endif
