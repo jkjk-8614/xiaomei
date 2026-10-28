@@ -94,7 +94,9 @@ const tag = process.env.GITHUB_EVENT_NAME === 'workflow_dispatch' ? process.env.
 if (pkg.version !== version || desktopPkg.version !== version || notes.version !== version || pkg.displayVersion !== desktopPkg.displayVersion || (tag && tag !== `v${pkg.displayVersion}`)) {
   throw new Error('发布标签、软件显示版本、内部版本和更新清单不一致');
 }
-for (const required of ['ComfyUI/web/comfyui.html', 'ComfyUI/integration/comfy_apps.py', 'API/.env.example']) {
+for (const required of ['ComfyUI/web/comfyui.html', 'ComfyUI/integration/comfy_apps.py',
+  'ComfyUI/tools/comfy-app-bridge/__init__.py', 'ComfyUI/tools/comfy-app-bridge/web/bridge.js',
+  'ComfyUI/tools/comfy-app-bridge/README.md', 'API/.env.example']) {
   const info = await stat(path.join(root, required)).catch(() => null);
   if (!info?.isFile()) throw new Error(`缺少发布文件：${required}`);
 }

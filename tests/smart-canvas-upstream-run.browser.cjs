@@ -51,7 +51,7 @@ async function fixture(t){
     return {page, calls, imageCalls, setHandler(handler){ llmHandler = handler; }};
 }
 function agent(id, extra={}){
-    return {id, type:'smart-agent', userPrompt:id, images:[], x:80, y:100, w:440, h:650, ...extra};
+    return {id, type:'smart-agent', agentOutputMode:'text', userPrompt:id, images:[], x:80, y:100, w:440, h:650, ...extra};
 }
 async function install(page, list, connections){
     await page.evaluate(({list, connections}) => {
@@ -135,6 +135,42 @@ test('an Agent receives only its own direct image inputs beside upstream Agent t
     assert.equal(calls.length, 1);
     assert.deepEqual(calls[0].images, ['/output/new.png']);
     assert.equal(calls[0].message, '已分析商品图\n\ntail');
+});
+
+test('default Agent output passes reference images through a chain and text mode stops them', {timeout:40000}, async t => {
+    const {page, calls} = await fixture(t);
+    await install(page, [
+        {id:'photo', type:'smart-upload', images:[{url:'/output/product.png'}]},
+        agent('source', {agentOutputMode:undefined, outputText:'商品分析'}),
+        agent('middle', {agentOutputMode:undefined, outputText:'主图方案', x:600}),
+        agent('tail', {x:1100})
+    ], [edge('photo','source'), edge('source','middle','flow'), edge('middle','tail')]);
+    assert.equal(await page.locator('[data-id="tail"] .smart-node-input-thumb').count(), 1);
+    assert.equal((await page.evaluate(() => runAgentNode('tail'))).ok, true);
+    assert.deepEqual(calls[0].images, ['/output/product.png']);
+    await page.locator('[data-id="middle"] [data-agent-output-mode="text"]').click();
+    assert.equal(await page.locator('[data-id="tail"] .smart-node-input-thumb').count(), 0);
+    assert.equal((await page.evaluate(() => runAgentNode('tail'))).ok, true);
+    assert.deepEqual(calls[1].images, []);
+    assert.match(calls[1].message, /主图方案/);
+});
+
+test('image passthrough cycles render safely and stop before any model request', {timeout:40000}, async t => {
+    const {page, calls} = await fixture(t);
+    await install(page, [
+        {id:'photo', type:'smart-upload', images:[{url:'/output/product.png'}]},
+        agent('source', {agentOutputMode:'text-image'}),
+        agent('tail', {agentOutputMode:'text-image', x:600})
+    ], [edge('photo','source'), edge('source','tail'), edge('tail','source','flow')]);
+    assert.deepEqual(await page.evaluate(() => agentOutputImages(nodes.find(n => n.id === 'tail')).map(img => img.url)), ['/output/product.png']);
+    const cycle = await page.evaluate(() => runAgentNode('tail'));
+    assert.equal(cycle.ok, false);
+    assert.match(cycle.error, /循环连线/);
+    assert.equal(calls.length, 0);
+    await page.evaluate(() => { canvas.connections = canvas.connections.filter(c => c.from !== 'tail'); render(); });
+    assert.equal((await page.evaluate(() => runAgentNode('tail'))).ok, true);
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls[1].images, ['/output/product.png']);
 });
 
 test('cancel stops a stalled upstream Agent and leaves the downstream node ready to rerun', {timeout:40000}, async t => {
@@ -259,7 +295,7 @@ test('Prompt keeps its instruction separate from editable downstream output', {t
         {id:'prompt', type:'smart-prompt', text:'生成卖点', llmEnabled:true, images:[], x:470, y:150}
     ], [edge('source','prompt','flow')]);
     const prompt = page.locator('[data-id="prompt"]');
-    assert.equal(await prompt.locator('.prompt-node-top').innerText(), '提示词');
+    assert.equal(await prompt.locator('.prompt-node-top > span').innerText(), '提示词');
     assert.equal(await prompt.locator('.prompt-node-output-field > span').innerText(), '输出提示词');
     assert.equal(await prompt.locator('.prompt-node-upstream .prompt-node-segment p').innerText(), '商品信息');
     const layout = await prompt.evaluate(element => ({

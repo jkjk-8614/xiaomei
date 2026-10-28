@@ -2820,6 +2820,17 @@ def install_comfy_apps(app, host):
         # catalog() 会按 workflow/workflow_source 去重，避免同一工作流出现两张卡。
         return service.catalog(include_library=True)
 
+    @router.get('/editor-bridge.zip')
+    def editor_bridge():
+        try:
+            content = service.runtime.editor_bridge_archive()
+        except RuntimeError as exc:
+            raise HTTPException(503, str(exc)) from exc
+        return StreamingResponse(content, media_type='application/zip', headers={
+            'Content-Disposition': 'attachment; filename="Xiaomei-ComfyUI-Bridge.zip"',
+            'Cache-Control': 'no-store',
+        })
+
     @router.get('/models')
     def models():
         return service.model_catalog()
@@ -3238,8 +3249,10 @@ def install_comfy_apps(app, host):
                 if remaining_nodes:
                     raise RuntimeError('节点准备未完成，仍缺少：' + '、'.join(remaining_nodes)
                                        + '。请查看依赖清单中的安装来源或独立环境 server.log。')
-                host.update_canvas_task(identity, {'status': 'succeeded', 'stage': service.readiness(latest)['summary'],
-                    'progress': {'value': 100, 'max': 100, 'detail': service.readiness(latest)['summary'], 'indeterminate': False}})
+                completed = {key: value for key, value in latest.items() if key != 'prepare_task'}
+                summary = service.readiness(completed)['summary']
+                host.update_canvas_task(identity, {'status': 'succeeded', 'stage': summary,
+                    'progress': {'value': 100, 'max': 100, 'detail': summary, 'indeterminate': False}})
             except Exception as exc:
                 cancelled = service.runtime.cancel.is_set()
                 with service.lock:
@@ -3279,8 +3292,24 @@ def install_comfy_apps(app, host):
             item = service.read(app_id)
             backend, info = service.backend(item)
             item['backend'] = backend
-            item.pop('prepare_error', None)
             service.analyze(item, info)
+            with host.CANVAS_TASK_LOCK:
+                task = copy.deepcopy(host.CANVAS_TASKS.get(item.get('prepare_task'), {}))
+            if (task.get('status') in ('failed', 'cancelled') or item.get('prepare_error')) \
+                    and task.get('status') not in ('queued', 'running') \
+                    and service._workflow_status(item) == 'ready' \
+                    and backend == service.runtime.address:
+                try:
+                    checked = service.runtime.info()
+                    complete = (not item['description'].startswith('SeeThrough')
+                                or not service.runtime.missing_resources())
+                    if 'Float' in checked and complete:
+                        item['managed'] = True
+                        item.pop('prepare_error', None)
+                        # Keep the failed task in history; it no longer gates this app.
+                        item.pop('prepare_task', None)
+                except requests.RequestException:
+                    pass
             service.save(item)
             return service.read(app_id)
 

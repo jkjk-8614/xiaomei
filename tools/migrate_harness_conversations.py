@@ -7,11 +7,14 @@ at the user's private data files.
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from runtime_paths import resolve_roots
 
 
 def safe_name(value: str, fallback: str) -> str:
@@ -20,9 +23,9 @@ def safe_name(value: str, fallback: str) -> str:
 
 
 def migrate(project_root: Path) -> dict:
-    data_root = Path(os.environ.get("XIAOMEI_CANVAS_DATA_ROOT", project_root / "data"))
-    source = data_root / "conversations"
-    harness_root = project_root / ".xiaomei-data" / "deepseek-harness"
+    _, data_root = resolve_roots(project_root)
+    source = data_root / "data" / "conversations"
+    harness_root = data_root / ".xiaomei-data" / "deepseek-harness"
     target = harness_root / "imported-workspace"
     manifest_path = harness_root / "conversation-migration.json"
     target.mkdir(parents=True, exist_ok=True)

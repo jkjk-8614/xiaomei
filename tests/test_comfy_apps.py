@@ -1,3 +1,4 @@
+import copy
 import json
 import tempfile
 import unittest
@@ -766,6 +767,84 @@ class AppTests(unittest.TestCase):
                 self.assertFalse(exclusive.exists())
                 self.assertTrue((Path(root) / 'ComfyUI' / 'comfy_apps_deleted').exists())
                 self.assertEqual(client.get('/api/comfy-apps/' + second).status_code, 200)
+
+    def test_basic_form_includes_batch_size_and_dimensions(self):
+        graph = {'1': {'class_type': 'EmptyLatentImage',
+                       'inputs': {'width': 1024, 'height': 768, 'batch_size': 1}},
+                 '2': {'class_type': 'KSampler',
+                       'inputs': {'denoise': 0.65, 'seed': 12, 'steps': 4, 'cfg': 3.5}}}
+        info = {'EmptyLatentImage': {'python_module': 'nodes', 'input': {'required': {
+                    'width': ['INT', {'min': 16, 'max': 16384}],
+                    'height': ['INT', {'min': 16, 'max': 16384}],
+                    'batch_size': ['INT', {'min': 1, 'max': 64}]}}},
+                'KSampler': {'python_module': 'nodes', 'input': {'required': {
+                    'denoise': ['FLOAT', {'min': 0, 'max': 1, 'step': 0.01}],
+                    'seed': ['INT', {'min': 0}], 'steps': ['INT', {'min': 1, 'max': 150}],
+                    'cfg': ['FLOAT', {'min': 1, 'max': 30}]}}}}
+        field_list = extract_fields(graph, info)
+        fields = {field['input']: field for field in field_list}
+        self.assertEqual(fields['batch_size']['name'], '生成数量')
+        for name in ('batch_size', 'width', 'height', 'denoise'):
+            self.assertFalse(fields[name]['advanced'], name)
+        for name in ('seed', 'steps', 'cfg'):
+            self.assertTrue(fields[name]['advanced'], name)
+        self.assertEqual([field['input'] for field in field_list if not field['advanced']],
+                         ['denoise', 'width', 'height', 'batch_size'])
+        params = validate_fields(field_list, {'1:batch_size': 2, '2:denoise': 0.8}, {})
+        self.assertEqual(params['1']['batch_size'], 2)
+        self.assertEqual(params['2']['denoise'], 0.8)
+
+    def test_import_describes_purpose_and_saves_values(self):
+        prompt = {
+            '1': {'class_type': 'EmptyLatentImage',
+                  'inputs': {'width': 512, 'height': 512, 'batch_size': 1}},
+            '2': {'class_type': 'CLIPTextEncode', 'inputs': {'text': '商品主图'}},
+            '3': {'class_type': 'KSampler',
+                  'inputs': {'positive': ['2', 0], 'negative': ['2', 0], 'latent_image': ['1', 0],
+                             'seed': 1, 'steps': 4, 'cfg': 3.5, 'denoise': 1.0}},
+            '9': {'class_type': 'SaveImage',
+                  'inputs': {'images': ['3', 0], 'filename_prefix': 'demo'}}}
+        info = {'EmptyLatentImage': {'python_module': 'nodes', 'input': {'required': {
+                    'width': ['INT', {'min': 16, 'max': 16384}],
+                    'height': ['INT', {'min': 16, 'max': 16384}],
+                    'batch_size': ['INT', {'min': 1, 'max': 64}]}}},
+                'CLIPTextEncode': {'python_module': 'nodes', 'input': {'required': {
+                    'text': ['STRING', {}]}}},
+                'KSampler': {'python_module': 'nodes', 'input': {'required': {
+                    'denoise': ['FLOAT', {'min': 0, 'max': 1, 'step': 0.01}],
+                    'seed': ['INT', {'min': 0}], 'steps': ['INT', {'min': 1, 'max': 150}],
+                    'cfg': ['FLOAT', {'min': 1, 'max': 30}]}}},
+                'SaveImage': {'python_module': 'nodes', 'output_node': True, 'input': {}}}
+        with tempfile.TemporaryDirectory() as root:
+            host = SimpleNamespace(BASE_DIR=root, CANVAS_TASKS={}, CANVAS_TASK_LOCK=threading.RLock(),
+                workflow_path_from_name=lambda n: Path(root) / 'ComfyUI' / 'workflows' / n,
+                workflow_config_path=lambda n: Path(root) / 'ComfyUI' / 'workflows' / (n + '.config.json'))
+            app = FastAPI(); service = install_comfy_apps(app, host)
+            with patch.object(service, 'backend', side_effect=HTTPException(503, '本地服务未连接')), TestClient(app) as client:
+                imported = client.post('/api/comfy-apps/import', json={'name': '文生图示例', 'workflow': prompt})
+                self.assertEqual(imported.status_code, 200, imported.text)
+                item = service.read(imported.json()['id'])
+                self.assertEqual(item['purpose']['label'], '文生图')
+                self.assertTrue(item['description'].startswith('文生图工作流：'))
+                refused = client.post('/api/comfy-apps/' + item['id'] + '/values',
+                                      json={'values': {'1:batch_size': 2}})
+                self.assertEqual(refused.status_code, 409)
+            with patch.object(service, 'backend', return_value=('127.0.0.1:8190', info)):
+                service.compile(item, copy.deepcopy(prompt), info)
+            with TestClient(app) as client:
+                saved = client.post('/api/comfy-apps/' + item['id'] + '/values', json={'values': {
+                    '1:batch_size': 3, '1:width': 768, '9:filename_prefix': 'ignored',
+                    'unknown:x': 'ignored'}})
+                self.assertEqual(saved.status_code, 200, saved.text)
+                self.assertEqual(saved.json()['values'], {'1:batch_size': 3, '1:width': 768})
+                self.assertEqual(service.read(item['id'])['values'],
+                                 {'1:batch_size': 3, '1:width': 768})
+                invalid = client.post('/api/comfy-apps/' + item['id'] + '/values',
+                                      json={'values': {'1:batch_size': 'many'}})
+                self.assertEqual(invalid.status_code, 400)
+            with patch.object(service, 'backend', return_value=('127.0.0.1:8190', info)):
+                service.compile(service.read(item['id']), copy.deepcopy(prompt), info)
+            self.assertEqual(service.read(item['id'])['values']['1:batch_size'], 3)
 
 
 if __name__ == '__main__':

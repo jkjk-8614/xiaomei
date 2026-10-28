@@ -10,7 +10,8 @@ const negativePrompt = '水印、文字、模糊、过度磨皮';
 const fields = [
     {id:'6:text', node:'6', input:'text', type:'textarea', name:'提示词', default:localPrompt},
     {id:'7:text', node:'7', input:'text', type:'textarea', name:'负向提示词', default:negativePrompt},
-    {id:'8:steps', node:'8', input:'steps', type:'number', name:'步数', default:9, advanced:true}
+    {id:'8:steps', node:'8', input:'steps', type:'number', name:'步数', default:9, advanced:true},
+    {id:'8:seed', node:'8', input:'seed', type:'number', name:'随机种子', default:406211147639758, random_enabled:false, advanced:true}
 ];
 
 async function openFixture(t){
@@ -165,5 +166,60 @@ test('connected prompt output reaches the ComfyUI primary field and preserves ne
     await run();
     assert.equal(requests.length, beforeFailure);
     assert.equal(calls.at(-1), 'llm');
+    assert.deepEqual(errors, []);
+});
+
+test('seed dice randomizes every submission and preserves fixed mode across reloads', {timeout:45000}, async t => {
+    const {page, errors, requests} = await openFixture(t);
+    const dice = page.locator('[data-id="workflow"] [data-comfy-node-random="8:seed"]');
+    const button = page.locator('[data-id="workflow"] [data-comfy-node-run]');
+    const input = page.locator('[data-id="workflow"] [data-comfy-node-param="8:seed"]');
+    async function run(){
+        const count = requests.length;
+        await button.click();
+        await page.waitForFunction(() => !comfyNodeSubmissions.has('workflow') && !smartDependencyRuns.has('workflow'));
+        assert.equal(requests.length, count + 1);
+        assert.equal(requests.at(-1).params['8'].steps, 9);
+        return requests.at(-1).params['8'].seed;
+    }
+    assert.equal(await dice.getAttribute('aria-pressed'), 'true');
+    assert.equal(await dice.locator('svg').count(), 1);
+    assert.equal(await page.locator('[data-comfy-node-random="8:steps"]').count(), 0);
+    const first = await run(), second = await run();
+    for(const seed of [first, second]){
+        assert(Number.isSafeInteger(seed) && seed >= 1 && seed <= 4294967295);
+    }
+    assert.notEqual(first, second);
+    await dice.click();
+    assert.equal(await dice.getAttribute('aria-pressed'), 'false');
+    await input.fill('123456');
+    await input.press('Tab');
+    assert.equal(await run(), 123456);
+    assert.equal(await run(), 123456);
+    assert(await page.evaluate(() => saveCanvas()));
+    await page.reload();
+    await page.waitForFunction(() => smartConfigReady && nodes.some(node => node.id === 'workflow'));
+    assert.equal(await dice.getAttribute('aria-pressed'), 'false');
+    assert.equal(await input.inputValue(), '123456');
+    assert.equal(await run(), 123456);
+    await dice.click();
+    assert.equal(await dice.getAttribute('aria-pressed'), 'true');
+    assert.notEqual(await run(), 123456);
+    assert(await page.evaluate(() => saveCanvas()));
+    await page.reload();
+    await page.waitForFunction(() => smartConfigReady && nodes.some(node => node.id === 'workflow'));
+    assert.equal(await dice.getAttribute('aria-pressed'), 'true');
+    assert.notEqual(await run(), 123456);
+    assert.deepEqual(await page.evaluate(() => [
+        {input:'noise_seed', name:'噪声种子', type:'number'},
+        {input:'random_seed', type:'slider'},
+        {input:'value', name:'随机种子', type:'number'},
+        {input:'steps', type:'number', random_enabled:true},
+        {input:'denoise', name:'降噪强度', type:'number'},
+        {input:'seedvr2_strength', type:'number'},
+        {input:'seed', type:'text'}
+    ].map(comfyRandomEnabledField)), [true, true, true, true, false, false, false]);
+    await page.evaluate(() => { viewport = {x:-400, y:0, scale:1}; render(); applyViewport(); });
+    await page.screenshot({path:path.join(root, 'logs/comfy-node-seed-dice.png'), fullPage:true});
     assert.deepEqual(errors, []);
 });

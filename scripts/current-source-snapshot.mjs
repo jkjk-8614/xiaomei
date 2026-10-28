@@ -25,6 +25,9 @@ const criticalPackagedPaths = [
   'static/js/canvas-multi-agent.js', 'static/js/smart-canvas-reference-picker.js',
   'ComfyUI/integration/comfy_model_downloads.py', 'ComfyUI/integration/comfy_model_links.py',
   'ComfyUI/web/js/comfy-models.js', 'ComfyUI/web/css/comfy-models.css',
+  'ComfyUI/tools/comfy-app-bridge/__init__.py',
+  'ComfyUI/tools/comfy-app-bridge/web/bridge.js',
+  'ComfyUI/tools/comfy-app-bridge/README.md',
   'tools/chrome-model-downloader/manifest.json', 'tools/chrome-model-downloader/popup.html',
   'tools/chrome-model-downloader/popup.js', 'tools/chrome-model-downloader/popup.css',
   'tools/chrome-model-downloader/README.md',
@@ -55,6 +58,9 @@ function isProductSource(file, tracked) {
   }
   if (/^ComfyUI\/(?:integration|web)\//.test(file)) {
     return ['.py', '.js', '.html', '.css', '.svg'].includes(extension);
+  }
+  if (/^ComfyUI\/tools\/comfy-app-bridge\//.test(file)) {
+    return ['.py', '.js', '.md'].includes(extension);
   }
   if (/^tools\/chrome-model-downloader\/[^/]+$/.test(file)) {
     return ['.js', '.json', '.html', '.css', '.md'].includes(extension);

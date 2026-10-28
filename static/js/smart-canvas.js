@@ -1929,9 +1929,10 @@ function comfyNodeFieldHtml(node, field){
     const step = field?.step !== undefined && field?.step !== null ? ` step="${escapeAttr(field.step)}"` : '';
     const random = numeric && comfyRandomEnabledField(field);
     const activeRandom = smartComfyRandomActiveFor(node?.runSettings || {}, id);
+    const randomTitle = activeRandom ? '自动随机：每次运行更换数值，点击固定' : '固定数值：点击开启每次运行随机';
     return `<label class="comfy-node-field ${numeric ? 'comfy-node-number-field' : ''}">
         <span class="comfy-node-field-label"><span><i data-lucide="${numeric ? 'sliders-horizontal' : 'type'}"></i>${escapeHtml(label)}</span><small>${numeric ? (field?.type === 'slider' ? '滑块' : '数值') : '文本'}</small></span>
-        <span class="comfy-node-input-wrap"><input type="${numeric ? 'number' : 'text'}" data-comfy-node-param="${escapeAttr(id)}" value="${escapeAttr(value)}"${min}${max}${step}>${random ? `<button type="button" class="comfy-node-dice ${activeRandom ? 'active' : ''}" data-comfy-node-random="${escapeAttr(id)}" title="${activeRandom ? '自动随机' : '固定数值'}"><i data-lucide="dice-5"></i></button>` : ''}</span>
+        <span class="comfy-node-input-wrap"><input type="${numeric ? 'number' : 'text'}" data-comfy-node-param="${escapeAttr(id)}" value="${escapeAttr(value)}"${min}${max}${step}>${random ? `<button type="button" class="comfy-node-dice ${activeRandom ? 'active' : ''}" data-comfy-node-random="${escapeAttr(id)}" title="${randomTitle}" aria-label="${escapeAttr(label + '：' + randomTitle)}" aria-pressed="${activeRandom}"><i data-lucide="dice-5"></i></button>` : ''}</span>
     </label>`;
 }
 function ensureComfyNodeParamDefaults(node, fields){
@@ -7682,7 +7683,11 @@ function renderRhSettingField(field){
     }
     return `<div class="num-compact ${type === 'text' ? 'rh-text-param' : ''}" title="${escapeHtml(label)}"><span class="num-label">${escapeHtml(label)}</span>${inputHtml}</div>`;
 }
-function comfyRandomEnabledField(field){ return field?.type === 'number' && field.random_enabled === true; }
+function comfyRandomEnabledField(field){
+    if(!['number','slider'].includes(field?.type)) return false;
+    const seedField = [field.input, field.name].some(value => /(?:^|[^a-z])seed(?:$|[^a-z])|种子/i.test(String(value || '')));
+    return seedField || (field.type === 'number' && field.random_enabled === true);
+}
 function smartComfyRandomActive(fieldId){
     return smartComfyRandomActiveFor(settings, fieldId);
 }
@@ -11313,7 +11318,7 @@ function pasteAssetsFromInbox(){
     toast(`已粘贴 ${created.length} 个素材到画布`);
     return true;
 }
-function duplicateForAltDrag(node){
+function duplicateForAltDrag(node, preserveConnections=true){
     const ids = (isNodeSelected(node.id) ? selectedNodeIds() : [node.id]);
     const sourceNodes = ids.map(id => nodes.find(n => n.id === id)).filter(Boolean);
     if(!sourceNodes.length) return node;
@@ -11322,14 +11327,30 @@ function duplicateForAltDrag(node){
     const copies = sourceNodes.map(n => {
         const copy = cloneSmartNode(n, 0, 0);
         idMap.set(n.id, copy.id);
-        delete copy.sourceNodeId;
-        copy.inputNodeIds = [];
-        delete copy.inputRefOrder;
-        delete copy.blockedInputRefs;
+        if(!preserveConnections){
+            delete copy.sourceNodeId;
+            copy.inputNodeIds = [];
+            delete copy.inputRefOrder;
+            delete copy.blockedInputRefs;
+        }
         delete copy.runInputRefs;
         delete copy.runPromptRefs;
         return copy;
     });
+    if(preserveConnections){
+        copies.forEach(copy => {
+            if(Array.isArray(copy.inputNodeIds)) copy.inputNodeIds = copy.inputNodeIds.map(id => idMap.get(id) || id);
+            if(copy.sourceNodeId) copy.sourceNodeId = idMap.get(copy.sourceNodeId) || copy.sourceNodeId;
+            if(Array.isArray(copy.inputRefOrder)) copy.inputRefOrder = remapSmartInputRefOrder(copy.inputRefOrder, idMap);
+            if(Array.isArray(copy.blockedInputRefs)) copy.blockedInputRefs = remapSmartInputRefOrder(copy.blockedInputRefs, idMap);
+        });
+        const newConnections = (canvas.connections || []).filter(conn => idMap.has(conn.to)).map(conn => ({
+            ...conn,
+            from:idMap.get(conn.from) || conn.from,
+            to:idMap.get(conn.to)
+        }));
+        canvas.connections = [...(canvas.connections || []), ...newConnections];
+    }
     nodes.push(...copies);
     // 让 Alt 拖动后的副本成为当前选区：多选复制时，后续拖动会带着整组副本一起移动。
     selectedId = copies.length === 1 ? copies[0].id : '';
@@ -15034,9 +15055,17 @@ function agentOutputMode(node){
     if(node && node.agentOutputMode !== mode) node.agentOutputMode = mode;
     return mode;
 }
+const agentOutputImageStack = new WeakSet();
 function agentOutputImages(node){
     if(!node || node.type !== 'smart-agent' || agentOutputMode(node) !== 'text-image') return [];
-    return agentNodeInputMedia(node).filter(ref => ref?.url && !ref.sourceMissing);
+    // 缩略图在运行前也会读取引用，循环连线必须在这里停止递归。
+    if(agentOutputImageStack.has(node)) return [];
+    agentOutputImageStack.add(node);
+    try {
+        return agentNodeInputMedia(node).filter(ref => ref?.url && !ref.sourceMissing);
+    } finally {
+        agentOutputImageStack.delete(node);
+    }
 }
 function agentNodeUpstreamText(node){
     const seen = new Set();
@@ -20289,6 +20318,10 @@ function bindComfyWorkflowNodeControls(el, node){
             node.runSettings.comfyRandomActive = node.runSettings.comfyRandomActive || {};
             const fieldId = button.dataset.comfyNodeRandom;
             node.runSettings.comfyRandomActive[fieldId] = !smartComfyRandomActiveFor(node.runSettings, fieldId);
+            if(activeSettingsSubject()?.id === node.id){
+                settings = cloneSmartSettings(node.runSettings);
+                renderDynamicParams();
+            }
             finishUndo();
             render();
             scheduleSave();
@@ -21096,7 +21129,7 @@ function bindNodeEvents(nodeEls=world.querySelectorAll('.image-node')){
             const selectedBeforeDrag = selectedIds.includes(id) ? selectedIds.slice() : [id];
             if(!selectedBeforeDrag.every(targetId => collabCanEditNode(targetId))) return;
             if(e.shiftKey && !e.altKey) applyModifiedNodeSelection(id, e);
-            if(e.altKey) node = duplicateForAltDrag(node);
+            if(e.altKey) node = duplicateForAltDrag(node, e.button === 0);
             let dragIds = selectedIds.includes(node.id) ? selectedIds.slice() : [node.id];
             if(isSmartGroupNode(node)){
                 const memberIds = smartGroupMembers(node).map(member => member.id);
@@ -32178,7 +32211,7 @@ async function runComfyGeneration(node, prompt, refs, pendingNode, meta, options
     await assignMediaFields(fields.filter(f => comfyFieldKind(f) === 'video'), videoRefsOnly(allRefs));
     await assignMediaFields(fields.filter(f => comfyFieldKind(f) === 'audio'), audioRefsOnly(allRefs));
     fields.filter(f => comfyFieldKind(f) === 'setting').forEach(field => {
-        if(comfyRandomEnabledField(field) && smartComfyRandomActive(field.id)){
+        if(comfyRandomEnabledField(field) && smartComfyRandomActiveFor(settings, field.id)){
             values[field.id] = smartComfyRandomValue(field);
         } else {
             values[field.id] = settings.comfyParams?.[field.id] ?? field.default;

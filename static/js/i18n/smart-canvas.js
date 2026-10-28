@@ -516,7 +516,7 @@
         "smart.shortcutUndoAlt": { zh: "恢复上一步操作", en: "Redo the last action" },
         "smart.shortcutCopy": { zh: "复制选中的节点", en: "Copy selected nodes" },
         "smart.shortcutPaste": { zh: "粘贴节点或剪贴板图片", en: "Paste nodes or clipboard images" },
-        "smart.shortcutAltCopy": { zh: "按住 Alt 拖动复制节点，不带连线（支持右键）", en: "Hold Alt and drag to duplicate nodes without connections (right mouse button supported)" },
+        "smart.shortcutAltCopy": { zh: "Alt + 左键拖动：带输入连线复制；Alt + 右键拖动：不带连线复制", en: "Alt + left drag: duplicate with incoming connections; Alt + right drag: duplicate without connections" },
         "smart.shortcutAssets": { zh: "打开/关闭资源库", en: "Open/close the asset library" },
         "smart.shortcutOverview": { zh: "缩小画布视图", en: "Zoom out to canvas overview" },
         "smart.shortcutCreateMenu": { zh: "打开快捷菜单", en: "Open the quick create menu" },

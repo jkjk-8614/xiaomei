@@ -1,5 +1,6 @@
 """Managed, isolated ComfyUI instance. Never installs into the existing venv."""
 import hashlib
+import io
 import json
 import logging
 import os
@@ -9,6 +10,7 @@ import shutil
 import subprocess
 import threading
 import time
+import zipfile
 from urllib.parse import urlparse
 
 import requests
@@ -39,6 +41,20 @@ class ManagedRuntime:
         self.cancel = threading.Event()
         self.process = None
         self.guard = threading.Lock()
+
+    def editor_bridge_archive(self):
+        """Package the shipped bridge for a user's external ComfyUI instance."""
+        source = self.project / 'ComfyUI' / 'tools' / 'comfy-app-bridge'
+        files = ('__init__.py', 'web/bridge.js', 'README.md')
+        missing = [name for name in files if not (source / name).is_file()]
+        if missing:
+            raise RuntimeError('桥接插件文件不完整，请重新安装小美画布：' + '、'.join(missing))
+        content = io.BytesIO()
+        with zipfile.ZipFile(content, 'w', zipfile.ZIP_DEFLATED) as archive:
+            for name in files:
+                archive.write(source / name, 'xiaomei_app_bridge/' + name)
+        content.seek(0)
+        return content
 
     def _startup_inventory(self):
         """Include disabled branches and original graphs used by the native editor."""
@@ -655,17 +671,13 @@ class ManagedRuntime:
                         return info
             update('启动并验证独立 ComfyUI')
             progress(90, '启动并验证独立 ComfyUI；等待本地服务响应', True)
-            if self.process and self.process.poll() is None:
-                queue = requests.get('http://' + self.address + '/queue', timeout=5).json()
-                if queue.get('queue_running') or queue.get('queue_pending'):
-                    raise RuntimeError('独立环境仍有运行任务，请完成后再准备新节点')
-                self.process.terminate()
-                self.process.wait(timeout=30)
             # Share existing models without changing their directories.
             paths = self._write_shared_model_config()
             try:
                 identity = requests.get('http://' + self.address + '/xiaomei/app-runtime', timeout=5)
-                if identity.status_code != 200 or Path(identity.json()['root']).resolve() != self.root.resolve():
+                if identity.status_code != 200:
+                    raise RuntimeError(f'{self.address} 的服务未通过独立环境身份检查（HTTP {identity.status_code}）。请检查 server.log 后重试。')
+                if Path(identity.json()['root']).resolve() != self.root.resolve():
                     raise RuntimeError('8190 端口已有其他服务，未覆盖。请关闭占用服务后重试。')
                 queue = requests.get('http://' + self.address + '/queue', timeout=5).json()
                 if queue.get('queue_running') or queue.get('queue_pending'):
@@ -673,6 +685,8 @@ class ManagedRuntime:
                 script = ('import psutil,sys; p=psutil.Process(int(sys.argv[1])); '
                           'assert sys.argv[2].lower() in " ".join(p.cmdline()).lower(), "Runtime identity mismatch"; '
                           'p.terminate(); p.wait(timeout=30)')
+                # Windows venv launchers can outlive or orphan the server child.
+                # Stop the bridge-verified server PID before starting its replacement.
                 self.command([python, '-c', script, str(identity.json()['pid']), self.root], log)
             except requests.RequestException:
                 pass

@@ -2,6 +2,7 @@
   const $ = id => document.getElementById(id);
   let selected = '', mode = 'library', connecting = false, starting = false;
   let pendingWorkflow = null, editorLoaded = false, loadNonce = '', loadTimer = null;
+  let loadReplyReceived = false;
   let installing = false;
 
   function isUiWorkflow(item) {
@@ -231,6 +232,7 @@
     const origin = editorOrigin();
     const nonce = crypto.randomUUID();
     loadNonce = nonce;
+    loadReplyReceived = false;
     let attempts = 0;
     const send = () => {
       if (!selected || !pendingWorkflow || loadNonce !== nonce) return;
@@ -239,13 +241,24 @@
         type: 'xiaomei-load-workflow', nonce, format: 'UI',
         workflow: pendingWorkflow.source,
       }, origin);
-      if (attempts < 30) loadTimer = setTimeout(send, 500);
+      if (attempts < (loadReplyReceived ? 120 : 30)) loadTimer = setTimeout(send, 500);
       else {
         loadNonce = '';
-        report('高级编辑器桥接未响应', [
-          '工作流原文件已保留，但当前 ComfyUI 没有回应“小美画布工作流加载桥”。',
-          '请在应用库先准备本地环境，或在 ComfyUI 中安装/启用小美画布桥接后重启服务，再重新打开高级编辑。',
-        ]);
+        if (loadReplyReceived) {
+          report('高级编辑器尚未就绪', [
+            `${selected} 的小美画布桥接已响应，但 ComfyUI 仍在初始化或处理另一个工作流。`,
+            '请稍后重试；持续未就绪时查看 ComfyUI 启动日志。工作流原文件已保留。',
+          ], {label: '重新加载编辑器', action: reloadEditor});
+        } else {
+          report('高级编辑器桥接未响应', [
+            `${selected} 未回应“小美画布工作流加载桥”，插件可能未安装、未启用，或 ComfyUI 尚未完成启动。工作流原文件已保留。`,
+            '下载桥接插件，退出该 ComfyUI 服务，将压缩包中的 xiaomei_app_bridge 文件夹放入它的 custom_nodes 目录。',
+            '重新启动 ComfyUI 服务后，点击“安装后重试”。只刷新页面不会加载新插件。已安装时请检查启动日志和前端扩展设置。',
+          ], [
+            {label: '下载桥接插件', action: downloadEditorBridge},
+            {label: '安装后重试', action: reloadEditor},
+          ]);
+        }
       }
     };
     send();
@@ -365,7 +378,7 @@
     }
   }
 
-  function report(title, lines, action, progress) {
+  function report(title, lines, actions, progress) {
     const content = $('report-content');
     content.replaceChildren();
     const heading = document.createElement('h2');
@@ -389,12 +402,27 @@
     for (const text of lines) {
       const p = document.createElement('p'); p.textContent = text; content.append(p);
     }
-    if (action?.label && typeof action.action === 'function') {
+    for (const action of (Array.isArray(actions) ? actions : [actions])) {
+      if (!action?.label || typeof action.action !== 'function') continue;
       const button = document.createElement('button');
       button.type = 'button'; button.textContent = action.label; button.onclick = () => Promise.resolve(action.action()).catch(error => report('操作未完成', [error.message || String(error)]));
       content.append(button);
     }
     $('report').hidden = false;
+  }
+
+  async function downloadEditorBridge() {
+    const response = await fetch('/api/comfy-apps/editor-bridge.zip', {cache: 'no-store'});
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.detail || '桥接插件下载失败，请重试。');
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'Xiaomei-ComfyUI-Bridge.zip';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
   function selectWorkflow(item) {
@@ -501,6 +529,7 @@
       return;
     }
     if (event.data?.type === 'xiaomei-workflow-loaded' && event.data.nonce === loadNonce) {
+      loadReplyReceived = true;
       if (event.data.error && (event.data.retryable || isRetryableWorkflowLoadError(event.data.error))) return;
       stopLoadTimer(); loadNonce = '';
       if (event.data.error) report('工作流未加载', [event.data.error, '原始工作流文件仍然保留。']);

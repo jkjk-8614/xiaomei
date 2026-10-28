@@ -3543,7 +3543,7 @@ function ensureDeepSeekHarnessProfile() {
     ? path.join(DEEPSEEK_HARNESS_ROOT, 'node_modules', '@deepseek-ai', 'dsh-skill-office', 'assets')
     : path.join(DEEPSEEK_HARNESS_ROOT, 'packages', 'skill', 'skill-office', 'assets');
   if (fs.existsSync(packagedOfficeAssets)) {
-    try { fs.cpSync(packagedOfficeAssets, officeSkills, { recursive: true, force: true }); } catch {}
+    try { fs.cpSync(packagedOfficeAssets, officeSkills, { recursive: true, force: false, errorOnExist: false }); } catch {}
   }
   const nodeStub = path.join(primaryRuntime, 'dependencies', 'node', 'bin', process.platform === 'win32' ? 'node.exe' : 'node');
   const officeCheck = path.join(officeSkills, 'scripts', 'check_office.py');
@@ -3578,7 +3578,6 @@ function yamlKey(value) {
 function harnessProviderKeyEnv(providerId) {
   const id = String(providerId || '').trim().toLowerCase();
   if (id === 'comfly') return 'COMFLY_API_KEY';
-  if (id === 'modelscope') return 'MODELSCOPE_API_KEY';
   return `API_PROVIDER_${id.replace(/[^A-Za-z0-9]/g, '_').toUpperCase()}_KEY`;
 }
 
@@ -3859,7 +3858,6 @@ function readXiaomeiHarnessModelConfig() {
   const primaryIds = providers.filter((provider) => provider && provider.primary).map((provider) => `xiaomei-${String(provider.id || '').trim().toLowerCase()}`);
   const preferred = primaryIds.map((id) => routes.find((route) => route.id === id)).find(Boolean)
     || routes.find((route) => route.id === 'xiaomei-comfly')
-    || routes.find((route) => route.id === 'xiaomei-modelscope')
     || routes[0];
   return { routes, defaultRoute: preferred?.id || '', defaultModel: preferred?.models?.[0]?.id || '', env };
 }
@@ -3972,6 +3970,12 @@ async function setDeepSeekHarnessVisible(visible, bounds) {
   if (bounds) setDeepSeekHarnessBounds(bounds);
   if (!visible) {
     if (deepSeekHarnessView) { try { mainWindow.contentView.removeChildView(deepSeekHarnessView); } catch {} }
+    // 对话页收起后正是重启 DeepSeek 面板的安全时机，新加入的 MCP 服务随之生效。
+    if (xiaomeiMcpRefreshPending) {
+      xiaomeiMcpRefreshPending = false;
+      if (xiaomeiMcpRefreshTimer) { clearTimeout(xiaomeiMcpRefreshTimer); xiaomeiMcpRefreshTimer = null; }
+      void refreshDeepSeekHarness().catch(() => {});
+    }
     return { ok: true, visible: false };
   }
   try {
@@ -3999,6 +4003,17 @@ async function setDeepSeekHarnessVisible(visible, bounds) {
       deepSeekHarnessView.webContents.on('did-finish-load', () => {
         if (deepSeekHarnessBounds) deepSeekHarnessView.setBounds(deepSeekHarnessBounds);
         void injectXiaomeiHarnessUi();
+      });
+      // 客户端插件（文件资源、模型目录等）的失败只出现在页面控制台里，
+      // 转发到同一份 Harness 日志，便于从桌面端定位“预览不可用”这类问题。
+      deepSeekHarnessView.webContents.on('console-message', (...args) => {
+        const details = args[1] !== null && typeof args[1] === 'object' ? args[1] : null;
+        const level = details ? details.level : args[1];
+        const message = details ? details.message : args[2];
+        const source = details ? `${details.sourceId || ''}:${details.lineNumber ?? ''}` : `${args[4] || ''}:${args[3] ?? ''}`;
+        if (level === 'warning' || level === 'error' || level === 2 || level === 3) {
+          appendDeepSeekHarnessLog('stderr', `[client:${String(level)}] ${String(message)} (${source})\n`);
+        }
       });
       deepSeekHarnessView.webContents.on('did-fail-load', (_event, code, description) => { deepSeekHarnessLastError = `${code}: ${description}`; });
     }
@@ -4045,12 +4060,6 @@ async function injectXiaomeiHarnessUi() {
   } catch (error) {
     appendDeepSeekHarnessLog('stderr', `图片复制入口加载失败：${error.message}\n`);
   }
-  try {
-    const mcpEntryScript = fs.readFileSync(path.join(__dirname, 'harness-mcp-entry.js'), 'utf8');
-    await deepSeekHarnessView.webContents.executeJavaScript(mcpEntryScript);
-  } catch (error) {
-    appendDeepSeekHarnessLog('stderr', 'MCP 设置入口加载失败：' + error.message + '\n');
-  }
   const origin = LOCAL_ORIGIN;
   const modelConfig = readXiaomeiHarnessModelConfig();
   const modelSummary = {
@@ -4066,20 +4075,32 @@ async function injectXiaomeiHarnessUi() {
     /* 让官方页面沿用小美画布的品牌色和中文界面密度。 */
     body { --dsh-xiaomei-accent: #7c5cff; }
     [data-xiaomei-brand] { letter-spacing: .01em; }
-    [data-xiaomei-bridge] { position: fixed; top: 12px; right: 18px; z-index: 2147483000; display:flex; align-items:center; gap:8px; padding:6px 9px; border:1px solid rgba(124,92,255,.24); border-radius:999px; background: color-mix(in srgb, var(--dsw-alias-bg-primary, #fff) 92%, var(--dsh-xiaomei-accent)); box-shadow:0 8px 24px rgba(15,23,42,.10); color:var(--dsw-alias-fg-primary,#1f2937); font:600 11px/1.2 system-ui,"Microsoft YaHei",sans-serif; }
+    /* 顶部桥接栏：居中的小胶囊，横向对齐到输入框中心（右侧栏打开时
+       自动左移，不压住面板 Tab）。默认只显示品牌、状态点和当前平台/
+       模型，悬停或键盘聚焦时在下方弹出小卡片放同步详情与入口。 */
+    [data-xiaomei-bridge] { position:fixed; top:8px; left:50%; transform:translateX(-50%); z-index:2147483000; display:flex; align-items:center; gap:6px; box-sizing:border-box; padding:3px 12px; border:1px solid rgba(124,92,255,.22); border-radius:999px; background: color-mix(in srgb, var(--dsw-alias-bg-primary, #fff) 94%, var(--dsh-xiaomei-accent)); box-shadow:0 6px 18px rgba(15,23,42,.10); color:var(--dsw-alias-fg-primary,#1f2937); font:600 11px/1.4 system-ui,"Microsoft YaHei",sans-serif; white-space:nowrap; }
     [data-xiaomei-bridge] b { color:var(--dsh-xiaomei-accent); font-weight:800; }
-    [data-xiaomei-bridge] a { color:inherit; text-decoration:none; padding:4px 6px; border-radius:6px; }
-    [data-xiaomei-bridge] a:hover { background:var(--dsh-xiaomei-soft); color:var(--dsh-xiaomei-accent); }
-    [data-xiaomei-bridge] .state { display:inline-flex; align-items:center; gap:5px; color:#059669; }
+    [data-xiaomei-bridge] .state { display:inline-flex; align-items:center; gap:5px; min-width:0; color:#059669; }
     [data-xiaomei-bridge] .state.pending { color:#b45309; }
-    [data-xiaomei-bridge] .state i { width:6px; height:6px; border-radius:50%; background:#10b981; }
+    [data-xiaomei-bridge] .state i { width:6px; height:6px; flex:none; border-radius:50%; background:#10b981; }
     [data-xiaomei-bridge] .state.pending i { background:#f59e0b; }
-    [data-xiaomei-bridge] .model { max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; opacity:.82; }
+    [data-xiaomei-bridge] .model { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; opacity:.82; }
+    /* 展开面板：挂在胶囊下方，不再把胶囊拉宽。 */
+    [data-xiaomei-bridge] .more { position:absolute; top:100%; left:50%; transform:translateX(-50%); display:none; padding-top:6px; }
+    [data-xiaomei-bridge]:hover .more, [data-xiaomei-bridge]:focus-within .more { display:block; }
+    [data-xiaomei-bridge] .card { display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-width:250px; padding:8px 10px; border:1px solid rgba(124,92,255,.22); border-radius:12px; background: color-mix(in srgb, var(--dsw-alias-bg-primary, #fff) 96%, var(--dsh-xiaomei-accent)); box-shadow:0 10px 28px rgba(15,23,42,.14); }
+    [data-xiaomei-bridge] .card .sync { color:#059669; font-weight:500; opacity:.9; }
+    [data-xiaomei-bridge] .card .current { color:var(--dsw-alias-fg-primary,#1f2937); font-weight:600; }
+    [data-xiaomei-bridge] .links { display:flex; flex-wrap:wrap; gap:2px; }
+    [data-xiaomei-bridge] a, [data-xiaomei-bridge] .refresh { color:inherit; text-decoration:none; padding:3px 8px; border:none; border-radius:999px; background:transparent; font:inherit; cursor:pointer; }
+    [data-xiaomei-bridge] a:hover, [data-xiaomei-bridge] .refresh:hover, [data-xiaomei-bridge] a:focus-visible, [data-xiaomei-bridge] .refresh:focus-visible { background:var(--dsh-xiaomei-soft); color:var(--dsh-xiaomei-accent); outline:none; }
   `;
   try { await deepSeekHarnessView.webContents.insertCSS(css); } catch {}
   try {
     await deepSeekHarnessView.webContents.executeJavaScript(`(() => {
       const state = ${bridgeState};
+      // MCP 设置入口在侧栏底部，需要小美画布自己的地址才能回到主窗口。
+      document.documentElement.setAttribute('data-xiaomei-origin', '${origin}');
       let bar = document.querySelector('[data-xiaomei-bridge]');
       if (!bar) {
         bar = document.createElement('div');
@@ -4093,15 +4114,70 @@ async function injectXiaomeiHarnessUi() {
       const modelText = configured
         ? (state.defaultModel ? providerText + ' / ' + state.defaultModel : providerText)
         : '';
+      const escapeHtml = (text) => String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      const syncText = configured ? 'API 统一管理 · 已同步 ' + state.providerCount + ' 个平台 / ' + state.modelCount + ' 个模型' : '';
+      bar.title = syncText || providerText;
+      // 常态只留品牌和状态点（未配置时才显示提示文案），平台/模型与入口
+      // 放进悬停卡片，胶囊宽度约 100px，不会压住会话标题或面板 Tab。
       bar.innerHTML = '<b>小美画布</b>'
         + '<span class="state ' + (configured ? '' : 'pending') + '"><i></i>'
-        + (configured ? 'API 统一管理 · 已同步 ' + state.providerCount + ' 个平台 / ' + state.modelCount + ' 个模型' : providerText)
+        + (configured ? '' : '<span class="model">' + escapeHtml(providerText) + '</span>')
         + '</span>'
-        + (modelText ? '<span class="model" title="当前默认模型">' + modelText.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) + '</span>' : '')
+        + '<span class="more"><span class="card">'
+        + (modelText ? '<span class="current">当前模型：' + escapeHtml(modelText) + '</span>' : '')
+        + (syncText ? '<span class="sync">' + escapeHtml(syncText) + '</span>' : '')
+        + '<span class="links">'
         + '<a target="_blank" rel="noreferrer" href="${origin}/static/index.html?page=api-settings" title="在小美画布中管理 API 平台、模型和密钥">API 设置</a>'
         + '<a target="_blank" rel="noreferrer" href="${origin}/static/history.html" title="打开小美画布历史记录">历史</a>'
         + '<a target="_blank" rel="noreferrer" href="${origin}/static/asset-manager.html" title="打开小美画布素材库">素材</a>'
-        + '<a target="_blank" rel="noreferrer" href="${origin}/static/skill-market.html" title="打开小美画布技能库">技能</a>';
+        + '<a target="_blank" rel="noreferrer" href="${origin}/static/skill-market.html" title="打开小美画布技能库">技能</a>'
+        + '<button type="button" class="refresh" title="重新加载对话页（右侧预览提示“文件资源服务不可用”时点这里）">刷新</button>'
+        + '</span>'
+        + '</span></span>';
+      const refresh = bar.querySelector('.refresh');
+      if (refresh) refresh.addEventListener('click', () => { location.reload(); });
+      // 胶囊横向对齐输入框中心：右侧栏展开时输入区变窄，胶囊随之左移，
+      // 不会压住右侧面板顶部的 Tab。
+      const placeBridge = () => {
+        const composer = document.querySelector('[data-composer-card]');
+        const rect = composer === null ? null : composer.getBoundingClientRect();
+        const center = rect !== null && rect.width > 0 ? rect.left + rect.width / 2 : window.innerWidth / 2;
+        bar.style.left = Math.round(center) + 'px';
+      };
+      placeBridge();
+      if (!window.__xiaomeiBridgePlace) {
+        let timer = 0;
+        const schedule = () => {
+          if (timer) return;
+          timer = setTimeout(() => { timer = 0; placeBridge(); }, 150);
+        };
+        window.addEventListener('resize', schedule);
+        window.__xiaomeiBridgePlace = new MutationObserver(schedule);
+        window.__xiaomeiBridgePlace.observe(document.body, { childList: true, subtree: true });
+      }
+      // 右侧文档预览在长驻页面里可能因为客户端文件资源插件掉线而显示
+      // “文件资源服务不可用”。这里只在没有正在生成的回复时自动重载一次
+      // （每个浏览器会话最多一次），避免反复打断对话。检查带防抖，且先看
+      // 预览节点是否存在，正常对话不会触发 innerText 的整页排版计算。
+      if (!window.__xiaomeiPreviewHeal) {
+        let healTimer = 0;
+        window.__xiaomeiPreviewHeal = new MutationObserver(() => {
+          if (healTimer || document.querySelector('[data-textpreview-state]') === null) return;
+          healTimer = setTimeout(() => {
+            healTimer = 0;
+            const panel = document.querySelector('[data-textpreview-state]');
+            if (panel === null || panel.textContent.indexOf('文件资源服务不可用') === -1) return;
+            if (document.querySelector('[aria-label="停止"], [data-streaming]') !== null) return;
+            if (sessionStorage.getItem('xiaomei-preview-heal') === '1') return;
+            sessionStorage.setItem('xiaomei-preview-heal', '1');
+            window.__xiaomeiPreviewHeal.disconnect();
+            location.reload();
+          }, 500);
+        });
+        window.__xiaomeiPreviewHeal.observe(document.body, { childList: true, subtree: true, characterData: true });
+      }
+      // 模型下拉已改为 Harness 客户端插件里的两级菜单（先选平台、再选模型），
+      // 这里不再对菜单做 DOM 装饰，避免与原生交互（键盘、搜索）互相打架。
       const brand = () => {
         for (const node of document.querySelectorAll('body *')) {
           if (node.children.length) continue;
@@ -4115,8 +4191,15 @@ async function injectXiaomeiHarnessUi() {
       brand();
       new MutationObserver(brand).observe(document.body, { childList: true, subtree: true });
       document.title = '小美画布 · DeepSeek 对话';
-    })()`); 
+    })()`);
   } catch {}
+  // 侧栏底部的 MCP 设置入口跟随官方侧栏渲染，单独注入便于复用与验证。
+  try {
+    const mcpEntryScript = fs.readFileSync(path.join(__dirname, 'harness-mcp-entry.js'), 'utf8');
+    await deepSeekHarnessView.webContents.executeJavaScript(mcpEntryScript);
+  } catch (error) {
+    appendDeepSeekHarnessLog('stderr', `MCP 设置入口加载失败：${error.message}\n`);
+  }
 }
 
 function navigateFromDeepSeekHarness(rawUrl) {
@@ -4951,7 +5034,7 @@ function sendSurfaceState(extra = {}) {
     committedNavigationRevision: Number(stateEntry?.committedNavigationRevision || 0),
     site,
     title,
-    ready: Boolean(stateEntry?.pageLoaded),
+    ready: Boolean(stateEntry?.pageLoaded || stateEntry?.domReady),
     verification: Boolean(verification),
     verificationMessage: verification ? `当前是${site}官方验证页面，请手动完成验证；小美不会自动跳转。` : '',
     languageFamily: String(stateEntry?.languageFamily || ''),
@@ -5073,6 +5156,9 @@ function failProductNavigation(entry, {
   errorCode = NaN,
 } = {}) {
   if (!productNavigationIsCurrent(entry, navigationRevision)) return false;
+  // Chromium uses ERR_ABORTED when a redirect replaces a navigation. The
+  // replacement document's events determine whether that navigation succeeds.
+  if (Number(errorCode) === -3) return 'aborted';
   // loadURL() rejection and did-fail-load can arrive for the same failed
   // navigation. Once a retry is scheduled, the second signal must not turn
   // the temporary recovery state into a visible failure.
@@ -5541,7 +5627,8 @@ function attachProductView(entry) {
       tabId: entry.id,
       url: committed || current,
       title: view.webContents.getTitle(),
-      ready: false,
+      ready: true,
+      loadError: '',
       loading: Boolean(entry.loading),
     });
   });
@@ -5753,6 +5840,9 @@ async function loadProduct(url, tabId = 'commerce-default', kind = '') {
     if (outcome === 'retrying') {
       return { ok: false, retrying: true, url: entry.url || '', tabId: entry.id };
     }
+    if (outcome === 'aborted') {
+      return { ok: false, pending: true, url: entry.url || '', tabId: entry.id };
+    }
     throw error;
   }
   if (!productNavigationIsCurrent(entry, navigationRevision)) {
@@ -5926,7 +6016,7 @@ function closeProductTab(tabId = '') {
       tabId: next?.id || activeProductTabId,
       url: next?.url || '',
       title: next?.view?.webContents?.getTitle?.() || '',
-      ready: Boolean(next?.pageLoaded),
+      ready: Boolean(next?.pageLoaded || next?.domReady),
       loading: Boolean(next?.loading),
     });
   }
@@ -6174,6 +6264,8 @@ async function captureProduct(options = {}) {
   if (requestedTabId && !entry) return { ok: false, status: 'tab_not_found', message: '当前商品标签页不存在或已关闭' };
   const webContents = entry?.view?.webContents || productView?.webContents;
   if (!webContents) return { ok: false, message: '桌面商品页面尚未打开' };
+  if (entry?.loadFailed) return { ok: false, status: 'page_failed', message: '商品页加载失败，请刷新商品页后重试；若仍失败，请检查网络或系统代理' };
+  if (entry && !entry.domReady && !entry.pageLoaded) return { ok: false, status: 'page_loading', message: '商品页正文尚未加载，请等待页面显示后重试' };
   let current = webContents.getURL();
   const requestedUrl = entry?.url || entry?.requestedUrl || productUrl || current;
   if (isCommerceLoginRedirectUrl(current)) {
@@ -6247,7 +6339,30 @@ async function captureProduct(options = {}) {
   collectionToken.cleanup = ownsNetworkCapture
     ? () => networkCapture.dispose().catch(() => {})
     : () => Promise.resolve();
-  await networkCapture.ready.catch(() => null);
+  let readyTimer;
+  try {
+    await Promise.race([
+      networkCapture.ready.catch(() => null),
+      new Promise((resolve) => { readyTimer = setTimeout(resolve, 1200); }),
+    ]);
+  } finally { clearTimeout(readyTimer); }
+  const captureRevision = Number(entry?.navigationRevision || 0);
+  const captureDeadline = interactionMode === 'passive' ? Date.now() + 10000 : Infinity;
+  let pageReadTimedOut = false;
+  const readPage = async (script, userGesture = true) => {
+    if (collectionToken.cancelled || entry?.loadFailed
+      || (entry && !productNavigationIsCurrent(entry, captureRevision))) throw new Error('商品页已切换或采集已停止，请在当前商品页重试');
+    if (pageReadTimedOut) throw new Error('商品页读取超时，请刷新商品页后重试');
+    let timer;
+    try {
+      const execution = webContents.executeJavaScript(script, userGesture);
+      if (!Number.isFinite(captureDeadline)) return await execution;
+      return await Promise.race([
+        execution,
+        new Promise((_, reject) => { timer = setTimeout(() => { pageReadTimedOut = true; reject(new Error('商品页读取超时，请刷新商品页后重试')); }, Math.max(1, Math.min(2000, captureDeadline - Date.now()))); }),
+      ]);
+    } finally { clearTimeout(timer); }
+  };
   // 商品基础采集只需要等待已经发出的详情响应；响应体读取异常时不能把整次
   // 采集卡住。评价/问大家的可见采集仍使用自己的完整等待策略。
   const settleNetwork = async (milliseconds = 450, timeoutMs = 1200) => {
@@ -6289,8 +6404,13 @@ async function captureProduct(options = {}) {
   }
   let commerceState = {};
   try {
-    commerceState = await webContents.executeJavaScript(ELECTRON_COMMERCE_PRODUCT_STATE_SCRIPT, true) || {};
-  } catch {
+    commerceState = await readPage(ELECTRON_COMMERCE_PRODUCT_STATE_SCRIPT) || {};
+    for (let attempt = 0; attempt < 4 && !commerceState.mainImages?.length && !collectionToken.cancelled; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      commerceState = await readPage(ELECTRON_COMMERCE_PRODUCT_STATE_SCRIPT) || commerceState;
+    }
+  } catch (error) {
+    pageReadTimedOut = /读取超时/.test(String(error?.message || error));
     // 淘宝旧模板可能没有页面初始化状态，继续使用同一次可见 DOM 读取。
   }
   let payload = {
@@ -6298,8 +6418,8 @@ async function captureProduct(options = {}) {
     final_url: current,
     rawText: '',
     product: {},
-    reviewStats: {},
-    questionStats: {},
+    reviewStats: commerceState.reviewStats || {},
+    questionStats: commerceState.questionStats || {},
     mainImages: [],
     images: [],
     videos: [],
@@ -6307,8 +6427,8 @@ async function captureProduct(options = {}) {
     questions: [],
     detail: { text: '', images: [] },
   };
-  try {
-    payload = await webContents.executeJavaScript(String.raw`(() => {
+  if (!pageReadTimedOut && (!commerceState.product?.title || !commerceState.mainImages?.length)) try {
+    payload = await readPage(String.raw`(() => {
       // 商品基础字段来自页面初始化状态和下方的单次可见读取；评价/问大家
       // 正文只允许由当前采集动作触发的 mtop 响应提供，不保留旧版 body 扫描兜底。
     const visible = (node) => { if (!node) return false; const r = node.getBoundingClientRect(); const s = getComputedStyle(node); return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden'; };
@@ -6518,7 +6638,7 @@ async function captureProduct(options = {}) {
   };
   let structuredSku = null;
   try {
-    structuredSku = await webContents.executeJavaScript(ELECTRON_COMMERCE_STRUCTURED_SKU_SCRIPT, true) || null;
+    structuredSku = await readPage(ELECTRON_COMMERCE_STRUCTURED_SKU_SCRIPT, true) || null;
   } catch {
     // 页面还未完成初始化时会暂时没有结构化 SKU；保持空列表，不能补当前选中项。
   }
@@ -6544,7 +6664,7 @@ async function captureProduct(options = {}) {
   const refreshDetailState = async () => {
     const beforeResponses = networkCapture.records.detail.length;
     try {
-      detailRevealResult = await webContents.executeJavaScript(ELECTRON_COMMERCE_DETAIL_REVEAL_SCRIPT, true);
+      detailRevealResult = await readPage(ELECTRON_COMMERCE_DETAIL_REVEAL_SCRIPT, true);
       // 详情读取脚本只检查当前页面和初始化状态，不触发滚动或点击。
       // 它返回的真实图片 URL 直接并入详情状态，后端随后按受控详情资源下载拼接。
       if (detailRevealResult && typeof detailRevealResult === 'object') {
@@ -6558,10 +6678,7 @@ async function captureProduct(options = {}) {
       }
       // 保留很短的 settle，用来接收页面已经在本次采集开始前后产生的
       // detail.getdesc 响应；不再等待滚动触发的网络请求。
-      await settleNetwork(420, 1000);
-      const refreshedDetailState = await webContents.executeJavaScript(ELECTRON_COMMERCE_PRODUCT_STATE_SCRIPT, true) || {};
-      if (refreshedDetailState && typeof refreshedDetailState === 'object') commerceState = mergePageState(commerceState, refreshedDetailState);
-      await settleNetwork(160, 420);
+      if (!commerceState.detail?.images?.length && !networkCapture.records.detail.length) await settleNetwork(250, 700);
       const parsedNew = networkCapture.parseModule('detail', beforeResponses, webContents.getURL());
       const parsedAll = networkCapture.parseModule('detail', 0, webContents.getURL());
       const candidates = [parsedNew?.detail, parsedAll?.detail]
@@ -6606,13 +6723,13 @@ async function captureProduct(options = {}) {
     try {
       // 先打开商品画廊的视频入口，再处理可能会弹出的规格面板；否则
       // 规格弹层会挡住视频标签，导致基础自动采集漏掉主图视频。
-      videoRevealResult = await webContents.executeJavaScript(ELECTRON_COMMERCE_VIDEO_REVEAL_SCRIPT, true);
+      videoRevealResult = await readPage(ELECTRON_COMMERCE_VIDEO_REVEAL_SCRIPT, true);
       // 没有可见视频入口时立即结束；只有实际点击成功才等待播放器异步挂载。
       // 同一页面状态最多重读 3 次，避免无视频商品反复扫描整页状态。
       if (!videoRevealResult?.ok || !videoRevealResult?.clicked) return false;
       for (let attempt = 0; attempt < 3 && !commerceState.videos?.length; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 480 : 300));
-        const refreshedMediaState = await webContents.executeJavaScript(ELECTRON_COMMERCE_PRODUCT_STATE_SCRIPT, true) || {};
+        const refreshedMediaState = await readPage(ELECTRON_COMMERCE_PRODUCT_STATE_SCRIPT, true) || {};
         if (refreshedMediaState && typeof refreshedMediaState === 'object') commerceState = mergePageState(commerceState, refreshedMediaState);
       }
       return Boolean(commerceState.videos?.length);
@@ -6630,12 +6747,12 @@ async function captureProduct(options = {}) {
   const skuNeedsVisibleImages = requestedModule === 'sku' && !Number(structuredSku?.specImageCount || 0);
   if ((!hasSkuState(structuredSku) || skuNeedsVisibleImages) && (baseOnly || requestedModule === 'sku')) {
     try {
-      const skuRevealResult = await webContents.executeJavaScript(ELECTRON_COMMERCE_SKU_REVEAL_SCRIPT, true);
+      const skuRevealResult = await readPage(ELECTRON_COMMERCE_SKU_REVEAL_SCRIPT, true);
       if (skuRevealResult?.ok && skuRevealResult?.clicked) {
         await new Promise((resolve) => setTimeout(resolve, 420));
-        const refreshedState = await webContents.executeJavaScript(ELECTRON_COMMERCE_PRODUCT_STATE_SCRIPT, true) || {};
+        const refreshedState = await readPage(ELECTRON_COMMERCE_PRODUCT_STATE_SCRIPT, true) || {};
         if (refreshedState && typeof refreshedState === 'object') commerceState = mergePageState(commerceState, refreshedState);
-        structuredSku = await webContents.executeJavaScript(ELECTRON_COMMERCE_STRUCTURED_SKU_SCRIPT, true) || structuredSku;
+        structuredSku = await readPage(ELECTRON_COMMERCE_STRUCTURED_SKU_SCRIPT, true) || structuredSku;
       }
     } catch {
       // 规格区不是所有淘宝模板都会渲染；继续保留真实空状态，不补选中项。
@@ -6657,6 +6774,11 @@ async function captureProduct(options = {}) {
       : {},
   };
   commerceState = await enrichCommerceProductCategory(commerceState).catch(() => commerceState);
+  if (pageReadTimedOut || entry?.loadFailed || (entry && !productNavigationIsCurrent(entry, captureRevision)) || (!commerceState.mainImages?.length && !payload.mainImages?.length && !commerceState.product?.title)) {
+    activeCommerceCollections.delete(webContents.id);
+    if (ownsNetworkCapture) void networkCapture.dispose().catch(() => {});
+    return { ok: false, status: 'page_failed', message: '未能读取商品图片和信息，请刷新商品页后重试；若仍失败，请检查网络或系统代理' };
+  }
   const directProduct = Object.fromEntries(Object.entries(commerceState.product || {}).filter(([, value]) => value !== null && value !== undefined && value !== ''));
   const mergedPayload = {
     ...payload,
@@ -7004,7 +7126,7 @@ function createWindow() {
     scheduleCommerceSurfaceResync();
   });
   // Electron 的顶层页面必须是完整的小美画布；商品分析台通过 iframe 作为其中一个工作区加载。
-  mainWindow.loadURL(`${LOCAL_ORIGIN}/static/index.html?page=${encodeURIComponent(START_PAGE)}&v=2026.10.19.current-source.1`);
+  mainWindow.loadURL(`${LOCAL_ORIGIN}/static/index.html?page=${encodeURIComponent(START_PAGE)}&v=2026.10.28.current-source.1`);
 }
 
 app.whenReady().then(async () => {
@@ -7020,6 +7142,7 @@ app.whenReady().then(async () => {
     await configureCommerceSessions();
     createWindow();
     scheduleDesktopUpdateCheck();
+    watchXiaomeiMcpServers();
     scheduleDeepSeekHarnessUpdateCheck();
     app.on('activate', () => {
       if (mainWindow && !mainWindow.isDestroyed()) desktopTray?.show();
