@@ -6,11 +6,24 @@
 
     const WEIGHT_OPTIONS = [[0.3, '低'], [0.6, '中'], [0.9, '高']];
     const AESTHETIC_GROUPS = [
-        {key: 'style_tags', label: '风格偏好', hint: '喜欢的设计风格，例如：极简、国风、轻奢、赛博。'},
-        {key: 'color_preferences', label: '色彩偏好', hint: '常用的色彩倾向，例如：低饱和、暖调、莫兰迪。'},
-        {key: 'composition', label: '构图偏好', hint: '偏好的画面结构，例如：居中对称、留白、特写。'},
-        {key: 'lighting', label: '光线偏好', hint: '偏好的光线处理，例如：柔光、自然光、逆光。'},
-        {key: 'mood', label: '氛围偏好', hint: '希望画面传达的感受，例如：干净、高级、烟火气。'},
+        {key: 'style_tags', label: '风格偏好', hint: '喜欢的设计风格', examples: ['极简', '国风', '轻奢', '赛博']},
+        {key: 'color_preferences', label: '色彩偏好', hint: '常用的色彩倾向', examples: ['低饱和', '暖调', '莫兰迪', '高对比']},
+        {key: 'composition', label: '构图偏好', hint: '偏好的画面结构', examples: ['居中对称', '大量留白', '特写', '三分法']},
+        {key: 'lighting', label: '光线偏好', hint: '偏好的光线处理', examples: ['柔光', '自然光', '逆光', '硬光']},
+        {key: 'mood', label: '氛围偏好', hint: '希望画面传达的感受', examples: ['干净', '高级', '烟火气', '治愈']},
+    ];
+    const AVOID_GROUP = {key: 'avoid_tags', label: '避免风格', hint: '不希望出现在结果里的元素或风格', examples: ['廉价感', '杂乱背景', '过度锐化', '塑料质感']};
+    const TONE_GROUPS = [
+        {key: 'brand_words', label: '品牌关键词', hint: '希望提示词里常出现的关键词', examples: ['手工', '天然', '专业']},
+        {key: 'banned_words', label: '禁用词', hint: '不希望出现在文案或提示词里的词', examples: ['低价', '爆款', '限时']},
+    ];
+    const RATIO_OPTIONS = [
+        {value: '1:1', label: '1:1', w: 22, h: 22},
+        {value: '3:4', label: '3:4', w: 17, h: 22},
+        {value: '4:3', label: '4:3', w: 26, h: 19},
+        {value: '16:9', label: '16:9', w: 30, h: 17},
+        {value: '9:16', label: '9:16', w: 13, h: 22},
+        {value: 'auto', label: '自动', w: 22, h: 22},
     ];
     const PATCH_GROUPS = [...AESTHETIC_GROUPS.map(group => ({key: group.key, label: group.label})), {key: 'avoid_tags', label: '避免风格'}];
     const ANALYSIS_FIELDS = [
@@ -109,87 +122,190 @@
         return best[1];
     }
 
+    function ratioButtonsHtml(current) {
+        const active = current || '1:1';
+        return RATIO_OPTIONS.map((option) => {
+            const on = option.value === active;
+            return `<button type="button" role="radio" aria-checked="${on}" class="pf-ratio-btn${on ? ' is-on' : ''}" data-ratio="${option.value}" title="${esc(option.label)}"><i style="width:${option.w}px;height:${option.h}px"></i><em>${esc(option.label)}</em></button>`;
+        }).join('');
+    }
+
+    function tagChipHtml(groupKey, item, index, noWeight, negative) {
+        const weight = noWeight ? '' : `<select class="pf-weight" aria-label="${esc(item.tag)} 的权重" data-weight-group="${groupKey}" data-index="${index}">${WEIGHT_OPTIONS.map(([value, label]) => `<option value="${value}"${weightLabel(item.weight) === label ? ' selected' : ''}>${label}</option>`).join('')}</select>`;
+        return `<span class="pf-chip${negative ? ' is-negative' : ''}">${esc(item.tag)}${weight}<button class="pf-chip-x" type="button" data-remove-tag="${groupKey}" data-index="${index}" aria-label="移除 ${esc(item.tag)}">×</button></span>`;
+    }
+
+    function wordChipHtml(groupKey, word, index, negative) {
+        return `<span class="pf-chip${negative ? ' is-negative' : ''}">${esc(word)}<button class="pf-chip-x" type="button" data-remove-word="${groupKey}" data-index="${index}" aria-label="移除 ${esc(word)}">×</button></span>`;
+    }
+
+    /* 一张偏好卡：标题 + 计数 + 提示 + 标签 + 内联添加 + 空态示例 */
+    function profileCardHtml(group, items, options = {}) {
+        const negative = Boolean(options.negative);
+        const chips = items.map((item, index) => (options.chip
+            ? options.chip(item, index)
+            : tagChipHtml(group.key, item, index, options.noWeight, negative))).join('');
+        const used = new Set(items.map((item) => (typeof item === 'string' ? item : item.tag)));
+        const suggestions = (group.examples || []).filter((word) => !used.has(word)).slice(0, 4);
+        const suggestHtml = items.length || !suggestions.length ? '' : `<div class="pf-suggest">${suggestions.map((word) => `<button type="button" data-suggest-group="${group.key}" data-suggest-value="${esc(word)}">${esc(word)}</button>`).join('')}</div>`;
+        const attr = options.word ? 'word' : 'tag';
+        return `<article class="pf-card${negative ? ' is-negative' : ''}" data-group="${group.key}">
+            <header class="pf-card-head"><h3>${esc(group.label)}</h3><span class="pf-count" data-count-for="${group.key}"${items.length ? '' : ' hidden'}>${items.length}</span></header>
+            <p class="pf-card-hint">${esc(group.hint)}</p>
+            <div class="pf-chips">${chips}<span class="pf-add"><input class="pf-add-input" type="text" data-add-${attr}-input="${group.key}" placeholder="${options.word ? '添加词语' : '添加标签'}" aria-label="添加${esc(group.label)}" autocomplete="off"><button class="pf-add-btn" type="button" data-add-${attr}="${group.key}" aria-label="添加${esc(group.label)}">+</button></span>${suggestHtml}</div></article>`;
+    }
+
     function renderProfile() {
-        const draft = state.draft;
+        const draft = state.draft || {};
         const aesthetics = draft.aesthetics || {};
         const tone = draft.tone || {};
         const defaults = draft.task_defaults || {};
         const privacy = draft.privacy || {};
-        const groupsHtml = AESTHETIC_GROUPS.map((group) => {
-            const items = aesthetics[group.key] || [];
-            return `<div class="db-group" data-group="${group.key}">
-                <h3>${esc(group.label)}</h3><p class="group-hint">${esc(group.hint)}</p>
-                <div class="chip-row">${items.map((item, index) => tagChipHtml(group.key, item, index)).join('')}
-                    <span class="chip-add"><input class="inline-input" type="text" data-add-tag-input="${group.key}" placeholder="添加标签" aria-label="添加${esc(group.label)}"><button class="subtle-button" type="button" data-add-tag="${group.key}">添加</button></span>
-                </div></div>`;
-        }).join('');
-        const avoidItems = aesthetics.avoid_tags || [];
-        const avoidHtml = `<div class="db-group" data-group="avoid_tags">
-            <h3>避免风格</h3><p class="group-hint">不希望出现在生成结果里的元素或风格。</p>
-            <div class="chip-row">${avoidItems.map((item, index) => tagChipHtml('avoid_tags', item, index, true)).join('')}
-                <span class="chip-add"><input class="inline-input" type="text" data-add-tag-input="avoid_tags" placeholder="添加标签" aria-label="添加避免风格"><button class="subtle-button" type="button" data-add-tag="avoid_tags">添加</button></span>
-            </div></div>`;
-        const toneHtml = (key, label, hint) => `<div class="db-group" data-tone="${key}">
-            <h3>${esc(label)}</h3><p class="group-hint">${esc(hint)}</p>
-            <div class="chip-row">${(tone[key] || []).map((word, index) => `<span class="tag-chip">${esc(word)}<button class="remove" type="button" data-remove-word="${key}" data-index="${index}" aria-label="移除">×</button></span>`).join('')}
-                <span class="chip-add"><input class="inline-input" type="text" data-add-word-input="${key}" placeholder="添加词语" aria-label="添加${esc(label)}"><button class="subtle-button" type="button" data-add-word="${key}">添加</button></span>
-            </div></div>`;
+        const mainImage = defaults.main_image || {};
+        const detailPage = defaults.detail_page || {};
+        const visualCards = AESTHETIC_GROUPS.map((group) => profileCardHtml(group, aesthetics[group.key] || [])).join('')
+            + profileCardHtml(AVOID_GROUP, aesthetics.avoid_tags || [], {negative: true, noWeight: true});
+        const toneCards = TONE_GROUPS.map((group) => profileCardHtml(group, tone[group.key] || [], {
+            word: true,
+            noWeight: true,
+            negative: group.key === 'banned_words',
+            chip: (word, index) => wordChipHtml(group.key, word, index, group.key === 'banned_words'),
+        })).join('');
+        const ratio = mainImage.preferred_ratio || '1:1';
+        const segments = detailPage.segments ?? 8;
         $('profileForm').innerHTML = `
-            ${groupsHtml}
-            ${avoidHtml}
-            ${toneHtml('brand_words', '品牌关键词', '希望提示词里常出现的关键词。')}
-            ${toneHtml('banned_words', '禁用词', '不希望出现在文案或提示词里的词。')}
-            <div class="db-group">
-                <h3>任务默认</h3><p class="group-hint">新任务的起始参数，仅保存在本机，不绑定任何模型。</p>
-                <div class="form-grid">
-                    <div class="form-field"><label for="defaultRatio">主图比例</label>
-                        <select id="defaultRatio" class="inline-input wide-input">
-                            ${['1:1', '3:4', '4:3', '16:9', '9:16', 'auto'].map((value) => `<option value="${value}"${(defaults.main_image || {}).preferred_ratio === value ? ' selected' : ''}>${value === 'auto' ? '自动' : value}</option>`).join('')}
-                        </select></div>
-                    <div class="form-field"><label for="defaultSegments">详情页分段数</label>
-                        <input id="defaultSegments" class="inline-input wide-input" type="number" min="1" max="24" value="${(defaults.detail_page || {}).segments ?? 8}"></div>
-                </div></div>
-            <div class="db-group">
-                <h3>隐私</h3>
-                <label class="privacy-box"><input id="allowCloud" type="checkbox"${privacy.allow_cloud_analysis ? ' checked' : ''}>
-                    <span>允许「AI 提炼经验」把所选记录的<strong>提示词与参数文本</strong>发送给我选择的对话模型。<strong>默认关闭</strong>；关闭时档案与经验只在本地处理。生图请求不会附带档案。</span></label>
-                <label class="privacy-box" style="margin-top:10px"><input id="allowReferenceAnalysis" type="checkbox"${privacy.allow_reference_analysis ? ' checked' : ''}>
-                    <span>允许「AI 设计分析」把<strong>参考素材图片</strong>发送给我选择的对话模型做设计分析。<strong>默认关闭</strong>；每次批量分析前仍会单独确认，AI 的建议分类不会自动写入审美档案。</span></label>
-            </div>`;
+            <section class="pf-block">
+                <header class="pf-block-head"><h2>视觉偏好</h2><p>团队写提示词时优先采用这些倾向；「避免风格」用于排除。</p></header>
+                <div class="pf-grid">${visualCards}</div>
+            </section>
+            <section class="pf-block">
+                <header class="pf-block-head"><h2>文字偏好</h2><p>影响文案与提示词用词，不改变画面。</p></header>
+                <div class="pf-grid">${toneCards}</div>
+            </section>
+            <section class="pf-block">
+                <header class="pf-block-head"><h2>任务默认</h2><p>新任务的起始参数，只保存在本机，不绑定任何模型。</p></header>
+                <div class="pf-defaults">
+                    <div class="pf-field">
+                        <span class="pf-field-label">主图比例</span>
+                        <div class="pf-ratio" role="radiogroup" aria-label="主图比例">${ratioButtonsHtml(ratio)}</div>
+                        <select id="defaultRatio" class="pf-visually-hidden" tabindex="-1" aria-hidden="true">
+                            ${RATIO_OPTIONS.map((option) => `<option value="${option.value}"${ratio === option.value ? ' selected' : ''}>${esc(option.label)}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="pf-field">
+                        <span class="pf-field-label">详情页分段数</span>
+                        <div class="pf-stepper">
+                            <button type="button" data-segment-step="-1" aria-label="减少分段">−</button>
+                            <input id="defaultSegments" type="number" min="1" max="24" value="${esc(segments)}" aria-label="详情页分段数">
+                            <button type="button" data-segment-step="1" aria-label="增加分段">+</button>
+                        </div>
+                        <span class="pf-field-note">建议 6–10 段</span>
+                    </div>
+                </div>
+            </section>
+            <section class="pf-block">
+                <header class="pf-block-head"><h2>隐私</h2><p>两项默认关闭，关闭时档案与经验只在本机处理。</p></header>
+                <div class="pf-toggles">
+                    <label class="pf-toggle${privacy.allow_cloud_analysis ? ' is-on' : ''}">
+                        <span class="pf-toggle-copy"><strong>AI 提炼经验</strong><small>把所选记录的提示词与参数文本发送给你选择的对话模型；生图请求不会附带档案。</small></span>
+                        <span class="pf-state" data-state-for="allowCloud">${privacy.allow_cloud_analysis ? '已开启' : '默认关闭'}</span>
+                        <input id="allowCloud" type="checkbox"${privacy.allow_cloud_analysis ? ' checked' : ''}>
+                        <span class="pf-switch" aria-hidden="true"></span>
+                    </label>
+                    <label class="pf-toggle${privacy.allow_reference_analysis ? ' is-on' : ''}">
+                        <span class="pf-toggle-copy"><strong>AI 设计分析</strong><small>把参考素材图片发送给对话模型做分析；每次批量分析前仍会单独确认，AI 的建议分类不会自动写入档案。</small></span>
+                        <span class="pf-state" data-state-for="allowReferenceAnalysis">${privacy.allow_reference_analysis ? '已开启' : '默认关闭'}</span>
+                        <input id="allowReferenceAnalysis" type="checkbox"${privacy.allow_reference_analysis ? ' checked' : ''}>
+                        <span class="pf-switch" aria-hidden="true"></span>
+                    </label>
+                </div>
+            </section>`;
         updateProfileSummary();
     }
 
-    function tagChipHtml(groupKey, item, index, noWeight) {
-        const weight = `<select aria-label="权重" data-weight-group="${groupKey}" data-index="${index}">${WEIGHT_OPTIONS.map(([value, label]) => `<option value="${value}"${weightLabel(item.weight) === label ? ' selected' : ''}>${label}</option>`).join('')}</select>`;
-        return `<span class="tag-chip">${esc(item.tag)}${noWeight ? '' : weight}<button class="remove" type="button" data-remove-tag="${groupKey}" data-index="${index}" aria-label="移除 ${esc(item.tag)}">×</button></span>`;
-    }
-
     function updateProfileSummary() {
-        const aesthetics = (state.profile || {}).aesthetics || {};
-        const count = AESTHETIC_GROUPS.reduce((total, group) => total + ((aesthetics[group.key] || []).length), 0);
-        $('profileSummary').textContent = count ? `档案已有 ${count} 个偏好标签` : '档案还未建立标签';
+        const source = state.draft || state.profile || {};
+        const aesthetics = source.aesthetics || {};
+        const tone = source.tone || {};
+        const preferred = AESTHETIC_GROUPS.reduce((total, group) => total + ((aesthetics[group.key] || []).length), 0);
+        const constraints = (aesthetics.avoid_tags || []).length + (tone.banned_words || []).length;
+        const node = $('profileSummary');
+        if (!node) return;
+        node.textContent = preferred || constraints ? `${preferred} 个偏好 · ${constraints} 项约束` : '档案还未建立标签';
     }
 
     function groupOf(draft, key) {
+        draft.aesthetics = draft.aesthetics || {};
         if (key === 'avoid_tags') draft.aesthetics.avoid_tags = draft.aesthetics.avoid_tags || [];
         else draft.aesthetics[key] = draft.aesthetics[key] || [];
         return draft.aesthetics[key];
     }
 
-    function addTag(key) {
+    function splitTags(text) {
+        return String(text || '').split(/[,，、;；\n]+/).map((part) => part.trim()).filter(Boolean);
+    }
+
+    function focusAddInput(selector) {
+        const node = document.querySelector(selector);
+        if (node) node.focus({preventScroll: true});
+    }
+
+    function addTag(key, rawText) {
         const input = document.querySelector(`[data-add-tag-input="${key}"]`);
-        const text = (input.value || '').trim();
-        if (!text) return;
+        const text = rawText === undefined ? (input ? input.value : '') : rawText;
+        const words = splitTags(text);
+        if (!words.length) return;
         const items = groupOf(state.draft, key);
-        if (items.some((item) => item.tag === text)) { toast('标签已存在'); return; }
-        if (key === 'avoid_tags') items.push({tag: text, origin: 'user'});
-        else items.push({tag: text, weight: 0.6, origin: 'user'});
+        let added = 0;
+        for (const word of words) {
+            if (items.some((item) => item.tag === word)) continue;
+            if (key === 'avoid_tags') items.push({tag: word, origin: 'user'});
+            else items.push({tag: word, weight: 0.6, origin: 'user'});
+            added += 1;
+        }
+        if (!added) { toast('标签已存在'); return; }
         renderProfile();
         markProfileDirty();
+        focusAddInput(`[data-add-tag-input="${key}"]`);
+    }
+
+    function addWord(key, rawText) {
+        const input = document.querySelector(`[data-add-word-input="${key}"]`);
+        const text = rawText === undefined ? (input ? input.value : '') : rawText;
+        const words = splitTags(text);
+        if (!words.length) return;
+        state.draft.tone = state.draft.tone || {};
+        const list = state.draft.tone[key] = state.draft.tone[key] || [];
+        let added = 0;
+        for (const word of words) {
+            if (list.includes(word)) continue;
+            list.push(word);
+            added += 1;
+        }
+        if (!added) { toast('词语已存在'); return; }
+        renderProfile();
+        markProfileDirty();
+        focusAddInput(`[data-add-word-input="${key}"]`);
     }
 
     function markProfileDirty() {
-        $('profileStatus').textContent = '有未保存的修改';
+        const status = $('profileStatus');
+        if (status) {
+            status.textContent = '有未保存的修改';
+            status.classList.remove('error');
+        }
+        $('profilePanel').classList.add('is-dirty');
+    }
+
+    function resetProfile() {
+        state.draft = JSON.parse(JSON.stringify(state.profile || {}));
+        renderProfile();
+        const status = $('profileStatus');
+        if (status) {
+            status.textContent = '已撤销未保存的修改';
+            status.classList.remove('error');
+        }
+        $('profilePanel').classList.remove('is-dirty');
     }
 
     async function loadProfile() {
@@ -220,6 +336,7 @@
             renderProfile();
             $('profileStatus').textContent = '已保存';
             $('profileStatus').classList.remove('error');
+            $('profilePanel').classList.remove('is-dirty');
             updateProfileSummary();
         } catch (error) {
             const status = $('profileStatus');
@@ -2476,6 +2593,7 @@
         const brief = task.brief || {};
         const product = brief.product || {};
         const plan = task.plan || {};
+        const shotError = task.status === 'failed' ? (task.execution?.shots || []).find(shot => shot.status === 'failed' && shot.error)?.error : '';
         const rows = (items) => items.length ? `<ul>${items.map((item) => `<li>${esc(typeof item === 'string' ? item : (item.text || ''))}</li>`).join('')}</ul>` : '<span class="muted">无</span>';
         return `<div class="studio-cards">
             <div class="studio-card"><h4>任务目标</h4><p>${esc(brief.goal || '—')}</p>
@@ -2493,6 +2611,8 @@
                 <div class="studio-thumb-row">${(task.product_images || []).map((url) => `<img src="${esc(url)}" class="studio-thumb-img" loading="lazy" data-studio-preview="${esc(url)}" alt="商品图">`).join('') || '<span class="muted">未附商品图</span>'}</div></div>
             <div class="studio-card"><h4>当前阶段</h4>
                 ${window.DesignBrainProgress.markup(task)}
+                ${shotError && !(task.error || '').includes(shotError) ? `<p class="studio-error-text">${esc(shotError)}</p>` : ''}
+                ${task.status === 'failed' && task.error && task.error.length > 60 ? `<p class="studio-error-text">${esc(task.error)}</p>` : ''}
                 <p>${esc(STUDIO_STATUS_LABELS[task.status] || task.status)}${task.execution && task.execution.design_run_id ? ` · 执行记录 ${esc(task.execution.design_run_id)}` : ''}</p>
                 <p class="card-sub">方案方向</p><p>${esc(plan.direction || '尚未生成')}</p>
                 <p class="card-sub">用量</p><p class="muted">模型调用 ${task.usage.llm_calls} 次 · 生图 ${task.usage.image_calls} 次 · 自动修正 ${task.usage.auto_revisions} 轮</p></div>
@@ -2512,6 +2632,7 @@
         const directionCards = task.design?.confirmation === 'direction' && directions.length ? `<div class="studio-direction-grid"><h4>设计方向候选</h4>${directions.map((item) => `<button type="button" class="studio-direction-card${draft.directionId === item.id ? ' selected' : ''}" data-studio-direction="${esc(item.id)}" aria-pressed="${draft.directionId === item.id}"><strong>${esc(item.title)}</strong><span>${esc(item.intent)}</span><small>${esc(item.composition)}</small><em>${esc(item.focus)}</em></button>`).join('')}</div>` : '';
         return directionCards + `<div class="studio-card"><h4>设计方向</h4><p>${esc(plan.direction || (directions.find(item => item.id === draft.directionId)?.intent || '—'))}</p>
             ${plan.visual_framework?.palette?.length ? `<p class="muted">全组配色：${plan.visual_framework.palette.map(esc).join(' · ')} · 字体：${(plan.visual_framework.fonts || []).map(esc).join('、')}</p>` : ''}
+            ${(plan.planning_warnings || []).length ? `<p class="muted">规划提示：${plan.planning_warnings.map(esc).join('；')}</p>` : ''}
             ${sku ? '<p class="muted">整组共用同一底图。只编辑参数、赠品和属性名称；产品、背景、版式、字号与品牌标识保持一致。</p>' : ''}
             ${skuVariants ? '<p class="muted">按款生成，共用首张场景参考。请逐张核对框色、照片来源与组合；背景、构图、工艺和光线保持统一。设计配色不包含商品实色与照片中的自然颜色。</p>' : ''}
             ${skuVariants && plan.sku_scene ? `<p class="muted">共同场景：${esc(plan.sku_scene)}</p>` : ''}
@@ -2882,7 +3003,7 @@
         document.querySelector('.db-page').dataset.section = group;
         $('dbStudioNav').hidden = tab !== 'team';
         $('dbTeamNav').hidden = group !== 'team' || tab === 'skills';
-        $('dbAssetActions').hidden = group !== 'asset';
+        $('dbAssetActions').hidden = group !== 'asset' || tab === 'profile';
         $('teamHeaderActions').hidden = tab !== 'team';
         $('studioWorkspaceToggle').hidden = tab !== 'team';
         const headings = {team: ['设计讨论', '从想法到方案，一起完成设计'], cases: ['灵感库', '收藏值得借鉴的设计'], references: ['参考素材', '整理与分析你的视觉参考'], experiences: ['项目经验', '留下每一次设计的收获'], profile: ['审美档案', '让团队了解你的设计偏好'], skills: ['设计技能', '管理可复用的设计能力'], runs: ['执行记录', '查看项目的执行过程'], reviews: ['质量反馈', '回看结果，持续改进']};
@@ -2958,6 +3079,7 @@
         $('tabReviews').addEventListener('click', () => switchTab('reviews'));
         $('tabProfile').addEventListener('click', () => switchTab('profile'));
         $('saveProfileButton').addEventListener('click', saveProfile);
+        $('resetProfileButton').addEventListener('click', resetProfile);
         $('addReferenceButton').addEventListener('click', () => openImagePicker(false));
         $('newExperienceButton').addEventListener('click', () => { switchTab('experiences'); openExperienceForm(); });
         $('pickHistoryButton').addEventListener('click', () => openHistoryPicker());
@@ -3196,19 +3318,43 @@
             const addTagKey = target.dataset.addTag;
             if (addTagKey) { addTag(addTagKey); return; }
             const addWordKey = target.dataset.addWord;
-            if (addWordKey) {
-                const input = document.querySelector(`[data-add-word-input="${addWordKey}"]`);
-                const text = (input.value || '').trim();
-                if (!text) return;
-                const words = state.draft.tone[addWordKey] = state.draft.tone[addWordKey] || [];
-                if (!words.includes(text)) words.push(text);
-                renderProfile();
+            if (addWordKey) { addWord(addWordKey); return; }
+            const suggestGroup = target.dataset.suggestGroup;
+            if (suggestGroup !== undefined) {
+                const value = target.dataset.suggestValue || '';
+                if (TONE_GROUPS.some((group) => group.key === suggestGroup)) addWord(suggestGroup, value);
+                else addTag(suggestGroup, value);
+                return;
+            }
+            const ratioValue = target.dataset.ratio;
+            if (ratioValue) {
+                const select = $('defaultRatio');
+                if (select) select.value = ratioValue;
+                const row = target.closest('.pf-ratio');
+                if (row) {
+                    row.querySelectorAll('.pf-ratio-btn').forEach((button) => {
+                        const on = button === target;
+                        button.classList.toggle('is-on', on);
+                        button.setAttribute('aria-checked', String(on));
+                    });
+                }
                 markProfileDirty();
+                return;
+            }
+            const segmentStep = target.dataset.segmentStep;
+            if (segmentStep !== undefined) {
+                const input = $('defaultSegments');
+                if (input) {
+                    const next = Math.min(24, Math.max(1, Number(input.value || 8) + Number(segmentStep)));
+                    input.value = String(next);
+                    markProfileDirty();
+                }
                 return;
             }
             const removeWord = target.dataset.removeWord;
             if (removeWord !== undefined) {
-                state.draft.tone[removeWord].splice(Number(target.dataset.index), 1);
+                const words = (state.draft.tone || {})[removeWord] || [];
+                words.splice(Number(target.dataset.index), 1);
                 renderProfile();
                 markProfileDirty();
                 return;
@@ -3245,6 +3391,14 @@
 
         document.addEventListener('change', (event) => {
             const target = event.target;
+            if (target.id === 'allowCloud' || target.id === 'allowReferenceAnalysis') {
+                const card = target.closest('.pf-toggle');
+                const stateNode = document.querySelector(`[data-state-for="${target.id}"]`);
+                if (card) card.classList.toggle('is-on', target.checked);
+                if (stateNode) stateNode.textContent = target.checked ? '已开启' : '默认关闭';
+                markProfileDirty();
+                return;
+            }
             const weightGroup = target.dataset.weightGroup;
             if (weightGroup !== undefined) {
                 const entry = groupOf(state.draft, weightGroup)[Number(target.dataset.index)];
@@ -3267,18 +3421,13 @@
         document.addEventListener('keydown', (event) => {
             if (event.key !== 'Enter') return;
             const addInput = event.target.dataset && event.target.dataset.addTagInput;
-            if (addInput) { addTag(addInput); return; }
+            if (addInput) { event.preventDefault(); addTag(addInput); return; }
             const wordInput = event.target.dataset && event.target.dataset.addWordInput;
-            if (wordInput) {
-                const input = event.target;
-                const text = (input.value || '').trim();
-                if (text) {
-                    const words = state.draft.tone[wordInput] = state.draft.tone[wordInput] || [];
-                    if (!words.includes(text)) words.push(text);
-                    renderProfile();
-                    markProfileDirty();
-                }
-            }
+            if (wordInput) { event.preventDefault(); addWord(wordInput); return; }
+        });
+
+        document.addEventListener('input', (event) => {
+            if (event.target.id === 'defaultSegments') markProfileDirty();
         });
 
         // 历史页「提炼到设计大脑」桥：index.html 转发所选记录时间戳。

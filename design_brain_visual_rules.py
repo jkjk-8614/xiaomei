@@ -60,7 +60,7 @@ def sku_series_mode(brief):
     if mode == "sku_variants":
         return mode
     appearance = r"(?:框色|框架颜色|产品颜色|商品颜色|照片|图案|内芯|外观|造型)"
-    change = r"(?:不同|更换|替换|换成|换用|切换|可选|多种)"
+    change = r"(?:不同|更换|替换|换成|换用|切换|可选|多种|参考|选自|来自|组合|[0-9一二三四五六七八九十]+\s*种)"
     for clause in re.split(r"[，。；,;\n]", text):
         if re.search(r"不(?:要|能|得|允许|可)|禁止|不变|保持.{0,8}一致|仅?改文字|只改文字", clause):
             continue
@@ -149,6 +149,104 @@ def validate_framework(raw):
         raise VisualRuleError("字级应使用偶数：主标题至少48px、建议60px以上，副标题至少24px、手机正文至少25pt，行距增加10px")
     return {"palette": palette, "fonts": fonts, "typography": {"title_pt": title, "subtitle_pt": subtitle, "body_pt": body, "line_extra_px": extra},
             **{k: raw[k].strip()[:600] for k in ("style", "brand", "product_pose")}}
+
+
+def default_visual_framework(brief=None, plan=None):
+    """补齐规划模型完全漏掉的全组视觉框架。
+
+    这是一个窄范围的容错：只在模型没有返回 visual_framework 时使用，
+    不会把一个已经返回但格式错误的框架静默改成默认值。颜色只采集用户
+    或方案正文中明确出现的 HEX；其余字段使用可审阅的保守默认值。
+    """
+    brief = brief if isinstance(brief, dict) else {}
+    plan = plan if isinstance(plan, dict) else {}
+    text_parts = []
+    style_text_parts = []
+    for value in (brief.get("source_text"), brief.get("goal"), brief.get("style_direction"),
+                  plan.get("direction"), plan.get("rationale")):
+        if value:
+            value = str(value)
+            text_parts.append(value)
+            if value in (str(brief.get("style_direction") or ""), str(plan.get("direction") or ""),
+                         str(plan.get("rationale") or "")):
+                style_text_parts.append(value)
+    product = brief.get("product")
+    if isinstance(product, dict):
+        text_parts.extend(str(product.get(key) or "") for key in ("name", "category", "features", "constraints"))
+    text = "\n".join(text_parts)
+    palette = []
+    palette_source = "\n".join(style_text_parts)
+    for value in (plan.get("palette"), plan.get("colors"), brief.get("palette"), brief.get("colors")):
+        if isinstance(value, list):
+            palette_source += "\n" + " ".join(str(item) for item in value)
+    for color in re.findall(r"#[0-9A-Fa-f]{6}", palette_source):
+        color = color.upper()
+        if color not in palette:
+            palette.append(color)
+        if len(palette) == 3:
+            break
+    if not palette:
+        palette = ["#F5F1E8", "#252525"]
+    elif len(palette) == 1:
+        extra = "#252525" if palette[0] != "#252525" else "#F5F1E8"
+        palette.append(extra)
+
+    typography = plan.get("typography") if isinstance(plan.get("typography"), dict) else {}
+    try:
+        typography = {
+            "title_pt": float(typography.get("title_pt", 64)),
+            "subtitle_pt": float(typography.get("subtitle_pt", 44)),
+            "body_pt": float(typography.get("body_pt", 26)),
+            "line_extra_px": 10,
+        }
+    except (TypeError, ValueError):
+        typography = {"title_pt": 64, "subtitle_pt": 44, "body_pt": 26, "line_extra_px": 10}
+
+    style = str(plan.get("style") or plan.get("visual_style") or plan.get("direction")
+                or brief.get("style_direction") or "").strip()
+    style = style[:600] or "简洁、统一、突出商品真实性的电商视觉"
+    brand = str(plan.get("brand") or plan.get("brand_position") or "").strip()
+    if not brand:
+        brand = "无Logo" if not re.search(r"logo|品牌|商标", text, re.I) else "按用户提供的品牌信息固定位置（未指定具体位置）"
+    # direction 是规划方案里唯一必有的视觉字段；模型漏掉 visual_framework 时，
+    # 机位也要从它推导，否则会退化成通用句，把模型给出的机位信息丢掉。
+    pose = str(plan.get("product_pose") or plan.get("camera") or plan.get("product_position")
+               or plan.get("direction") or "").strip()
+    pose = pose[:600] or "保持商品原有结构、尺寸比例、角度与机位；按参考图统一全组产品表现"
+    fonts = plan.get("fonts")
+    if isinstance(fonts, list):
+        fonts = [str(font).strip() for font in fonts[:3] if str(font).strip()]
+    else:
+        fonts = []
+    return {
+        "palette": palette,
+        "fonts": fonts or ["系统中文无衬线"],
+        "typography": typography,
+        "style": style,
+        "brand": brand[:600],
+        "product_pose": pose,
+    }
+
+
+def default_sku_scene(brief=None, plan=None):
+    """从已经确认的商品事实补齐缺失的 SKU 共同场景。"""
+    brief = brief if isinstance(brief, dict) else {}
+    plan = plan if isinstance(plan, dict) else {}
+    product = brief.get("product") if isinstance(brief.get("product"), dict) else {}
+    name = str(product.get("name") or product.get("category") or "商品主体").strip()
+    constraints = product.get("constraints") if isinstance(product.get("constraints"), list) else []
+    facts = [str(value).strip() for value in constraints if str(value).strip()][:8]
+    style = str(brief.get("style_direction") or plan.get("direction") or "").strip()
+    source = str(brief.get("source_text") or "").strip()
+    parts = [f"共同场景：{name}保持真实结构、尺寸比例与装裱工艺一致"]
+    if facts:
+        parts.append("商品与工艺约束：" + "；".join(facts))
+    elif source:
+        parts.append("按用户原始需求保持共同场景：" + source[:500])
+    if style:
+        parts.append("统一视觉方向：" + style[:300])
+    parts.append("全组使用同一背景、构图、机位、角度、光线与产品比例；仅改变用户明确指定的框色、照片或外观内容")
+    return "；".join(parts)[:1400]
 
 
 def shot_role(kind, index):

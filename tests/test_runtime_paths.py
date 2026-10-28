@@ -10,6 +10,28 @@ from runtime_paths import migrate_legacy_data, resolve_roots, seed_workflows
 
 
 class RuntimePathsTest(unittest.TestCase):
+    def test_current_bundled_workflows_stay_in_app_while_preserved_workflows_import(self):
+        with tempfile.TemporaryDirectory() as folder:
+            project = Path(folder) / "installed app"
+            data = Path(folder) / "user data"
+            bundled = project / "workflows" / "template.json"
+            bundled.parent.mkdir(parents=True)
+            bundled.write_text("bundled template", encoding="utf-8")
+            example = project / "API" / ".env.example"
+            example.parent.mkdir(parents=True)
+            example.write_text("EXAMPLE_KEY=", encoding="utf-8")
+            preserved = Path(folder) / "xiaomei-legacy-data-test" / "root"
+            custom = preserved / "workflows" / "custom.json"
+            custom.parent.mkdir(parents=True)
+            custom.write_text("user workflow", encoding="utf-8")
+
+            migrate_legacy_data(project, data, extra_sources=[preserved])
+
+            self.assertEqual(bundled.read_text(encoding="utf-8"), "bundled template")
+            self.assertEqual((data / "workflows" / "custom.json").read_text(encoding="utf-8"), "user workflow")
+            self.assertFalse((data / "workflows" / "template.json").exists())
+            self.assertFalse((data / "API" / ".env.example").exists())
+
     def test_desktop_roots_keep_code_and_user_data_separate(self):
         with tempfile.TemporaryDirectory() as folder:
             project = Path(folder) / "installed app"

@@ -271,8 +271,15 @@
         const source=String(text||'').trim();
         if(!source)return {};
         const requested={};
+        const wantsVideo=/(?:视频|video|短片|动画|镜头)/i.test(source)
+            && /(?:生成|制作|创建|做|文生|图生|出片|拍)/i.test(source);
+        if(wantsVideo){
+            requested.media='video';
+            const durationMatch=source.match(/(\d{1,2})\s*(?:秒|s|sec)/i);
+            if(durationMatch) requested.duration=Math.max(1,Math.min(60,Number(durationMatch[1])));
+        }
         const count=requestedImageCount(source);
-        if(count)Object.assign(requested,{media:'image',count});
+        if(count && !wantsVideo)Object.assign(requested,{media:'image',count});
         // 优先读取“比例/画幅/宽高比”后面的值，避免把素材尺寸（如 465:453）
         // 误当成用户要求的输出比例。
         const labeled=source.match(/(?:图像|图片|画面|输出|生成|目标|最终)?\s*(?:比例|画幅|宽高比|aspect\s*ratio)\s*(?:是|为|设为|设置为|使用)?\s*(\d{1,3}\s*(?:[:：;；xX×/]|比)\s*\d{1,3})/i);
@@ -301,12 +308,13 @@
             '2:3':{ratio:'portrait'},'5:4':{ratio:'ratio54'},'4:5':{ratio:'ratio45'},
             '21:9':{ratio:'ultrawide'},'9:21':{ratio:'ultratall'}
         }[normalized];
-        if(preset)return {...requested,...preset,media:'image',ratioLabel:normalized};
-        return {
-            ...requested,
-            media:'image',ratio:'custom',ratioLabel:normalized,
-            customRatio:normalized,customRatioWidth:normalizedWidth,customRatioHeight:normalizedHeight
-        };
+        if(preset){
+            if(wantsVideo) return {...requested,media:'video',videoAspect:normalized,ratioLabel:normalized};
+            return {...requested,...preset,media:'image',ratioLabel:normalized};
+        }
+        if(wantsVideo) return {...requested,media:'video',videoAspect:normalized,ratioLabel:normalized};
+        return {...requested,media:'image',ratio:'custom',ratioLabel:normalized,
+            customRatio:normalized,customRatioWidth:normalizedWidth,customRatioHeight:normalizedHeight};
     }
     function generationPreferenceError(requested={},text=''){
         if(requested?.ratio||noGenerationRequested(text))return '';
@@ -317,8 +325,14 @@
         return '';
     }
     function requestedPlanNodeSettings(generation={}){
-        if(!generation||generation.media!=='image')return null;
+        if(!generation||!['image','video'].includes(generation.media))return null;
         const next={};
+        if(generation.media==='video'){
+            next.apiKind='video';
+            if(generation.videoAspect || generation.ratioLabel) next.videoAspect=String(generation.videoAspect || generation.ratioLabel);
+            if(generation.duration!==undefined) next.videoDuration=Math.max(1,Math.min(60,Number(generation.duration)||5));
+            return next;
+        }
         if(generation.ratio)next.ratio=generation.ratio;
         if(generation.ratio==='custom'){
             next.customRatio=String(generation.customRatio||generation.ratioLabel||'');
@@ -333,6 +347,7 @@
         return Object.keys(next).length?next:null;
     }
     function requestedGenerationLabel(generation={}){
+        if(generation?.media==='video')return [generation.ratioLabel?`视频比例 ${generation.ratioLabel}`:'',generation.duration?`时长 ${generation.duration} 秒`:'' ].filter(Boolean).join(' · ');
         if(generation?.media!=='image')return '';
         return [generation.ratioLabel?`图片比例 ${generation.ratioLabel}`:'',generation.count?`生成 ${generation.count} 张独立图片`:''].filter(Boolean).join(' · ');
     }
@@ -1298,7 +1313,7 @@
             return false;
         }
     }
-    const PLAN_NODE_TYPES=new Set(['smart-upload','smart-prompt','smart-agent','smart-paint','smart-loop','smart-group','smart-image']);
+    const PLAN_NODE_TYPES=new Set(['smart-upload','smart-prompt','smart-agent','smart-paint','smart-video','smart-loop','smart-group','smart-image']);
     let agentTaskScopeIdentity='';
     const agentExcludedNodeIds=new Set();
     const agentExcludedReferenceKeys=new Set();
@@ -1589,6 +1604,7 @@
             'smart-upload':'素材',
             'smart-image':'图片',
             'smart-paint':'绘画',
+            'smart-video':'视频',
             'smart-prompt':'提示词',
             'smart-agent':'智能对话',
             'smart-loop':'循环',
@@ -1601,6 +1617,7 @@
             'smart-upload':'upload',
             'smart-image':'image',
             'smart-paint':'paintbrush',
+            'smart-video':'film',
             'smart-prompt':'file-text',
             'smart-agent':'bot',
             'smart-loop':'repeat',
@@ -1913,7 +1930,7 @@
     }
     function planSettingsSummary(node){
         const source=node?.runSettings||{};
-        const keys=['engine','apiKind','provider_id','model','ratio','resolution','customRatio','count','videoProvider','videoModel','videoAspect'];
+        const keys=['engine','apiKind','provider_id','model','ratio','resolution','customRatio','count','videoProvider','videoModel','videoMode','videoAspect'];
         return keys.reduce((out,key)=>{
             if(source[key]!==undefined&&source[key]!==null&&source[key]!=='')out[key]=source[key];
             return out;
@@ -1928,7 +1945,11 @@
                 :generation;
         const requested=requestedPlanNodeSettings(commerceGeneration);
         const type=String(node?.type||'');
-        if(!node||!['smart-paint','smart-image'].includes(type)||node.isHistoryGroup||node.historyFor)return;
+        if(!node||!['smart-paint','smart-video','smart-image'].includes(type)||node.isHistoryGroup||node.historyFor)return;
+        if(commerceRole === '' && generation?.media === 'video' && type === 'smart-paint' && !(node.images || []).some(item => item?.url)){
+            node.type = 'smart-video';
+            node.title = node.title === '绘画' || !node.title ? '视频' : node.title;
+        }
         const base=typeof smartSettingsForNode==='function'
             ?smartSettingsForNode(node)
             :{...(node.runSettings||settings||{})};
@@ -1947,11 +1968,14 @@
                 ?{...generation,media:'image',ratio:'story',ratioLabel:'9:16',count:1}
                 :generation;
         const requested=requestedPlanNodeSettings(commerceGeneration);
-        if(!requested||!spec||normalizePlanNodeType(spec.type)!=='smart-paint')return spec;
+        if(!requested||!spec||!['smart-paint','smart-video'].includes(normalizePlanNodeType(spec.type)))return spec;
         const incoming=spec.settings&&typeof spec.settings==='object'
             ?spec.settings
             :(spec.run_settings&&typeof spec.run_settings==='object'?spec.run_settings:{});
-        return {...spec,settings:{...incoming,...requested}};
+        const normalizedType = commerceGeneration?.media === 'video' && normalizePlanNodeType(spec.type) === 'smart-paint'
+            ? 'smart-video'
+            : normalizePlanNodeType(spec.type);
+        return {...spec,type:normalizedType,settings:{...incoming,...requested}};
     }
     function planCanvasContext(scope=currentTaskScope(),options={}){
         const excluded=new Set((scope?.excludedNodeIds||[]).map(id=>String(id||'')));
@@ -2062,8 +2086,9 @@
     }
     function fallbackPlanForClient(text,requestedGeneration={}){
         const base=planTaskText(text)||'根据当前需求生成结果';
+        const outputType=requestedGeneration?.media==='video'?'smart-video':'smart-paint';
         const paint=(key,title,prompt)=>{
-            const node={key,type:'smart-paint',title,prompt};
+            const node={key,type:outputType,title,prompt};
             const requested=requestedPlanNodeSettings(requestedGeneration);
             if(requested)node.settings=requested;
             return node;
@@ -2080,7 +2105,7 @@
     }
     function normalizePlanNodeType(value){
         const raw=String(value||'').trim().toLowerCase();
-        const aliases={upload:'smart-upload',image:'smart-paint',paint:'smart-paint',prompt:'smart-prompt',agent:'smart-agent',loop:'smart-loop',group:'smart-group',current:'current'};
+        const aliases={upload:'smart-upload',image:'smart-paint',paint:'smart-paint',video:'smart-video',movie:'smart-video',prompt:'smart-prompt',agent:'smart-agent',loop:'smart-loop',group:'smart-group',current:'current'};
         const type=aliases[raw]||raw;
         return PLAN_NODE_TYPES.has(type)||type==='current'?type:'smart-paint';
     }
@@ -2090,7 +2115,7 @@
     }
     function ensurePlanLoopNode(nodesSpec,connections,option){
         if(!planNeedsLoopNode(option)||nodesSpec.some(spec=>spec?.type==='smart-loop'))return connections;
-        const outputIndex=[...nodesSpec.keys()].reverse().find(index=>nodesSpec[index]?.type==='smart-paint');
+        const outputIndex=[...nodesSpec.keys()].reverse().find(index=>['smart-paint','smart-video'].includes(nodesSpec[index]?.type));
         // 没有绘画输出时由后续的兜底逻辑补输出节点，避免在这里制造悬空 Loop。
         if(outputIndex===undefined)return connections;
         const usedKeys=new Set(nodesSpec.map(spec=>String(spec?.key||'')));
@@ -2501,9 +2526,9 @@
         return {handled:true,manual:results.some(item=>item?.manual),targetNodeId,summary:results.map(item=>item?.message).filter(Boolean).join('；')||'画布工具操作已完成。'};
     }
     function planSystemPrompt(requestedGeneration={}){
-        const base='你是小美画布计划模式。只返回JSON对象，包含analysis、approach、options。options为2到4个不同方案，id按顺序使用1、2、3、4，每个包含label、summary、reason、steps和workflow；workflow包含mode(build或edit)、nodes、connections、operations、run、return_to。节点type默认只能是smart-upload、smart-prompt、smart-paint、smart-loop、smart-group，连接可引用current、临时key或现有节点ID。普通计划节点最多8个；strict淘宝电商配方可包含商品事实节点和多屏单图输出，最多41个。operations最多24个。用户要求搭建/生成/创建时使用build；要求修改、删除、重命名、移动、重连、断开或只运行已有节点时使用edit。edit模式优先用operations修改上下文中的现有节点，不强制新建smart-paint；update_node的changes只写用户明确要求的字段，delete_node和disconnect只在用户明确要求时使用。build模式通常新建smart-paint作为最终输出并让run指向它。kind=input用于图片/素材输入，kind=flow用于提示词或分析结果；下游节点必须读取两类正式上游，不能只显示flow连线而丢掉其文字。绘画节点如需指定生成参数，可在settings中填写ratio、resolution、customRatio、quality、background等字段；count只有用户明确说生成几张时才填写，未说明时按1张处理。不要默认创建smart-agent持久节点。';
+        const base='你是小美画布计划模式。只返回JSON对象，包含analysis、approach、options。options为2到4个不同方案，id按顺序使用1、2、3、4，每个包含label、summary、reason、steps和workflow；workflow包含mode(build或edit)、nodes、connections、operations、run、return_to。节点type默认只能是smart-upload、smart-prompt、smart-paint、smart-video、smart-loop、smart-group，连接可引用current、临时key或现有节点ID。普通计划节点最多8个；strict淘宝电商配方可包含商品事实节点和多屏单图输出，最多41个。operations最多24个。用户要求搭建/生成/创建时使用build；要求修改、删除、重命名、移动、重连、断开或只运行已有节点时使用edit。edit模式优先用operations修改上下文中的现有节点，不强制新建smart-paint或smart-video；update_node的changes只写用户明确要求的字段，delete_node和disconnect只在用户明确要求时使用。build模式按用户媒体目标新建smart-paint或smart-video作为最终输出并让run指向它。kind=input用于图片/素材输入，kind=flow用于提示词或分析结果；下游节点必须读取两类正式上游，不能只显示flow连线而丢掉其文字。绘画节点如需指定生成参数，可在settings中填写ratio、resolution、customRatio、quality、background等字段；视频节点可填写videoDuration、videoAspect、videoResolution和视频参考模式；count只有用户明确说生成几张时才填写，未说明时按1张处理。不要默认创建smart-agent持久节点。';
         const label=requestedGenerationLabel(requestedGeneration);
-        return label?`${base}\n用户已明确指定${label}，所有最终smart-paint节点必须使用该比例，不得改成智能/适配输入；在workflow.nodes的绘画节点settings中写入对应ratio。`:base;
+        return label?`${base}\n用户已明确指定${label}，最终节点必须使用对应媒体类型和参数；图片节点写入ratio，视频节点写入videoAspect或videoDuration。`:base;
     }
     async function requestPlan(text,provider,model,history,skillId,scope=currentTaskScope(),requestedGeneration={},linkJobIds=[],commerceDetailCount=null){
         const context=planCanvasContext(scope,{linkJobIds}),planRefs=snapshotReferenceImages(planReferenceImages(scope));
@@ -3151,7 +3176,7 @@
         const incoming=spec.settings||spec.run_settings;
         if(!incoming||typeof incoming!=='object')return;
         const base=typeof cloneSmartSettings==='function'?cloneSmartSettings(node.runSettings||settings||{}):{...(node.runSettings||settings||{})};
-        const allowed=['engine','apiKind','provider_id','model','ratio','resolution','customRatio','customRatioWidth','customRatioHeight','customSize','quality','background','count','videoProvider','videoModel','videoDuration','videoAspect','videoResolution','size'];
+        const allowed=['engine','apiKind','provider_id','model','ratio','resolution','customRatio','customRatioWidth','customRatioHeight','customSize','quality','background','count','videoProvider','videoModel','videoMode','videoDuration','videoAspect','videoResolution','size'];
         allowed.forEach(key=>{if(incoming[key]!==undefined)base[key]=incoming[key];});
         node.runSettings=typeof settingsForStorage==='function'?settingsForStorage(base):base;
     }
@@ -3201,6 +3226,7 @@
         if(type==='smart-loop')return createLoopNode((point?.x||0)-170,(point?.y||0)-84,{select:false,skipUndo:true});
         if(type==='smart-group')return createSmartGroupNode((point?.x||0)-170,(point?.y||0)-143,{select:false,skipUndo:true});
         if(type==='smart-upload')return createImageNodeAt(point,[],{select:false,skipUndo:true,nodeType:SMART_UPLOAD_NODE_TYPE});
+        if(type==='smart-video')return createVideoNodeAt(point,{select:false,skipUndo:true,title:spec?.title||'计划视频'});
         return createPaintNodeAt(point,{select:false,skipUndo:true,title:spec?.title||'计划生成'});
     }
     function planWorkflowOrder(mapped,connections){
@@ -3515,12 +3541,12 @@
         });
         const operationResult=applyPlanOperations(normalizePlanOperations(workflow.operations),map,current,workflow,provider,model,skillId,skillName,anchor,createdNodes,sourceNodes,fallbackPrompt,requestedGeneration);
         // 当前上传节点只是参考图来源，不能作为最终执行目标。若模型只复用 current、
-        // 或只创建了提示词/Agent 节点，补一个可运行的绘画输出并带上原始用户需求。
+        // 或只创建了提示词/Agent 节点，按本次媒体目标补一个可运行输出并带上原始用户需求。
         const hasCreatedPaint=createdNodes.some(node=>isSmartImageNode(node)&&!isSmartUploadNode(node)&&!isHistoryGroupNode(node));
         let ensuredOutput=null;
         if(!editMode&&!hasCreatedPaint){
             const key=map.has('paint_1')?'plan_output':'paint_1';
-            const fallbackSpec={key,type:'smart-paint',title:'计划生成',prompt:outputPrompt||option.execution_prompt||option.summary||'根据当前需求生成结果'};
+            const fallbackSpec={key,type:requestedGeneration?.media==='video'?'smart-video':'smart-paint',title:requestedGeneration?.media==='video'?'计划视频':'计划生成',prompt:outputPrompt||option.execution_prompt||option.summary||'根据当前需求生成结果'};
             const node=createPlanNode(fallbackSpec,planPoint(anchor,createdNodes.length));
             if(node){
                 createdNodes.push(node);createdIds.push(node.id);map.set(key,node);map.set(node.id,node);

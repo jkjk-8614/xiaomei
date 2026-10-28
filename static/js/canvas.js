@@ -5219,27 +5219,43 @@ function maskCanvasFromDrawCanvas(src){
 }
 async function applyImageBrush(){
     if(!cropState) return;
-    removeEditTextInlineEditor(true);
-    const node = nodes.find(n => n.id === cropState.nodeId);
-    const img = document.getElementById('cropImage');
-    if(!node || !img.naturalWidth || !img.naturalHeight || !editCanvasHasPixels()) return;
-    const canvasEl = document.createElement('canvas');
-    canvasEl.width = img.naturalWidth;
-    canvasEl.height = img.naturalHeight;
-    const ctx = canvasEl.getContext('2d');
-    ctx.drawImage(img, 0, 0, canvasEl.width, canvasEl.height);
-    ctx.drawImage(editDrawCanvas(), 0, 0);
-    ctx.drawImage(editTextCanvas(), 0, 0);
-    const blob = await new Promise(resolve => canvasEl.toBlob(resolve, 'image/png'));
-    if(!blob) return;
-    const base = (node.name || 'image').replace(/\.[^.]+$/, '');
-    const file = await uploadCroppedBlob(blob, `${base}_paint.png`);
-    if(file){
-        node.url = file.url;
-        node.name = file.name;
+    const applyBtn = document.getElementById('imageEditApplyBtn');
+    if(applyBtn.disabled) return;
+    const editorState = cropState;
+    applyBtn.disabled = true;
+    try {
+        removeEditTextInlineEditor(true);
+        if(!editCanvasHasPixels()){ alert('请先添加画笔或文字标记'); return; }
+        const node = nodes.find(n => n.id === cropState.nodeId);
+        const img = document.getElementById('cropImage');
+        if(!node) throw new Error('原图已改变，请关闭编辑器后重新打开');
+        if(!img.naturalWidth || !img.naturalHeight) throw new Error('图片尚未加载完成，请稍后重试');
+        const sourceUrl = node.url;
+        const canvasEl = document.createElement('canvas');
+        canvasEl.width = img.naturalWidth;
+        canvasEl.height = img.naturalHeight;
+        const ctx = canvasEl.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvasEl.width, canvasEl.height);
+        ctx.drawImage(editDrawCanvas(), 0, 0);
+        ctx.drawImage(editTextCanvas(), 0, 0);
+        const blob = await new Promise(resolve => canvasEl.toBlob(resolve, 'image/png'));
+        if(!blob) throw new Error('图片无法导出，请重试');
+        const base = (node.name || 'image').replace(/\.[^.]+$/, '');
+        const file = await uploadCroppedBlob(blob, `${base}_paint.png`);
+        if(!file?.url) throw new Error('图片上传失败，请重试');
+        if(cropState !== editorState) return;
+        if(!nodes.includes(node) || node.url !== sourceUrl) throw new Error('原图已改变，请关闭编辑器后重新打开');
+        pushUndo();
+        addGeneratedImageNode(file, node, 'paint', 0, {
+            mediaKind:'image', natural_w:canvasEl.width, natural_h:canvasEl.height
+        });
         closeImageEditor();
         render();
         scheduleSave();
+    } catch(error){
+        if(cropState === editorState) alert(`画笔保存失败：${error?.message || '请重试'}`);
+    } finally {
+        applyBtn.disabled = false;
     }
 }
 async function applyImageGridSplit(){

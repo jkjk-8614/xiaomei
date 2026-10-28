@@ -11,6 +11,11 @@ import sys
 from pathlib import Path
 
 
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
 project_root = Path(os.environ.get("XIAOMEI_CANVAS_PROJECT_ROOT") or Path(__file__).resolve().parent).resolve()
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))

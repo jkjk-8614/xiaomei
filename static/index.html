@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="/static/images/app-icon.ico?v=2026.10.26" type="image/x-icon">
+    <link rel="icon" href="/static/images/app-icon.ico?v=2026.10.28" type="image/x-icon">
     <title>小美画布</title>
     <style>
         html.studio-route-booting body {
@@ -18,14 +18,14 @@
             } catch(e) {}
         })();
     </script>
-    <script defer src="/static/vendor/js/tailwindcss-cdn.js?v=2026.10.26.1784161005"></script>
-    <script defer src="/static/js/theme.js?v=2026.10.26.1791335865"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.26.1792900345">
-    <script defer src="/static/js/i18n.js?v=2026.10.26.1792832273"></script>
-    <script src="/static/js/legacy-common.js?v=2026.10.26.1786170056"></script>
-<script defer src="/static/js/generation-notifications.js?v=2026.10.26.1787131165"></script>
+    <script defer src="/static/vendor/js/tailwindcss-cdn.js?v=2026.10.28.1784161005"></script>
+    <script defer src="/static/js/theme.js?v=2026.10.28.1791335865"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.28.1792900345">
+    <script defer src="/static/js/i18n.js?v=2026.10.28.1793155622"></script>
+    <script src="/static/js/legacy-common.js?v=2026.10.28.1786170056"></script>
+<script defer src="/static/js/generation-notifications.js?v=2026.10.28.1787131165"></script>
     <style>
-        @import url('/static/vendor/css/fonts.css?v=2026.10.19.1784161005');
+        @import url('/static/vendor/css/fonts.css?v=2026.10.28.1784161005');
 
         /* 本地 Tailwind 工具类兜底：CDN 慢/未就绪时也能立刻给图标尺寸，避免首屏左侧栏空白 */
         .w-1\.5 { width: 0.375rem; }
@@ -1773,10 +1773,10 @@
             }
         }
     </style>
-    <link rel="stylesheet" href="/static/css/workspace-polish.css?v=2026.10.26.1789456340">
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.26.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.26.1792843621">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.26.1790178173"></script>
+    <link rel="stylesheet" href="/static/css/workspace-polish.css?v=2026.10.28.1789456340">
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.28.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.28.1792843621">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.28.1790178173"></script>
 </head>
 
 <body>
@@ -1851,6 +1851,14 @@
                     </svg>
                     <span class="nav-text" data-i18n="nav.inspiration">灵感案例</span>
                 </div>
+                <div class="nav-item" onclick="switchUI(this, 'design-brain')">
+                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M12 3a4 4 0 0 0-4 4 4 4 0 0 0-3 6.5A4 4 0 0 0 8 20a4 4 0 0 0 4 1 4 4 0 0 0 4-1 4 4 0 0 0 3-6.5A4 4 0 0 0 16 7a4 4 0 0 0-4-4Z"></path>
+                        <path d="M12 3v18"></path>
+                        <path d="M8 7a4 4 0 0 1 4 4 4 4 0 0 1 4-4"></path>
+                    </svg>
+                    <span class="nav-text">设计大脑</span>
+                </div>
             </nav>
 
             <div class="side-actions">
@@ -1890,10 +1898,6 @@
                             <rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M8 8h8M8 12h5M8 16h8"></path>
                         </svg>
                         <span class="side-pill-text">ComfyUI 设置</span>
-                    </button>
-                    <button class="side-pill" onclick="openMcpSettings()" type="button" title="MCP 设置">
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v4m8-4v4M6 7h12v4a6 6 0 0 1-12 0V7zm6 10v4"/></svg>
-                        <span class="side-pill-text">MCP 设置</span>
                     </button>
                     <button class="side-pill" onclick="openAppearanceSettings()" type="button" title="外观设置">
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1943,15 +1947,16 @@
                 </div>
             </div>
 
-                    <iframe id="frame-online" data-src="/static/comfyui.html?v=2026.10.26" class="active" scrolling="yes"></iframe>
+                    <iframe id="frame-online" data-src="/static/comfyui.html?v=2026.10.28" class="active" scrolling="yes"></iframe>
         <div id="frame-gpt-chat" class="deepseek-route-placeholder" aria-hidden="true"></div>
-        <iframe id="frame-commerce" data-src="/static/commerce.html?v=2026.10.26.1792974662&image-cancel=2026.10.17.1" scrolling="yes"></iframe>
-                <iframe id="frame-commerce-analysis" data-src="/static/commerce-analysis.html?v=2026.10.26.1792974662" scrolling="yes"></iframe>
-        <iframe id="frame-product-3d" data-src="/static/product-3d.html?v=2026.10.26.1792973217" scrolling="yes"></iframe>
-            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=2026.10.26.1792973217" scrolling="yes"></iframe>
-            <iframe id="frame-inspiration" data-src="/static/inspiration.html?v=2026.10.26.1792973217" scrolling="yes" title="灵感案例"></iframe>
+        <iframe id="frame-commerce" data-src="/static/commerce.html?v=2026.10.28.1793145982&image-cancel=2026.10.17.1" scrolling="yes"></iframe>
+                <iframe id="frame-commerce-analysis" data-src="/static/commerce-analysis.html?v=2026.10.28.1793146582" scrolling="yes"></iframe>
+        <iframe id="frame-product-3d" data-src="/static/product-3d.html?v=2026.10.28.1793145982" scrolling="yes"></iframe>
+            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=2026.10.28.1793145982" scrolling="yes"></iframe>
+            <iframe id="frame-inspiration" data-src="/static/inspiration.html?v=2026.10.28.1793145982" scrolling="yes" title="灵感案例"></iframe>
+            <iframe id="frame-design-brain" data-src="/static/design-brain.html?v=2026.10.28.1793145982&batch-resolution=2026.10.25.1" scrolling="yes" title="设计大脑"></iframe>
             <div id="historyDrawerScrim" class="history-drawer-scrim" hidden onclick="closeHistoryDrawer()"></div>
-            <iframe id="frame-history" class="history-drawer-frame" data-src="/static/history.html?v=2026.10.26.1792973217&drawer=1&outpaint-redraw=2026.10.16.1" scrolling="yes" title="历史记录"></iframe>
+            <iframe id="frame-history" class="history-drawer-frame" data-src="/static/history.html?v=2026.10.28.1793145982&drawer=1&outpaint-redraw=2026.10.16.1" scrolling="yes" title="历史记录"></iframe>
             <button id="historyDrawerClose" class="history-drawer-close" type="button" hidden onclick="closeHistoryDrawer()" aria-label="关闭历史记录">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
             </button>
@@ -1979,14 +1984,14 @@
         <div id="historyPreviewContextMenu" class="history-preview-context-menu" role="menu" aria-label="媒体操作" hidden>
             <button id="historyPreviewContextCopy" type="button" role="menuitem" onclick="copyHistoryPreviewFromContextMenu(event)"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>复制图片</span></button>
         </div>
-                <iframe id="frame-api-settings" data-src="/static/api-settings.html?v=2026.10.26.1792973217" scrolling="yes"></iframe>
-                <iframe id="frame-canvas" data-src="/static/canvas-list.html?v=2026.10.26.1792973217&image-model-picker=2026.09.27.3" scrolling="yes"></iframe>
+                <iframe id="frame-api-settings" data-src="/static/api-settings.html?v=2026.10.28.1793155649" scrolling="yes"></iframe>
+                <iframe id="frame-canvas" data-src="/static/canvas-list.html?v=2026.10.28.1793155649&image-model-picker=2026.09.27.3" scrolling="yes"></iframe>
 
                 <script>
                     /* 尽早启动上次页面，避免主窗口已显示但中央 iframe 仍是空白。 */
                     (function(){
                         try {
-                            var pageIds = ['online','gpt-chat','canvas','commerce','commerce-analysis','product-3d','asset-manager','inspiration','api-settings'];
+                            var pageIds = ['online','gpt-chat','canvas','commerce','commerce-analysis','product-3d','asset-manager','inspiration','design-brain','api-settings'];
                             var savedId = localStorage.getItem('studio_active_page');
                             var launchId = new URLSearchParams(window.location.search).get('page');
                             if(launchId === 'task-manager') launchId = 'commerce-analysis';
@@ -2112,21 +2117,7 @@
                         </div>
                         <div class="connectivity-list" data-connectivity-source="github"></div>
                     </button>
-                    <button id="update-source-modelscope" class="update-source-card" type="button" data-update-source="modelscope" onclick="setUpdateSource('modelscope')">
-                        <div class="update-source-head">
-                            <div class="update-source-title">
-                                <strong>ModelScope 下载源</strong>
-                                <span>ModelScope 空间与版本文件，适合国内网络。</span>
-                            </div>
-                            <div class="update-source-head-right">
-                                <span class="update-source-check" aria-hidden="true">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                </span>
-                                <span class="update-source-badge">待测试</span>
-                            </div>
-                        </div>
-                        <div class="connectivity-list" data-connectivity-source="modelscope"></div>
-                    </button>
+
                 </div>
                 <div id="project-update-summary" class="update-modal-summary warn">
                     <span class="update-modal-dot" aria-hidden="true"></span>
@@ -2167,7 +2158,7 @@
         const SIDEBAR_SETTINGS_RESTORE_KEY = 'studio_formal_sidebar_settings_restored_v1';
         const SIDEBAR_PINNED_KEY = 'studio_sidebar_pinned';
         const DEFAULT_PAGE_ID = 'online';
-        const PAGE_IDS = ['online','gpt-chat','canvas','commerce','commerce-analysis','product-3d','asset-manager','inspiration','api-settings'];
+        const PAGE_IDS = ['online','gpt-chat','canvas','commerce','commerce-analysis','product-3d','asset-manager','inspiration','design-brain','api-settings'];
         const LOCAL_PAGE_IDS = [];
         const PROMPT_CASE_PENDING_KEY = 'studio_pending_prompt_case';
         const PROMPT_CASE_PENDING_TTL = 10 * 60 * 1000;
@@ -2176,7 +2167,7 @@
         let updateConnectivityResult = null;
         let projectUpdateRunning = false;
         let projectUpdateAbort = null;  // 当前更新请求的 AbortController，便于用户中途取消
-        let updateSource = localStorage.getItem('studio_update_source') || 'github';
+        let updateSource = 'github';
         let projectUpdateNotes = null;
 
         function setSidebarPinned(pinned, options = {}) {
@@ -2745,6 +2736,28 @@
             if (!stage) return;
             window.electronAPI?.setDeepSeekHarnessBounds?.({ x: stage.left, y: stage.top, width: Math.max(1, stage.width), height: Math.max(1, stage.height) });
         }
+        function deepSeekHarnessStageBounds() {
+            const stage = document.querySelector('.stage')?.getBoundingClientRect();
+            if (!stage) return null;
+            return { x: stage.left, y: stage.top, width: Math.max(1, stage.width), height: Math.max(1, stage.height) };
+        }
+        // DeepSeek 对话是原生子视图，会盖住主窗口里的弹窗。打开 MCP 弹窗时
+        // 先把它隐藏，关闭后再挂回同一个会话。
+        let deepSeekHarnessSuspended = false;
+        window.suspendDeepSeekHarnessForModal = () => {
+            if (deepSeekHarnessSuspended) return;
+            if (typeof window.electronAPI?.setDeepSeekHarnessVisible !== 'function') return;
+            if (!document.body.classList.contains('harness-active')) return;
+            deepSeekHarnessSuspended = true;
+            return Promise.resolve(window.electronAPI.setDeepSeekHarnessVisible(false, null)).catch(() => {});
+        };
+        window.restoreDeepSeekHarnessAfterModal = () => {
+            if (!deepSeekHarnessSuspended) return;
+            deepSeekHarnessSuspended = false;
+            if (typeof window.electronAPI?.setDeepSeekHarnessVisible !== 'function') return;
+            if (!document.body.classList.contains('harness-active')) return;
+            return Promise.resolve(window.electronAPI.setDeepSeekHarnessVisible(true, deepSeekHarnessStageBounds())).catch(() => {});
+        };
         window.addEventListener('resize', syncDeepSeekHarnessBounds);
         if (window.ResizeObserver) {
             const stageElement = document.querySelector('.stage');
@@ -2995,8 +3008,16 @@
                 openHistoryPreview(event.data.items,event.data.index);
                 return;
             }
-            if(event.data?.type === 'prompt-case-apply-request') {
+                if(event.data?.type === 'prompt-case-apply-request') {
                 sendPromptCaseToCanvas(event.data.case);
+                return;
+            }
+            if(event.data?.type === 'design-brain-experiences-pick') {
+                const timestamps = Array.isArray(event.data.timestamps) ? event.data.timestamps : [];
+                if(!timestamps.length) return;
+                const designBrainTrigger = document.querySelector(`[onclick*="'design-brain'"],[onclick*='"design-brain"']`);
+                switchUI(designBrainTrigger, 'design-brain');
+                postToStudioFrame('design-brain', { type:'design-brain-prefill', timestamps }, 60);
                 return;
             }
             if(event.data?.type === 'prompt-case-open') {
@@ -3103,6 +3124,10 @@
                         height: (Number(source.height) || 0) * sy
                     });
                 } catch(e) {}
+                return;
+            }
+            if(event.data?.type === 'studio-open-mcp') {
+                window.openMcpSettings?.();
                 return;
             }
             if(event.data?.type === 'studio-switch-ui') {
@@ -3584,11 +3609,11 @@
         }
 
         function updateSourceLabel(source = updateSource) {
-            return source === 'modelscope' ? 'ModelScope' : 'GitHub';
+            return 'GitHub';
         }
 
         function setUpdateSource(source) {
-            updateSource = source === 'modelscope' ? 'modelscope' : 'github';
+            updateSource = 'github';
             localStorage.setItem('studio_update_source', updateSource);
             refreshProjectUpdateModalText();
         }
@@ -3607,9 +3632,6 @@
         function bestUpdateSourceFromConnectivity(data) {
             const results = data?.results || [];
             const github = sourceConnectivityStats('github', results);
-            const ms = sourceConnectivityStats('modelscope', results);
-            if(github.ok && ms.ok) return ms.avg < github.avg ? 'modelscope' : 'github';
-            if(ms.ok) return 'modelscope';
             if(github.ok) return 'github';
             return updateSource;
         }
@@ -3619,10 +3641,6 @@
                 'GitHub 更新列表': ['GitHub 更新列表', 'GitHub update API'],
                 'GitHub 版本文件': ['GitHub 版本文件', 'GitHub version file'],
                 'GitHub 主页': ['GitHub 主页', 'GitHub home page'],
-                'ModelScope 更新列表': ['ModelScope 更新列表', 'ModelScope update list'],
-                'ModelScope 版本文件': ['ModelScope 版本文件', 'ModelScope version file'],
-                'ModelScope 空间页面': ['ModelScope 空间页面', 'ModelScope space page'],
-                'ModelScope 主页': ['ModelScope 主页', 'ModelScope home page'],
                 'Google 连通性': ['Google 连通性', 'Google connectivity'],
             };
             const item = labels[name] || [name, name];
@@ -3652,14 +3670,10 @@
         function updateConnectivityTargets() {
             const sources = appInfo.sources || {};
             const github = sources.github || {};
-            const ms = sources.modelscope || {};
             return [
                 { name:'GitHub 更新列表', url:github.tree_url || appInfo.tree_url || 'https://api.github.com/repos/jkjk-8614/xiaomei/git/trees/main?recursive=1', source:'github', required:true },
                 { name:'GitHub 版本文件', url:github.version_url || appInfo.version_url || 'https://raw.githubusercontent.com/jkjk-8614/xiaomei/main/VERSION', source:'github', required:true },
                 { name:'GitHub 主页', url:'https://github.com/', source:'github' },
-                { name:'ModelScope 版本文件', url:ms.version_url || 'https://www.modelscope.cn/api/v1/studio/Daniel8152/Infinite-Canvas/repo?Revision=master&FilePath=VERSION', source:'modelscope', required:true },
-                { name:'ModelScope 空间页面', url:ms.repo_url || 'https://modelscope.cn/studios/Daniel8152/Infinite-Canvas', source:'modelscope' },
-                { name:'ModelScope 主页', url:'https://modelscope.cn/', source:'modelscope' },
                 { name:'Google 连通性', url:'https://www.google.com/generate_204', source:'reference' },
             ];
         }
@@ -3697,7 +3711,6 @@
             });
             };
             renderInto(document.querySelector('[data-connectivity-source="github"]'), 'github');
-            renderInto(document.querySelector('[data-connectivity-source="modelscope"]'), 'modelscope');
         }
 
         function refreshProjectUpdateModalText() {
@@ -3748,8 +3761,8 @@
                     'warn',
                     updateUiText('建议先测试连通性', 'Connectivity test recommended'),
                     updateUiText(
-                        '测试会同时测速 GitHub 和 ModelScope。你可以根据结果切换下载源。',
-                        'The test checks both GitHub and ModelScope. Choose the faster reachable source before updating.'
+                        '测试会检查 GitHub 下载源的连通性。',
+                        'The test checks connectivity to the GitHub download source.'
                     )
                 );
             } else if(updateConnectivityResult.backend_missing) {
@@ -3817,7 +3830,7 @@
 
         function computeConnectivitySources(results) {
             const out = {};
-            for(const source of ['github', 'modelscope']) {
+            for(const source of ['github']) {
                 const reqAll = (results || []).filter(it => it.source === source && it.required);
                 out[source] = {
                     ok: reqAll.length > 0 && reqAll.every(it => it.ok),
@@ -3972,7 +3985,7 @@
                 if(!res.ok) throw new Error(data.detail || (isEn ? 'Update failed' : '更新失败'));
                 if(data.update_notes) setProjectUpdateNotes(data.update_notes);
                 const restarting = data.restart_scheduled;
-                const usedLabel = data.source_label || (data.source === 'modelscope' ? 'ModelScope' : 'GitHub');
+                const usedLabel = data.source_label || 'GitHub';
                 const fallbackNote = data.fallback_used
                     ? (isEn
                         ? ` (${sourceName} was unreachable, so it fell back to ${usedLabel})`
@@ -4113,7 +4126,7 @@
                 let best = null;
                 let reachable = false;
                 let serverChecked = false;
-                // 优先走后端检测：服务端用系统代理同时检测 GitHub 和 ModelScope，避免浏览器跨域/被墙
+                // 优先走后端检测，沿用系统代理访问 GitHub。
                 try {
                     const r = await fetch('/api/check-update', { cache:'no-store' });
                     if(r.ok) {
@@ -4124,12 +4137,11 @@
                         if(d.latest?.version) best = {source:d.latest.source, version:d.latest.version, update_notes:d.latest.update_notes || d.update_notes || null};
                     }
                 } catch(e) {}
-                // 兜底：旧后端无 /api/check-update 时，浏览器直接拉取双源 VERSION
+                // 旧后端没有检测接口时，直接读取 GitHub 版本文件。
                 if(!serverChecked) {
                     const sources = appInfo.sources || {};
                     const candidates = [
                         {source:'github', url:sources.github?.version_url || appInfo.version_url || ''},
-                        {source:'modelscope', url:sources.modelscope?.version_url || ''},
                     ].filter(item => item.url);
                     for(const item of candidates) {
                         try {
@@ -4141,7 +4153,6 @@
                 }
                 const hasUpdate = !!(current && best?.version && compareVersions(best.version, current) > 0);
                 if(hasUpdate) {
-                    if(best.source === 'modelscope') setUpdateSource('modelscope');
                     setProjectUpdateNotes(best.update_notes || null);
                     showUpdateNotice(current, best.version);
                 }
@@ -4153,7 +4164,7 @@
                     } else if(reachable) {
                         alert(isEn ? `You are on the latest version (${versionLabel(current)}).` : `已是最新版本（${versionLabel(current)}）。`);
                     } else {
-                        if(confirm(isEn ? 'Could not reach GitHub or ModelScope. Check your network or proxy and retry. Open the official download page?' : '无法连接 GitHub 或 ModelScope 更新源，请检查网络或代理后重试。是否打开官方下载页面？')) {
+                        if(confirm(isEn ? 'Could not reach GitHub. Check your network or proxy and retry. Open the official download page?' : '无法连接 GitHub 更新源，请检查网络或代理后重试。是否打开官方下载页面？')) {
                             window.open('https://github.com/jkjk-8614/xiaomei/releases/latest', '_blank', 'noopener,noreferrer');
                         }
                     }
@@ -4168,8 +4179,8 @@
         }
 
     </script>
-    <link rel="stylesheet" href="/static/css/mcp-settings.css?v=2026.10.26.1789283121">
-    <script src="/static/js/mcp-settings.js?v=2026.10.26.1792660078"></script>
+    <link rel="stylesheet" href="/static/css/mcp-settings.css?v=2026.10.28.1789283121">
+    <script src="/static/js/mcp-settings.js?v=2026.10.28.1792660078"></script>
 </body>
 
 </html>

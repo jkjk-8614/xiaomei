@@ -5,7 +5,8 @@
         'smart-table': {title:'多维表格', inputs:['text','table'], outputs:['table','text']},
         'smart-timeline': {title:'视频时间线', inputs:['image','video','audio'], outputs:['video']},
         'smart-prompt': {title:'LLM / 提示词', inputs:['text','image','video','table'], outputs:['text']},
-        'smart-paint': {title:'绘画', inputs:['text','image','video','table'], outputs:['image','video']},
+        'smart-paint': {title:'绘画', inputs:['text','image','table'], outputs:['image']},
+        'smart-video': {title:'视频', inputs:['text','image','video','audio','table'], outputs:['video']},
         'smart-product-fidelity': {title:'产品保护', inputs:['image'], outputs:['image']},
         'smart-camera': {title:'视角控制', inputs:['image'], outputs:['image','text']},
         // 循环节点把已连接的图片和/或提示词逐项传给下游绘画节点。
@@ -34,6 +35,9 @@
             if(node.showPrompt === true || String(node.variablePrompt || '').trim() || (Array.isArray(node.variablePrompts) && node.variablePrompts.some(item => String(item || '').trim()))) types.push('text');
             return types;
         }
+        if(node?.type === 'smart-video') return ['video'];
+        if(node?.type === 'smart-paint' && node.runSettings?.apiKind === 'video') return ['video'];
+        if(node?.type === 'smart-paint') return ['image'];
         if(node?.type === 'smart-group'){
             // 图片收进分组后写入 images；提示词、循环及旧图片成员保留在 items。
             const mediaTypes = Array.isArray(node.images)
@@ -47,7 +51,9 @@
         return [...new Set(media.length ? media : definitions[node?.type]?.outputs || [])];
     }
     function canConnect(from, to){
-        const accepts = definitions[to?.type]?.inputs;
+        const accepts = to?.type === 'smart-paint' && to.runSettings?.apiKind === 'video'
+            ? definitions['smart-video'].inputs
+            : definitions[to?.type]?.inputs;
         if(!accepts) return true;
         if(!accepts.length) return false;
         const offered = outputTypes(from);

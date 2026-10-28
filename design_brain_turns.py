@@ -22,6 +22,7 @@ import asyncio
 from design_brain_skills import select_skill
 from commerce_link_method import commerce_bot_guidance, is_commerce_planner
 import json
+import re
 from typing import Any, Dict, List, Optional
 
 from design_brain_store import DesignBrainError, now_ms, image_requirements, SKU_RULES
@@ -34,6 +35,9 @@ MAX_LLM_CALLS_PER_TURN = 12
 TURN_TIMEOUT_SECONDS = 300
 CONTEXT_MESSAGES = 20
 MENTION_PREVIEW = 4
+# 单条 user 消息（含追加的回复格式提醒）的字符上限。截断时必须先扣掉提醒的
+# 长度，否则“先切 8000 再拼接”会稳定超出预算。
+TURN_MESSAGE_CHAR_BUDGET = 8000
 
 SPEAK_SYSTEM = """你是小美画布设计团队里的「{name}」，角色是：{role}。
 
@@ -466,7 +470,7 @@ class TurnEngine:
                 llm_calls += 1
                 data = _parse_reply(text)
                 if data is None:
-                    if _parse_json(text) is not None:
+                    if _parse_json(text) is not None or re.search(r'["\'](?:say|mentions|pass|call|tool|args)["\']\s*:', str(text or "")):
                         raise TurnError("模型回复格式不符合团队要求，本回合已停止；可点击“重新发送”重试。")
                     say = str(text or "").strip()[:1200]
                     if not say:
@@ -586,8 +590,11 @@ class TurnEngine:
         self.status_map.setdefault(chat["id"], {}).update(
             activity="thinking", activity_label="正在思考", tool="")
         self._check_budget(chat["id"])
+        # 先按提醒长度留出余量再截断，保证最终消息不超过预算。
+        reminder = "\n\n" + REPLY_FORMAT_REMINDER
+        message_budget = max(200, TURN_MESSAGE_CHAR_BUDGET - len(reminder))
         payload = self.host.CanvasLLMRequest(
-            message=(message[-8000:] or "继续") + "\n\n" + REPLY_FORMAT_REMINDER,
+            message=(message[-message_budget:] or "继续") + reminder,
             system_prompt=system,
             images=list(images or []),
             provider=model["provider"],

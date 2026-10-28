@@ -27,7 +27,9 @@
         return {label, botId, motion, active, total, succeeded, failed, resolved,
             since: started?.at || task.created_at || 0,
             detail: generating && total ? `已生成 ${succeeded}/${total} 张${failed ? ` · ${failed} 张失败` : ''}`
-                : task.status === 'planning' && total ? `已规划 ${task.plan?.shots?.length || 0}/${total} 张`
+                : task.status === 'planning' && total ? (task.plan?.shots?.length
+                    ? `已规划 ${task.plan.shots.length}/${total} 张`
+                    : `正在制定 ${total} 张方案${task.usage?.llm_calls ? ` · 已调用模型 ${task.usage.llm_calls} 次` : ''}`)
                 : task.status === 'awaiting_confirmation' ? '确认方案后开始生图'
                 : task.status === 'failed' ? (task.error || '打开任务查看原因并重试')
                 : task.status === 'delivered' && total ? `已生成 ${succeeded}/${total} 张${task.design?.acceptance?.status === 'passed' ? ' · 已审核通过' : task.design?.acceptance?.status === 'needs_human' ? ' · 需要人工复核' : task.design?.acceptance?.status === 'needs_fix' ? ' · 有待修改项' : ''}` : '',

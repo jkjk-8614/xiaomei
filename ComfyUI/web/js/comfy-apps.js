@@ -15,6 +15,26 @@
   const el = (tag, text, cls) => { const n = document.createElement(tag); if (text) n.textContent = text; if (cls) n.className = cls; return n; };
   const button = (text, action, cls) => { const b = el('button', text, cls); b.type = 'button'; b.onclick = () => Promise.resolve(action()).catch(notice); return b; };
   function notice(error) { $('app-notice').textContent = error.message || String(error); }
+  const designerLabels = {
+    'ONE-NODE START': '开始处理',
+    'OUTPUT — no stretching': '输出预览（保持原比例）',
+    'Auto (recommended)': '自动识别（推荐）',
+    'Still image': '静态图片',
+    'Short video / best quality': '短视频（高质量）',
+    'Long video / memory efficient': '长视频（省内存）',
+    'Fast preview': '快速预览',
+    'Upscale + neural rendering': '放大并增强细节',
+    'Upscale only': '仅放大',
+    'Neural rendering only': '仅增强细节',
+    'Quality': '高质量',
+    'Balanced': '平衡',
+    'Performance': '性能优先',
+    'Ultra Performance': '极速预览',
+    'Neutral / faithful': '自然还原',
+    'Realistic detail': '真实细节',
+    'Strong detail': '细节强化',
+  };
+  const designerLabel = value => designerLabels[String(value)] || String(value);
   async function exportToCanvas(item) {
     if (!item || item.workflow_error) {
       throw new Error('当前工作流文件无法读取，修复后才能导出到小美画布。');
@@ -167,10 +187,16 @@
         footer.append(el('span', item.builtin ? '系统保留' : (item.entry_type === 'workflow' ? '来自工作流库' : (ready ? '本地运行' : '查看处理项')), 'app-card-local'));
         const actions = el('span', '', 'app-card-actions');
         actions.append(button('打开', () => item.entry_type === 'workflow' ? openWorkflow(item.workflow_ref) : open(item.id), 'app-card-action app-card-open'));
-        actions.append(button('导出到画布', () => exportToCanvas(item), 'app-card-action app-card-export'));
+        actions.append(button('送到画布', () => exportToCanvas(item), 'app-card-action app-card-export'));
         if (item.entry_type === 'app') actions.append(button('删除', () => deleteApp(item), 'app-card-delete'));
         footer.append(actions);
-        body.append(footer); card.append(body); $('app-cards').append(card);
+        body.append(footer); card.append(body);
+        card.addEventListener('click', event => {
+          if (event.target.closest('button,a')) return;
+          if (item.entry_type === 'workflow') openWorkflow(item.workflow_ref).catch(notice);
+          else open(item.id).catch(notice);
+        });
+        $('app-cards').append(card);
       }
     };
     if (search && !search.dataset.bound) { search.addEventListener('input', render); search.dataset.bound = 'true'; }
@@ -587,7 +613,7 @@
     const layersWereOpen = target.querySelector('.app-layer-details')?.open || false;
     target.replaceChildren();
     const ordered = [...tasks].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-    if (!ordered.length) { target.append(el('div', '运行后，结果会显示在这里。', 'app-empty-result')); return; }
+    if (!ordered.length) { target.append(el('div', '完成一次生成后，结果会在这里出现。', 'app-empty-result')); return; }
     const live = ordered.filter(task => ['queued', 'running'].includes(task.status));
     const current = live[0] || ordered[0];
     const older = ordered.filter(task => task !== current).slice(0, 12);
@@ -697,13 +723,14 @@
     } catch (error) { notice('任务状态更新失败，5 秒后重试；当前显示的是上次查询结果。' + (error.message || error)); polling = setTimeout(() => poll(id, target), 5000); }
   }
   function fieldControl(field, panel, id, canRun = false) {
+    const fieldWrap = el('div', '', 'app-field');
     const input = el(field.type === 'text' || field.type === 'textarea' ? 'textarea' : field.type === 'dropdown' ? 'select' : 'input');
     input.id = 'app-field-' + field.id;
     if (field.type === 'image') {
-      const label = el('div', field.name, 'app-field-label');
+      const label = el('div', field.name || '参考图片', 'app-field-label');
       const upload = el('label', '', 'app-upload');
-      const title = el('strong', '上传商品图');
-      const help = el('small', 'PNG、JPG 或 WebP，文件只上传到本机');
+      const title = el('strong', '选择一张图片');
+      const help = el('small', 'PNG、JPG 或 WebP · 只保存在本机');
       input.type = 'file'; input.accept = 'image/png,image/jpeg,image/webp';
       const preview = el('img'); preview.className = 'app-preview'; preview.hidden = true;
       const previewWrap = el('div', '', 'app-preview-wrap');
@@ -734,12 +761,13 @@
           if (runButton && active === id && !submitting) runButton.disabled = !canRun || uploading > 0;
         }
       };
-      panel.append(label); if (field.description) panel.append(el('small', field.description, 'app-field-help')); panel.append(upload, previewWrap); return;
+      fieldWrap.append(label); if (field.description) fieldWrap.append(el('small', field.description, 'app-field-help')); fieldWrap.append(upload, previewWrap); panel.append(fieldWrap); return;
     }
     if (field.type === 'audio' || field.type === 'video') {
       input.type = 'text'; input.disabled = true;
       const label = el('label', field.name, 'app-field-label'); label.htmlFor = input.id;
-      panel.append(label, el('small', '当前本地应用库暂不支持此类上传；请打开高级编辑器配置。', 'app-field-help'), input);
+      fieldWrap.append(label, el('small', '当前简化操作暂不支持此类素材，请打开高级编辑。', 'app-field-help'), input);
+      panel.append(fieldWrap);
       return;
     }
     const label = el('label', field.name, 'app-field-label'); label.htmlFor = input.id;
@@ -750,7 +778,7 @@
     }
     if (field.type === 'dropdown') {
       for (const option of field.options || []) {
-        const choice = el('option', String(option)); choice.value = String(option); input.append(choice);
+        const choice = el('option', designerLabel(option)); choice.value = String(option); input.append(choice);
       }
       input.value = field.default ?? (field.options || [])[0] ?? '';
     } else if (field.type === 'boolean') {
@@ -774,7 +802,9 @@
       values[field.id] = field.type === 'number' ? Number(input.value) : field.type === 'boolean' ? input.checked : input.value;
       requestId = null;
     };
-    panel.append(label); if (field.description) panel.append(el('small', field.description, 'app-field-help')); panel.append(input);
+    fieldWrap.append(label); if (field.description) fieldWrap.append(el('small', field.description, 'app-field-help')); fieldWrap.append(input);
+    if (field.type === 'boolean') fieldWrap.classList.add('app-field-toggle');
+    panel.append(fieldWrap);
   }
   async function waitForManagedBackend(address, timeoutMs = 120000) {
     const deadline = Date.now() + timeoutMs;
@@ -941,7 +971,7 @@
     const layout = el('div', '', 'app-layout'), right = el('div', '', 'app-panel app-result-panel');
     let left = el('div', '', 'app-panel app-run-panel');
     const intro = el('div', '', 'app-run-intro');
-    intro.append(el('p', item.description));
+    intro.append(el('p', item.description && item.description !== '本地工作流应用' ? item.description : '从一张图片开始'));
     if (item.purpose?.label) {
       intro.append(el('p', `用途：${item.purpose.label}${item.purpose.basis?.length ? `（依据：${item.purpose.basis.join('、')}）` : ''}`, 'app-purpose'));
     }
@@ -1025,7 +1055,7 @@
       const groups = el('div', '', 'app-workflow-groups');
       groups.append(el('strong', '工作流分组'), el('p', '选择要运行的分组，所需的上游节点会一同启用。'));
       for (const group of workflowGroups) {
-        const choice = button(group.title, async () => {
+        const choice = button(designerLabel(group.title), async () => {
           choice.disabled = true;
           try {
             const selected = await post('/' + item.id + '/groups/' + encodeURIComponent(group.id) + '/enable');
@@ -1065,7 +1095,7 @@
     }, 'app-primary');
     run.id = 'app-run'; run.disabled = item.entry_type !== 'app' || !workflowCanRun(item); left.append(run);
     if (preparation.children.length > 1) left.append(preparation);
-    const resultHeader = el('div', '', 'app-result-header'); resultHeader.append(el('h2', '结果'), el('span', '最新结果显示在这里'));
+    const resultHeader = el('div', '', 'app-result-header'); resultHeader.append(el('h2', '结果预览'), el('span', '生成后会在这里出现'));
     const history = el('div'); history.dataset.wasReady = String(ready);
     history.preparationTarget = el('div', '', 'app-preparation-slot');
     right.append(resultHeader, history.preparationTarget, history); results(item.tasks || [], history);

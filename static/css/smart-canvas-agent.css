@@ -600,3 +600,10 @@ html.studio-theme-dark body #canvasAgentToggle.canvas-agent-toggle {
 /* Composer references use the same order for thumbnails, requests and history. */
 .canvas-agent-composer-attachment.reference-dragging { opacity:.4; }
 .reference-attachment-ghost { position:fixed !important; z-index:13000; pointer-events:none; margin:0 !important; box-shadow:0 4px 18px var(--shadow); }
+
+/* 生成偏好底部说明是帮助文字，保持在中文界面的可读下限。 */
+html[data-studio-skin] body .canvas-agent-generation-popover > p {
+    font-size:13px !important;
+    line-height:1.5 !important;
+    white-space:normal !important;
+}

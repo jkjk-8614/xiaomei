@@ -48,7 +48,9 @@ from design_brain_store import (
     apply_ecommerce_plan,
     guard_append_edits,
 )
-from design_brain_visual_rules import ECOMMERCE_RULES, VisualRuleError, render_sku_image, task_kind, infer_task_type, sku_series_mode
+from design_brain_visual_rules import (ECOMMERCE_RULES, VisualRuleError, default_sku_scene,
+                                       default_visual_framework,
+                                       render_sku_image, task_kind, infer_task_type, sku_series_mode)
 from design_brain_api import (
     DATA_ROOT,
     EXPERIENCES,
@@ -219,8 +221,11 @@ async def compose_batched_plan(request, brief, message, *, on_batch=None, before
         batch = {"total": expected, "start": start + 1, "end": start + count,
                  "count": count if expected else 0}
         system = PLANNER_SYSTEM if task_kind(brief) else PLANNER_SYSTEM.split("\n\n" + ECOMMERCE_RULES)[0]
-        if task_kind(brief):
-            system += "\n\n" + commerce_bot_guidance({"id": "bot_planner"})
+        # 电商策划方法（事实边界、词图人对应、价格与盈利核算）对每一类任务都
+        # 适用；只有固定的“5 图主图 / 详情页结构”随 task_kind 去掉，避免给创意
+        # 类任务硬套主图模板。旧写法把它一起关掉，task_type=other/creative 的
+        # 任务会完全失去这段指引。
+        system += "\n\n" + commerce_bot_guidance({"id": "bot_planner"})
         system += "\n本次规划批次（JSON）：" + json.dumps(batch, ensure_ascii=False)
         system += "\n张数与清晰度参数：" + json.dumps(requirements, ensure_ascii=False)
         if sku_series_mode(brief):
@@ -249,10 +254,21 @@ async def compose_batched_plan(request, brief, message, *, on_batch=None, before
                     shot["id"] = f"shot_{start + index + 1}"
                 data["shots"] = shots
                 if combined:
-                    data["visual_framework"] = combined.get("visual_framework") or {}
+                    data["visual_framework"] = combined.get("visual_framework") or data.get("visual_framework") or {}
+                    data["planning_warnings"] = list(combined.get("planning_warnings") or [])
+                    data["visual_framework_source"] = combined.get("visual_framework_source") or data.get("visual_framework_source") or ""
                     if sku_series_mode(brief):
                         data["sku_scene"] = combined["sku_scene"]
                         data["sku_layout"] = combined.get("sku_layout") or {}
+                if task_kind(brief) and not data.get("visual_framework"):
+                    data["visual_framework"] = default_visual_framework(brief, data)
+                    data["visual_framework_source"] = "system_fallback"
+                    warning = "规划模型未返回全组视觉框架，系统已按当前需求补齐；生成前请复核配色、字体、品牌位置与产品机位"
+                    data["planning_warnings"] = list(dict.fromkeys([*(data.get("planning_warnings") or []), warning]))
+                if sku_series_mode(brief) and not str(data.get("sku_scene") or "").strip():
+                    data["sku_scene"] = default_sku_scene(brief, data)
+                    warning = "规划模型未返回SKU共同场景，系统已按商品约束补齐；生成前请复核共同背景、构图、机位与光线"
+                    data["planning_warnings"] = list(dict.fromkeys([*(data.get("planning_warnings") or []), warning]))
                 apply_ecommerce_plan(brief, data, compose=True, offset=start)
                 shots = apply_plan_requirements(batch_requirements, data["shots"])
                 data["shots"] = shots
@@ -270,6 +286,15 @@ async def compose_batched_plan(request, brief, message, *, on_batch=None, before
         if on_batch:
             on_batch(combined, expected)
     combined["shots"] = apply_plan_requirements(brief, all_shots)
+    if task_kind(brief) and not combined.get("visual_framework"):
+        combined["visual_framework"] = default_visual_framework(brief, combined)
+        combined["visual_framework_source"] = "system_fallback"
+        warning = "规划模型未返回全组视觉框架，系统已按当前需求补齐；生成前请复核配色、字体、品牌位置与产品机位"
+        combined["planning_warnings"] = list(dict.fromkeys([*(combined.get("planning_warnings") or []), warning]))
+    if sku_series_mode(brief) and not str(combined.get("sku_scene") or "").strip():
+        combined["sku_scene"] = default_sku_scene(brief, combined)
+        warning = "规划模型未返回SKU共同场景，系统已按商品约束补齐；生成前请复核共同背景、构图、机位与光线"
+        combined["planning_warnings"] = list(dict.fromkeys([*(combined.get("planning_warnings") or []), warning]))
     apply_ecommerce_plan(brief, combined)
     return apply_sku_plan(brief, combined)
 
@@ -717,6 +742,8 @@ class DesignBotOrchestrator:
             self._patch(task_id, "planning", lambda t: t.__setitem__("plan", plan))
             self._event(task_id, "planning", "batch_planned",
                         f"已规划 {len(plan['shots'])}/{total or len(plan['shots'])} 张")
+            if plan.get("planning_warnings"):
+                self._event(task_id, "planning", "planner_fallback", plan["planning_warnings"][0])
         try:
             data = await compose_batched_plan(request_plan, brief, message, on_batch=save_batch,
                                               before_batch=lambda: self._guard_cancelled(task_id),
@@ -735,6 +762,8 @@ class DesignBotOrchestrator:
             "flexible": [str(value) for value in (data.get("flexible") or []) if str(value).strip()],
             "acceptance": [str(value) for value in (data.get("acceptance") or []) if str(value).strip()],
             "adjustment_options": data.get("adjustment_options") or [],
+            "planning_warnings": [str(value) for value in (data.get("planning_warnings") or []) if str(value).strip()],
+            "visual_framework_source": str(data.get("visual_framework_source") or ""),
             "shots": shots,
         }
         apply_ecommerce_plan(brief, plan)
@@ -853,7 +882,8 @@ class DesignBotOrchestrator:
                 if anchor["status"] != "succeeded" or not anchor["outputs"]:
                     if current["execution"].get("sku_anchor_url"):
                         raise BotFlowError(f"SKU 首张模板排字失败：{anchor['error']}；其余款式尚未生成")
-                    raise BotFlowError("SKU 场景基准图生成失败，请重试；其余款式尚未生成")
+                    detail = anchor.get("error") or "未收到有效图片，请检查生图平台后重试"
+                    raise BotFlowError(f"SKU 场景基准图生成失败：{detail}；其余款式尚未生成")
                 if not current["execution"].get("sku_anchor_url"):
                     self._patch(task_id, "executing", lambda t: t["execution"].__setitem__(
                         "sku_anchor_url", anchor["outputs"][0]["url"]))

@@ -1466,7 +1466,7 @@ def _sibling_preservation_roots(project_root: Path) -> list[Path]:
     return [path for path in siblings if path.is_dir()]
 
 
-def _source_has_payload(source: Path) -> bool:
+def _source_has_payload(source: Path, *, include_top_level_workflows: bool = True) -> bool:
     if source.is_symlink() or not source.is_dir():
         return False
     for name in _LEGACY_TOP_LEVEL_DIRS:
@@ -1492,7 +1492,7 @@ def _source_has_payload(source: Path) -> bool:
                 return True
         except OSError:
             return True
-    if (source / "workflows").is_dir() and not (source / "workflows").is_symlink():
+    if include_top_level_workflows and (source / "workflows").is_dir() and not (source / "workflows").is_symlink():
         try:
             if next((source / "workflows").iterdir(), None) is not None:
                 return True
@@ -1521,7 +1521,7 @@ def discover_legacy_sources(
         # scan the destination itself.
         if path in data_root.parents:
             return
-        if not _source_has_payload(path):
+        if not _source_has_payload(path, include_top_level_workflows=path != project_root):
             # The installer may have preserved the packaged app directory
             # as "<root>/app" or "<root>/root".
             for nested_name in ("app", "root", "resources/app"):
@@ -1691,6 +1691,8 @@ def _import_source(
     source_root: Path,
     data_root: Path,
     deferred: list[dict[str, str]],
+    *,
+    current_app_root: bool = False,
 ) -> int:
     source_root = _resolved(source_root)
     if source_root == data_root or not source_root.is_dir():
@@ -1797,7 +1799,7 @@ def _import_source(
         except OSError:
             children = []
         for child in children:
-            if child.name == ".env":
+            if child.name in (".env", ".env.example"):
                 continue
             copied += _move_or_merge(child, target_api / child.name)
 
@@ -1811,17 +1813,21 @@ def _import_source(
             data_root / "ComfyUI" / "workflows" / "custom",
         )
     legacy_workflows = source_root / "workflows"
-    if legacy_workflows.is_dir() and not legacy_workflows.is_symlink():
+    if not current_app_root and legacy_workflows.is_dir() and not legacy_workflows.is_symlink():
         copied += _move_or_merge(legacy_workflows, data_root / "workflows")
 
     harness = source_root / ".xiaomei-data"
     if harness.is_dir() and not harness.is_symlink():
-        copied += _move_or_merge(
-            harness,
-            data_root / ".xiaomei-data",
-            bulk=True,
-            deferred=deferred,
-        )
+        target_harness = data_root / ".xiaomei-data"
+        if deferred is not None and target_harness.exists():
+            deferred.append({"source": str(harness), "target": str(target_harness)})
+        else:
+            copied += _move_or_merge(
+                harness,
+                target_harness,
+                bulk=True,
+                deferred=deferred,
+            )
 
     for name in _LEGACY_TOP_LEVEL_FILES:
         if name == "history.json":
@@ -1953,7 +1959,7 @@ def migrate_legacy_data(
         if state["sources"].get(key) == fingerprint:
             continue
         try:
-            imported = _import_source(source, data_root, deferred)
+            imported = _import_source(source, data_root, deferred, current_app_root=source == project_root)
         except Exception as error:  # noqa: BLE001 - one source must not stop startup
             failures.append(f"{source}: {error}")
             _log_migration(data_root, f"从 {source} 导入失败，下次启动重试：{error}")

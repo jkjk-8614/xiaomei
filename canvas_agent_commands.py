@@ -44,9 +44,11 @@ ALIASES.update({"抠图": "image.remove_background", "去背景": "image.remove_
                 "旋转": "image.rotate", "镜像": "image.flip", "扩图": "image.outpaint", "抹除": "image.erase",
                 "ocr": "image.ocr", "改字": "image.ocr", "分层": "image.ai_layers", "宫格": "image.grid",
                 "重命名": "canvas.rename_node", "move": "canvas.move_node", "移动": "canvas.move_node"})
-NODE_TYPES = {"smart-upload", "smart-prompt", "smart-paint", "smart-loop", "smart-group"}
+NODE_TYPES = {"smart-upload", "smart-prompt", "smart-paint", "smart-video", "smart-loop", "smart-group"}
 SETTINGS = {"engine", "apiKind", "provider_id", "model", "ratio", "resolution", "customRatio",
             "customRatioWidth", "customRatioHeight", "customSize", "quality", "background", "count"}
+SETTINGS.update({"videoProvider", "videoModel", "videoMode", "videoDuration", "videoAspect", "videoResolution",
+                 "videoGenerateAudio", "videoMultimodal", "videoUseFrameRoles"})
 READ_ONLY = re.compile(r"怎么|如何|能不能|可以吗|方案|建议|什么工具|有哪些|是否|为什么|只分析|只解释|只回答|只查看|不要执行|不要运行|不要写入|不要修改", re.I)
 NUMBER = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
 

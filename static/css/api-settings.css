@@ -7262,6 +7262,24 @@ html:not(.studio-theme-dark) body:not(.theme-dark) .sidebar > .side-section-titl
     transform:rotate(-45deg);
 }
 
+/* 站点图标：favicon 到位后替换默认链条图标，未加载/取不到时继续显示链条。 */
+.provider-mark .provider-favicon {
+    display:none;
+    width:24px;
+    height:24px;
+    border-radius:6px;
+    object-fit:contain;
+    background:transparent;
+}
+
+.provider-mark .provider-favicon.is-loaded {
+    display:block;
+}
+
+.provider-mark .provider-favicon.is-loaded ~ svg {
+    display:none;
+}
+
 .sidebar .cli-provider-mark {
     background:#f1f2f3 !important;
     border-color:#eceeef !important;

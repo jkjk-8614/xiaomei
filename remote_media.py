@@ -74,7 +74,13 @@ class RemoteResponse:
             self.connection.close()
 
 
-def open_public_remote_response(url, headers=None, max_redirects=4):
+def open_public_remote_response(url, headers=None, max_redirects=4, allow_error_status=False):
+    """Open a public HTTP(S) URL with pinned DNS.
+
+    ``allow_error_status`` keeps 4xx/5xx responses readable instead of raising.
+    Site-icon discovery needs it: a blocked or legal-restricted landing page
+    (403/451) often still ships its ``<link rel="icon">`` in the HTML body.
+    """
     current = str(url or "").strip()
     for hop in range(max_redirects + 1):
         parsed, address, port = resolve_public_url(current)
@@ -97,7 +103,8 @@ def open_public_remote_response(url, headers=None, max_redirects=4):
                     raise ValueError("远程下载重定向次数过多")
                 current = urljoin(current, location)
                 continue
-            response.raise_for_status()
+            if not allow_error_status:
+                response.raise_for_status()
             return response, current
         except Exception:
             if response is not None:

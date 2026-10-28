@@ -4,12 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>设计大脑</title>
-    <link rel="icon" href="/static/images/logo.png?v=2026.10.26" type="image/png">
-    <script src="/static/js/theme.js?v=2026.10.26.1791335865"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.26.1792900345">
-    <link rel="stylesheet" href="/static/css/design-brain.css?v=2026.10.26.quality-flow.1">
-    <link rel="stylesheet" href="/static/css/skill-market.css?v=2026.10.26.1792128842">
-    <script src="/static/vendor/js/lucide.js?v=2026.10.26.1784161005"></script>
+    <link rel="icon" href="/static/images/logo.png?v=2026.10.28" type="image/png">
+    <script src="/static/js/theme.js?v=2026.10.28.1791335865"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.28.1792900345">
+    <link rel="stylesheet" href="/static/css/design-brain.css?v=2026.10.28.1793064711">
+    <link rel="stylesheet" href="/static/css/skill-market.css?v=2026.10.28.1792128842">
+    <script src="/static/vendor/js/lucide.js?v=2026.10.28.1784161005"></script>
 </head>
 <body>
     <div class="db-page" data-section="team">
@@ -271,30 +271,43 @@
             <main id="reviewGrid" class="experience-grid"></main>
         </section>
 
-        <section id="profilePanel" class="db-panel" hidden aria-label="审美档案">
-            <div id="profileForm"></div>
-            <div class="db-group" id="dataManagement">
-                <h3>数据管理</h3>
-                <p class="group-hint">全部数据仅保存在本机。导出为 JSON 快照下载；删除需输入确认文字，物理 Skill 包与图片、历史记录不受影响。</p>
-                <div class="picker-bar">
-                    <button id="exportDataButton" class="subtle-button" type="button">导出数据</button>
-                    <select id="deleteScopeSelect" class="inline-input" aria-label="删除范围">
-                        <option value="all">全部设计大脑数据</option>
-                        <option value="profile">仅审美档案</option>
-                        <option value="references">仅参考素材（含图片文件）</option>
-                        <option value="experiences">仅项目经验</option>
-                        <option value="runs">仅执行记录</option>
-                        <option value="reviews">仅质量评价</option>
-                        <option value="skill_links">仅 Skill 版本记录</option>
-                    </select>
-                    <input id="deleteConfirmInput" class="inline-input" type="text" placeholder="输入「删除」确认">
-                    <button id="deleteDataButton" class="subtle-button" type="button" style="border-color:#e3c9c7;color:#a8463f;">删除</button>
+        <section id="profilePanel" class="db-panel pf-panel" hidden aria-label="审美档案">
+            <div class="pf-scroll">
+                <div class="pf-inner">
+                    <div id="profileForm" class="pf-form"></div>
+                    <details class="pf-data" id="dataManagement">
+                        <summary>数据与导出<small>JSON 快照 · 删除需输入确认</small></summary>
+                        <div class="pf-data-body">
+                            <div class="pf-data-row">
+                                <button id="exportDataButton" class="subtle-button" type="button">导出数据</button>
+                                <p>把全部设计大脑数据导出为 JSON 快照，仅下载到本机。</p>
+                            </div>
+                            <div class="pf-danger">
+                                <p>删除数据</p>
+                                <div class="pf-danger-row">
+                                    <select id="deleteScopeSelect" aria-label="删除范围">
+                                        <option value="all">全部设计大脑数据</option>
+                                        <option value="profile">仅审美档案</option>
+                                        <option value="references">仅参考素材（含图片文件）</option>
+                                        <option value="experiences">仅项目经验</option>
+                                        <option value="runs">仅执行记录</option>
+                                        <option value="reviews">仅质量评价</option>
+                                        <option value="skill_links">仅 Skill 版本记录</option>
+                                    </select>
+                                    <input id="deleteConfirmInput" type="text" placeholder="输入「删除」确认" aria-label="删除确认文字">
+                                    <button id="deleteDataButton" class="pf-danger-btn" type="button">删除</button>
+                                </div>
+                                <p class="pf-field-note">删除不可恢复；物理 Skill 包、已生成图片与历史记录不受影响。</p>
+                                <p id="dataStatus" class="profile-status" role="status" aria-live="polite"></p>
+                            </div>
+                        </div>
+                    </details>
                 </div>
-                <p id="dataStatus" class="profile-status" role="status" aria-live="polite"></p>
             </div>
-            <div class="profile-foot">
+            <div class="pf-savebar">
+                <span id="profileStatus" class="profile-status" role="status" aria-live="polite">已保存</span>
+                <button id="resetProfileButton" class="subtle-button" type="button">撤销改动</button>
                 <button id="saveProfileButton" class="primary-button" type="button">保存档案</button>
-                <span id="profileStatus" class="profile-status" role="status" aria-live="polite"></span>
             </div>
         </section>
         </div>
@@ -433,11 +446,11 @@
         </aside>
     </div>
 
-    <script src="/static/vendor/deepseek-bot/characters.js?v=2026.10.26.1792916956"></script>
-    <script src="/static/js/design-brain-progress.js?v=2026.10.26.direction-flow.1"></script>
-    <script src="/static/js/shared-agent-skill.js?v=2026.10.26.1791504727"></script>
-    <script src="/static/js/skill-market.js?v=2026.10.26.1792935456"></script>
-    <script src="/static/js/design-brain.js?v=2026.10.26.quality-flow.1"></script>
-    <script src="/static/js/design-brain-team.js?v=2026.10.26.1792975191"></script>
+    <script src="/static/vendor/deepseek-bot/characters.js?v=2026.10.28.1792916956"></script>
+    <script src="/static/js/design-brain-progress.js?v=2026.10.28.1793028033"></script>
+    <script src="/static/js/shared-agent-skill.js?v=2026.10.28.1791504727"></script>
+    <script src="/static/js/skill-market.js?v=2026.10.28.1792935456"></script>
+    <script src="/static/js/design-brain.js?v=2026.10.28.1793106120"></script>
+    <script src="/static/js/design-brain-team.js?v=2026.10.28.1792975191"></script>
 </body>
 </html>

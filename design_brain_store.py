@@ -2316,6 +2316,8 @@ def normalize_agent_task(raw: Any) -> Dict[str, Any]:
             "flexible": _task_str_list(plan_raw.get("flexible"), 10, 200),
             "acceptance": _task_str_list(plan_raw.get("acceptance"), 10, 200),
             "adjustment_options": _task_adjustment_options(plan_raw.get("adjustment_options")),
+            "planning_warnings": _task_str_list(plan_raw.get("planning_warnings"), 6, 300),
+            "visual_framework_source": _task_text(plan_raw.get("visual_framework_source"), 40),
             "shots": shots,
         },
         "execution": {

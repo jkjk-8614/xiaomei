@@ -516,6 +516,24 @@ class LegacyMigrationTest(unittest.TestCase):
             projects = read_json(data_root / "data" / "projects.json")["projects"]
             self.assertIn("lost-project", {item["id"] for item in projects})
 
+    def test_existing_harness_directory_is_deferred_and_merged(self):
+        with tempfile.TemporaryDirectory() as folder:
+            project = Path(folder) / "install"
+            data_root = Path(folder) / "user data"
+            source = project / ".xiaomei-data"
+            target = data_root / ".xiaomei-data"
+            source.mkdir(parents=True)
+            target.mkdir(parents=True)
+            (source / "old.txt").write_text("old", encoding="utf-8")
+            (source / "same.txt").write_text("old", encoding="utf-8")
+            (target / "same.txt").write_text("current", encoding="utf-8")
+            migrate_legacy_data(project, data_root)
+            self.assertFalse((target / "old.txt").exists())
+            self.assertTrue((data_root / ".legacy-bulk-pending.json").exists())
+            migrate_pending_bulk_data(project, data_root)
+            self.assertEqual((target / "old.txt").read_text(encoding="utf-8"), "old")
+            self.assertEqual((target / "same.txt").read_text(encoding="utf-8"), "current")
+
     def test_deferred_bulk_copy_can_be_resumed(self):
         with tempfile.TemporaryDirectory() as folder:
             data_root = Path(folder) / "data root"

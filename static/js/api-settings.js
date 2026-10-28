@@ -2727,6 +2727,47 @@ function renderCliProviderRow(item, active, stateClass, protocolLabel, kind){
         </div>
     `;
 }
+// 平台图标：优先用站点自己的 favicon（后端按 base_url 站点缓存到 data/provider_icons），
+// 取不到或还没加载完时保留原来的链条图标，避免列表里出现空洞。
+// 列表每次 renderEditor 都会重画，这里记住已加载/已失败的地址，避免闪回和重复 404。
+const providerIconLoaded = new Set();
+const providerIconFailed = new Set();
+function providerIconSrc(item){
+    const baseUrl = String(item?.base_url || '').trim();
+    if(!/^https?:\/\//i.test(baseUrl)) return '';
+    // name 只用于站点自己没有 favicon 时按品牌官网补图标，缓存仍按站点来源。
+    const name = String(item?.name || '').trim();
+    const suffix = name ? `&name=${encodeURIComponent(name)}` : '';
+    return `/api/provider-icon?url=${encodeURIComponent(baseUrl)}${suffix}`;
+}
+function providerIconMarkup(item){
+    const fallback = '<i data-lucide="link-2" class="w-4 h-4"></i>';
+    const src = providerIconSrc(item);
+    if(!src || providerIconFailed.has(src)) return fallback;
+    const loaded = providerIconLoaded.has(src) ? ' is-loaded' : '';
+    return `<img class="provider-favicon${loaded}" src="${escapeAttr(src)}" alt="" data-icon-src="${escapeAttr(src)}" onload="markProviderFaviconLoaded(this)" onerror="markProviderFaviconFailed(this)">${fallback}`;
+}
+function markProviderFaviconLoaded(img){
+    if(!img) return;
+    const src = img.dataset.iconSrc || img.getAttribute('src') || '';
+    if(providerIconFailed.has(src)){ img.classList.remove('is-loaded'); return; }
+    if(src) providerIconLoaded.add(src);
+    img.classList.add('is-loaded');
+}
+function markProviderFaviconFailed(img){
+    if(!img) return;
+    const src = img.dataset.iconSrc || img.getAttribute('src') || '';
+    if(src){ providerIconFailed.add(src); providerIconLoaded.delete(src); }
+    img.dataset.failed = '1';
+    img.classList.remove('is-loaded');
+}
+// 拉取模型成功说明站点可达：允许重新请求一次之前失败的图标。
+function resetProviderIcon(item){
+    const src = providerIconSrc(item);
+    if(!src) return;
+    providerIconFailed.delete(src);
+    providerIconLoaded.delete(src);
+}
 function renderProviderList(){
     providerList.innerHTML = sortedProviders().map(item => {
         const active = item.id === selectedId ? 'active' : '';
@@ -2778,7 +2819,7 @@ function renderProviderList(){
         return `
             <button class="provider-card provider-card-sortable ${active} ${stateClass}" type="button" onclick="selectProvider('${escapeHtml(item.id)}')"${providerDragAttrs(item)}>
                 <span class="provider-drag-handle" aria-hidden="true"><i data-lucide="grip-vertical" class="w-3.5 h-3.5"></i></span>
-                <span class="provider-mark api-provider-mark"><i data-lucide="link-2" class="w-4 h-4"></i></span>
+                <span class="provider-mark api-provider-mark">${providerIconMarkup(item)}</span>
                 <span class="provider-info">
                     <div class="provider-name">${escapeHtml(item.name || item.id)}</div>
                     <div class="provider-meta">${escapeHtml(item.base_url || '未配置地址')}</div>
@@ -4417,7 +4458,8 @@ async function fetchModels(){
                 api_key:apiKey,
                 provider_id:runninghubContext ? 'runninghub' : item.id,
                 protocol:runninghubContext ? 'runninghub' : (protocolInput?.value || 'openai'),
-                image_request_mode:imageRequestModeInput?.value || item.image_request_mode || 'openai'
+                image_request_mode:imageRequestModeInput?.value || item.image_request_mode || 'openai',
+                name:nameInput?.value.trim() || item.name || ''
             })
         }).then(async r => {
             if(!r.ok) throw new Error((await r.json()).detail || (tr('api.urlInvalid') || '拉取失败'));
@@ -4437,6 +4479,9 @@ async function fetchModels(){
             : (detectedProtocol === 'volcengine' || isVolcengineProvider(item)) ? ' · 已识别方舟协议，火山聊天建议改填 ep-... 接入点' : '';
         const imageModeExtra = normalizeImageRequestMode(imageRequestModeInput?.value || item.image_request_mode) === 'openai-json' ? ' · 图片接口已设为 OpenAI JSON' : '';
         setStatus(`已拉取 ${data.total} 个模型 · 点「选择模型」勾选要导入的${extra}${imageModeExtra}`);
+        // 后端已顺手缓存站点图标，重画列表让左侧立刻换成平台自己的 favicon。
+        resetProviderIcon(item);
+        renderProviderList();
         openModelPicker();
     } catch(e){
         alert('拉取失败：' + (e.message || e));
@@ -4581,11 +4626,13 @@ async function applyModelPicker(){
     // 避免 Nano Banana 被错误提交到 OpenAI Images 接口。
     const previousProtocols = (item.model_protocols && typeof item.model_protocols === 'object')
         ? item.model_protocols : {};
+    const soonStudio = isSoonStudioProvider(item);
     const nextProtocols = {};
     [...image, ...chat].forEach(id => {
         const normalized = String(id || '').trim().toLowerCase();
         if(normalized.startsWith('nano-banana') || (normalized.startsWith('gemini-') && normalized.includes('image'))){
-            nextProtocols[id] = 'gemini';
+            // SoonStudio 只有 OpenAI Images 路由，nano-banana 不能按 Gemini 原生协议提交。
+            nextProtocols[id] = soonStudio ? 'openai' : 'gemini';
         } else if(previousProtocols[id] === 'openai' || previousProtocols[id] === 'gemini'){
             nextProtocols[id] = previousProtocols[id];
         }
@@ -4712,6 +4759,15 @@ async function clearKeyOnly(){
     if(ok) keyInput.value = '';
 }
 const FIXED_PROTOCOL_PROVIDER_IDS = new Set(['volcengine', 'runninghub']);
+function isSoonStudioProvider(item){
+    const base = String(item?.base_url || '').trim().toLowerCase();
+    try{
+        const host = new URL(base).hostname;
+        return host === 'soonstudio.ai' || host.endsWith('.soonstudio.ai');
+    }catch(e){
+        return false;
+    }
+}
 function providerSupportsModelProtocol(item){
     return Boolean(item) && !FIXED_PROTOCOL_PROVIDER_IDS.has(item.id);
 }
