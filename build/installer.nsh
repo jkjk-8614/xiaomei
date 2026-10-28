@@ -245,19 +245,18 @@ Function XiaomeiPreserveLegacyData
   Pop $R0
 FunctionEnd
 
-Function XiaomeiWriteFailureLog
-  ${If} $XiaomeiDiagnosticPath == ""
-    Return
+!macro XiaomeiWriteFailureLog
+  ${If} $XiaomeiDiagnosticPath != ""
+    Push $R0
+    ClearErrors
+    FileOpen $R0 "$XiaomeiDiagnosticPath" w
+    ${IfNot} ${Errors}
+      FileWrite $R0 "$XiaomeiFailureStage$\r$\n"
+      FileClose $R0
+    ${EndIf}
+    Pop $R0
   ${EndIf}
-  Push $R0
-  ClearErrors
-  FileOpen $R0 "$XiaomeiDiagnosticPath" w
-  ${IfNot} ${Errors}
-    FileWrite $R0 "$XiaomeiFailureStage$\r$\n"
-    FileClose $R0
-  ${EndIf}
-  Pop $R0
-FunctionEnd
+!macroend
 
 !macro customInstall
   StrCpy $XiaomeiInstallCompleted "1"
@@ -322,13 +321,13 @@ FunctionEnd
     IfFileExists "$XiaomeiLegacyInstallDir\resources\app\package.json" xiaomei_failed xiaomei_done
 
   xiaomei_failed:
-    Call XiaomeiWriteFailureLog
+    !insertmacro XiaomeiWriteFailureLog
     Call XiaomeiRestoreLegacyData
     MessageBox MB_OK|MB_ICONSTOP "无法卸载旧版小美画布，请关闭程序后重试。" /SD IDOK
     Abort "旧版卸载失败，安装已停止。"
 
   xiaomei_preserve_failed:
-    Call XiaomeiWriteFailureLog
+    !insertmacro XiaomeiWriteFailureLog
     Call XiaomeiRestoreLegacyData
     MessageBox MB_OK|MB_ICONSTOP "无法保存旧版用户数据，安装已停止。请确认磁盘空间和文件权限后重试。" /SD IDOK
     Abort "旧版用户数据保存失败，安装已停止。"
