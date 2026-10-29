@@ -44,12 +44,12 @@ test('detail batch outer frame follows all sections and resized copy fields', { 
             const node = nodes.find(item => item.id === 'loop-bounds');
             const el = world.querySelector('[data-id="loop-bounds"]');
             const outer = el.getBoundingClientRect();
-            const blocks = [...el.querySelector('.loop-paired-card').children].map(child => child.getBoundingClientRect());
+            const blocks = [...el.querySelector('.loop-paired-card').children].filter(child => !child.classList.contains('loop-batch-overview')).map(child => child.getBoundingClientRect());
             return {height:el.offsetHeight, modelHeight:nodeRect(node).height, nodeHeight:node.h, measured:smartLoopMeasuredHeights.get(node), cardHeight:el.querySelector('.loop-paired-card').offsetHeight,
                 sourceHeight:el.querySelector('[data-loop-detail-text]').offsetHeight, sourceStyle:el.querySelector('[data-loop-detail-text]').style.height,
                 manualOpen:el.querySelector('.loop-detail-manual').open,
                 contained:blocks.every(box => box.top >= outer.top && box.bottom <= outer.bottom),
-                footerGap:outer.bottom - (el.querySelector('.loop-detail-stitch-row') || el.querySelector('.loop-paired-actions')).getBoundingClientRect().bottom};
+                footerGap:outer.bottom - el.querySelector('[data-loop-run]').getBoundingClientRect().bottom};
         });
     };
     const initial = await bounds();
@@ -58,6 +58,7 @@ test('detail batch outer frame follows all sections and resized copy fields', { 
     assert.equal(initial.modelHeight, initial.height, 'connection and minimap geometry matches the visible frame');
     await page.evaluate(() => {
         const el = world.querySelector('[data-id="loop-bounds"]');
+        el.querySelector('.batch-advanced').open = true;
         el.querySelector('.loop-detail-manual').open = true;
         const input = el.querySelector('[data-loop-detail-text]');
         input.style.maxHeight = 'none';
@@ -90,36 +91,14 @@ test('detail batch outer frame follows all sections and resized copy fields', { 
         assert.ok(!prompt.includes('统一视觉规则'));
         assert.ok(prompt.includes(`该屏文案与布局${index + 1}`));
     });
-    const grid = await page.evaluate(() => {
-        const loop = nodes.find(item => item.id === 'loop-bounds');
-        const targets = smartLoopDetailPaintNodes(loop).sort((a, b) => a.batchDetailScreenIndex - b.batchDetailScreenIndex);
-        return {
-            positions:targets.map(item => ({index:item.batchDetailScreenIndex, x:item.x, y:item.y})),
-            labels:targets.map(item => world.querySelector(`[data-id="${item.id}"] .smart-detail-screen-marker`)?.textContent.trim() || '')
-        };
+    const hidden = await page.evaluate(() => {
+        const targets = smartLoopDetailPaintNodes(nodes.find(item => item.id === 'loop-bounds'));
+        return {hidden:targets.every(smartBatchIsHidden), cards:world.querySelectorAll('.batch-screen').length,
+            domNodes:targets.filter(item => world.querySelector(`[data-id="${item.id}"]`)).length};
     });
-    assert.equal(new Set(grid.positions.filter(item => item.index % 2 === 1).map(item => item.x)).size, 1, 'left column is aligned');
-    assert.equal(new Set(grid.positions.filter(item => item.index % 2 === 0).map(item => item.x)).size, 1, 'right column is aligned');
-    assert.deepEqual(grid.positions.map(item => item.y), [grid.positions[0].y, grid.positions[0].y, grid.positions[0].y + 500, grid.positions[0].y + 500, grid.positions[0].y + 1000, grid.positions[0].y + 1000, grid.positions[0].y + 1500, grid.positions[0].y + 1500, grid.positions[0].y + 2000, grid.positions[0].y + 2000]);
-    assert.deepEqual(grid.labels, ['第 1 屏画面', '第 2 屏画面', '第 3 屏画面', '第 4 屏画面', '第 5 屏画面', '第 6 屏画面', '第 7 屏画面', '第 8 屏画面', '第 9 屏画面', '第 10 屏画面']);
-    const detailLines = await page.evaluate(() => [...world.querySelectorAll('.conn-group')].filter(group => group.dataset.connFrom === 'loop-bounds').map(group => group.querySelector('.conn-line')?.getAttribute('d') || ''));
-    assert.equal(detailLines.length, 10, 'each screen keeps its connection');
-    assert.ok(detailLines.every(path => !/ L/.test(path)), 'batch lines use the original curve style');
-    const endpointGaps = await page.evaluate(() => {
-        const svg = world.querySelector('svg.connection-layer');
-        const inverse = svg.getScreenCTM().inverse();
-        return [...svg.querySelectorAll('.conn-group')]
-            .filter(group => group.dataset.connFrom === 'loop-bounds')
-            .map(group => {
-                const end = group.querySelector('.conn-end');
-                const target = world.querySelector(`[data-id="${group.dataset.connTo}"]`).getBoundingClientRect();
-                const left = new DOMPoint(target.left, target.top + target.height / 2).matrixTransform(inverse);
-                const marker = end.getBoundingClientRect();
-                const endpoint = new DOMPoint(marker.left + marker.width / 2, marker.top + marker.height / 2).matrixTransform(inverse);
-                return Math.max(Math.abs(endpoint.x - left.x), Math.abs(endpoint.y - left.y));
-            });
-    });
-    assert.ok(endpointGaps.every(gap => gap < 1), `line endpoints meet the visible target edge: ${JSON.stringify(endpointGaps)}`);
+    assert.equal(hidden.hidden, true, 'new screens stay in the overview');
+    assert.equal(hidden.cards, 10);
+    assert.equal(hidden.domNodes, 0, 'ten-screen batch does not flood the canvas');
     await page.evaluate(() => {
         smartLoopDetailPaintNodes(nodes.find(item => item.id === 'loop-bounds')).forEach((item, index) => {
             item.x += 17 + index;
@@ -133,6 +112,7 @@ test('detail batch outer frame follows all sections and resized copy fields', { 
     });
     await page.evaluate(() => runSmartLoopAiSplit('loop-bounds'));
     assert.deepEqual((await splitState()).ids, firstSplit.ids, 'retry reuses the same ten paint nodes');
+    assert.deepEqual(await page.evaluate(() => smartLoopDetailPaintNodes(nodes.find(n => n.id === 'loop-bounds')).map(n => ({x:n.x,y:n.y}))), restoredGrid, 'existing node positions survive replanning');
     const populated = await bounds();
     assert.ok(populated.contained, 'ten-screen batch stays inside the frame');
     assert.equal(populated.modelHeight, populated.height);

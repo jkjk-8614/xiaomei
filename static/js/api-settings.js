@@ -4312,6 +4312,7 @@ async function testConnection(){
 let lastFetchedAll = [];          // 全部模型 id 列表
 let lastFetchedSuggestion = null; // 后端自动分类建议
 let lastFetchedModelNames = {};   // {模型 id: 展示名}
+let lastFetchedSourceNote = '';
 let lastFetchedContext = '';      // 当前拉取对应的平台/地址/协议
 
 function modelFetchContext(item){
@@ -4325,12 +4326,14 @@ function clearFetchedModelState(){
     lastFetchedAll = [];
     lastFetchedSuggestion = null;
     lastFetchedModelNames = {};
+    lastFetchedSourceNote = '';
     lastFetchedContext = '';
     const openBtn = document.getElementById('openPickerBtn');
     if(openBtn){ openBtn.disabled = true; openBtn.style.opacity = '.5'; }
 }
 
 function setFetchedModelState(data, item=provider()){
+    lastFetchedSourceNote = String(data?.message || '');
     lastFetchedAll = Array.isArray(data?.all) ? unique(data.all) : [];
     lastFetchedSuggestion = {
         image: new Set(data?.image_models || []),
@@ -4522,6 +4525,8 @@ function openModelPicker(){
     // 默认 tab 切回「全部」
     document.querySelectorAll('.picker-cat-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === 'all'));
     document.getElementById('modelPickerOverlay').style.display = 'flex';
+    const sourceNote = document.getElementById('pickerSourceNote');
+    if(sourceNote){ sourceNote.textContent = lastFetchedSourceNote; sourceNote.hidden = !lastFetchedSourceNote; }
     renderModelPicker();
 }
 function closeModelPicker(){ document.getElementById('modelPickerOverlay').style.display = 'none'; }

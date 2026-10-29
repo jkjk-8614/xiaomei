@@ -60,6 +60,7 @@ test('canvas resolution swaps, failed loads and panning paint remain stable', {t
         window.fixtureImage = world.querySelector('.node-body img');
     });
     await page.waitForFunction(() => fixtureImage.complete && fixtureImage.naturalHeight === 512);
+    assert.equal(await page.locator('.result-image-tile').first().evaluate(el => getComputedStyle(el).transform),'none');
     await page.evaluate(() => { viewport.scale = 2; applyViewport(); });
     await page.waitForFunction(() => fixtureImage.naturalHeight === 1024);
     await page.evaluate(() => { viewport.scale = 4; applyViewport(); });

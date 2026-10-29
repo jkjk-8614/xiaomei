@@ -60,8 +60,10 @@ test('detail batches retain concurrency, screen pairing, sequential runs and sto
     });
     await page.goto('http://xiaomei-concurrency.test/static/smart-canvas.html?id=concurrency');
     await page.waitForFunction(() => smartConfigReady && smartLoopDetailPaintNodes(nodes.find(n => n.id === 'loop')).length === 10);
+    await page.addStyleTag({content:'#canvasNavPanel{display:none!important}'});
     await page.evaluate(() => { viewport = { x: 80, y: 20, scale: 1 }; applyViewport(); });
     const loop = page.locator('[data-id="loop"]');
+    await loop.locator('.batch-advanced > summary').click();
     await loop.locator('[data-loop-mode="parallel"]').click();
     assert.equal(await page.evaluate(() => nodes.find(n => n.id === 'loop').mode), 'parallel');
     await loop.locator('[data-loop-switch-advanced]').click();
@@ -160,6 +162,7 @@ test('visual guide resizes with the mouse beyond its old height limit', { timeou
     });
     await page.goto('http://xiaomei-resize.test/static/smart-canvas.html?id=resize');
     await page.waitForFunction(() => smartConfigReady && nodes.some(n => n.id === 'loop'));
+    await page.addStyleTag({content:'#canvasNavPanel{display:none!important}'});
     await page.evaluate(() => { viewport = { x: 40, y: 20, scale: 1 }; applyViewport(); });
     const guide = page.locator('[data-loop-detail-guide]');
     const before = await guide.boundingBox();
@@ -178,6 +181,7 @@ test('visual guide resizes with the mouse beyond its old height limit', { timeou
     });
     assert.ok(bounds.contained);
     assert.equal(bounds.height, bounds.model);
+    await page.locator('[data-id="loop"] .batch-advanced > summary').click();
     await page.locator('[data-loop-mode="parallel"]').click();
     assert.equal((await guide.boundingBox()).height, after.height, 'mode changes keep the resized guide height');
     await page.evaluate(() => saveCanvas());

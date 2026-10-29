@@ -10,7 +10,7 @@ const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
 test('detail screens stitch in screen order, update one output, and allow manual reordering', { timeout: 45000 }, async t => {
     const browser = await chromium.launch({ channel:'msedge', headless:true });
     t.after(() => browser.close());
-    const page = await browser.newPage();
+    const page = await browser.newPage({viewport:{width:1600,height:1100}});
     const requests = [];
     let savedCanvas = null;
     let stitchGate = null;
@@ -63,6 +63,7 @@ test('detail screens stitch in screen order, update one output, and allow manual
     });
     await page.goto('http://xiaomei-stitch.test/static/smart-canvas.html?id=stitch');
     await page.waitForFunction(() => nodes.some(node => node.id === 'loop') && document.querySelector('[data-loop-detail-stitch="loop"]'));
+    await page.evaluate(() => { const n = nodes.find(n => n.id === 'loop'), offset = smartBatchOverviewOffset(n); viewport = {x:100 - n.x - offset.x,y:140,scale:1}; applyViewport(); render(); shell.scrollTop = 0; shell.scrollLeft = 0; });
     let releaseSave;
     saveGate = new Promise(resolve => { releaseSave = resolve; });
     await page.locator('[data-loop-detail-stitch="loop"]').click();
@@ -124,6 +125,75 @@ test('detail screens stitch in screen order, update one output, and allow manual
     await page.waitForFunction(id => canvas?.connections?.filter(conn => conn.to === id && conn.detail_stitch).length === 3, initial.id);
     assert.equal(await page.evaluate(id => nodes.find(node => node.id === id).detailStitchConnectionVersion, initial.id), 1,
         'older long images regain their source lines when the canvas is loaded');
+
+    await page.evaluate(() => {
+        nodes.filter(node => node.batchDetailOwnerId === 'loop').forEach(node => { node.batchOverviewOnly = true; });
+        const loop = nodes.find(node => node.id === 'loop');
+        loop.batchOverviewOffset = {x:500,y:0};
+        loop.batchOverviewSize = {width:730,height:740};
+        viewport = {x:30,y:40,scale:.6}; applyViewport(); render();
+    });
+    const overviewLine = page.locator(`.conn-group[data-conn-from="loop"][data-conn-to="${initial.id}"]`);
+    assert.equal(await overviewLine.count(), 1, 'screens inside the overview share one visible stitch line');
+    assert.equal((await overviewLine.getAttribute('data-conn-index')).split(',').length, 3,
+        'the overview line retains all three formal source connections');
+    const checkOverviewAnchor = async () => {
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const distance = await overviewLine.locator('.conn-line').evaluate(async path => {
+            let distance = Infinity;
+            for(let frame=0;frame<20;frame++){
+                const panel = document.querySelector('[data-id="loop"] .loop-batch-overview').getBoundingClientRect();
+                const start = path.getPointAtLength(0).matrixTransform(path.getScreenCTM());
+                distance = Math.hypot(start.x - panel.right, start.y - panel.top - panel.height / 2);
+                if(distance < 2) break;
+                await new Promise(resolve => requestAnimationFrame(resolve));
+            }
+            return distance;
+        });
+        assert.ok(distance < 2, `stitch line starts at the overview edge (${distance}px)`);
+    };
+    await checkOverviewAnchor();
+    // Keep the pointer down while checking: geometry must follow the panel during the gesture.
+    const header = await page.locator('[data-id="loop"] .batch-ov-title').boundingBox();
+    await page.mouse.move(header.x + 20, header.y + 5);
+    await page.mouse.down();
+    await page.mouse.move(header.x + 75, header.y + 45, {steps:4});
+    await checkOverviewAnchor();
+    await page.mouse.up();
+    const handle = await page.locator('[data-id="loop"] [data-batch-overview-resize]').boundingBox();
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handle.x + 80, handle.y + 65, {steps:4});
+    await checkOverviewAnchor();
+    await page.mouse.up();
+    await page.evaluate(() => saveCanvas());
+    await page.reload();
+    await page.waitForFunction(id => nodes.some(node => node.id === id), initial.id);
+    assert.equal(await overviewLine.count(), 1, 'the overview stitch line returns after reloading');
+    await checkOverviewAnchor();
+    assert.deepEqual(await page.evaluate(id => canvas.connections.filter(conn => conn.to === id).map(conn => conn.from), initial.id),
+        ['p1','p2','p3'], 'displaying the overview line preserves the formal graph');
+    await page.evaluate(() => { nodes.find(node => node.id === 'p1').batchOverviewOnly = false; render(); });
+    assert.equal(await page.locator(`.conn-group[data-conn-to="${initial.id}"]`).count(), 2,
+        'one expanded screen keeps its own line alongside the overview line');
+    assert.equal((await overviewLine.getAttribute('data-conn-index')).split(',').length, 2);
+    await page.evaluate(() => { nodes.find(node => node.id === 'p1').batchOverviewOnly = true; render(); });
+    await overviewLine.locator('[data-conn-cut]').dispatchEvent('click');
+    assert.equal(await overviewLine.count(), 0, 'deleting the overview line removes the merged display');
+    assert.equal(await page.evaluate(id => canvas.connections.filter(conn => conn.to === id).length, initial.id), 0,
+        'deleting the overview line disconnects its actual screen sources');
+    await page.evaluate(() => performUndo());
+    assert.equal(await overviewLine.count(), 1, 'undo restores the overview stitch line');
+    await page.evaluate(() => {
+        nodes.filter(node => node.batchDetailOwnerId === 'loop').forEach(node => { node.batchOverviewOnly = false; });
+        const loop = nodes.find(node => node.id === 'loop');
+        delete loop.batchOverviewOffset;
+        delete loop.batchOverviewSize;
+        viewport = {x:100 - loop.x - smartBatchOverviewOffset(loop).x,y:140,scale:1}; applyViewport();
+        render();
+    });
+    assert.equal(await overviewLine.count(), 0, 'expanded sources use their own connections');
+    assert.equal(await page.locator(`.conn-group[data-conn-to="${initial.id}"]`).count(), 3);
 
     await page.evaluate(() => {
         nodes.find(node => node.id === 'p2').images = [{url:'/assets/output/b-new.png', natural_w:1086, natural_h:1448, kind:'image'}];

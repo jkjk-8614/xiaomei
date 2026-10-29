@@ -17,9 +17,17 @@ test('preview loading handles slow originals, rapid switching and close', { time
     const pending = new Map();
     const delayedPreviews = [];
     let delayPreviews = false;
+    let remoteAvailable = false;
+    let lateRemote = null;
     // Serve only repository assets and fixtures: no live canvas writes or model calls.
     await page.route('**/*', async route => {
         const request = route.request(), url = new URL(request.url()), pathname = url.pathname;
+        if (url.hostname === 'preview-origin.test') {
+            if (pathname === '/late.png') { lateRemote = route; return; }
+            return remoteAvailable || pathname === '/direct.png'
+                ? route.fulfill({ contentType: 'image/png', body: pixel })
+                : route.fulfill({ status: 404, body: '' });
+        }
         if (url.hostname !== 'xiaomei-reference.test') return route.abort();
         if (pathname.startsWith('/static/')) {
             let file = path.resolve(root, '.' + decodeURIComponent(pathname));
@@ -30,6 +38,9 @@ test('preview loading handles slow originals, rapid switching and close', { time
             return route.fulfill({ path: file });
         }
         if (pathname.startsWith('/output/preview-')) { pending.set(pathname, route); return; }
+        if (pathname === '/api/download-output') {
+            return route.fulfill({ status: 400, json: { detail: '远程下载地址不能指向本机或内网地址' } });
+        }
         if (pathname.includes('media-preview')) {
             if (delayPreviews) { delayedPreviews.push(route); return; }
             return route.fulfill({ contentType: 'image/png', body: pixel });
@@ -93,6 +104,36 @@ test('preview loading handles slow originals, rapid switching and close', { time
     await wait(150);
     assert.match(await current.getAttribute('src'), /preview-c/);
     await page.evaluate(() => closeImageEditor());
+    assert.equal(await current.getAttribute('src'), null);
+
+    // A system proxy may resolve a public host to a reserved virtual IP. The
+    // backend refuses it, while the browser can still display the original.
+    await page.evaluate(() => {
+        window.remoteFixture = createNode(0, 0, [
+            {url:'https://preview-origin.test/direct.png', kind:'image'},
+            {url:'https://preview-origin.test/retry.png', kind:'image'},
+            {url:'https://preview-origin.test/late.png', kind:'image'}
+        ], {select:false});
+        openImagePreview(window.remoteFixture.id, 0);
+    });
+    await page.waitForFunction(() => document.getElementById('previewCurrentImage').naturalWidth > 0, null, {timeout:3000});
+    assert.equal(await current.getAttribute('src'), 'https://preview-origin.test/direct.png');
+    assert.equal(await page.locator('#previewLoadingState').isHidden(), true);
+    remoteAvailable = false;
+    await page.evaluate(() => navigatePreviewImage(1));
+    await page.waitForFunction(() => !document.getElementById('previewRetryBtn').hidden);
+    assert.equal(await page.locator('#previewLoadingText').textContent(), '预览暂时无法加载');
+    remoteAvailable = true;
+    await page.locator('#previewRetryBtn').click();
+    await page.waitForFunction(() => document.getElementById('previewCurrentImage').naturalWidth > 0);
+    assert.equal(await current.getAttribute('src'), 'https://preview-origin.test/retry.png');
+    await page.evaluate(() => navigatePreviewImage(1));
+    await page.waitForFunction(() => document.getElementById('previewCurrentImage').getAttribute('src') === null);
+    for(let i = 0; !lateRemote && i < 30; i++) await wait(20);
+    assert.ok(lateRemote, 'original URL fallback was requested');
+    await page.evaluate(() => closeImageEditor());
+    await lateRemote.fulfill({contentType:'image/png', body:pixel}).catch(() => {});
+    await wait(100);
     assert.equal(await current.getAttribute('src'), null);
     assert.deepEqual(errors, []);
 });

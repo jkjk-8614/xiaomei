@@ -3,8 +3,12 @@ import ast
 import asyncio
 import math
 import os
+import sys
 from pathlib import Path
+import re
 import tempfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import time
 import uuid
 from types import SimpleNamespace
@@ -112,7 +116,8 @@ class OutpaintTests(unittest.TestCase):
         ns['generate_gemini_provider_image'] = gemini_image
         for name in ['is_codex_provider', 'is_gemini_cli_provider', 'is_jimeng_provider',
                      'is_runninghub_provider', 'is_comfly_gemini_image_model', 'is_volcengine_provider',
-                     'is_gpt_image_2_model', 'is_apimart_provider', 'is_comfly_provider']:
+                     'is_gpt_image_2_model', 'is_apimart_provider', 'is_comfly_provider',
+                     'is_soonstudio_provider']:
             ns[name] = lambda *args: False
         exec(compile(ast.Module(body=[node], type_ignores=[]), str(source), 'exec'), ns)
         ref = {'url': '/source.png', 'outpaint_canvas': True}
@@ -140,6 +145,87 @@ class OutpaintTests(unittest.TestCase):
         status = 200
         asyncio.run(ns['generate_ai_image']('edit', '200x120', '', 'fixture', [{'url': '/source.png'}]))
         self.assertEqual([key for key, _ in calls[0][1]], ['image'])
+
+    def gemini_request_config(self, size, aspect_ratio, refs, resolution=""):
+        """Capture the imageConfig that the Gemini native route submits upstream."""
+        source = Path(__file__).resolve().parents[1] / 'main.py'
+        tree = ast.parse(source.read_text(encoding='utf-8'))
+        wanted = {'parse_size_pair', 'apimart_size_resolution', 'apimart_nearest_aspect',
+                  'normalize_gemini_aspect_ratio',
+                  'gemini_image_config', 'generate_gemini_provider_image'}
+        body = [
+            node for node in tree.body
+            if getattr(node, 'name', None) in wanted
+            or (isinstance(node, ast.Assign)
+                and any(getattr(target, 'id', '') in {'GEMINI_ASPECT_RATIO_CHOICES', 'APIMART_ASPECT_RATIOS'}
+                        for target in node.targets))
+        ]
+        self.assertEqual(len(body), len(wanted) + 2)
+        captured = {}
+
+        class Response:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {'candidates': [{'content': {'parts': [{'inlineData': {'data': 'fixture'}}]}}]}
+
+        class Client:
+            def __init__(self, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+        async def post(client, endpoint, headers, body):
+            captured['config'] = body['generationConfig']['imageConfig']
+            return Response()
+
+        async def acquire(provider_id, model):
+            return 'slot'
+
+        ns = {
+            're': re, 'math': math, 'asyncio': asyncio,
+            'httpx': SimpleNamespace(AsyncClient=Client, Timeout=lambda **kwargs: None),
+            'HTTPException': HTTPException,
+            'ONLINE_IMAGE_REFERENCE_MAX': 10,
+            'GEMINI_IMAGE_REQUEST_TIMEOUT': 300,
+            'gemini_model_name': lambda model: str(model),
+            'gemini_endpoint_url': lambda provider, model: 'https://fixture.test',
+            'gemini_reference_part': lambda ref: {'inlineData': {'data': 'fixture'}},
+            'is_comfly_provider': lambda provider: False,
+            'product_fidelity_capabilities': lambda provider, model: {
+                'supportedOutputSizes': ['4K'], 'supportedAspectRatios': ['1:1', '3:4']},
+            'acquire_gemini_image_slot': acquire,
+            'release_gemini_image_slot': lambda slot: None,
+            'post_gemini_image_with_retry': post,
+            'api_headers': lambda **kwargs: {},
+            'extract_image': lambda raw: 'fixture',
+        }
+        exec(compile(ast.Module(body=body, type_ignores=[]), str(source), 'exec'), ns)
+        asyncio.run(ns['generate_gemini_provider_image'](
+            'prompt', size, 'nano-banana-2.1', refs, {'id': 'fixture'}, aspect_ratio, resolution=resolution))
+        return captured['config']
+
+    def test_selected_resolution_is_sent_as_native_image_config(self):
+        for resolution in ['1k', '2k', '4k']:
+            with self.subTest(resolution=resolution):
+                config = self.gemini_request_config('1024x4096', '1:4', [], resolution=resolution)
+                self.assertEqual(config['imageSize'], resolution.upper())
+                self.assertEqual(config['aspectRatio'], '1:4')
+
+    def test_outpaint_declares_canvas_aspect_ratio(self):
+        """缺 aspectRatio 时部分通道按 1:1 出图，2880x3840 扩图会回来 4096x4096。"""
+        config = self.gemini_request_config(
+            '2880x3840', 'source', [{'url': '/canvas.png', 'outpaint_canvas': True}])
+        self.assertEqual(config, {'imageSize': '4K', 'aspectRatio': '3:4'})
+
+    def test_plain_reference_run_keeps_adaptive_ratio(self):
+        config = self.gemini_request_config('1024x1536', 'source', [{'url': '/ref.png'}])
+        self.assertNotIn('aspectRatio', config)
 
 
 if __name__ == '__main__':

@@ -39,8 +39,8 @@
   "files": [
     {
       "path": "API/.env.example",
-      "sourceSha256": "d793895604756087f2a78add2b6892c555f19cfa371f1a8de7fd693ba47d9dbb",
-      "releaseSha256": "d793895604756087f2a78add2b6892c555f19cfa371f1a8de7fd693ba47d9dbb"
+      "sourceSha256": "f5f39e27c59ac9ba2deb01ed16a4d192ac31e46b6da8474a2455b62579697ad5",
+      "releaseSha256": "f5f39e27c59ac9ba2deb01ed16a4d192ac31e46b6da8474a2455b62579697ad5"
     },
     {
       "path": "ComfyUI/integration/__init__.py",
@@ -199,8 +199,8 @@
     },
     {
       "path": "commerce_link_method.py",
-      "sourceSha256": "2b5fb5a7db0c1edd3ce7f92ce8c88ec8f1b7fb6573bf5e8a856ceb032ee353d0",
-      "releaseSha256": "2b5fb5a7db0c1edd3ce7f92ce8c88ec8f1b7fb6573bf5e8a856ceb032ee353d0"
+      "sourceSha256": "1f2e445f15faba85e4a30b711161cb14e4efbd8541525ab394459bac644f6623",
+      "releaseSha256": "1f2e445f15faba85e4a30b711161cb14e4efbd8541525ab394459bac644f6623"
     },
     {
       "path": "deepseek_harness.py",
@@ -320,7 +320,7 @@
     {
       "path": "desktop/main.cjs",
       "sourceSha256": "ae114476612ae410535551aaa8b8b195aa80cd00e4b90de2f8939c554c20b56b",
-      "releaseSha256": "4762a9da160966dc624ed86ecaa7d354a199b7e0972a19c5d3e9cf5c5ae577d2"
+      "releaseSha256": "42ff41742be280dc89c8bcb9291913dc1696145a777c8a499c9778d217ad7d87"
     },
     {
       "path": "desktop/marketplace-assistant.cjs",
@@ -388,9 +388,19 @@
       "releaseSha256": "fedefb8aee07651d5daa76f46bcd34e802d6cb08272398aa066782f40b25a1fa"
     },
     {
+      "path": "local_fusion.py",
+      "sourceSha256": "b1cca0c818161dcfd715f7f2ba923ff49bc95b3e5e71c120928e6a1e1dc83101",
+      "releaseSha256": "b1cca0c818161dcfd715f7f2ba923ff49bc95b3e5e71c120928e6a1e1dc83101"
+    },
+    {
+      "path": "local_fusion_api.py",
+      "sourceSha256": "3ddc75c99ff5fd15cbacfea2208c4dd024042ffd0887943c4d7ecaf247d9788b",
+      "releaseSha256": "3ddc75c99ff5fd15cbacfea2208c4dd024042ffd0887943c4d7ecaf247d9788b"
+    },
+    {
       "path": "main.py",
-      "sourceSha256": "0363c4b497e1413a8cd0dc496f1a19c1f2fac64ff2bb3f55d24ecf8a94ef7f9f",
-      "releaseSha256": "0363c4b497e1413a8cd0dc496f1a19c1f2fac64ff2bb3f55d24ecf8a94ef7f9f"
+      "sourceSha256": "66433cd4d54a844293f55ae371c46761c3077f8719924ae39cd3897bf262861d",
+      "releaseSha256": "66433cd4d54a844293f55ae371c46761c3077f8719924ae39cd3897bf262861d"
     },
     {
       "path": "mcp_settings.py",
@@ -454,13 +464,18 @@
     },
     {
       "path": "requirements.txt",
-      "sourceSha256": "54bfbb4d3edefa9eaef7a32276efca378d1310e496a64764f534b554a538516e",
-      "releaseSha256": "54bfbb4d3edefa9eaef7a32276efca378d1310e496a64764f534b554a538516e"
+      "sourceSha256": "fd22a98eb9badf602fb6adaafa449edab7dcf91aca64e23afc4a1a4b7c62ebd8",
+      "releaseSha256": "fd22a98eb9badf602fb6adaafa449edab7dcf91aca64e23afc4a1a4b7c62ebd8"
     },
     {
       "path": "runtime_paths.py",
       "sourceSha256": "330010134835e405efca2b7d7931254091569988f5433eae8468c3b6fdfa7808",
       "releaseSha256": "330010134835e405efca2b7d7931254091569988f5433eae8468c3b6fdfa7808"
+    },
+    {
+      "path": "scnet_api.py",
+      "sourceSha256": "05af9d40621ad5b3802b279d84af9ab7d99dc5f8553580e4115196e3bb321dce",
+      "releaseSha256": "05af9d40621ad5b3802b279d84af9ab7d99dc5f8553580e4115196e3bb321dce"
     },
     {
       "path": "skill_capabilities.py",
@@ -469,38 +484,38 @@
     },
     {
       "path": "static/angle.html",
-      "sourceSha256": "7a81b64187b33e37a10dcfcb02914fb1434b53e1a3b19881a7737f756d92bc4f",
-      "releaseSha256": "7a81b64187b33e37a10dcfcb02914fb1434b53e1a3b19881a7737f756d92bc4f"
+      "sourceSha256": "a99d7483300eff037d710a113b135adffd004d4de36b7ca5365dd46c3ebf0d06",
+      "releaseSha256": "a99d7483300eff037d710a113b135adffd004d4de36b7ca5365dd46c3ebf0d06"
     },
     {
       "path": "static/api-settings.html",
-      "sourceSha256": "1cc0df4aeb5f09bfcd73709c37c5411dc57d98ee9955871d297ca2318983aa05",
-      "releaseSha256": "059140ba29125bdb6056ae8ed771273f47c724429b1dc3c02e59a1696fc249d5"
+      "sourceSha256": "afc79b349d9d86d72e7096210c92127dea054edf1228e4ad3868880a0577a437",
+      "releaseSha256": "7e25825b338b3105a8b5d92655354a6fc6c38649f3ec41be6c2cccdc066e8aa7"
     },
     {
       "path": "static/asset-manager.html",
-      "sourceSha256": "508952db75b3c10bceff3e6c133f2cde5688c875da8ea5b08e95bdf364ed0c2d",
-      "releaseSha256": "508952db75b3c10bceff3e6c133f2cde5688c875da8ea5b08e95bdf364ed0c2d"
+      "sourceSha256": "d99db354bce4e5037a42566cc923f8e9a291332253d262ca629415332e8b6595",
+      "releaseSha256": "d99db354bce4e5037a42566cc923f8e9a291332253d262ca629415332e8b6595"
     },
     {
       "path": "static/canvas-list.html",
-      "sourceSha256": "88f37ad2b02cbc6c82e89e00a1b0678d9e861568e9210c197d81a32a25eb9735",
-      "releaseSha256": "88f37ad2b02cbc6c82e89e00a1b0678d9e861568e9210c197d81a32a25eb9735"
+      "sourceSha256": "878fad526264079d579cd9b68de225743f607ea6397009b4f05bf1260a862d3b",
+      "releaseSha256": "878fad526264079d579cd9b68de225743f607ea6397009b4f05bf1260a862d3b"
     },
     {
       "path": "static/canvas.html",
-      "sourceSha256": "f1d2558d1ca5963682d4bd08c231f573b27843d6a89fea95d8131aa31fa15d8b",
-      "releaseSha256": "f1d2558d1ca5963682d4bd08c231f573b27843d6a89fea95d8131aa31fa15d8b"
+      "sourceSha256": "0fe61bfec555920583c36400f08bd53602ce98208ea78db89e27a2651610b7ef",
+      "releaseSha256": "0fe61bfec555920583c36400f08bd53602ce98208ea78db89e27a2651610b7ef"
     },
     {
       "path": "static/commerce-analysis.html",
-      "sourceSha256": "9923939e1d75ba1efd27c5d62fbcb4b82606b9154ecdf3ecf6b6402a9a14594f",
-      "releaseSha256": "9923939e1d75ba1efd27c5d62fbcb4b82606b9154ecdf3ecf6b6402a9a14594f"
+      "sourceSha256": "9d7c15786333d97725964e9a479e2da6331ff5afb04238368f73981c98d153e7",
+      "releaseSha256": "9d7c15786333d97725964e9a479e2da6331ff5afb04238368f73981c98d153e7"
     },
     {
       "path": "static/commerce.html",
-      "sourceSha256": "b7a0628e83495a0ac37dd34122be98bbbaa58c29341c3ad0e025c08028edd777",
-      "releaseSha256": "b7a0628e83495a0ac37dd34122be98bbbaa58c29341c3ad0e025c08028edd777"
+      "sourceSha256": "a32d610b7b7e24834485acb0b24c6aed274ec5cafede6aac177b1569a2c6899b",
+      "releaseSha256": "a32d610b7b7e24834485acb0b24c6aed274ec5cafede6aac177b1569a2c6899b"
     },
     {
       "path": "static/css/api-settings.css",
@@ -619,8 +634,8 @@
     },
     {
       "path": "static/css/smart-canvas.css",
-      "sourceSha256": "54cd584117d78f246bba94548a559f1feea3ef1011e67c89a1013b224a027b2f",
-      "releaseSha256": "54cd584117d78f246bba94548a559f1feea3ef1011e67c89a1013b224a027b2f"
+      "sourceSha256": "40fbc8a96b956e569ec2cdbc8db55be73333120c4426b52ca787804028ad6b60",
+      "releaseSha256": "40fbc8a96b956e569ec2cdbc8db55be73333120c4426b52ca787804028ad6b60"
     },
     {
       "path": "static/css/smart-expert-workflow.css",
@@ -631,6 +646,11 @@
       "path": "static/css/smart-image-vectorizer.css",
       "sourceSha256": "a34764235c8b657e4c4515645e9468168769bc64e4e449c5a32e1461b3db47f2",
       "releaseSha256": "a34764235c8b657e4c4515645e9468168769bc64e4e449c5a32e1461b3db47f2"
+    },
+    {
+      "path": "static/css/smart-local-fusion.css",
+      "sourceSha256": "6b565712d8625e1fbcb53cc003891ca0e713e6f6e874ddb2a9ec6a764a08d5cb",
+      "releaseSha256": "6b565712d8625e1fbcb53cc003891ca0e713e6f6e874ddb2a9ec6a764a08d5cb"
     },
     {
       "path": "static/css/task-manager.css",
@@ -659,23 +679,23 @@
     },
     {
       "path": "static/design-brain.html",
-      "sourceSha256": "54b678fd32be6c29441510c2353aa452d6cef013a2a8030de512aed234602b02",
-      "releaseSha256": "54b678fd32be6c29441510c2353aa452d6cef013a2a8030de512aed234602b02"
+      "sourceSha256": "204e898096b384caaf115d9191c1da5c9a1d4fbd460b4b72549ee46b82579015",
+      "releaseSha256": "204e898096b384caaf115d9191c1da5c9a1d4fbd460b4b72549ee46b82579015"
     },
     {
       "path": "static/enhance.html",
-      "sourceSha256": "c40afd37bb29dd73dd2032dbef108f0104e687991e681b6d5b1333d46c5ad8a1",
-      "releaseSha256": "c40afd37bb29dd73dd2032dbef108f0104e687991e681b6d5b1333d46c5ad8a1"
+      "sourceSha256": "0a8be54381813bd7e410641314bd41f4f89c6fee6a21dfc5cd8ba0b0b55df234",
+      "releaseSha256": "0a8be54381813bd7e410641314bd41f4f89c6fee6a21dfc5cd8ba0b0b55df234"
     },
     {
       "path": "static/gpt-chat.html",
-      "sourceSha256": "408c17856472d76ed188159ce821d96431755126574f010bd9aae137220487d5",
-      "releaseSha256": "408c17856472d76ed188159ce821d96431755126574f010bd9aae137220487d5"
+      "sourceSha256": "873c7a28a86e782a7ef63659159ed5542f55dd3705b33d7433e7ac426afe5cce",
+      "releaseSha256": "873c7a28a86e782a7ef63659159ed5542f55dd3705b33d7433e7ac426afe5cce"
     },
     {
       "path": "static/history.html",
-      "sourceSha256": "6e31b4eb3c91c7ab2fc695cd82dbdaa8f47d1823b26f8194129a3d7d58d680b1",
-      "releaseSha256": "6e31b4eb3c91c7ab2fc695cd82dbdaa8f47d1823b26f8194129a3d7d58d680b1"
+      "sourceSha256": "ad2208b8facc771d8f9e6d53c7ca566aa55ed6072a24a6ee03731d81b9c0e65c",
+      "releaseSha256": "ad2208b8facc771d8f9e6d53c7ca566aa55ed6072a24a6ee03731d81b9c0e65c"
     },
     {
       "path": "static/images/RunningHub-B.png",
@@ -804,18 +824,18 @@
     },
     {
       "path": "static/index.html",
-      "sourceSha256": "3d661e2cdd6c8f145482f334f3d5ac1d3aa2e380d5b912972435c8c7cb056722",
-      "releaseSha256": "76a89b8bd0be7595bde32feea6c121516c694ac00ea0b763cf16f0b3e090e277"
+      "sourceSha256": "8835065831aaef6e378f4a4ddae16ce58c3dff67ec292f0792d19d734a20c8a0",
+      "releaseSha256": "67bf1ec5f69eb4da6037d439fb31bc5ddd07a3d914f36c7c76217d1029d4dc0a"
     },
     {
       "path": "static/inspiration.html",
-      "sourceSha256": "361d895f0b4e7094583d33db084b271c6de0e11b776bbed475c63eb7fd88ba95",
-      "releaseSha256": "361d895f0b4e7094583d33db084b271c6de0e11b776bbed475c63eb7fd88ba95"
+      "sourceSha256": "f6ff50302cd9f538dbc6820d16a95f849d1f8b34b74b219edf4fd027821c7bc7",
+      "releaseSha256": "f6ff50302cd9f538dbc6820d16a95f849d1f8b34b74b219edf4fd027821c7bc7"
     },
     {
       "path": "static/js/api-settings.js",
-      "sourceSha256": "8666ad63f4399e77f6d974c7a07ac1c1bbf2a1bcd75eb84e1d401eba65f0dd7b",
-      "releaseSha256": "8666ad63f4399e77f6d974c7a07ac1c1bbf2a1bcd75eb84e1d401eba65f0dd7b"
+      "sourceSha256": "126299ff6d42dd4f156cb25076ee28f24a226086f75f75dab66dc1b3ab234054",
+      "releaseSha256": "126299ff6d42dd4f156cb25076ee28f24a226086f75f75dab66dc1b3ab234054"
     },
     {
       "path": "static/js/asset-manager.js",
@@ -1049,8 +1069,8 @@
     },
     {
       "path": "static/js/smart-canvas-data-video.js",
-      "sourceSha256": "80922a252d571616f5721b3159fb97cd0f008fb8654ecddd72cdb192cba0f6ff",
-      "releaseSha256": "80922a252d571616f5721b3159fb97cd0f008fb8654ecddd72cdb192cba0f6ff"
+      "sourceSha256": "f1e5cd24349cc4156ea6317fb9686c21b9d46b1b37cdb2782e4d5303c89aa3c6",
+      "releaseSha256": "f1e5cd24349cc4156ea6317fb9686c21b9d46b1b37cdb2782e4d5303c89aa3c6"
     },
     {
       "path": "static/js/smart-canvas-edit-suite.js",
@@ -1064,8 +1084,8 @@
     },
     {
       "path": "static/js/smart-canvas.js",
-      "sourceSha256": "e86cbe82160253ec5a58e61da3c26c6ec972cf7c34733af046909d1b9393b6b6",
-      "releaseSha256": "e86cbe82160253ec5a58e61da3c26c6ec972cf7c34733af046909d1b9393b6b6"
+      "sourceSha256": "a4e0b6ad2057717adffd65657cfa169ab065a093c1480945e95e4c735e52bffc",
+      "releaseSha256": "a4e0b6ad2057717adffd65657cfa169ab065a093c1480945e95e4c735e52bffc"
     },
     {
       "path": "static/js/smart-color-node.js",
@@ -1091,6 +1111,11 @@
       "path": "static/js/smart-image-vectorizer.js",
       "sourceSha256": "d274fdf668cea36c57009e40e7228821bc7320f7f46740a88f383c726a95b008",
       "releaseSha256": "d274fdf668cea36c57009e40e7228821bc7320f7f46740a88f383c726a95b008"
+    },
+    {
+      "path": "static/js/smart-local-fusion.js",
+      "sourceSha256": "d1b63632202b7bd70fe93255608dcaa9db0bc14c0a78d68ba27e7669badac0be",
+      "releaseSha256": "d1b63632202b7bd70fe93255608dcaa9db0bc14c0a78d68ba27e7669badac0be"
     },
     {
       "path": "static/js/studio-api-image.js",
@@ -1129,18 +1154,18 @@
     },
     {
       "path": "static/klein.html",
-      "sourceSha256": "207ecafc1a11da8cd174c25e05cddccaefc96bd83c18ee5438db7c42f88f6e6b",
-      "releaseSha256": "207ecafc1a11da8cd174c25e05cddccaefc96bd83c18ee5438db7c42f88f6e6b"
+      "sourceSha256": "d8cbd22726b627e7c82dc89b47f999726667e01e8758da83aeb83dd01761efcc",
+      "releaseSha256": "d8cbd22726b627e7c82dc89b47f999726667e01e8758da83aeb83dd01761efcc"
     },
     {
       "path": "static/online.html",
-      "sourceSha256": "99c314d0a1a7046a03c792435ab83a1c6791de91b25855e994d4315a4fc88c78",
-      "releaseSha256": "99c314d0a1a7046a03c792435ab83a1c6791de91b25855e994d4315a4fc88c78"
+      "sourceSha256": "c42cc753f7d43ba5cca07b226ca1509bab2604b09927835b552511c9cccca073",
+      "releaseSha256": "c42cc753f7d43ba5cca07b226ca1509bab2604b09927835b552511c9cccca073"
     },
     {
       "path": "static/product-3d.html",
-      "sourceSha256": "d15f6479cef884df1054da188082cd6f9fc8cb95c60d0da1115cf02b468c38b2",
-      "releaseSha256": "d15f6479cef884df1054da188082cd6f9fc8cb95c60d0da1115cf02b468c38b2"
+      "sourceSha256": "a0b9a8f3a6526030f50dff34bf89ac26a3155b521226a1226243d29493710750",
+      "releaseSha256": "a0b9a8f3a6526030f50dff34bf89ac26a3155b521226a1226243d29493710750"
     },
     {
       "path": "static/runninghub/api_providers.json",
@@ -1174,8 +1199,8 @@
     },
     {
       "path": "static/smart-canvas.html",
-      "sourceSha256": "54081955cd0fece6a0a9bf422c39f79072d03f6d24b1db0cecdfe2870c5d3295",
-      "releaseSha256": "54081955cd0fece6a0a9bf422c39f79072d03f6d24b1db0cecdfe2870c5d3295"
+      "sourceSha256": "f05fc785ae9b9b97058104da3bf8eef40efbb063051546e1976ec4a8fadd4dbb",
+      "releaseSha256": "f05fc785ae9b9b97058104da3bf8eef40efbb063051546e1976ec4a8fadd4dbb"
     },
     {
       "path": "static/sw.js",
@@ -1184,13 +1209,13 @@
     },
     {
       "path": "static/task-manager.html",
-      "sourceSha256": "7793e9935f4e2a9d98dd174fcd71e251e561f3692afe1dfd1f65daf8b0da364a",
-      "releaseSha256": "7793e9935f4e2a9d98dd174fcd71e251e561f3692afe1dfd1f65daf8b0da364a"
+      "sourceSha256": "f6daaad64d5e83d647fd6cd7e75070a3aa95c0d3be5328d47b4664d51a0cf9a2",
+      "releaseSha256": "f6daaad64d5e83d647fd6cd7e75070a3aa95c0d3be5328d47b4664d51a0cf9a2"
     },
     {
       "path": "static/update-notes.json",
       "sourceSha256": "18d145bffd9d184af18f0d7bdc56f74cccb766f0e1f7ba3d53ca3f2e0107bbcc",
-      "releaseSha256": "8d699013845e3fc34c13bb87e0865e9472b1336a212683189d1392c72eceac63"
+      "releaseSha256": "656b11ec0bd2a58a67d955478268892d14fa8b603829b6bc4e2904803c37cfd3"
     },
     {
       "path": "static/vendor/css/fonts.css",
@@ -1249,8 +1274,8 @@
     },
     {
       "path": "static/zimage.html",
-      "sourceSha256": "b3cdb96bfc8ce05a796c6a6e56a33586eaad68fed28ef46763690d8ec85db7f6",
-      "releaseSha256": "ec3e8e5697fa80c787d038b7ccb4658c0224b17dbce8151490ed9bea0ae7aad9"
+      "sourceSha256": "3aec98ce59ad5009bca523cc593e29730ce5f508defbb6d899673babb353a026",
+      "releaseSha256": "bad271197b9745d951bd270cc8b1a160406c9210d4e4c02c3a2835b3cfb45d24"
     },
     {
       "path": "tools/chrome-local-asset-importer/background.js",

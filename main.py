@@ -92,6 +92,7 @@ from canvas_agent_commands import (
 )
 from remote_media import open_public_remote_response
 import provider_icons
+from scnet_api import is_scnet_provider, scnet_api_base, supplement_scnet_models, scnet_video_body
 from runtime_paths import (
     migrate_legacy_data,
     migrate_pending_bulk_data,
@@ -29167,6 +29168,13 @@ except (TypeError, ValueError):
 GEMINI_IMAGE_SEMAPHORES = {}
 GEMINI_IMAGE_SEMAPHORES_LOCK = Lock()
 GEMINI_IMAGE_LAST_REQUEST = {}
+try:
+    GEMINI_IMAGE_REQUEST_TIMEOUT = max(30.0, min(1800.0, float(
+        os.getenv("GEMINI_IMAGE_REQUEST_TIMEOUT", "")
+        or read_api_env_value("GEMINI_IMAGE_REQUEST_TIMEOUT") or "300"
+    )))
+except (TypeError, ValueError):
+    GEMINI_IMAGE_REQUEST_TIMEOUT = 300.0
 
 
 def gemini_image_slot_key(provider_id="", model=""):
@@ -29229,7 +29237,16 @@ async def post_gemini_image_with_retry(client, endpoint, headers, body):
     attempts = GEMINI_IMAGE_TRANSPORT_RETRIES + 1
     for attempt in range(attempts):
         try:
-            return await client.post(endpoint, headers=headers, json=body)
+            # socket 的 read 超时会随每次读取重置；总预算也覆盖持续返回少量字节的连接。
+            try:
+                return await asyncio.wait_for(
+                    client.post(endpoint, headers=headers, json=body),
+                    timeout=GEMINI_IMAGE_REQUEST_TIMEOUT,
+                )
+            except asyncio.TimeoutError as exc:
+                raise httpx.ReadTimeout(
+                    f"Gemini 生图请求等待超过 {GEMINI_IMAGE_REQUEST_TIMEOUT:g} 秒"
+                ) from exc
         except httpx.TimeoutException:
             raise
         except httpx.TransportError as exc:
@@ -29776,8 +29793,7 @@ def friendly_image_network_error_detail(exc, provider_name="", model=""):
     if isinstance(exc, httpx.TimeoutException) or "timeout" in lower_text:
         return (
             f"{name} 读取生图结果超时，本次没有拿到图片。"
-            "可能是上游排队过久或网关提前断开，请稍后重试；"
-            "若频繁超时，请降低生图并发或改用更快的模型。"
+            "平台可能仍在处理，请先到平台后台核对请求状态和扣费记录，再决定是否手动重试。"
         )
     if isinstance(exc, httpx.ProxyError) or "proxy" in lower_text:
         return (
@@ -30126,7 +30142,7 @@ async def generate_gemini_provider_image(prompt, size, model, reference_images=N
             "imageConfig": image_config,
         },
     }
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=20.0, read=1800.0, write=120.0, pool=20.0)) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=20.0, read=GEMINI_IMAGE_REQUEST_TIMEOUT, write=120.0, pool=20.0)) as client:
         # 按平台+模型串行化提交，避免上游在高并发时直接掐断连接。
         # 名额在拿到响应后立刻释放，后续的异步任务轮询不占用名额。
         slot = await acquire_gemini_image_slot(provider_id, model_name)
@@ -36405,6 +36421,8 @@ def api_key_from_payload(payload, protocol: str = ""):
     return ""
 
 def upstream_models_url(base_url: str, protocol: str):
+    if is_scnet_provider({"base_url": base_url}):
+        return f"{scnet_api_base(base_url)}/models"
     if protocol == "gemini":
         return f"{base_url}/models" if base_url.endswith("/v1beta") else f"{base_url}/v1beta/models"
     if protocol == "volcengine":
@@ -36506,6 +36524,7 @@ async def probe_openai_models_endpoint(client, base_url: str, api_key: str):
         return False, {"status": response.status_code, "message": "OpenAI /v1/models 返回网页 HTML，请检查请求地址是否为 API Base URL", "raw": raw}
     if response.status_code < 300:
         grouped, ids = parse_upstream_models(raw, "openai") if isinstance(raw, dict) else ({"image": [], "chat": [], "video": []}, [])
+        grouped, ids, discovery = await enrich_scnet_model_list(base_url, grouped, ids, raw)
         grouped, ids = normalize_6789_model_lists(base_url, grouped, ids)
         grouped, ids = apply_agnes_model_defaults(base_url, grouped, ids)
         grouped = apply_locked_recommended_model_rules(base_url, grouped)
@@ -36518,6 +36537,7 @@ async def probe_openai_models_endpoint(client, base_url: str, api_key: str):
             "chat_models": grouped["chat"],
             "video_models": grouped["video"],
             "all": ids,
+            **discovery,
         }
     if 400 <= response.status_code < 500:
         return False, {"status": response.status_code, "message": f"OpenAI /v1/models 不可用 (HTTP {response.status_code})", "raw": raw}
@@ -36552,7 +36572,7 @@ def classify_upstream_model(mid):
     # ``video`` 字样，若漏掉会被错误地兜底归为聊天模型。
     video_keys = [
         "veo", "sora", "wan2", "wanx", "seedance", "doubao-1",
-        "kling", "hailuo", "minimax-h3", "minimax-video", "minimax-01",
+        "kling", "hailuo", "happyhorse", "minimax-h3", "minimax-video", "minimax-01",
         "video", "t2v-", "i2v-", "s2v",
     ]
     if any(k in lc for k in video_keys):
@@ -36685,6 +36705,12 @@ def apply_agnes_model_defaults(base_url, grouped, ids):
     grouped["video"] = sorted(set(grouped.get("video") or []))
     return grouped, ids
 
+async def enrich_scnet_model_list(base_url, grouped, ids, raw):
+    records = raw.get("data", []) if isinstance(raw, dict) else []
+    excluded = [str(item.get("id") or item.get("name") or item.get("model") or "")
+                for item in records if isinstance(item, dict) and not upstream_model_is_available(item)] if isinstance(records, list) else []
+    return await supplement_scnet_models(base_url, grouped, ids, excluded)
+
 @app.post("/api/providers/test-connection")
 async def test_provider_connection(payload: TestConnectionPayload):
     """测试请求地址是否可用：调上游 /v1/models。验证通过时同时把模型清单按类别返回，避免再调一次拉取接口。"""
@@ -36763,6 +36789,7 @@ async def test_provider_connection(payload: TestConnectionPayload):
                 return {"ok": False, "status": resp.status_code, "message": resp.text[:300]}
             data = resp.json() if resp.text else {}
             grouped, ids = parse_upstream_models(data, protocol)
+            grouped, ids, discovery = await enrich_scnet_model_list(base_url, grouped, ids, data)
             grouped, ids = normalize_6789_model_lists(base_url, grouped, ids)
             grouped, ids = apply_agnes_model_defaults(base_url, grouped, ids)
             grouped = apply_locked_recommended_model_rules(base_url, grouped)
@@ -36779,6 +36806,7 @@ async def test_provider_connection(payload: TestConnectionPayload):
                 "video_models": grouped["video"],
                 "all": ids,
                 "image_request_mode": detect_image_request_mode(base_url, ids) or normalize_image_request_mode(getattr(payload, "image_request_mode", "")),
+                **discovery,
             }
     except httpx.HTTPError as e:
         if protocol == "volcengine":
@@ -36935,6 +36963,7 @@ async def probe_async_endpoint(payload: TestConnectionPayload):
                 "video_models": openai_probe.get("video_models") or [],
                 "all": openai_probe.get("all") or [],
                 "image_request_mode": detect_image_request_mode(base_url, openai_probe.get("all") or []) or normalize_image_request_mode(getattr(payload, "image_request_mode", "")),
+                "model_sources": openai_probe.get("model_sources") or {},
             }
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=str(e)[:300])
@@ -37044,6 +37073,7 @@ async def fetch_models_from_upstream(base_url: str, api_key: str, protocol: str 
                 pass
         raise HTTPException(status_code=502, detail=f"请求上游模型列表失败：{e}")
     grouped, ids = parse_upstream_models(raw, protocol)
+    grouped, ids, discovery = await enrich_scnet_model_list(base_url, grouped, ids, raw)
     grouped, ids = normalize_6789_model_lists(base_url, grouped, ids)
     grouped, ids = apply_agnes_model_defaults(base_url, grouped, ids)
     grouped = apply_locked_recommended_model_rules(base_url, grouped)
@@ -37065,6 +37095,7 @@ async def fetch_models_from_upstream(base_url: str, api_key: str, protocol: str 
         "video_models": grouped["video"],
         "all": ids,
         "image_request_mode": detect_image_request_mode(base_url, ids) or normalize_image_request_mode(image_request_mode),
+        **discovery,
     }
 
 PROVIDER_ICON_DIR = os.path.join(DATA_DIR, "provider_icons")
@@ -37233,6 +37264,10 @@ def save_product_fidelity_asset(image, filename, cached=False):
         asset_registry_register_media(url, source='product-geometry', kind='image',
                                       metadata={'role': 'geometry_reference', 'paid_api': False})
     return url
+
+
+from local_fusion_api import create_fusion_router
+app.include_router(create_fusion_router(output_file_from_url, save_product_fidelity_asset, asset_registry_register_media))
 
 
 def prepare_product_fidelity(payload, provider, model, refs):
@@ -38511,6 +38546,8 @@ def video_6789_output_urls(raw):
 
 def video_api_root(provider):
     base_url = (provider.get("base_url") or AI_BASE_URL).rstrip("/")
+    if is_scnet_provider(provider):
+        return scnet_api_base(base_url)
     if is_volcengine_provider(provider):
         if base_url.endswith("/api/v3"):
             base_url = base_url[: -len("/api/v3")]
@@ -38582,6 +38619,8 @@ def looks_like_html_response(text: str) -> bool:
     return sample.startswith("<!doctype html") or sample.startswith("<html") or "<head" in sample
 
 def video_submit_url_candidates(provider, base_url):
+    if is_scnet_provider(provider):
+        return [f"{scnet_api_base(base_url)}/videos/generations"]
     if is_6789_provider(provider):
         return [f"{base_url}/v1/videos"]
     if is_agnes_provider(provider):
@@ -38606,6 +38645,8 @@ def video_submit_url_candidates(provider, base_url):
     ]
 
 def video_task_url_candidates(provider, base_url, task_id, submit_url=""):
+    if is_scnet_provider(provider):
+        return [f"{scnet_api_base(base_url)}/tasks/{urllib.parse.quote(str(task_id), safe='')}"]
     if is_6789_provider(provider):
         quoted_id = urllib.parse.quote(str(task_id), safe="")
         return [f"{base_url}/v1/videos/{quoted_id}"]
@@ -38708,6 +38749,7 @@ async def wait_for_video_task(client, provider, task_id, submit_url=""):
         task_data = (
             raw.get("data") if isinstance(raw.get("data"), dict)
             else raw.get("detail") if isinstance(raw.get("detail"), dict)
+            else raw.get("output") if is_scnet_provider(provider) and isinstance(raw.get("output"), dict)
             else raw
         )
         status = str(task_data.get("status") or task_data.get("task_status") or raw.get("status") or raw.get("task_status") or "").upper()
@@ -38719,7 +38761,7 @@ async def wait_for_video_task(client, provider, task_id, submit_url=""):
             return raw
         if status in VIDEO_TASK_FAILURE_STATUSES:
             error = task_data.get("error") if isinstance(task_data.get("error"), dict) else {}
-            reason = task_data.get("fail_reason") or task_data.get("message") or error.get("message") or raw.get("error") or raw.get("message") or str(raw)
+            reason = task_data.get("fail_reason") or task_data.get("error_message") or task_data.get("message") or error.get("message") or raw.get("error") or raw.get("message") or str(raw)
             raise HTTPException(status_code=502, detail=humanize_video_task_failure(reason))
         delay = min(delay * 1.6, 12)
     raise HTTPException(status_code=504, detail=f"视频生成任务超时：{last_payload or task_id}")
@@ -39249,6 +39291,54 @@ def volcengine_video_prompt_text(prompt, aspect_ratio="", duration=None):
     suffix_text = " ".join(suffixes)
     return f"{text} {suffix_text}".strip() if text else suffix_text
 
+async def scnet_video_reference_url(value, kind):
+    text = str(value or "").strip()
+    parsed = urllib.parse.urlparse(text)
+    if parsed.scheme in {"https", "http"} and parsed.hostname:
+        return text
+    if text.startswith(f"data:{kind}/") and ";base64," in text:
+        return text
+    if text.startswith(("/assets/", "/output/")):
+        path = local_media_path_for_cloud_upload(text, (f"{kind}/",))
+        def encode():
+            with open(path, "rb") as handle:
+                return f"data:{content_type_for_path(path)};base64,{base64.b64encode(handle.read()).decode('ascii')}"
+        return await asyncio.to_thread(encode)
+    label = {"image": "图片", "video": "视频", "audio": "音频"}[kind]
+    raise HTTPException(status_code=400, detail=f"超算互联网参考素材无法读取：请使用画布中的{label}、HTTP(S) 地址或 Base64 数据。")
+
+async def generate_scnet_video(client, payload, provider):
+    media = []
+    for ref in payload.images:
+        if not ref.url:
+            continue
+        role = str(ref.role or "").strip() or ("reference_image" if payload.multimodal else "first_frame")
+        if role not in {"first_frame", "last_frame", "reference_image"}:
+            raise HTTPException(status_code=400, detail="超算互联网图片角色支持首帧、尾帧或参考图，请重新选择输入模式。")
+        if role in {"first_frame", "last_frame"} and any(item["type"] == role for item in media):
+            raise HTTPException(status_code=400, detail="超算互联网首帧和尾帧各支持一张图片；多图参考请切换到全能参考模式。")
+        media.append({"type": role, "url": await scnet_video_reference_url(ref.url, "image")})
+    for kind, values in (("video", payload.videos), ("audio", payload.audios)):
+        for value in values:
+            if str(value or "").strip():
+                media.append({"type": f"reference_{kind}", "url": await scnet_video_reference_url(value, kind)})
+    body = scnet_video_body(payload, media)
+    headers = {**api_headers(provider=provider), "X-MultiModal-Async": "true"}
+    submit_url = video_submit_url_candidates(provider, video_api_root(provider))[0]
+    response = await client.post(submit_url, headers=headers, json=body)
+    response.raise_for_status()
+    raw = response.json()
+    task_id = extract_task_id(raw)
+    output = raw.get("output") if isinstance(raw.get("output"), dict) else {}
+    if str(output.get("task_status") or "").upper() in VIDEO_TASK_FAILURE_STATUSES:
+        raise HTTPException(status_code=502, detail=humanize_video_task_failure(output.get("error_message") or output.get("error_code") or "未知错误"))
+    if task_id and not video_output_urls(raw):
+        raw = await wait_for_video_task(client, provider, task_id, submit_url)
+    urls = video_output_urls(raw)
+    if not urls:
+        raise HTTPException(status_code=502, detail="超算互联网视频接口未返回有效任务或视频，请检查模型名称和账号权限后重试。")
+    return {"videos": [await save_remote_video_to_output(url) for url in urls], "task_id": task_id, "raw": raw}
+
 @app.post("/api/canvas-video")
 async def canvas_video(payload: CanvasVideoRequest):
     if payload.multi_agent_action_id:
@@ -39286,7 +39376,18 @@ async def canvas_video(payload: CanvasVideoRequest):
     submit_urls = video_submit_url_candidates(provider, base_url)
     submit_url = submit_urls[0]
     requested_model = selected_model(payload.model, "agnes-video-v2.0" if is_agnes else "veo3-fast")
+    is_minimax_h3 = bool(re.match(r"^minimax[-_\s]*h3(?:$|[-_\s])", requested_model, re.I))
     is_veo31 = is_apimart and is_apimart_veo31_model(requested_model)
+    if is_scnet_provider(provider):
+        try:
+            async with httpx.AsyncClient(timeout=VIDEO_POLL_TIMEOUT) as scnet_client:
+                result = await generate_scnet_video(scnet_client, payload, provider)
+                return save_canvas_video_to_history(payload, provider, result)
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(status_code=exc.response.status_code, detail=f"超算互联网视频接口错误：{exc.response.text[:500]}") from exc
+        except httpx.HTTPError as exc:
+            log_net_error(f"视频(SCNet) 网络/TLS错误 model={payload.model}", exc)
+            raise HTTPException(status_code=502, detail=f"请求超算互联网视频接口失败：{exc}") from exc
     if is_agnes:
         try:
             async with httpx.AsyncClient(timeout=VIDEO_POLL_TIMEOUT) as agnes_client:
@@ -39458,8 +39559,8 @@ async def canvas_video(payload: CanvasVideoRequest):
                         body["seed"] = payload.seed
                     if payload.return_last_frame:
                         body["return_last_frame"] = True
-                    if payload.generate_audio:
-                        body["generate_audio"] = True
+                    if payload.generate_audio or is_minimax_h3:
+                        body["generate_audio"] = bool(payload.generate_audio)
             else:
                 # 非 APIMart：data URL 方式（OpenAI / ComflyAI 接口）
                 if is_volcengine and not volc_is_proxy:
@@ -39652,8 +39753,8 @@ async def canvas_video(payload: CanvasVideoRequest):
                         body["camerafixed"] = True
                     if payload.return_last_frame:
                         body["return_last_frame"] = True
-                    if payload.generate_audio:
-                        body["generate_audio"] = True
+                    if payload.generate_audio or is_minimax_h3:
+                        body["generate_audio"] = bool(payload.generate_audio)
             # --- 发起视频生成请求 ---
             raw = None
             html_response = None

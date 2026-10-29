@@ -193,5 +193,90 @@ test('selection toolbar stays above its frame during zoom and pan', {timeout:300
     }), multiImageId);
     assert.equal(mixedSelectionPortState.find(item => item.isGroup)?.visible, true);
     assert.equal(mixedSelectionPortState.filter(item => !item.isGroup).every(item => item.visible === false), true);
+    const mixed = await page.evaluate(() => {
+        clearSelection();
+        const uploads = [0, 1, 2].map(index => createNode(5000, 5000 + index * 360,
+            Array.from({length:index === 2 ? 4 : 1}, () => ({url:'/fixture.svg', kind:'image', natural_w:180, natural_h:300})),
+            {nodeType:SMART_UPLOAD_NODE_TYPE, select:false}));
+        const paint = createPaintNodeAt({x:5400, y:5200}, {select:false, skipUndo:true});
+        const sink = createPaintNodeAt({x:6500, y:5300}, {select:false, skipUndo:true});
+        uploads.forEach(node => connectInputNode(node.id, paint.id));
+        viewport = {x:350 - 5000 * .5, y:100 - 5000 * .5, scale:.5};
+        applyViewport();
+        render();
+        const rects = [...uploads, paint].map(node => world.querySelector(`[data-id="${node.id}"]`).getBoundingClientRect());
+        return {sources:[...uploads, paint].map(node => node.id), sink:sink.id,
+            start:{x:Math.min(...rects.map(r => r.left)) - 25, y:Math.min(...rects.map(r => r.top)) - 25},
+            end:{x:Math.max(...rects.map(r => r.right)) + 25, y:Math.max(...rects.map(r => r.bottom)) + 25}};
+    });
+    await page.mouse.move(mixed.start.x, mixed.start.y);
+    await page.keyboard.down('Shift');
+    await page.mouse.down();
+    await page.mouse.move(mixed.end.x, mixed.end.y, {steps:8});
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+    assert.deepEqual(await page.evaluate(() => selectedNodeIds()), mixed.sources, JSON.stringify(mixed));
+    assert.equal(await page.locator('.smart-selection-batch-port').count(), 1,
+        'box-selecting uploads and a paint node exposes the shared output port');
+    const mixedPort = await page.locator('.smart-selection-batch-port').boundingBox();
+    const mixedSink = await page.locator(`[data-id="${mixed.sink}"] .node-port.port-in`).boundingBox();
+    await page.mouse.move(mixedPort.x + mixedPort.width / 2, mixedPort.y + mixedPort.height / 2);
+    await page.mouse.down();
+    assert.equal(await page.locator('path.port-drag-temp').count(), mixed.sources.length);
+    await page.mouse.move(mixedSink.x + mixedSink.width / 2, mixedSink.y + mixedSink.height / 2, {steps:8});
+    await page.mouse.up();
+    assert.deepEqual(await page.evaluate(sink => canvas.connections.filter(c => c.to === sink).map(c => c.from), mixed.sink), mixed.sources);
+    assert.equal(await page.evaluate(paint => canvas.connections.filter(c => c.to === paint).length, mixed.sources[3]), 3,
+        'existing connections inside the selection are preserved');
+    const mixedOutput = await page.locator('.smart-selection-batch-port').boundingBox();
+    await page.mouse.move(mixedOutput.x + mixedOutput.width / 2, mixedOutput.y + mixedOutput.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(1250, 700, {steps:8});
+    await page.mouse.up();
+    await page.waitForFunction(() => document.getElementById('createMenu')?.classList.contains('open'));
+    await page.locator('#createMenu [data-create-type="paint"]').click();
+    assert.deepEqual(await page.evaluate(() => canvas.connections.filter(c => c.to === selectedId).map(c => c.from)), mixed.sources,
+        'creating a paint node from a mixed selection connects every source');
+    await page.evaluate(sources => {selectedIds = sources; selectedId = ''; syncSelectionUi();}, mixed.sources);
+    for(const scale of [.25, 1, 2]){
+        await page.evaluate(scale => {viewport.scale = scale; applyViewport();}, scale);
+        const value = await sample();
+        assert.ok(Math.abs(value.batchCenterDelta) < 1);
+        assert.ok(Math.abs(value.batchGap - 24 * value.scale) < 1);
+    }
+    const promptSources = await page.evaluate(sources => {
+        viewport = {x:350 - 5000 * .5, y:100 - 5000 * .5, scale:.5};
+        applyViewport();
+        const prompt = createPromptNode(5400, 5200, {select:false, skipUndo:true});
+        prompt.text = 'Keep the original product and change the background.';
+        selectedIds = [...sources.slice(0, 3), prompt.id];
+        selectedId = '';
+        render();
+        return selectedNodeIds();
+    }, mixed.sources);
+    assert.equal(await page.locator('.smart-selection-batch-port').count(), 1,
+        'uploads and a prompt node also expose the shared output port');
+    const promptPort = await page.locator('.smart-selection-batch-port').boundingBox();
+    const promptSink = await page.locator(`[data-id="${mixed.sink}"] .node-port.port-in`).boundingBox();
+    await page.mouse.move(promptPort.x + promptPort.width / 2, promptPort.y + promptPort.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(promptSink.x + promptSink.width / 2, promptSink.y + promptSink.height / 2, {steps:8});
+    await page.mouse.up();
+    assert.deepEqual(await page.evaluate(({sources, sink}) => canvas.connections.filter(c => c.to === sink && sources.includes(c.from)).map(c => c.from),
+        {sources:promptSources, sink:mixed.sink}), promptSources);
+    await page.evaluate(({sources, sink}) => {selectedIds = [sources[3], sink]; selectedId = ''; syncSelectionUi();}, mixed);
+    assert.equal(await page.locator('.smart-selection-batch-port').count(), 1,
+        'multiple paint nodes expose the shared output port even without uploaded images');
+    await page.evaluate(sources => {
+        const compare = createCompareNode(5400, 5200, {select:false, skipUndo:true});
+        selectedIds = [sources[0], compare.id]; selectedId = ''; syncSelectionUi();
+    }, mixed.sources);
+    assert.equal(await page.locator('.smart-selection-batch-port').count(), 0,
+        'a compare node without an output port cannot be a batch source');
+    await page.evaluate(sources => {selectedIds = sources; selectedId = ''; syncSelectionUi();}, mixed.sources);
+    await page.evaluate(() => {sharedCanvasReadOnly = true; syncSelectionUi();});
+    assert.equal(await page.locator('.smart-selection-batch-port').count(), 0);
+    await page.evaluate(() => {sharedCanvasReadOnly = false; clearSelection(); syncSelectionUi();});
+    assert.equal(await page.locator('.smart-selection-batch-port').count(), 0);
     assert.deepEqual(errors, []);
 });

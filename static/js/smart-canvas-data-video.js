@@ -8,6 +8,7 @@
         'smart-paint': {title:'绘画', inputs:['text','image','table'], outputs:['image']},
         'smart-video': {title:'视频', inputs:['text','image','video','audio','table'], outputs:['video']},
         'smart-product-fidelity': {title:'产品保护', inputs:['image'], outputs:['image']},
+        'smart-local-fusion': {title:'智能局部融合', inputs:['image'], outputs:['image']},
         'smart-camera': {title:'视角控制', inputs:['image'], outputs:['image','text']},
         // 循环节点把已连接的图片和/或提示词逐项传给下游绘画节点。
         // 之前这里没有声明它的输出类型，导致尚未生成结果时被误判为“无输出”。

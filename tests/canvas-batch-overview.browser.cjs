@@ -63,6 +63,162 @@ test('batch materials, parameters, overview and single-screen editing survive re
     await batch.locator('[data-loop-commerce-plan]').click();
     await page.waitForFunction(() => nodes.find(n => n.id === 'batch').aiSplitPrompts?.length === 2);
     assert.equal(await batch.locator('.loop-batch-overview').count(),1, 'planning prompts opens the overview so screens can be reviewed before spending');
+    const overview = batch.locator('.loop-batch-overview');
+    const link = batch.locator('.batch-overview-link path');
+    await page.waitForFunction(() => document.querySelector('.batch-overview-link path')?.getAttribute('d'));
+    const startCurve = await link.getAttribute('d');
+    const oldBox = await overview.boundingBox();
+    const head = await overview.locator('.batch-ov-title').boundingBox();
+    await page.mouse.move(head.x + 30, head.y + 5);
+    await page.mouse.down();
+    await page.mouse.move(head.x + 65, head.y + 35, {steps:5});
+    await page.mouse.up();
+    const movedBox = await overview.boundingBox();
+    assert.ok(Math.abs(movedBox.x - oldBox.x - 35) < 2);
+    assert.ok(Math.abs(movedBox.y - oldBox.y - 30) < 2);
+    assert.notEqual(await link.getAttribute('d'), startCurve, 'overview connector follows header drag');
+    const checkConnector = async () => {
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const distances = await page.evaluate(() => {
+        const card = document.querySelector('[data-id="batch"]');
+        const path = card.querySelector('.batch-overview-link path');
+        const port = card.querySelector('.port-out').getBoundingClientRect();
+        const panel = card.querySelector('.loop-batch-overview').getBoundingClientRect();
+        const matrix = path.getScreenCTM();
+        const start = path.getPointAtLength(0).matrixTransform(matrix);
+        const end = path.getPointAtLength(path.getTotalLength()).matrixTransform(matrix);
+        return {start:Math.hypot(start.x - port.left - port.width / 2,start.y - port.top - port.height / 2),end:Math.hypot(end.x - panel.left,end.y - panel.top - panel.height / 2)};
+        });
+        assert.ok(distances.start < 2 && distances.end < 2, JSON.stringify(distances));
+    };
+    await checkConnector();
+    const resizeOverview = async (width, height) => {
+        const box = await overview.boundingBox();
+        const handle = await overview.locator('[data-batch-overview-resize]').boundingBox();
+        const scale = await page.evaluate(() => viewport.scale);
+        await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(handle.x + handle.width / 2 + width * scale - box.width, handle.y + handle.height / 2 + height * scale - box.height, {steps:8});
+        await page.mouse.up();
+        const actual = await overview.boundingBox();
+        assert.ok(Math.abs(actual.width - width * scale) < 2, `width follows drag at ${scale}`);
+        assert.ok(Math.abs(actual.height - height * scale) < 2, `height follows drag at ${scale}`);
+        await checkConnector();
+    };
+    const columns = () => overview.locator('.batch-overview-grid').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length);
+    const checkCardSpacing = async () => {
+        const problems = await overview.locator('.batch-overview-grid').evaluate(grid => {
+            const cards = [...grid.querySelectorAll('.batch-screen')];
+            const scale = grid.getBoundingClientRect().width / grid.offsetWidth;
+            const gap = parseFloat(getComputedStyle(grid).rowGap) * scale;
+            const problems = [];
+            cards.forEach((card,index) => {
+                const box = card.getBoundingClientRect();
+                const actions = card.querySelector('.batch-screen-actions').getBoundingClientRect();
+                if(actions.bottom > box.bottom + 1 || actions.height < 40 * scale) problems.push({index,kind:'clipped-actions',height:box.height,actionsHeight:actions.height,overflow:actions.bottom - box.bottom});
+                const next = cards.slice(index + 1).find(other => Math.abs(other.getBoundingClientRect().left - box.left) < 1);
+                if(next){
+                    const actual = next.getBoundingClientRect().top - box.bottom;
+                    if(Math.abs(actual - gap) > 1) problems.push({index,kind:'row-gap',actual,expected:gap});
+                }
+            });
+            return problems;
+        });
+        assert.deepEqual(problems, [], 'every card keeps its controls and the full row gap');
+    };
+    await resizeOverview(500,480);
+    assert.equal(await columns(),2);
+    await page.evaluate(() => { viewport.scale = .6; applyViewport(); });
+    await resizeOverview(360,360);
+    assert.equal(await columns(),1, 'narrow overview adapts to one column');
+    assert.equal(await overview.evaluate(el => el.scrollWidth === el.clientWidth),true);
+    assert.equal(await overview.locator('.batch-overview-grid').evaluate(el => el.scrollHeight > el.clientHeight),true, 'cards scroll within resized height');
+    await page.evaluate(() => {
+        const loop = nodes.find(n => n.id === 'batch');
+        window.overviewTestPrompts = loop.aiSplitPrompts;
+        loop.aiSplitPrompts = Array.from({length:10}, (_,index) => ({title:`第${index + 1}屏`,prompt:'展示产品'}));
+        render();
+    });
+    await resizeOverview(1040,700);
+    assert.equal(await columns(),4, 'wide overview adapts to four columns');
+    await checkCardSpacing();
+    await resizeOverview(730,620);
+    assert.equal(await columns(),3, 'ten screens use three columns at default width');
+    await checkCardSpacing();
+    await page.evaluate(() => {
+        const paints = smartLoopDetailPaintNodes(nodes.find(n => n.id === 'batch'));
+        paints[0].runError = '当前屏生成失败，请重试';
+        paints[1].images = [{url:'/fixture/spacing-result.svg',kind:'image'}];
+        paints[1].runStartedAt = Date.now() - 65000;
+        paints[1].runFinishedAt = Date.now();
+        viewport = {x:40,y:80,scale:.75};
+        applyViewport(); render();
+    });
+    await resizeOverview(650,980);
+    assert.equal(await columns(),2, 'tall overview uses two columns');
+    await overview.locator('.batch-screen-media img').evaluateAll(images => Promise.all(images.map(image => image.decode().catch(() => {}))));
+    await checkCardSpacing();
+    if(process.env.BATCH_SCREENSHOT) await page.screenshot({path:path.join(root,'.oil-ui/batch-node/shots/overview-spacing.png')});
+    await overview.locator('.batch-screen-prompt summary').first().click();
+    await checkCardSpacing();
+    await page.evaluate(() => applyTheme('dark'));
+    await checkCardSpacing();
+    await page.evaluate(() => applyTheme('light'));
+    await overview.locator('.batch-screen-prompt summary').first().click();
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await page.evaluate(() => {
+        const loop = nodes.find(n => n.id === 'batch');
+        smartLoopDetailPaintNodes(loop).forEach(paint => {
+            paint.images = []; delete paint.runError; delete paint.runStartedAt; delete paint.runFinishedAt;
+        });
+        loop.aiSplitPrompts = overviewTestPrompts;
+        loop.batchEditingScreen = -1;
+        delete window.overviewTestPrompts;
+        render();
+    });
+    await page.evaluate(() => { viewport.scale = .92; applyViewport(); });
+    await resizeOverview(730,620);
+    const storedPanel = await page.evaluate(() => {
+        const loop = nodes.find(n => n.id === 'batch');
+        return {size:loop.batchOverviewSize,offset:loop.batchOverviewOffset};
+    });
+    await page.evaluate(() => {
+        const paints = smartLoopDetailPaintNodes(nodes.find(n => n.id === 'batch'));
+        paints.forEach((paint,index) => {
+            paint.runStartedAt = Date.now() - 65000;
+            paint.pending = 1;
+            paint.pendingTasks = [{taskId:`fixture-progress-${index}`,status:index ? 'running' : 'queued',...(index ? {progress:37} : {queue_info:{position:2,total:3}})}];
+            if(index) paint.images = [{url:'/fixture/previous-result.svg',kind:'image'}];
+        });
+        render();
+    });
+    const progress = overview.locator('[data-generation-progress]');
+    assert.equal(await progress.count(),2, 'hidden screen tasks display progress in overview');
+    assert.equal(await progress.nth(0).getAttribute('data-progress-phase'),'queued');
+    assert.equal(await progress.nth(1).getAttribute('data-progress-value'),'37');
+    assert.equal(await overview.locator('.is-regenerating [data-generation-progress]').count(),1, 'regeneration shows progress over the previous result');
+    assert.match(await overview.locator('.generation-progress-label').first().innerText(),/排队中/);
+    assert.doesNotMatch(await overview.locator('.batch-screen-empty').first().innerText(),/等待生成/);
+    const elapsedBefore = await overview.locator('[data-batch-screen-time]').nth(1).innerText();
+    await overview.evaluate(el => el.dataset.timerIdentity = 'preserved');
+    await page.waitForFunction(before => document.querySelectorAll('[data-batch-screen-time]')[1].textContent !== before,elapsedBefore);
+    assert.equal(await overview.getAttribute('data-timer-identity'),'preserved', 'timer refresh preserves panel DOM');
+    await page.evaluate(() => {
+        const paints = smartLoopDetailPaintNodes(nodes.find(n => n.id === 'batch'));
+        paints[0].pendingTasks[0] = {taskId:'fixture-progress-0',status:'running',progress:53};
+        paints[1].pendingTasks[0].progress = 74;
+        requestSmartProgressRender();
+    });
+    await page.waitForFunction(() => document.querySelectorAll('.batch-screen [data-generation-progress]')[1]?.dataset.progressValue === '74');
+    assert.equal(await progress.nth(0).getAttribute('data-progress-value'),'53');
+    assert.equal(await progress.nth(0).getAttribute('data-progress-phase'),'running');
+    if(process.env.BATCH_SCREENSHOT) await page.screenshot({path:path.join(root,'.oil-ui/batch-node/shots/overview-progress.png')});
+    await page.evaluate(() => {
+        smartLoopDetailPaintNodes(nodes.find(n => n.id === 'batch')).forEach(paint => {
+            paint.pending = 0; paint.pendingTasks = []; paint.images = []; delete paint.runStartedAt;
+        });
+        render();
+    });
     await page.evaluate(() => { window.originalDetailBatchRun = runSmartLoopDetailBatch; runSmartLoopDetailBatch = () => render(); });
     await batch.locator('[data-loop-run]').click();
     assert.equal(await batch.locator('.loop-batch-overview').count(),1, 'starting image generation opens the overview');
@@ -96,6 +252,11 @@ test('batch materials, parameters, overview and single-screen editing survive re
     await page.waitForFunction(() => nodes.find(n => n.id === 'batch')?.manualInputRefs?.length === 1);
     await page.addStyleTag({content:'#canvasNavPanel { display:none !important; }'});
     assert.equal(await page.locator('.loop-batch-overview').count(),1, 'overview remains visible after reload');
+    assert.deepEqual(await page.evaluate(() => {
+        const loop = nodes.find(n => n.id === 'batch');
+        return {size:loop.batchOverviewSize,offset:loop.batchOverviewOffset};
+    }),storedPanel, 'panel size and position survive reload');
+    await page.waitForFunction(() => document.querySelector('.batch-overview-link path')?.getAttribute('d'));
     assert.equal(await page.locator('[data-loop-commerce="language"]').inputValue(),'英语');
     assert.equal(await page.locator('[data-batch-screen-prompt="0"]').inputValue(),'单屏精修后的完整提示词');
     assert.equal(await page.locator(`.image-node[data-id="${state.ids[0]}"]`).count(),1);
