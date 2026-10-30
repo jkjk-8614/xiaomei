@@ -116,20 +116,31 @@ git clone https://github.com/jkjk-8614/xiaomei.git
 
 ## 项目来源与致谢
 
-**小美画布（Xiaomei Canvas）** 是基于 [Infinite-Canvas](https://github.com/hero8152/Infinite-Canvas) 进行二次开发的开源项目。
+**小美画布（Xiaomei Canvas）** 是基于 [Infinite-Canvas](https://github.com/hero8152/Infinite-Canvas) 进行二次开发，并参考 [CainFlow](https://github.com/RingoCaviar/CainFlow) 项目设计与实现思路的项目。
 
-原项目：
+### 原项目一：Infinite-Canvas
 
-- 项目名称：Infinite-Canvas
-- 原作者：[hero8152](https://github.com/hero8152)
-- 原项目地址：https://github.com/hero8152/Infinite-Canvas
+- **项目名称：** Infinite-Canvas
+- **原作者：** [hero8152](https://github.com/hero8152)
+- **项目地址：** https://github.com/hero8152/Infinite-Canvas
 
-感谢原作者开发并公开 Infinite-Canvas。
+感谢原作者开发并公开 Infinite-Canvas，为本项目提供了基础框架。
 
-小美画布在原项目基础上对界面、功能及部分交互进行了修改和扩展。  
-本项目为非官方二次开发版本，与 Infinite-Canvas 原作者不存在官方从属关系。
+### 参考项目二：CainFlow
 
-原项目代码及相关版权归原作者所有，本项目新增和修改的内容由本项目维护者负责。
+- **项目名称：** CainFlow
+- **原作者：** [RingoCaviar](https://github.com/RingoCaviar)
+- **项目地址：** https://github.com/RingoCaviar/CainFlow
+
+感谢原作者开发并开源 CainFlow，为节点式工作流设计与交互实现提供了参考。
+
+### 二次开发说明
+
+小美画布在原项目基础上，对界面、功能及部分交互进行了修改与扩展，并结合其他优秀项目的设计思路持续完善。
+
+本项目为非官方二次开发版本，与上述项目原作者不存在官方从属关系。
+
+原项目代码及相关版权归各自权利人所有，具体使用、修改与分发应遵守相应项目的许可证要求。
 
 ---
 
