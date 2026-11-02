@@ -80,8 +80,9 @@ function isProductSource(file, tracked) {
 }
 
 const textExtensions = new Set(['.py', '.js', '.cjs', '.mjs', '.json', '.html', '.css', '.svg', '.yaml', '.yml', '.txt', '.md', '.patch']);
+const textNames = new Set(['.env.example', '.htaccess', '_headers', 'LICENSE-APACHE', 'LICENSE-MIT', 'NOTICE']);
 function fileHash(bytes, file) {
-  const content = (textExtensions.has(path.extname(file).toLowerCase()) || path.basename(file) === '.env.example')
+  const content = (textExtensions.has(path.extname(file).toLowerCase()) || textNames.has(path.basename(file)))
     ? Buffer.from(bytes.toString('utf8').replace(/\r\n/g, '\n'), 'utf8')
     : bytes;
   return createHash('sha256').update(content).digest('hex');
