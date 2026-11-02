@@ -36,6 +36,7 @@
         workBusy: false,
         workStale: false,
         stoppingWork: new Set(),
+        deletingGroups: new Set(),
         providers: null,
         mentionItems: [],
         mentionIndex: 0,
@@ -396,18 +397,71 @@
             Number(chatById(b.id)?.last_message_at || b.updated_at || 0) - Number(chatById(a.id)?.last_message_at || a.updated_at || 0));
         $('teamGroupList').innerHTML = groups.map((group) => {
             const active = state.currentChat === group.id;
-            return `<button class="team-side-item${active ? ' active' : ''}" type="button" data-team-chat="${esc(group.id)}" data-team-group="${esc(group.id)}" title="${esc(group.name)}" ${active ? 'aria-current="true"' : ''}>
+            return `<div class="team-group-row"><button class="team-side-item${active ? ' active' : ''}" type="button" data-team-chat="${esc(group.id)}" data-team-group="${esc(group.id)}" title="${esc(group.name)}" ${active ? 'aria-current="true"' : ''}>
                 ${groupAvatar(group)}
                 <span class="team-side-text">
                     <strong>${esc(group.name)}</strong>
                     <small>${group.members.length} 位成员协作</small>
                 </span>
-            </button>`;
+            </button><button class="team-group-delete" type="button" data-team-delete-group="${esc(group.id)}" title="删除设计组" aria-label="删除设计组：${esc(group.name)}" ${state.deletingGroups.has(group.id) ? 'disabled' : ''}>
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg>
+            </button></div>`;
         }).join('') || '<p class="muted team-empty">开始一次设计，讨论会留在这里。</p>';
         renderWorkStatus();
     }
 
     /* ---------------- 会话 ---------------- */
+
+    function clearCurrentChat() {
+        stopPolling();
+        state.uploadController?.abort();
+        state.currentChat = '';
+        state.messages = [];
+        state.cursor = 0;
+        state.running = false;
+        state.turn = {};
+        state.turnStale = false;
+        state.productImages = [];
+        localStorage.removeItem(STORAGE_CHAT);
+        $('teamInput').value = '';
+        $('teamSendStatus').textContent = '';
+        $('teamPausedBar').hidden = true;
+        hideMentionMenu();
+        renderProductImages();
+        document.dispatchEvent(new CustomEvent('design-brain-workspace-close'));
+        renderHeader(null);
+        renderSide(null);
+        setWelcome(true);
+        $('teamMessages').innerHTML = '<p class="muted team-empty">点击左侧“开始新设计”，开启一次讨论。</p>';
+        renderSidebar();
+        syncComposer();
+    }
+
+    async function deleteGroup(groupId) {
+        const group = state.team?.groups?.find(item => item.id === groupId);
+        if (!group || state.deletingGroups.has(groupId)) return;
+        if (!window.confirm(`删除设计组「${group.name}」？该组会从最近的设计中移除，正在进行的团队回复会停止。项目记录和图片会保留。`)) return;
+        state.deletingGroups.add(groupId);
+        renderSidebar();
+        try {
+            await api(`/api/design-brain/groups/${encodeURIComponent(groupId)}`, {method: 'DELETE'});
+            state.team.groups = state.team.groups.filter(item => item.id !== groupId);
+            state.team.chats = state.team.chats.filter(item => item.id !== groupId);
+            if (state.currentChat === groupId) {
+                clearCurrentChat();
+                const next = state.team.chats.find(item => item.kind === 'group') || state.team.chats[0];
+                if (next) await openChat(next.id);
+            }
+            state.drafts.delete(groupId);
+            if (localStorage.getItem(STORAGE_CHAT) === groupId) localStorage.removeItem(STORAGE_CHAT);
+            teamToast('已删除设计组');
+        } catch (error) {
+            teamToast(`删除设计组失败：${error.message || '请重试'}`, true);
+        } finally {
+            state.deletingGroups.delete(groupId);
+            renderSidebar();
+        }
+    }
 
     async function openChat(chatId) {
         if (!chatId) return;
@@ -1146,7 +1200,9 @@
             return;
         }
         renderSidebar();
-        const chats = state.team.chats || [];
+        const groups = new Set((state.team.groups || []).map(group => group.id));
+        const chats = (state.team.chats || []).filter(chat => chat.kind !== 'group' || groups.has(chat.group_id || chat.id));
+        state.team.chats = chats;
         const preferred = reselect && state.currentChat && chats.some((chat) => chat.id === state.currentChat)
             ? state.currentChat
             : (localStorage.getItem(STORAGE_CHAT) || '');
@@ -1155,8 +1211,8 @@
             || chats[0];
         if (target && (!state.currentChat || reselect)) await openChat(target.id);
         else if (!target) {
+            clearCurrentChat();
             document.querySelector('.team-main').classList.remove('is-loading');
-            $('teamMessages').innerHTML = '<p class="muted team-empty">点击左侧“开始新设计”，开启第一次讨论。</p>';
         } else {
             renderHeader(chatById(state.currentChat));
             renderSide(chatById(state.currentChat));
@@ -1616,6 +1672,8 @@
             openChat(chatId);
         });
         $('teamGroupList').addEventListener('click', (event) => {
+            const remove = event.target.closest('[data-team-delete-group]');
+            if (remove) { deleteGroup(remove.dataset.teamDeleteGroup); return; }
             const node = event.target.closest('[data-team-chat]');
             if (node) openChat(node.dataset.teamChat);
         });

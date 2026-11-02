@@ -707,6 +707,16 @@ async def create_run(payload: RunCreateRequest):
         return _error_response(error)
 
 
+@router.delete("/runs/{run_id}")
+async def delete_run(run_id: str, request: Request):
+    _ensure_same_origin(request)
+    try:
+        RUNS.delete(run_id)
+    except DesignBrainError as error:
+        return _error_response(error)
+    return {"ok": True}
+
+
 @router.post("/runs/{run_id}/confirm")
 async def confirm_run(run_id: str, payload: RunConfirmRequest):
     try:

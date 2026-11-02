@@ -790,11 +790,15 @@ class TeamStore:
         if not self.chats_root.exists():
             return []
         chats: List[Dict[str, Any]] = []
+        active_groups = {group["id"] for group in self.list_groups()}
         for entry in sorted(self.chats_root.iterdir()):
             if not entry.is_dir():
                 continue
             try:
-                chats.append(self._read_chat_unlocked(entry.name))
+                chat = self._read_chat_unlocked(entry.name)
+                if chat["kind"] == "group" and chat["group_id"] not in active_groups:
+                    continue
+                chats.append(chat)
             except DesignBrainError:
                 continue
         chats.sort(key=lambda item: (item["last_message_at"], item["updated_at"]), reverse=True)

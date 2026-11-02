@@ -1,0 +1,42 @@
+.recommend-add-card {
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:12px; min-height:230px; min-width:0; padding:28px;
+    border:1px dashed var(--line-strong); border-radius:12px;
+    background:var(--panel); color:var(--muted); cursor:pointer;
+    transition:background .15s, border-color .15s;
+}
+.recommend-add-card strong { font-size:15px; color:var(--text); }
+.recommend-add-card span { font-size:12px; line-height:1.6; }
+.recommend-add-card:hover { background:var(--soft); border-color:var(--muted); }
+.recommend-add-card:focus-visible { outline:2px solid var(--text); outline-offset:3px; }
+.recommend-add-card:disabled { cursor:wait; opacity:.6; }
+.recommend-card-actions { display:flex; gap:6px; align-items:center; }
+.recommend-card-actions .ghost-btn { padding:5px; width:27px; height:27px; }
+.recommend-existing-controls { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; min-height:86px; }
+.recommend-existing-status { display:flex; align-items:center; flex-wrap:wrap; gap:7px; color:var(--muted); font-size:12px; }
+.recommend-platform-summary { overflow-wrap:anywhere; }
+.recommendation-editor { width:min(580px, calc(100vw - 32px)); max-height:calc(100vh - 40px); overflow:auto; }
+.recommendation-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; border:0; margin:0; padding:20px; min-width:0; }
+.recommendation-fields .full { grid-column:1 / -1; }
+.recommendation-fields select { width:100%; min-width:0; padding:8px; border:0; background:transparent; color:var(--text); }
+.recommendation-fields textarea { box-sizing:border-box; width:100%; resize:vertical; padding:10px; border:1px solid var(--line); border-radius:10px; background:var(--panel); color:var(--text); font:inherit; }
+.recommendation-kinds { display:flex; flex-wrap:wrap; gap:16px; padding:8px 0; }
+.recommendation-kinds label { display:flex; align-items:center; gap:5px; font-size:12px; color:var(--text); }
+.recommendation-error { margin:0; color:#d14343; font-size:12px; overflow-wrap:anywhere; }
+.recommendation-error:empty { display:none; }
+.recommendation-footer { display:flex; justify-content:flex-end; gap:10px; }
+#recommendationEditor .field-frame,
+#recommendationEditor .field-frame input,
+#recommendationEditor .field-frame select,
+#recommendationEditor textarea {
+    background:var(--panel) !important; color:var(--text) !important;
+}
+#recommendationEditor select option { background:var(--panel); color:var(--text); }
+#recommendationEditor .ghost-btn,
+#recommendationEditor .recommendation-footer .action-btn:not(.save-btn) {
+    background:var(--soft) !important; color:var(--text) !important;
+}
+@media(max-width:540px) {
+    .recommendation-fields { grid-template-columns:minmax(0,1fr); }
+    .recommend-add-card { min-height:180px; }
+}

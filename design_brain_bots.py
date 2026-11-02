@@ -111,7 +111,7 @@ PLANNER_SYSTEM = """你是小美画布的「设计规划 BOT」。基于任务�
 {"direction":"整体视觉方向，80字内","rationale":"这样规划的理由，150字内","constraints_locked":["必须严格遵守的约束"],"flexible":["允许生成自由发挥的方面"],"acceptance":["整体验收标准"],"shots":[{"id":"shot_1","kind":"main_image|detail_image|scene|creative|other","purpose":"这张图的用途","prompt":"完整生图提示词（中文），包含主体、构图、材质、光线、背景与氛围","negative":"不希望出现的元素","size":"1024x1024","count":1,"acceptance":["这张图的验收点"]}]}
 硬性要求：
 1. shots 数量必须与本次规划批次要求匹配；总任务由系统分批完成，不能缩减总张数。
-2. 1K、2K、4K 是结构化生图参数，分别在 resolution 中填 1k、2k、4k，不要靠在提示词里加清晰度文字代替参数。size 表示画幅尺寸，系统按所选模型解析实际像素。未指定时主图用 1024x1024，竖图用 1024x1536，横图用 1536x1024。逐张规划，每张 count=1。
+2. 1K、2K、4K 是结构化生图参数，分别在 resolution 中填 1k、2k、4k，不要靠在提示词里加清晰度文字代替参数。size 表示画幅尺寸，系统按所选模型解析实际像素。未指定时5张主图均用1024x1024；详情按790px宽、首屏约1200至1400px高、后续每屏约1200px高的参考稿标准设计，整页总高度无限制、随屏数和内容决定，生图尺寸按电商视觉规范与所选模型解析；横图用1536x1024。逐张规划，每张count=1。
 3. 提示词必须落实参考案例的可借鉴点与审美档案偏好，明确规避 avoid（避免风格）项；不得写入商品不存在的内容。
 4. 任务单 product.constraints 里的结构/文案约束必须体现在对应 prompt 中，并原样列入 constraints_locked。
 5. 每张图至少 1 条可检查的验收点（结构、材质、构图或文案）。
@@ -136,13 +136,13 @@ REVIEWER_SYSTEM = """你是小美画布的「质量检查 BOT」。根据任务�
 DIRECTOR_SYSTEM += "\n\n" + ECOMMERCE_RULES + "\n" + SKU_RULES + "\nSKU仅换文字时输出series_mode=sku；用户明确要求换框色、照片或外观时输出series_mode=sku_variants。主图完整一组始终5张，测图创意任务用creative；详情的屏数写入image_count，未指定比例默认9:16。"
 PLANNER_SYSTEM += "\n\n" + ECOMMERCE_RULES + "\n" + SKU_RULES + """
 电商方案额外输出 visual_framework={"palette":["#HEX主色","#HEX辅色"],"fonts":["字体"],"style":"全组风格","brand":"Logo样式与固定位置，无品牌则写无Logo","product_pose":"全组产品造型、角度、机位与比例"}。
-详情每张额外输出copy={"title":"4至8字利益点标题","subtitle":"15字内副标题","body":"精简真实正文"}。全组typography使用参考字级64/44/26pt、行距增加10px，所有屏标题字级一致。
+详情每张额外输出copy={"title":"4至8字利益点标题","subtitle":"15字内副标题","body":"精简真实正文"}。visual_framework.typography={"title_px":64,"subtitle_px":32,"body_px":26,"line_extra_px":10,"title_line_gap_px":20,"subtitle_line_gap_px":10}，字号与间距单位均为px，line_extra_px用于正文，两个line_gap_px用于主副标题的行间净空，所有屏同级标题字级一致。主标题参考46至74px、字重Medium至Heavy，副标题参考24至36px、字重Regular至Light。
 每张按用户真实资料写清消费人群、场景、属性功能、好处与情感吸引力，核心卖点优先；不填虚构竞对结论。
-文字模板SKU额外输出sku_scene（固定底图的场景、产品、品牌与构图，产品完整放在信息位以外区域），sku_layout（parameters/gifts/attributes三个固定文字位，每项为box:[x,y,w,h]的0至1坐标、font_pt:26、color与background复用palette中的HEX；不提供时使用默认信息位）。
+文字模板SKU额外输出sku_scene（固定底图的场景、产品、品牌与构图，产品完整放在信息位以外区域），sku_layout（parameters/gifts/attributes三个固定文字位，每项为box:[x,y,w,h]的0至1坐标、font_px:26、color与background复用palette中的HEX；不提供时使用默认信息位）。
 文字模板SKU每张额外输出sku_values={"parameters":"真实参数文字","gifts":"真实赠品文字，无赠品可留空","attributes":"真实属性名称"}；不要在此对象放产品颜色、造型或背景等字段。整组主体只在无字底图生成一次，三个信息位文字由系统统一排版。
 外观款式SKU输出共同场景sku_scene，每张输出sku_variant（本款实际框色、照片来源及组合等变化）与完整prompt；不输出sku_layout或sku_values，不强加文字信息位或擅自添加文案。相框照片必须使用用户提供的素材，明确图号和选用组合；保留用户要求的卡纸厚度、45度斜切开窗、嵌入关系和光影工艺。
 SKU分镜全部使用同一size、count=1；文字模板整组统一修改模板，不能单独改变字体字号或产品；外观款式只允许用户指定的变化，其余共同场景与工艺锁定。
-主图第1张1:1，其余4张2:3；详情每屏9:16，按全局序号安排商品/卖点/好处特性/强视觉/重复卖点。调整建议不得破坏本次硬性要求。"""
+主图第1至5张默认均为1:1；详情参考稿790px宽、首屏约1200至1400px高、后续每屏约1200px高，整页总高度无限制、随屏数和内容决定。单张生图按所选模型解析画幅，不将其比例当作整页比例。按全局序号安排商品/卖点/好处特性/强视觉/重复卖点；根据文案与商品选择左右、上下或对角构图，在rationale中说明基于产品颜色、主题或情绪环境的配色依据。调整建议不得破坏本次硬性要求。"""
 REFERENCE_SYSTEM += "\n\n" + ECOMMERCE_RULES + "\n" + SKU_RULES
 REVIEWER_SYSTEM += "\n\n" + ECOMMERCE_RULES + "\n" + SKU_RULES + "\nSKU比较时以任务制作方式和本款方案为准。文字模板不得把无字底图算作待检产物，三个信息位以外变化按critical、area=composition报告；外观款式允许已确认的框色、照片和图案变化，检查共同场景与工艺，不能用文字模板规则误判。"
 REVIEWER_SYSTEM += "\n\n" + commerce_bot_guidance({"id": "bot_reviewer"})

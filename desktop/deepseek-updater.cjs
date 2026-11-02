@@ -100,20 +100,23 @@ function run(command, args, options = {}) {
       try { child.kill(); } catch {}
       reject(new Error(`${command} ${args.join(' ')} 超时`));
     }, timeout);
-    child.stdout?.on('data', (chunk) => { stdout += String(chunk); });
-    child.stderr?.on('data', (chunk) => { stderr += String(chunk); });
+    // Decode across pipe chunks so a split UTF-8 character cannot corrupt a patch.
+    child.stdout?.setEncoding('utf8');
+    child.stderr?.setEncoding('utf8');
+    child.stdout?.on('data', (chunk) => { stdout += chunk; });
+    child.stderr?.on('data', (chunk) => { stderr += chunk; });
     child.once('error', (error) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       reject(error);
     });
-    child.once('exit', (code, signal) => {
+    child.once('close', (code, signal) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       if (code === 0) return resolve({ stdout, stderr });
-      const error = new Error(short(stderr || stdout || `${command} 退出码 ${code || signal || 'unknown'}`));
+      const error = new Error((stderr || stdout || `${command} 退出码 ${code || signal || 'unknown'}`).trim());
       error.code = code;
       error.signal = signal;
       reject(error);
@@ -141,13 +144,25 @@ function isHash(value) {
   return /^[0-9a-f]{7,64}$/i.test(String(value || '').trim());
 }
 
+function verifyHarnessBuild(root) {
+  // A fresh Node process must load the new artifacts instead of cached modules.
+  const env = { ...process.env, XIAOMEI_HARNESS_CHECK_ROOT: root };
+  delete env.NODE_TEST_CONTEXT;
+  return run('node', ['--test', path.join(__dirname, 'harness-model-check.cjs')], {
+    cwd: root,
+    env,
+    timeout: 60_000,
+  });
+}
+
 class DeepSeekHarnessUpdater {
-  constructor({ root, dataRoot, remote = DEFAULT_REMOTE, branch = DEFAULT_BRANCH, resolveProxy } = {}) {
+  constructor({ root, dataRoot, remote = DEFAULT_REMOTE, branch = DEFAULT_BRANCH, resolveProxy, verifyBuild = verifyHarnessBuild } = {}) {
     this.root = path.resolve(root || '');
     this.dataRoot = path.resolve(dataRoot || path.join(this.root, '.xiaomei-data'));
     this.remote = String(remote || DEFAULT_REMOTE).trim();
     this.branch = String(branch || DEFAULT_BRANCH).trim() || DEFAULT_BRANCH;
     this.resolveProxy = resolveProxy;
+    this.verifyBuild = verifyBuild;
   }
 
   available() {
@@ -248,7 +263,16 @@ class DeepSeekHarnessUpdater {
     fs.mkdirSync(backupDir, { recursive: true });
     let patchSaved = false;
     let worktreeChanged = false;
+    let buildStarted = false;
     const movedUntracked = [];
+    const rebuild = async () => {
+      const packageManager = pnpmCommand(this.root);
+      const runPnpm = (args) => run(packageManager.command, [...packageManager.prefix, ...args], { cwd: this.root, timeout: 15 * 60_000 });
+      await runPnpm(['install', '--frozen-lockfile']);
+      await runPnpm(['run', 'build:lib:host']);
+      await runPnpm(['run', 'build:lib:client']);
+      await runPnpm(['run', 'build:web']);
+    };
     try {
       report('backup', '正在保存小美画布适配补丁');
       const diff = await captureWorktreePatch(this.root, this.dataRoot);
@@ -272,14 +296,16 @@ class DeepSeekHarnessUpdater {
       const probeDir = path.join(backupDir, 'merge-probe');
       try {
         report('patch', '正在预检小美画布适配补丁');
-        await run('git', ['clone', '--local', '--no-checkout', this.root, probeDir], { cwd: backupDir, timeout: 5 * 60_000 });
+        // Source and user data can be on different volumes; Git's local
+        // hardlinks cannot cross that boundary.
+        await run('git', ['clone', '--local', '--no-hardlinks', '--no-checkout', this.root, probeDir], { cwd: backupDir, timeout: 5 * 60_000 });
         await run('git', ['checkout', '--detach', fetchedCommit], { cwd: probeDir, timeout: 60_000 });
         if (patchSaved) {
           try {
             await run('git', ['apply', '--3way', patchFile], { cwd: probeDir, timeout: 60_000 });
           } catch (error) {
             const conflicts = await run('git', ['diff', '--name-only', '--diff-filter=U'], { cwd: probeDir, timeout: 10_000 });
-            throw new Error(`适配补丁与上游冲突：${conflicts.stdout.trim() || short(error?.message || error)}（补丁已存于 ${patchFile}；处理步骤见 desktop/harness-patches/README.md）`);
+            throw new Error(`${conflicts.stdout.trim() ? `适配补丁与上游冲突：${conflicts.stdout.trim()}` : `适配补丁应用失败：${error?.message || error}`}（补丁已存于 ${patchFile}；处理步骤见 desktop/harness-patches/README.md）`);
           }
         }
         for (const rel of check.untracked_files || []) {
@@ -310,7 +336,7 @@ class DeepSeekHarnessUpdater {
           await run('git', ['apply', '--3way', patchFile], { cwd: this.root, timeout: 60_000 });
         } catch (error) {
           const conflicts = await run('git', ['diff', '--name-only', '--diff-filter=U'], { cwd: this.root, timeout: 10_000 });
-          throw new Error(`适配补丁与上游冲突：${conflicts.stdout.trim() || short(error?.message || error)}（补丁已存于 ${patchFile}；处理步骤见 desktop/harness-patches/README.md）`);
+          throw new Error(`${conflicts.stdout.trim() ? `适配补丁与上游冲突：${conflicts.stdout.trim()}` : `适配补丁应用失败：${error?.message || error}`}（补丁已存于 ${patchFile}；处理步骤见 desktop/harness-patches/README.md）`);
         }
       }
       for (const item of movedUntracked) {
@@ -324,18 +350,16 @@ class DeepSeekHarnessUpdater {
         }
       }
       report('build', '正在重新构建 DeepSeek Harness');
-      const packageManager = pnpmCommand(this.root);
-      const runPnpm = (args) => run(packageManager.command, [...packageManager.prefix, ...args], { cwd: this.root, timeout: 15 * 60_000 });
-      await runPnpm(['install', '--frozen-lockfile']);
-      await runPnpm(['run', 'build:lib:host']);
-      await runPnpm(['run', 'build:lib:client']);
-      await runPnpm(['run', 'build:web']);
+      buildStarted = true;
+      await rebuild();
+      report('verify', '正在验证对话模型的图片能力');
+      await this.verifyBuild(this.root);
       report('done', 'DeepSeek Harness 已更新并完成构建');
       const result = await this.localState();
       return { ...result, updated: true, previous_commit: previousCommit, backup_dir: backupDir };
     } catch (error) {
       if (!worktreeChanged) {
-        const failed = new Error(`DeepSeek Harness 更新失败：${short(error?.message || error, 1000)}`);
+        const failed = new Error(`DeepSeek Harness 更新失败：${error?.message || error}`);
         failed.code = error.code;
         throw failed;
       }
@@ -350,10 +374,16 @@ class DeepSeekHarnessUpdater {
             fs.renameSync(item.target, target);
           }
         }
+        if (buildStarted) {
+          await rebuild();
+          await this.verifyBuild(this.root);
+        }
       } catch (rollbackError) {
-        throw new Error(`DeepSeek Harness 更新失败，且恢复失败：${short(rollbackError?.message || rollbackError, 1000)}`);
+        const failed = new Error(`DeepSeek Harness 更新失败：${error?.message || error}；恢复失败：${rollbackError?.message || rollbackError}`);
+        failed.code = 'HARNESS_UPDATE_ROLLBACK_FAILED';
+        throw failed;
       }
-      throw new Error(`DeepSeek Harness 更新失败：${short(error?.message || error, 1000)}`);
+      throw new Error(`DeepSeek Harness 更新失败：${error?.message || error}`);
     }
   }
 }

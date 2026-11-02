@@ -86,6 +86,9 @@ def normalize(raw):
     raw.setdefault('mode', 'strict')
     if raw['mode'] not in {'strict', 'structure', 'view'}:
         raise ValueError('产品保真模式无效')
+    raw.setdefault('fitOutputCanvas', False)
+    if not isinstance(raw['fitOutputCanvas'], bool):
+        raise ValueError('适配出图画幅必须为开关值')
     for field in ('identification', 'detail', 'view', 'generation', 'validation', 'retries', 'structure', 'dimensions', 'advanced'):
         if not isinstance(raw.get(field, {}), dict):
             raise ValueError('产品保真配置格式无效：' + field)
@@ -494,6 +497,9 @@ def prompt_for(prompt, context):
             role = '用户参考图，沿用其原有用途'
         lines.append(f'图片 {i}：{role}。')
     scopes = dict(background='仅改变背景，保持产品位置、尺寸、原视角和内部像素；在产品周围生成环境和接触阴影', lighting='允许改变背景和环境光', material='仅允许指定局部材质变化', view='允许受控视角变化')
+    fit_output = config.get('fitOutputCanvas', False) and not config['dimensions']['enabled']
+    if config['mode'] == 'strict' and fit_output:
+        scopes['background'] = '仅改变背景，保持产品原视角、长宽比例、外轮廓与花纹；原图将等比缩放至所选画幅内并居中，不裁切或拉伸产品'
     scope = config['generation'].get('allowedEdits', 'view' if config['mode']=='view' else 'lighting' if config['mode']=='structure' else 'background')
     if scope not in scopes:
         raise ValueError('允许变化范围无效')
@@ -501,7 +507,8 @@ def prompt_for(prompt, context):
         lines.append(scopes[scope])
     lines.append('保持真实产品身份，不增删 LOGO、文字、接口或部件。')
     if config['mode'] == 'strict':
-        lines.append('本次只输出环境背景与接触阴影：原产品将由本地蒙版回贴。产品原位置留出空位，不绘制另一个产品、边框或文字；参考图用于环境布局和接触阴影位置。')
+        position = '将原图等比放入目标画幅并居中后的产品位置' if fit_output else '产品原位置'
+        lines.append(f'本次只输出环境背景与接触阴影：原产品将由本地蒙版回贴。{position}留出空位，不绘制另一个产品、边框或文字；参考图用于环境布局和接触阴影位置。')
     if config.get('dimensionNotes'):
         lines.append('用户提供的真实尺寸说明：' + str(config['dimensionNotes'])[:200])
     if config['identification'].get('enabled', True):
@@ -598,8 +605,12 @@ def composite(source, mask, background, feather=0):
     return output, dict(status='passed', scope='本地合成核心 RGB 像素；不代表语义/OCR 或透明边缘融合已通过', protectedPixels=count, maxPixelError=error)
 
 
-def composite_in_output(source, mask, background, feather=0):
-    """Preserve original product pixels on the selected output canvas, centred."""
+def composite_in_output(source, mask, background, feather=0, fit=False):
+    """Composite a centred product; optionally fit its source canvas proportionally."""
+    source_size = source.size
+    if fit:
+        source = ImageOps.contain(source, background.size, Image.Resampling.LANCZOS)
+        mask = mask.resize(source.size, Image.Resampling.LANCZOS)
     if source.width > background.width or source.height > background.height:
         raise ValueError('Protect 输出画布小于原产品图，无法原像素合成；请选择足够大的输出尺寸或先准备较小产品副本')
     x, y = (background.width-source.width)//2, (background.height-source.height)//2
@@ -607,6 +618,10 @@ def composite_in_output(source, mask, background, feather=0):
     output = background.convert('RGBA')
     output.paste(patch,(x,y))
     validation.update(productOffset=[x,y], outputCanvasPreserved=True)
+    if fit:
+        validation.update(sourceSize=list(source_size), fittedSize=list(source.size), productResized=source.size != source_size,
+                          scope='本地等比缩放后产品核心 RGB 像素；不代表原始分辨率、语义/OCR 或边缘融合已通过',
+                          reason='商品按原比例缩放居中，已核对合成后的产品核心像素')
     return output, validation
 
 

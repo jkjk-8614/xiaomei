@@ -66,6 +66,221 @@ async function showSetting(node,key){
     for(const label of summaries)await node.locator('summary').filter({hasText:label}).click();
 }
 
+async function installProtectedBatch(page){
+    await page.waitForFunction(()=>smartConfigReady);
+    await page.evaluate(()=>{
+        nodes=[
+            {id:'product',type:'smart-upload',x:-400,y:40,images:[{url:'/fixture/A.png',kind:'image',name:'产品原图'}]},
+            {id:'style',type:'smart-upload',x:-400,y:400,images:[{url:'/fixture/style.png',kind:'image',name:'风格参考'}]}
+        ];
+        canvas.connections=[];canvasUsesConnections=true;
+        const batch=createLoopNode(600,40,{batchUiMode:'paired'});batch.id='batch';
+        batch.batchImageSettings={engine:'api',apiKind:'image',provider_id:'fixture',model:'gpt-image-2',ratio:'9:16',resolution:'1k',count:1};
+        batch.aiSplitPrompts=[{title:'整体',prompt:'展示地毯整体'},{title:'细节',prompt:'展示地毯花纹'}];
+        setSmartLoopPromptFieldValues(batch,batch.aiSplitPrompts.map(item=>item.prompt));
+        connectInputNode('product','batch','product');connectInputNode('style','batch','reference');
+        ensureSmartLoopDetailPaintNodes(batch,2);
+        viewport={x:0,y:0,scale:1};selectedId='';selectedIds=[];applyViewport();render();
+    });
+}
+
+test('batch product shortcut inserts one processor, preserves style roles and order through save and reload',{timeout:45000},async t=>{
+    const {page,paid}=await fixture(t);await installProtectedBatch(page);
+    const output=path.join(root,'.fusion-artifacts','batch-product-protection');fs.mkdirSync(output,{recursive:true});
+    await page.locator('[data-id="batch"] .batch-sec').first().screenshot({path:path.join(output,'batch-entry.png')});
+    await page.locator('[data-id="batch"] [data-batch-product-protection]').click();
+    const inspect=()=>page.evaluate(()=>{
+        const batch=nodes.find(n=>n.id==='batch'),sources=productFidelitySourcesFor(batch),source=sources[0];
+        return {id:source?.id,count:sources.length,refs:smartLoopPreviewImages(batch).map(ref=>[ref.url,smartBatchRole(batch,ref)]),
+            protected:source&&productFidelityInputImages(source).map(ref=>ref.url),
+            connections:canvas.connections.map(c=>[c.from,c.to,c.input_slot||'']),
+            screens:smartLoopDetailPaintNodes(batch).map(paint=>smartSettingsForNode(paint).productFidelity?.sourceNodeId)};
+    });
+    const initial=await inspect();
+    assert.equal(initial.count,1);assert.deepEqual(initial.protected,['/fixture/A.png']);
+    assert.deepEqual(initial.refs,[['/fixture/A.png','product'],['/fixture/style.png','reference']]);
+    assert.ok(initial.connections.some(([from,to])=>from==='product'&&to===initial.id));
+    assert.ok(!initial.connections.some(([from,to])=>from==='product'&&to==='batch'));
+    assert.ok(initial.connections.some(([from,to,slot])=>from===initial.id&&to==='batch'&&slot==='product'));
+    assert.ok(initial.connections.some(([from,to,slot])=>from==='style'&&to==='batch'&&slot==='reference'));
+    assert.deepEqual(initial.screens,[initial.id,initial.id]);
+    await page.evaluate(()=>{openSmartBatchProductFidelity(nodes.find(n=>n.id==='batch'));saveCanvas();});
+    assert.equal((await inspect()).count,1,'opening again reuses the same node');
+    await page.evaluate(()=>saveCanvas());await page.reload();await page.waitForFunction(()=>nodes.some(n=>n.id==='batch'));
+    assert.deepEqual(await inspect(),initial);assert.equal(paid.length,0);
+    // Keep a screenshot of the actual protection editor used by the batch shortcut.
+    await page.evaluate(()=>openSmartBatchProductFidelity(nodes.find(n=>n.id==='batch')));
+    await page.waitForFunction(id=>Boolean(productFidelitySessions.get(id)?.draw),initial.id);
+    await page.locator('[data-id="'+initial.id+'"]').screenshot({path:path.join(output,'editor.png')});
+});
+
+test('batch insertion undoes in one step and output fitting shares settings across views and reload',{timeout:45000},async t=>{
+    const {page,paid}=await fixture(t);await installProtectedBatch(page);
+    const before=await page.evaluate(()=>({connections:canvas.connections.map(c=>({...c})),refs:smartLoopPreviewImages(nodes.find(n=>n.id==='batch')).map(ref=>ref.url)}));
+    await page.locator('[data-id="batch"] [data-batch-product-protection]').click();
+    await page.evaluate(()=>performUndo());
+    assert.deepEqual(await page.evaluate(()=>({connections:canvas.connections.map(c=>({...c})),refs:smartLoopPreviewImages(nodes.find(n=>n.id==='batch')).map(ref=>ref.url)})),before);
+    assert.equal(await page.evaluate(()=>nodes.filter(isProductFidelityNode).length),0);
+    await page.evaluate(()=>openSmartBatchProductFidelity(nodes.find(n=>n.id==='batch')));
+    const id=await page.evaluate(()=>productFidelitySourcesFor(nodes.find(n=>n.id==='batch'))[0].id);
+    const node=page.locator('[data-id="'+id+'"]'),fit=node.locator('[data-pf-simple-fit]');
+    assert.equal(await fit.isChecked(),true);
+    await fit.uncheck();
+    await showSetting(node,'fitOutputCanvas');
+    assert.equal(await node.locator('[data-pf-field="fitOutputCanvas"]').isChecked(),false);
+    await node.locator('[data-pf-field="fitOutputCanvas"]').check();
+    await node.locator('[data-pf-ui-mode="simple"]').click();assert.equal(await fit.isChecked(),true);
+    await page.evaluate(()=>saveCanvas());await page.reload();await page.waitForFunction(()=>nodes.some(n=>n.id==='batch'));
+    assert.equal(await page.evaluate(()=>productFidelitySourcesFor(nodes.find(n=>n.id==='batch'))[0].fidelityConfig.fitOutputCanvas),true);
+    assert.equal(paid.length,0);
+});
+
+test('batch protection handles mixed groups and manual uploads without protecting the style image',{timeout:45000},async t=>{
+    const {page}=await fixture(t);await installProtectedBatch(page);
+    await page.evaluate(()=>{
+        const product=nodes.find(n=>n.id==='product'),batch=nodes.find(n=>n.id==='batch');
+        product.images.push({url:'/fixture/mixed-style.png',kind:'image',name:'同组风格图'});
+        batch.batchCommerceRoles={[inputRefKey(imagesForNode(product)[1])]:'reference'};
+        const manual={url:'/fixture/manual.png',kind:'image',referenceId:'manual-product',name:'上传产品'};
+        batch.manualInputRefs=[manual];
+        batch.inputRefOrder=smartLoopPreviewImages(batch).map(inputRefKey).reverse();
+        render();
+    });
+    const before=await page.evaluate(()=>smartLoopPreviewImages(nodes.find(n=>n.id==='batch')).map(ref=>[ref.url,smartBatchRole(nodes.find(n=>n.id==='batch'),ref)]));
+    await page.locator('[data-id="batch"] [data-batch-product-protection]').click();
+    assert.deepEqual(await page.evaluate(()=>smartLoopPreviewImages(nodes.find(n=>n.id==='batch')).map(ref=>[ref.url,smartBatchRole(nodes.find(n=>n.id==='batch'),ref)])),before);
+    assert.deepEqual(await page.evaluate(()=>productFidelityInputImages(productFidelitySourcesFor(nodes.find(n=>n.id==='batch'))[0]).map(ref=>ref.url).sort()),['/fixture/A.png','/fixture/manual.png']);
+    const sourceCount=await page.evaluate(()=>{
+        const style=nodes.find(n=>n.id==='style'),batch=nodes.find(n=>n.id==='batch');
+        const styleProcessor=createProductFidelityNodeAt({x:-1200,y:400});connectInputNode(style.id,styleProcessor.id);connectInputNode(styleProcessor.id,batch.id,'reference');
+        return productFidelitySourcesFor(batch).length;
+    });
+    assert.equal(sourceCount,1,'a protection processor on the style port cannot override the product rules');
+});
+
+test('every batch screen and retry submits the product identity and conflicts stop before generation',{timeout:45000},async t=>{
+    const {page,paid}=await fixture(t);await installProtectedBatch(page);
+    const id=await page.evaluate(()=>{
+        const batch=nodes.find(n=>n.id==='batch');openSmartBatchProductFidelity(batch);
+        const source=productFidelitySourcesFor(batch)[0];
+        source.fidelityConfig.maskStrokes=[{points:[[.5,.5]],width:.3,erase:false}];
+        return source.id;
+    });
+    await page.evaluate(async()=>{
+        const batch=nodes.find(n=>n.id==='batch');
+        await runSmartBatchScreen(batch,0);await runSmartBatchScreen(batch,1);await runSmartBatchScreen(batch,0);
+    });
+    assert.equal(paid.length,3);
+    const identity=paid[0].product_fidelity.productReferenceId;
+    for(const request of paid){
+        assert.equal(request.product_fidelity.sourceNodeId,id);assert.equal(request.product_fidelity.mode,'strict');
+        assert.equal(request.product_fidelity.fitOutputCanvas,true);
+        assert.equal(request.product_fidelity.productReferenceId,identity);
+        assert.deepEqual(request.product_fidelity.maskStrokes,[{points:[[.5,.5]],width:.3,erase:false}]);
+        assert.deepEqual(request.reference_images.map(ref=>[ref.url,ref.role]),[['/fixture/A.png','product_reference'],['/fixture/style.png','user_reference']]);
+        assert.equal(request.reference_images[0].reference_id,identity);
+    }
+    await page.evaluate(async()=>{
+        const batch=nodes.find(n=>n.id==='batch'),other=createProductFidelityNodeAt({x:-1600,y:400});
+        connectInputNode('product',other.id);connectInputNode(other.id,batch.id,'product');
+        await runSmartBatchScreen(batch,1);
+    });
+    assert.equal(paid.length,3,'multiple product processors are rejected before a paid task is created');
+    assert.match(await page.locator('.toast').last().textContent(),/多个.*产品保护/);
+});
+
+test('whole protected batches keep the same rules in parallel and sequential modes',{timeout:45000},async t=>{
+    const {page,paid}=await fixture(t);await installProtectedBatch(page);
+    await page.evaluate(()=>{
+        const batch=nodes.find(n=>n.id==='batch');openSmartBatchProductFidelity(batch);
+        productFidelitySourcesFor(batch)[0].fidelityConfig.maskStrokes=[{points:[[.5,.5]],width:.3}];
+    });
+    for(const mode of ['parallel','serial']){
+        await page.evaluate(async mode=>{
+            const batch=nodes.find(n=>n.id==='batch');batch.mode=mode;
+            await runSmartLoopDetailBatch(batch,smartLoopDetailPaintNodes(batch));
+        },mode);
+    }
+    assert.equal(paid.length,4);
+    for(const request of paid){
+        assert.equal(request.product_fidelity.enabled,true);
+        assert.equal(request.product_fidelity.fitOutputCanvas,true);
+        assert.equal(request.product_fidelity.productReferenceId,paid[0].product_fidelity.productReferenceId);
+    }
+    await page.evaluate(()=>saveCanvas());await page.reload();await page.waitForFunction(()=>nodes.some(n=>n.id==='batch'));
+    assert.equal(await page.evaluate(()=>smartLoopDetailPaintNodes(nodes.find(n=>n.id==='batch')).every(paint=>paint.runSettings?.productFidelity?.fitOutputCanvas&&paint.productFidelityResult?.validationStatus==='passed')),true);
+});
+
+test('compact protection controls remain reachable and saved settings survive reload and save failure',{timeout:45000},async t=>{
+    const {page,stored,paid}=await fixture(t);
+    let id;
+    for(const [width,height] of [[1366,768],[1440,900],[1920,1080]]){
+        await page.setViewportSize({width,height});
+        id=await page.evaluate(({width,height})=>{
+            nodes=[{id:'product',type:'smart-upload',x:-1000,y:180,images:[{url:'/fixture/A.png',kind:'image',name:'产品原图'}]}];
+            canvas.connections=[];canvasUsesConnections=true;viewport={x:0,y:0,scale:1};applyViewport();
+            const n=createProductFidelityNodeAt({x:width/2,y:height/2+30});connectInputNode('product',n.id);selectedId=n.id;render();return n.id;
+        },{width,height});
+        await page.waitForFunction(id=>Boolean(productFidelitySessions.get(id)?.draw),id);
+        const node=page.locator('.image-node[data-id="'+id+'"]');
+        const box=await node.boundingBox(),button=await node.locator('[data-pf-action="preview"]').boundingBox();
+        assert.ok(box.y>=76&&box.y+box.height<=height-19,JSON.stringify({width,height,box}));
+        assert.ok(button.y+button.height<=height);
+        for(const selector of ['[data-pf-action="preview"]','[data-pf-history="undo"]','[data-pf-action="clear-mask"]']){
+            assert.equal(await node.locator(selector).evaluate(el=>{
+                const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));
+            }),true,selector+' remains unobscured at '+width+'×'+height);
+        }
+        assert.equal(await node.locator('[data-pf-custom-warning]').isVisible(),false);
+        const tabSurfaces=await node.locator('[data-pf-ui-mode]').evaluateAll(els=>els.map(el=>getComputedStyle(el).backgroundColor));
+        assert.notEqual(tabSurfaces[0],tabSurfaces[1],'current settings view has a distinct selected surface');
+        await node.locator('[data-pf-preset="structure"]').click();
+        await page.evaluate(id=>render({nodeIds:[id]}),id);
+        assert.equal(await node.locator('[data-pf-custom-warning]').isVisible(),false,'a simple preset is not reported as a custom edit');
+        await page.mouse.move(0,0);
+        const border=await node.locator('[data-pf-preset="structure"]').evaluate(el=>getComputedStyle(el).borderColor);
+        await node.locator('[data-pf-preset="structure"]').hover();
+        await page.waitForFunction(({id,border})=>getComputedStyle(document.querySelector('[data-id="'+id+'"] [data-pf-preset="structure"]')).borderColor===border,{id,border});
+    }
+    const node=page.locator('.image-node[data-id="'+id+'"]');
+    await node.locator('[data-pf-preset="view"]').click();
+    assert.match(await page.locator('.pf-confirm-dialog p').textContent(),/从「光影融合」切换为「换拍摄角度」/);
+    await page.locator('[data-pf-confirm="accept"]').click();
+    assert.match(await node.locator('[data-pf-simple-view-summary]').textContent(),/原图角度（0°）/);
+    assert.doesNotMatch(await node.locator('[data-pf-mode-next]').textContent(),/已设置/);
+    await page.evaluate(()=>saveCanvas());
+    assert.equal(stored().nodes.find(n=>n.id===id).fidelityConfig.mode,'view');
+    await page.reload();await page.waitForFunction(id=>nodes.some(n=>n.id===id),id);
+    assert.match(await node.locator('[data-pf-simple-view-summary]').textContent(),/原图角度（0°）/);
+    const failedSave=route=>route.request().method()==='PUT'?route.fulfill({status:500,json:{detail:'保存失败'}}):route.fallback();
+    await page.route('**/api/canvases/fidelity',failedSave);
+    await node.locator('[data-pf-simple-detail]').uncheck();
+    assert.equal(await page.evaluate(()=>saveCanvas()),false);
+    assert.equal(await node.locator('[data-pf-simple-detail]').isChecked(),false,'failed save keeps the current input');
+    assert.doesNotMatch(await node.locator('[data-pf-status]').textContent(),/已保存/);
+    await page.unroute('**/api/canvases/fidelity',failedSave);
+    await page.evaluate(()=>saveCanvas());await page.reload();
+    await page.waitForFunction(id=>nodes.some(n=>n.id===id),id);
+    assert.equal(await node.locator('[data-pf-simple-detail]').isChecked(),false);
+    let finishPreview;
+    const previewGate=new Promise(resolve=>{finishPreview=resolve;});
+    await page.route('**/api/product-fidelity/preview',async route=>{
+        await previewGate;
+        return route.fulfill({json:{reference_images:[],generatedAssets:[],detectedRois:[],warnings:[],paidApiCalled:false}});
+    });
+    const previewButton=node.locator('[data-pf-action="preview"]'),readyWidth=(await previewButton.boundingBox()).width;
+    await previewButton.click();
+    await page.waitForFunction(()=>document.querySelector('[data-pf-action="preview"]').textContent==='正在生成参考图…');
+    assert.equal(await previewButton.isDisabled(),true);
+    assert.equal((await previewButton.boundingBox()).width,readyWidth,'busy feedback does not move the action');
+    finishPreview();
+    await page.waitForFunction(()=>document.querySelector('[data-pf-status]').textContent==='保护参考图已更新');
+    assert.equal(await previewButton.isEnabled(),true);
+    const legacy=await page.evaluate(()=>normalizeProductFidelityNode({id:'legacy-size',w:1100,h:820,x:13,y:24,fidelityConfig:productFidelityDefaults()}));
+    assert.deepEqual([legacy.x,legacy.y,legacy.w,legacy.h],[13,24,1100,820]);
+    assert.equal(paid.length,0);
+});
+
 test('editor follows the three steps and keeps single and multiple product names readable',{timeout:45000},async t=>{
     const {page,previews,paid}=await fixture(t);
     await page.route('**/fixture/portrait.png',route=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="1501" height="2048"><defs><linearGradient id="paper" x2="1" y2="1"><stop stop-color="#fafafa"/><stop offset="1" stop-color="#e6e6eb"/></linearGradient></defs><rect width="1501" height="2048" fill="#f4f4f5"/><rect x="65" y="65" width="1371" height="1918" fill="#353337"/><rect x="135" y="135" width="1231" height="1778" fill="url(#paper)"/></svg>'}));
@@ -85,7 +300,7 @@ test('editor follows the three steps and keeps single and multiple product names
     const steps=await node.locator('.pf-image-heading strong,[data-pf-ui-panel="simple"] h2').allTextContents();
     assert.deepEqual(steps,['1. 选择商品原图','2. 标记保留区域','3. 选择出图方式']);
     const tools=await node.locator('.pf-toolbar-card').boundingBox(),image=await node.locator('.pf-canvas-stage').boundingBox(),actions=await node.locator('.pf-control-actions').boundingBox();
-    assert.ok(tools.y+tools.height<=image.y+1&&image.y+image.height<=actions.y,'tools, image and history follow the editing order');
+    assert.ok(tools.y+tools.height<=image.y+1&&actions.y>=tools.y&&actions.y+actions.height<=image.y,'marking and history controls stay above the image');
     await node.locator('[data-pf-brush]').fill('8');
     assert.equal(await node.locator('[data-pf-brush-size]').textContent(),'120 px');
     await page.evaluate(id=>{render({nodeIds:[id]});},id);
@@ -112,7 +327,7 @@ test('editor follows the three steps and keeps single and multiple product names
     await node.locator('.pf-control-actions').scrollIntoViewIfNeeded();
     assert.equal(await node.locator('[data-pf-root]').evaluate(el=>el.scrollWidth<=el.clientWidth),true);
     const narrowTools=await node.locator('.pf-toolbar-card').boundingBox(),narrowActions=await node.locator('.pf-control-actions').boundingBox();
-    assert.ok(narrowTools.y+narrowTools.height<narrowActions.y);
+    assert.ok(narrowActions.y>=narrowTools.y&&narrowActions.y+narrowActions.height<=narrowTools.y+narrowTools.height);
     await node.locator('[data-pf-expand]').click();
     await page.waitForFunction(()=>document.querySelector('[data-pf-expand]').getAttribute('aria-expanded')==='true');
     assert.equal(await node.locator('[data-pf-expand]').textContent(),'收起编辑');
@@ -193,11 +408,12 @@ test('simple and all views share the original config and guard linked changes',{
     });
     const node=page.locator('.image-node[data-id="'+id+'"]');
     assert.equal(await node.locator('[data-pf-ui-mode="simple"]').getAttribute('aria-selected'),'true');
-    assert.match(await node.locator('[data-pf-mode-explanation]').textContent(),/已选：仅换背景.*左侧仍显示商品原图/);
+    assert.match(await node.locator('[data-pf-mode-title]').textContent(),/已选：仅换背景/);
+    assert.match(await node.locator('.pf-output-note').textContent(),/左侧为原图.*下游「绘画」节点生成/);
     assert.equal(await node.locator('[data-pf-simple-view-open]').isVisible(),false);
     assert.equal(await node.locator('[data-pf-group]').count(),8);
-    assert.equal(await node.locator('[data-pf-action="preview"]').textContent(),'应用并生成锁定图');
-    assert.equal(await node.locator('[data-pf-status]').textContent(),'设置已就绪，点击右侧按钮即可生效');
+    assert.equal(await node.locator('[data-pf-action="preview"]').textContent(),'生成保护参考图');
+    assert.equal(await node.locator('[data-pf-status]').textContent(),'保护设置已更新，可生成参考图');
     assert.equal(await node.locator('.pf-footer-action span').count(),0);
     assert.equal(await node.locator('.pf-asset-panel').isVisible(),false);
     assert.match(await node.locator('[data-pf-route]').textContent(),/^将本节点连线至「AI生图」节点/);
@@ -226,7 +442,8 @@ test('simple and all views share the original config and guard linked changes',{
     await node.locator('[data-pf-preset="structure"]').click();
     await page.locator('.pf-confirm-dialog [data-pf-confirm="accept"]').click();
     assert.equal(await page.evaluate(id=>nodes.find(item=>item.id===id).fidelityConfig.mode,id),'structure');
-    assert.match(await node.locator('[data-pf-mode-explanation]').textContent(),/已选：光影融合.*商品的颜色和细节可能变化/);
+    assert.match(await node.locator('[data-pf-mode-title]').textContent(),/已选：光影融合/);
+    assert.match(await node.locator('[data-pf-preset="structure"]').textContent(),/同角度调整光照，颜色和细节可能变化/);
     await node.locator('[data-pf-simple-dimensions]').check();
     if(await page.locator('.pf-confirm-dialog').count())await page.locator('.pf-confirm-dialog [data-pf-confirm="accept"]').click();
     await node.locator('[data-pf-simple-dimension="width"]').fill('30');
@@ -253,14 +470,16 @@ test('simple and all views share the original config and guard linked changes',{
     await node.locator('[data-pf-preset="view"]').click();
     await page.locator('.pf-confirm-dialog [data-pf-confirm="accept"]').click();
     assert.deepEqual(await page.evaluate(id=>{const c=nodes.find(item=>item.id===id).fidelityConfig;return [c.mode,c.dimensions.constraintMode,c.dimensions.width];},id),['view','prompt',300]);
-    assert.match(await node.locator('[data-pf-mode-explanation]').textContent(),/已选：换拍摄角度.*下游「绘画（AI 生图）」出图时看到/);
+    assert.match(await node.locator('[data-pf-preset="view"]').textContent(),/按新机位重绘，未见面由 AI 推测/);
+    assert.match(await node.locator('[data-pf-simple-view-summary]').textContent(),/原图角度（0°）/);
+    assert.doesNotMatch(await node.locator('[data-pf-mode-next]').textContent(),/已设置/);
     assert.equal(await node.locator('[data-pf-simple-view-open]').isEnabled(),true);
     await node.locator('[data-pf-simple-view-open]').click();
     const viewDialog=page.locator('dialog.pf-view-dialog');
     await viewDialog.locator('[data-pf-view-preset="right"]').click();
     await viewDialog.locator('[data-pf-view-apply]').click();
     assert.match(await node.locator('[data-pf-simple-view-summary]').textContent(),/相机向右 45°/);
-    assert.match(await node.locator('[data-pf-mode-next]').textContent(),/角度已设置/);
+    assert.match(await node.locator('[data-pf-mode-next]').textContent(),/目标机位已设置/);
     if(process.env.FIDELITY_SCREENSHOT_DIR){
         fs.mkdirSync(process.env.FIDELITY_SCREENSHOT_DIR,{recursive:true});
         await node.screenshot({path:path.join(process.env.FIDELITY_SCREENSHOT_DIR,'product-protection-wide-light.png')});
@@ -701,8 +920,9 @@ test('settings mask exports a full-size protection PNG and imports into fidelity
     });
     const source=page.locator('.image-node[data-id="product"]');
     await source.locator('[data-smart-node-settings]').click();
-    assert.equal(await source.locator('[data-smart-node-action="mask"]').textContent().then(s=>s.trim()),'抹除');
-    await source.locator('[data-smart-node-action="protection-mask"]').click();
+    const imageMenu = page.locator('.smart-node-settings-panel:popover-open');
+    assert.equal(await imageMenu.locator('[data-smart-node-action="mask"]').textContent().then(s=>s.trim()),'抹除');
+    await imageMenu.locator('[data-smart-node-action="protection-mask"]').click();
     await page.waitForFunction(()=>document.getElementById('cropImage').naturalWidth===600&&editDrawCanvas().width===600);
     assert.equal(await page.locator('#imageEditTitle').textContent(),'保护蒙版');
     await page.locator('#imageEditApplyBtn').click();

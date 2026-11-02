@@ -11,17 +11,18 @@
             } catch(e) {}
         })();
     </script>
-    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.10.29.1784161005"></script>
-    <script src="/static/vendor/js/lucide.js?v=2026.10.29.1784161005"></script>
-    <script src="/static/vendor/js/qrcode-generator-2.0.4.js?v=2026.10.29.499162500"></script>
-    <script src="/static/vendor/js/qrcode-generator-utf8-2.0.4.js?v=2026.10.29.499162500"></script>
-    <script src="/static/js/theme.js?v=2026.10.29.1791335865"></script>
-    <script src="/static/js/i18n.js?v=2026.10.29.1793175804"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.29.1792900345">
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.29.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.29.1792843621">
-    <link rel="stylesheet" href="/static/css/api-settings.css?v=2026.10.29.1793004688">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.29.1790178173"></script>
+    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.11.02.1784161005"></script>
+    <script src="/static/vendor/js/lucide.js?v=2026.11.02.1784161005"></script>
+    <script src="/static/vendor/js/qrcode-generator-2.0.4.js?v=2026.11.02.499162500"></script>
+    <script src="/static/vendor/js/qrcode-generator-utf8-2.0.4.js?v=2026.11.02.499162500"></script>
+    <script src="/static/js/theme.js?v=2026.11.02.1791335865"></script>
+    <script src="/static/js/i18n.js?v=2026.11.02.1801000000"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.11.02.1792900345">
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.11.02.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.11.02.1792843621">
+    <link rel="stylesheet" href="/static/css/api-settings.css?v=2026.11.02.1801000000">
+    <link rel="stylesheet" href="/static/css/api-recommendations.css?v=2026.11.02.1793356450">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.11.02.1790178173"></script>
 </head>
 <body>
     <div class="page">
@@ -36,7 +37,7 @@
 
             <div class="layout">
                 <aside class="sidebar">
-                    <div class="side-section-title" data-i18n="api.providersTitle">平台列表</div>
+                    <div class="side-section-title"><span data-i18n="api.providersTitle">平台列表</span><b id="providerCount" class="side-section-count" aria-hidden="true"></b></div>
                     <div id="providerList" class="provider-list"></div>
                     <button class="add-btn" type="button" onclick="addProvider()"><i data-lucide="plus" class="w-4 h-4"></i><span data-i18n="api.addProvider">新增平台</span></button>
                     <button class="api-link-btn" type="button" onclick="openRecommendApi()"><i data-lucide="sparkles" class="w-4 h-4"></i><span data-i18n="api.recommendApi">推荐API</span></button>
@@ -362,12 +363,6 @@
                 </div>
             </main>
                 <main id="recommendContent" class="content recommend-content" hidden>
-                    <div class="content-head">
-                        <div>
-                            <div class="editor-title" data-i18n="api.recommendPanelTitle">推荐平台</div>
-                            <div class="editor-sub" data-i18n="api.recommendPanelSub">获取 Key 后保存，右侧会切换到刚保存的平台配置。</div>
-                        </div>
-                    </div>
                     <section id="recommendPanel" class="provider-onboarding-card recommend-inline-card"></section>
                 </main>
         </div>
@@ -386,6 +381,28 @@
             </div>
             <div id="recommendApiList" class="recommend-api-body"></div>
             <div class="recommend-note" data-i18n="api.recommendApiNote">提示：账户内需要至少 0.05 元余额，才能验证地址并拉取模型。</div>
+        </div>
+    </div>
+
+    <div id="recommendationEditor" class="picker-overlay" onclick="if(event.target === this) closeRecommendationEditor()">
+        <div class="picker-modal recommendation-editor" role="dialog" aria-modal="true" aria-labelledby="recommendationEditorTitle">
+            <div class="picker-head">
+                <div id="recommendationEditorTitle" class="picker-title" data-i18n="api.addRecommendation">添加推荐 API</div>
+                <button class="ghost-btn" type="button" onclick="closeRecommendationEditor()" aria-label="关闭" data-i18n-title="api.cancel"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <form id="recommendationForm" onsubmit="submitRecommendation(event)">
+                <fieldset class="recommendation-fields">
+                    <label class="field full"><span class="label" data-i18n="api.platformName">平台名称</span><div class="field-frame"><input name="name" required maxlength="80" autocomplete="off"></div></label>
+                    <label class="field full"><span class="label" data-i18n="api.baseUrl">请求地址</span><div class="field-frame"><input name="base_url" type="url" required maxlength="2048" placeholder="https://api.example.com" autocomplete="url"></div></label>
+                    <label class="field full"><span class="label" data-i18n="api.recommendationRegisterUrl">注册链接</span><div class="field-frame"><input name="register_url" type="url" maxlength="2048" placeholder="https://example.com/register"></div><span class="hint" data-i18n="api.recommendationRegisterHint">留空时使用请求地址。</span></label>
+                    <label class="field"><span class="label" data-i18n="api.protocol">协议</span><div class="field-frame"><select name="protocol"><option value="openai">OpenAI</option><option value="gemini">Gemini</option><option value="apimart" data-i18n="api.protocolApimart">异步协议</option><option value="volcengine">方舟 / Ark</option></select></div></label>
+                    <label class="field"><span class="label" data-i18n="api.recommendationImageMode">图片接口</span><div class="field-frame"><select name="image_request_mode"><option value="openai">OpenAI</option><option value="openai-json">OpenAI JSON</option><option value="openai-video-proxy">OpenAI 中转</option><option value="openai-responses">OpenAI RS</option></select></div></label>
+                    <div class="field full"><span class="label" data-i18n="api.recommendationKinds">模型类型</span><div class="recommendation-kinds"><label><input type="checkbox" name="kinds" value="image" checked><span data-i18n="api.tagImageModels">图像模型</span></label><label><input type="checkbox" name="kinds" value="video" checked><span data-i18n="api.tagVideoModels">视频模型</span></label><label><input type="checkbox" name="kinds" value="chat" checked><span data-i18n="api.tagLlmModels">LLM模型</span></label></div></div>
+                    <label class="field full"><span class="label" data-i18n="api.recommendationSummary">平台说明（可选）</span><textarea name="summary" maxlength="500" rows="3"></textarea></label>
+                    <p id="recommendationError" class="recommendation-error full" role="alert"></p>
+                    <div class="recommendation-footer full"><button class="action-btn" type="button" onclick="closeRecommendationEditor()" data-i18n="api.cancel">取消</button><button class="action-btn save-btn" type="submit" data-i18n="api.save">保存</button></div>
+                </fieldset>
+            </form>
         </div>
     </div>
 
@@ -505,6 +522,7 @@
         </div>
     </div>
 
-    <script src="/static/js/api-settings.js?v=2026.10.29.1793239927"></script>
+    <script src="/static/js/api-settings.js?v=2026.11.02.1801000000"></script>
+    <script src="/static/js/api-recommendations.js?v=2026.11.02.1793356500"></script>
 </body>
 </html>

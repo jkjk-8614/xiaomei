@@ -6,11 +6,11 @@ import tempfile
 import unittest
 from copy import deepcopy
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from PIL import Image, ImageChops, ImageDraw
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 from tests.test_design_brain_bots import (
     DesignBotOrchestratorTestBase, FakeHost, DIRECTOR_CREATE, PLANNER_TWO_SHOTS, sku_plan,
@@ -43,13 +43,15 @@ class EcommercePipelineTest(DesignBotOrchestratorTestBase):
             self.assertEqual(task["status"], "awaiting_confirmation", task["error"])
             self.assertEqual(task["brief"]["image_count"], 5)
             self.assertEqual([s["role"] for s in task["plan"]["shots"]], ["ctr"] + ["conversion"] * 4)
-            self.assertEqual([s["aspect_ratio"] for s in task["plan"]["shots"]], ["1:1"] + ["2:3"] * 4)
+            self.assertEqual([s["aspect_ratio"] for s in task["plan"]["shots"]], ["1:1"] * 5)
+            self.assertTrue(all(s["size"] == "1024x1024" for s in task["plan"]["shots"]))
             self.assertEqual(task["plan"]["test_schedule"], CTR_TEST_SCHEDULE)
             self.assertFalse(host.created)
             orch.tasks.patch(task["id"], lambda t: t.update(status="executing"))
             task = await self.drive_until(orch, task["id"], {"delivered", "failed"})
             self.assertEqual(task["status"], "delivered", task["error"])
             self.assertEqual(len(host.created), 5)
+            self.assertTrue(all(p.size == "1024x1024" and p.aspect_ratio == "1:1" for p in host.created))
         asyncio.run(scenario())
 
     def test_short_main_plan_fails_before_paid_generation(self):
@@ -77,6 +79,9 @@ class EcommercePipelineTest(DesignBotOrchestratorTestBase):
             self.assertTrue(all(s["aspect_ratio"] == "9:16" for s in shots))
             self.assertEqual(len({s["size"].split("x")[0] for s in shots}), 1)
             self.assertEqual(len(AgentTaskStore(self._tmp.name).get(task["id"])["plan"]["shots"]), 60)
+            self.assertEqual(task["plan"]["visual_framework"]["typography"]["subtitle_px"], 32)
+            self.assertEqual(task["plan"]["visual_framework"]["typography"]["title_line_gap_px"], 20)
+            self.assertTrue(all("790px宽" in shot["prompt"] and "整页总高度无限制" in shot["prompt"] for shot in shots))
             self.assertFalse(host.created)
         asyncio.run(scenario())
 
@@ -156,9 +161,75 @@ class VisualRulesTest(unittest.TestCase):
     def test_bad_fonts_colors_and_small_type_are_rejected(self):
         framework = sku_plan()["visual_framework"]
         for bad in ({"palette": ["#111111"] * 4}, {"fonts": ["a", "b", "c", "d"]},
-                    {"typography": {"title_pt": 40, "subtitle_pt": 24, "body_pt": 18, "line_extra_px": 10}}):
+                    {"typography": {"title_px": 40, "subtitle_px": 24, "body_px": 18, "line_extra_px": 10}},
+                    {"typography": {"title_px": 44, "subtitle_px": 24, "body_px": 26, "line_extra_px": 10}},
+                    {"typography": {"title_px": 64, "subtitle_px": 22, "body_px": 26, "line_extra_px": 10}}):
             with self.subTest(bad=bad), self.assertRaises(VisualRuleError):
                 validate_framework({**framework, **bad})
+
+    def test_main_conversion_image_must_also_be_square(self):
+        brief = {"task_type": "main_image"}
+        plan = visual_plan(5)
+        apply_ecommerce_plan(brief, plan, compose=True)
+        plan["shots"][1]["size"] = "1024x1536"
+        with self.assertRaisesRegex(DesignBrainError, "第1至5张均应为1:1"):
+            apply_ecommerce_plan(brief, plan)
+
+    def test_px_typography_and_detail_reference_standard_reach_prompts(self):
+        plan = visual_plan(4)
+        apply_ecommerce_plan({"task_type": "detail_images"}, plan, compose=True)
+        self.assertEqual(plan["visual_framework"]["typography"],
+                         {"title_px": 64, "subtitle_px": 32, "body_px": 26, "line_extra_px": 10,
+                          "title_line_gap_px": 20, "subtitle_line_gap_px": 10})
+        for shot in plan["shots"]:
+            self.assertIn("790px宽、首屏约1200至1400px高、后续每屏约1200px高", shot["prompt"])
+            self.assertIn("整页总高度无限制", shot["prompt"])
+            for method in ("左右、上下或对角构图", "产品本身颜色", "页面主题", "情绪与使用环境", "Medium至Heavy", "Regular至Light"):
+                self.assertIn(method, shot["prompt"])
+            self.assertIn('"title_px": 64', shot["prompt"])
+            self.assertNotIn("_pt", shot["prompt"])
+            self.assertNotIn("25pt", shot["prompt"])
+
+    def test_reference_typography_accepts_46px_and_keeps_separate_title_gaps(self):
+        framework = sku_plan()["visual_framework"]
+        typography = {"title_px": 46, "subtitle_px": 24, "body_px": 26, "line_extra_px": 10,
+                      "title_line_gap_px": 30, "subtitle_line_gap_px": 8}
+        self.assertEqual(validate_framework({**framework, "typography": typography})["typography"], typography)
+        for bad in ({"title_line_gap_px": 14}, {"title_line_gap_px": 32},
+                    {"subtitle_line_gap_px": 6}, {"subtitle_line_gap_px": 14}):
+            with self.subTest(bad=bad), self.assertRaisesRegex(VisualRuleError, "行间净空"):
+                validate_framework({**framework, "typography": {**typography, **bad}})
+
+    def test_reference_guidance_reaches_team_planner_and_reviewer(self):
+        from design_brain_bots import PLANNER_SYSTEM, REVIEWER_SYSTEM
+        from design_brain_team import TeamStore
+        from design_brain_turns import TurnEngine
+        methods = ("整页宽度790px", "总高度无限制", "顶部留白100至150px", "左右安全边距40至80px",
+                   "左右构图、上下构图、对角构图", "46至74px", "24至36px", "情绪与使用环境")
+        with tempfile.TemporaryDirectory() as root:
+            team = TeamStore(root)
+            team.ensure_seeded()
+            team.update_bot("bot_planner", {"instructions": "保留用户自定义商品策划方法"})
+            for bot_id in ("bot_director", "bot_planner", "bot_reviewer"):
+                chat = team.ensure_dm_chat(bot_id)
+                prompt = TurnEngine(FakeHost(), team)._system_prompt(chat, None, team.get_bot(bot_id))
+                for method in methods:
+                    self.assertIn(method, prompt)
+            self.assertEqual(team.get_bot("bot_planner")["instructions"], "保留用户自定义商品策划方法")
+        for prompt in (PLANNER_SYSTEM, REVIEWER_SYSTEM):
+            for method in methods:
+                self.assertIn(method, prompt)
+            self.assertNotIn("750px宽", prompt)
+
+    def test_sku_px_font_scales_with_reference_width_without_point_conversion(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "template.png"
+            for width, expected_font_size in ((750, 26), (1500, 52)):
+                Image.new("RGB", (width, width), "white").save(path)
+                with patch("PIL.ImageFont.truetype", wraps=ImageFont.truetype) as load_font:
+                    render_sku_image(path, DEFAULT_LAYOUT,
+                                     {"parameters": "20L", "gifts": "赠品", "attributes": "标准款"})
+                self.assertEqual([call.args[1] for call in load_font.call_args_list], [expected_font_size] * 3)
 
     def test_missing_framework_can_be_completed_without_hiding_invalid_frameworks(self):
         framework = default_visual_framework(

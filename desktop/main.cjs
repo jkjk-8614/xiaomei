@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, ipcMain, session, shell, dialog, Notification, Menu, clipboard, nativeImage } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, session, shell, dialog, Notification, Menu, clipboard, nativeImage, ClipboardItem } = require('electron');
 // 让内嵌跨境平台优先按简体中文协商页面语言；页面是否真的切换成功，
 // 由加载后的本地检查决定，未生效时再进入本机翻译兜底。
 app.commandLine.appendSwitch('lang', 'zh-CN');
@@ -1787,6 +1787,40 @@ try {
   app.setName(APP_NAME);
 } catch {}
 
+// --- GPU 软件渲染回退（内置 PS 修图/PhotoCraft 等 WebGL2 页面依赖） ---
+// 部分 NVIDIA 新驱动在 ANGLE D3D11 上初始化失败，WebGL2/WebGPU 会被完全禁用
+// （chrome://gpu 显示 disabled_off 而非 disabled_software），依赖 WebGL 的页面会
+// 永远卡在加载页。探测到该状态时写标记并带开关重启一次，让 WebGL 退回软件渲染。
+//
+// 2026-10-31 修白屏：旧实现用 --use-gl=angle + --use-angle=swiftshader 强制
+// SwiftShader 合成，在 Electron 45(Chromium 150) 上 WebGL2 虽能建上下文，但窗口
+// 表面不再呈现——整窗只剩背景色（用户看到的就是白屏），而标记会持久化，此后每次
+// 启动都白屏。现在只开 --enable-unsafe-swiftshader：仅在硬件 GL 不可用时让 WebGL
+// 退回 SwiftShader，合成器仍走正常路径，不会再出现空白窗口。
+// 标记另外加了有效期：过期自动重新探测，避免一次偶发失败被永久记住。
+// 删除 userData 下的 gpu-swiftshader-fallback.flag 可立即重新启用硬件探测。
+const GPU_SWIFTSHADER_MARKER = () => path.join(app.getPath('userData'), 'gpu-swiftshader-fallback.flag');
+const GPU_FALLBACK_MARKER_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+function applyGpuSwiftShaderFallback() {
+  app.commandLine.appendSwitch('enable-unsafe-swiftshader');
+}
+function gpuFallbackMarkerState() {
+  try {
+    const stat = fs.statSync(GPU_SWIFTSHADER_MARKER());
+    return Date.now() - stat.mtimeMs > GPU_FALLBACK_MARKER_TTL_MS ? 'expired' : 'active';
+  } catch {
+    return 'absent';
+  }
+}
+function clearGpuFallbackMarker() {
+  try { fs.rmSync(GPU_SWIFTSHADER_MARKER(), { force: true }); } catch {}
+}
+try {
+  const gpuFallbackState = gpuFallbackMarkerState();
+  if (gpuFallbackState === 'expired') clearGpuFallbackMarker();
+  else if (gpuFallbackState === 'active') applyGpuSwiftShaderFallback();
+} catch {}
+
 const desktopUpdater = new DesktopUpdater({
   app,
   buildRevision: APP_BUILD_REVISION,
@@ -2123,7 +2157,7 @@ async function updateDeepSeekHarness(result) {
           if (deepSeekHarnessVisible) await refreshDeepSeekHarness();
           return updated;
         } catch (error) {
-          if (deepSeekHarnessVisible) {
+          if (deepSeekHarnessVisible && error.code !== 'HARNESS_UPDATE_ROLLBACK_FAILED') {
             try { await refreshDeepSeekHarness(); } catch {}
           }
           const retryable = error.code === 'HARNESS_UPDATE_NETWORK' || isNetworkError(error);
@@ -2183,7 +2217,7 @@ async function checkDeepSeekHarnessUpdate({ manual = false } = {}) {
       && Number(state.failedAt || 0) > Date.now() - 24 * 60 * 60 * 1000;
     if (!manual && state.failedCommit === result.remote_commit
       && (!isNetworkError(state.failedMessage) || failedNetworkRecently)
-      && !/\bpnpm\.cmd\b/i.test(state.failedMessage || '')) {
+      && !/\bpnpm\.cmd\b|fatal: failed to create link\b/i.test(state.failedMessage || '')) {
       const failed = { ...result, status: 'error', message: state.failedMessage || '此版本上次更新失败，请手动检查更新后重试' };
       deepSeekHarnessUpdateLastResult = failed;
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('deepseek-harness:update-status', failed);
@@ -3729,7 +3763,7 @@ function harnessModelInputModalities(provider, modelId, modalityCache) {
   if (Array.isArray(published) && published.length) return published.map((value) => String(value).trim()).filter(Boolean);
   const lc = id.toLowerCase();
   const visionFamilies = [
-    'claude', 'gemini', 'gpt-4o', 'gpt-4.1', 'gpt-5', 'grok', 'qwen-vl',
+    'claude', 'gemini', 'gpt-4o', 'gpt-4.1', 'gpt-5', 'gpt-6', 'grok', 'qwen-vl',
     'qwen3-vl', 'internvl', 'qvq', 'glm-4v', 'minicpm-v', 'pixtral',
     'mistral-small-3.1', 'llama-4', 'doubao-vision', 'minimax-m3',
   ];
@@ -7141,11 +7175,37 @@ function createWindow() {
     scheduleCommerceSurfaceResync();
   });
   // Electron 的顶层页面必须是完整的小美画布；商品分析台通过 iframe 作为其中一个工作区加载。
-  mainWindow.loadURL(`${LOCAL_ORIGIN}/static/index.html?page=${encodeURIComponent(START_PAGE)}&v=2026.10.29.current-source.1`);
+  mainWindow.loadURL(`${LOCAL_ORIGIN}/static/index.html?page=${encodeURIComponent(START_PAGE)}&v=2026.11.02.current-source.1`);
 }
 
 app.whenReady().then(async () => {
   try {
+    // GPU 探测与一次性回退重启（说明见上方 applyGpuSwiftShaderFallback 注释）。
+    // 放在 ensureApi 之前，避免回退重启时空跑本地服务进程。
+    // 排障时手工加的 --disable-gpu 会让探测必然读到 disabled_off，因此直接跳过，
+    // 否则一次排障启动就会写死回退标记，之后每次启动都带着它。
+    const gpuSwitchesDisabledByUser = process.argv.some((arg) => /^--(disable-gpu|disable-gpu-compositing|disable-software-rasterizer)$/i.test(String(arg || '')));
+    if (process.env.XIAOMEI_NO_GPU_FALLBACK !== '1' && !gpuSwitchesDisabledByUser) {
+      const gpuMarker = GPU_SWIFTSHADER_MARKER();
+      if (gpuFallbackMarkerState() === 'absent') {
+        const gpuFeatures = app.getGPUFeatureStatus() || {};
+        const webgl2Status = String(gpuFeatures.webgl2 || '');
+        const webgpuStatus = String(gpuFeatures.webgpu || '');
+        if (webgl2Status === 'disabled_off' && webgpuStatus !== 'enabled_on') {
+          appendApiStartupLog(`检测到 WebGL2 不可用（webgl2=${webgl2Status}, webgpu=${webgpuStatus}），写入 GPU 回退标记并以 --enable-unsafe-swiftshader 重启。\n`);
+          try {
+            fs.mkdirSync(path.dirname(gpuMarker), { recursive: true });
+            fs.writeFileSync(gpuMarker, new Date().toISOString());
+          } catch {}
+          app.relaunch({ args: process.argv.slice(1) });
+          app.exit(0);
+          return;
+        }
+      }
+    }
+    if (gpuFallbackMarkerState() === 'active') {
+      appendApiStartupLog('GPU 回退模式已启用：WebGL 使用 SwiftShader 软件渲染，合成器保持正常路径。\n');
+    }
     // 桌面端只使用应用内工具栏；移除 Electron 默认的 File/Edit/... 原生菜单，
     // 避免按 Alt 或窗口状态变化时菜单栏再次弹出。
     Menu.setApplicationMenu(null);
@@ -7245,7 +7305,25 @@ ipcMain.on('deepseek-harness:bounds', (event, bounds) => {
   if (!owner || owner !== mainWindow || event.senderFrame !== event.sender.mainFrame) return;
   setDeepSeekHarnessBounds(bounds);
 });
-ipcMain.handle('clipboard:write-image', (event, payload) => {
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+function isPngBuffer(buffer) {
+  return Buffer.isBuffer(buffer) && buffer.length >= PNG_SIGNATURE.length
+    && buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE);
+}
+// Electron 45 移除了同步的 clipboard.writeImage / readImage，改用 W3C 风格的
+// ClipboardItem 异步写入。渲染进程仍然只传图片字节，写入方式在这里按运行时能力选择。
+async function writeImageToSystemClipboard(image, buffer) {
+  if (typeof clipboard.writeImage === 'function') {
+    clipboard.writeImage(image);
+    return;
+  }
+  if (typeof clipboard.write !== 'function' || typeof ClipboardItem !== 'function') {
+    throw new Error('当前 Electron 版本不支持写入图片剪贴板');
+  }
+  const png = isPngBuffer(buffer) ? buffer : image.toPNG();
+  await clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]);
+}
+ipcMain.handle('clipboard:write-image', async (event, payload) => {
   const owner = BrowserWindow.fromWebContents(event.sender);
   const allowedSender = event.sender === deepSeekHarnessView?.webContents
     ? isHarnessClipboardSender(event) : owner === mainWindow;
@@ -7261,7 +7339,11 @@ ipcMain.handle('clipboard:write-image', (event, payload) => {
   if (!buffer?.length) return { ok: false, message: '图片数据为空' };
   const image = nativeImage.createFromBuffer(buffer);
   if (image.isEmpty()) return { ok: false, message: '图片数据无法解析' };
-  clipboard.writeImage(image);
+  try {
+    await writeImageToSystemClipboard(image, buffer);
+  } catch (error) {
+    return { ok: false, message: `写入剪贴板失败：${error?.message || '未知错误'}` };
+  }
   return { ok: true };
 });
 async function saveWorkflowToDesktop(event, payload = {}) {

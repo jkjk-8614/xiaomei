@@ -127,9 +127,9 @@ def _ring(shape):
 
 
 def _boundary_error(base, patch, support):
-    valid = _ring(base.shape) & (support > .99)
+    valid = _ring(base.shape) & (support > .99) & (base[:, :, 3] > 250) & (patch[:, :, 3] > 250)
     if valid.sum() < 16:
-        return 1.
+        return None
     a = base[:, :, :3].astype(np.float32)[valid]
     b = patch[:, :, :3].astype(np.float32)[valid]
     # Remove a uniform exposure / white balance offset for the geometry check.
@@ -148,7 +148,7 @@ def _soft_mask(mask, feather):
 
 
 def _match_color(base, patch, support):
-    valid = _ring(base.shape) & (support > .99)
+    valid = _ring(base.shape) & (support > .99) & (base[:, :, 3] > 250) & (patch[:, :, 3] > 250)
     if valid.sum() < 32:
         return patch, '边界样本不足，未匹配颜色'
     a, b = base[:, :, :3].astype(np.float32), patch[:, :, :3].astype(np.float32)
@@ -213,7 +213,7 @@ def fuse(request: FusionRequest, resolve, cancel=lambda: False, progress=lambda 
                 warped = cv2.warpAffine(edited, matrix, (w, h))
                 valid = cv2.warpAffine(support, matrix, (w, h))
                 before, after = _boundary_error(base, edited, support), _boundary_error(base, warped, valid)
-                if after < before*.95:
+                if before is not None and after is not None and after < before*.95:
                     edited, support = warped, valid
                     alignment.update(status='registered', matrix=matrix.tolist())
         if item.alignment == 'manual':
@@ -223,11 +223,15 @@ def fuse(request: FusionRequest, resolve, cancel=lambda: False, progress=lambda 
             support = cv2.warpAffine(support, matrix, (w, h))
             alignment['status'] = 'manual'
         error = _boundary_error(base, edited, support)
-        alignment['boundaryError'] = round(error, 4)
-        if error > .20 and item.alignment == 'auto':
+        alignment['boundaryError'] = round(error, 4) if error is not None else None
+        # Saved crop coordinates remain valid after a recolor or background edit.
+        # RGB disagreement alone cannot invalidate that known position.
+        if error is not None and error > .20 and item.alignment == 'auto' and item.region is None:
             raise ValueError('局部图与原图边界差异过大，自动对齐不可靠；请继续修图，或手动定位后预览')
-        if error > .10:
-            warnings.append(f'区域 {index+1} 边界纹理差异较大，请检查预览中的结构和接缝')
+        if error is None:
+            warnings.append(f'区域 {index+1} 边界可见样本不足，已按定位结果融合，请检查接缝')
+        elif error > .10:
+            warnings.append(f'区域 {index+1} 边界颜色或纹理差异较大，已按定位结果融合，请检查结构和接缝')
         mask = np.full((h, w), 255, np.uint8)
         if item.maskUrl:
             mask_image = read_image(item.maskUrl, resolve)

@@ -27,6 +27,8 @@ vm.runInContext([
     'smartLoopAiSplitIsStale',
     'smartLoopDetailPaintNodes',
     'smartLoopPairedState',
+    'smartLoopCommerceFields',
+    'smartLoopReadyKey',
     'smartLoopNumberedScreenBlocks',
     'smartLoopNumberedScreenItems',
     'extractSmartLoopSourceScreens',
@@ -285,4 +287,16 @@ test('detail paint targets are counted once when legacy flow and input links coe
         variablePrompts: ['屏幕一']
     };
     assert.deepEqual(Array.from(context.smartLoopDetailPaintNodes(node), item => item.id), ['paint-1']);
+});
+
+test('batch ready summary follows the selected generation type', () => {
+    assert.equal(context.smartLoopReadyKey({batchCommerce:{mode:'主图'}}), 'smart.loopMainReady');
+    assert.equal(context.smartLoopReadyKey({batchCommerce:{mode:'详情页'}}), 'smart.loopDetailReady');
+    assert.equal(context.smartLoopReadyKey({}), 'smart.loopDetailReady');
+});
+
+test('i18n defines both ready-summary variants', () => {
+    const i18n = fs.readFileSync(path.join(__dirname, '../static/js/i18n/smart-canvas.js'), 'utf8');
+    assert.match(i18n, /"smart\.loopDetailReady"/);
+    assert.match(i18n, /"smart\.loopMainReady"/);
 });

@@ -8,12 +8,15 @@
 上游更新**不会**让这些改动消失，`desktop/deepseek-updater.cjs` 已经处理了：
 
 1. 更新前用临时索引捕获 `git diff --binary HEAD`，同时包含尚未跟踪的新适配文件；
-2. 在一个临时克隆里先 `git apply --3way` **预检**，冲突就在动真格之前中止，工作树一点不动；
+   命令输出按 UTF-8 连续解码，等待输出管道关闭后保存，避免中文字符跨数据块时损坏补丁。
+2. 复制临时克隆（支持程序与用户数据位于不同磁盘），先 `git apply --3way` **预检**，冲突就在修改正式工作树之前中止；
 3. 真更新时 `reset --hard` → `merge --ff-only` → 重新 `apply --3way`；
-4. 失败则回滚到原提交并把补丁打回去。
+4. 构建后在独立 Node 进程运行 `desktop/harness-model-check.cjs`，检查桌面端生成的模型配置与实际 Harness 产物能否保留图片能力，以及纯文本模型的限制；检查通过才报告更新成功。
+5. 失败则回滚到原提交并把补丁打回去；已经开始构建时，重新安装旧锁文件依赖、重建旧产物并再次验证。
 
-所以真正需要人工介入的只有一种情况：**上游改到了同一段代码，3-way 合不上**。
-这时更新会报「适配补丁与上游冲突：<文件列表>」，工作树保持更新前的样子。
+上游改到了同一段代码、3-way 合不上时，需要人工处理。
+更新会报「适配补丁与上游冲突：<文件列表>」，工作树保持更新前的样子。
+先在临时副本检出待更新提交并重放补丁，检查具体冲突；确认只是导入行等局部重叠时，可调整正式工作树的对应适配，再重新预检。不要通过丢弃整个文件的本地改动消除冲突。
 
 ## 两条铁律
 
@@ -34,6 +37,20 @@ node desktop/harness-patch.cjs rebuild   # 重建产物，--host / --web 可选
 
 补丁同时写两份：`desktop/harness-patches/xiaomei-adapter.patch`（随应用仓库走，可评审）
 和 `.xiaomei-data/deepseek-harness-adapter.patch`（运行时稳定副本，更新器也会刷新它）。
+
+## 模型图片能力回归
+
+模型输入能力由 `desktop/main.cjs` 的 `harnessModelInputModalities` 解析，`ensureDeepSeekHarnessProfile` 将其写入运行时配置。上游 Harness 更新不覆盖这两个桌面端函数。新增模型应优先保留平台声明或已缓存的能力信息；缺少声明时才使用现有系列识别规则，未知模型不自动声明支持图片。
+
+修改模型同步或更新逻辑、手动重建 Harness，以及制作发布包前，运行：
+
+```powershell
+node --test desktop/harness-model-check.cjs tests/desktop-deepseek-updater.test.cjs
+```
+
+检查使用临时平台、虚构 Key 和本地构建产物，不读取用户 API 配置，不发送模型请求。检查失败应修复后重跑，不跳过检查发布。
+
+发布同步必须包含 `desktop/harness-model-check.cjs`、`desktop/deepseek-updater.cjs` 和桌面端的模型能力解析；安装包解包后也需运行检查。设置 `XIAOMEI_HARNESS_CHECK_ROOT` 可将检查指向解包后的 Harness 运行时目录，未设置时使用当前项目的 `vendor/deepseek-harness`。使用包内 Node 执行解包后的 `desktop/harness-model-check.cjs`，以验证包内源码与产物。只有这些检查通过，才能将该安装包用于更新验收。
 
 ## 上游冲突了怎么办
 

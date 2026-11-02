@@ -28,6 +28,7 @@
         "nav.assetManager": { zh: "资产管理", en: "Asset Management" },
         "nav.inspiration": { zh: "灵感案例", en: "Inspiration" },
         "nav.history": { zh: "历史记录", en: "History" },
+        "nav.photocraft": { zh: "PS 修图", en: "PS Retouch" },
         "bulk.manage": { zh: "管理", en: "Manage" },
         "bulk.selectAll": { zh: "全选", en: "Select All" },
         "bulk.deselectAll": { zh: "取消全选", en: "Deselect All" },

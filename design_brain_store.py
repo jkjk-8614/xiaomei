@@ -679,8 +679,6 @@ class ExperienceStore:
             item = next((entry for entry in state["experiences"] if entry["id"] == experience_id), None)
             if not item:
                 raise DesignBrainError("experience_not_found", "该经验记录不存在", 404)
-            if item["status"] in {"published", "pending_review"}:
-                raise DesignBrainError("experience_locked", "已发布或待审核的经验不可删除", 409)
             state["experiences"] = [entry for entry in state["experiences"] if entry["id"] != experience_id]
             self._write(state)
 
@@ -1301,6 +1299,17 @@ class DesignRunStore:
         """显式清空全部执行记录（仅个人数据删除入口调用）。"""
         with self.lock:
             self._write({"version": 1, "updated_at": now_ms(), "runs": []})
+
+    def delete(self, run_id: str) -> None:
+        with self.lock:
+            state = self._read_unlocked()
+            run = next((item for item in state["runs"] if item["id"] == run_id), None)
+            if not run:
+                raise DesignBrainError("run_not_found", "该设计执行记录不存在", 404)
+            if run["status"] == "executing":
+                raise DesignBrainError("run_executing", "项目正在执行，请等待结束后再删除记录", 409)
+            state["runs"] = [item for item in state["runs"] if item["id"] != run_id]
+            self._write(state)
 
     def get(self, run_id: str) -> Dict[str, Any]:
         with self.lock:

@@ -24,7 +24,7 @@ test('canvas commerce planner uses roles and preserves prior prompts on failure'
         if(url.pathname === '/api/config') return route.fulfill({json:{api_providers:[{id:'fixture',name:'Fixture',enabled:true,image_models:['image'],chat_models:['chat']}],comfy_instances:[]}});
         if(url.pathname === '/api/canvas-llm'){
             payload = route.request().postDataJSON();
-            return fail ? route.fulfill({status:500,json:{detail:'失败'}}) : route.fulfill({json:{text:JSON.stringify({screens:[{title:'首屏',prompt:'展示产品'},{title:'细节',prompt:'展示细节'}]})}});
+            return fail ? route.fulfill({status:500,json:{detail:'失败'}}) : route.fulfill({json:{text:JSON.stringify({visual_guide:'模型生成的整体风格',screens:[{title:'首屏',prompt:'展示产品'},{title:'细节',prompt:'展示细节'}]})}});
         }
         if(url.pathname === '/api/canvases/commerce-planner') return route.fulfill({json:{canvas:{id:'commerce-planner',nodes:[],connections:[],logs:[],settings:{}}}});
         return route.fulfill({json:{api_providers:[],skills:[],categories:[],libraries:[],items:[],workflows:[],batches:[]}});
@@ -44,9 +44,17 @@ test('canvas commerce planner uses roles and preserves prior prompts on failure'
     assert.match(payload.message, /图2：仅参考风格和排版/);
     assert.equal(payload.images.length, 2);
     assert.equal(await page.locator('[data-id="batch"] [data-loop-result-edit]').count(), 2);
+    const guide = page.locator('[data-id="batch"] [data-loop-detail-guide]');
+    assert.equal(await guide.inputValue(), '', 'planning must not fill the optional guide');
+    await guide.fill('用户指定暖色背景');
+    await page.locator('[data-id="batch"] [data-loop-commerce-plan]').click();
+    await page.waitForFunction(() => !nodes.find(n => n.id === 'batch').aiSplitRunning);
+    assert.equal(await guide.inputValue(), '用户指定暖色背景');
+    assert.match(payload.message, /视觉限制：用户指定暖色背景/);
     const before = await page.evaluate(() => nodes.find(n => n.id === 'batch').aiSplitPrompts.map(x => x.prompt));
     fail = true;
     await page.locator('[data-id="batch"] [data-loop-commerce-plan]').click();
     await page.waitForFunction(() => !nodes.find(n => n.id === 'batch').aiSplitRunning);
     assert.deepEqual(await page.evaluate(() => nodes.find(n => n.id === 'batch').aiSplitPrompts.map(x => x.prompt)), before);
+    assert.equal(await guide.inputValue(), '用户指定暖色背景');
 });

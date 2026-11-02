@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import product_fidelity as pf
@@ -193,6 +193,29 @@ class FidelityTests(unittest.TestCase):
         config={**self.config,'productReferenceId':'other'}
         with self.assertRaisesRegex(ValueError,'严格保真需要'):
             self.prepare(**config)
+
+    def test_fit_output_preserves_portrait_landscape_and_product_proportions(self):
+        context=self.prepare(fitOutputCanvas=True)
+        self.assertIn('原图将等比缩放',pf.prompt_for('换背景',context))
+        source,mask=context['source'],context['mask']
+        for size in [(900,1600),(1600,900),(90,160)]:
+            with self.subTest(size=size):
+                background=Image.new('RGB',size,'green')
+                output,result=pf.composite_in_output(source,mask,background,fit=True)
+                fitted=ImageOps.contain(source,size,Image.Resampling.LANCZOS)
+                fitted_mask=mask.resize(fitted.size,Image.Resampling.LANCZOS)
+                x,y=result['productOffset']
+                patch=output.crop((x,y,x+fitted.width,y+fitted.height)).convert('RGB')
+                core=np.asarray(fitted_mask)==255
+                np.testing.assert_array_equal(np.asarray(patch)[core],np.asarray(fitted.convert('RGB'))[core])
+                self.assertEqual(output.size,size)
+                self.assertLessEqual(abs(fitted.height-fitted.width*source.height/source.width),1)
+                self.assertEqual(output.getpixel((0,0)),(0,128,0,255))
+                self.assertTrue(result['outputCanvasPreserved'])
+                self.assertTrue(result['productResized'])
+                self.assertEqual(result['maxPixelError'],0)
+        with self.assertRaisesRegex(ValueError,'开关值'):
+            self.prepare(fitOutputCanvas='yes')
 
     def test_hand_mask_draw_and_erase_are_real(self):
         config=dict(maskStrokes=[dict(points=[[.2,.5],[.8,.5]],width=.2),dict(points=[[.5,.5]],width=.05,erase=True)])

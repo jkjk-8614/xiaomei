@@ -911,6 +911,8 @@ PRODUCT_3D_ASSETS_PATH = os.path.join(DATA_DIR, "product_3d_assets.json")
 SOFT_FURNISHING_SCENES_PATH = os.path.join(DATA_DIR, "soft_furnishing_scenes.json")
 PRODUCT_3D_STORE_LOCK = Lock()
 API_PROVIDERS_FILE = os.path.join(DATA_DIR, "api_providers.json")
+RECOMMENDED_APIS_FILE = os.path.join(DATA_DIR, "recommended_apis.json")
+RECOMMENDED_APIS_LOCK = threading.RLock()
 # API Key 记录只保存元数据；各记录对应的真实值仍保存在 API/.env 中。
 API_KEY_PROFILES_FILE = os.path.join(DATA_DIR, "api_key_profiles.json")
 RUNNINGHUB_WORKFLOW_STORE_FILE = os.path.join(DATA_DIR, "runninghub_workflows.json")
@@ -2307,7 +2309,9 @@ def _key_profile_provider(provider_id: str):
     provider_id = str(provider_id or "").strip().lower()
     if not PROVIDER_ID_RE.fullmatch(provider_id):
         raise HTTPException(status_code=400, detail="API 平台 ID 不合法")
-    provider = next((item for item in load_api_providers() if item.get("id") == provider_id), None)
+    providers = load_api_providers()
+    provider_id = resolve_legacy_provider_id(provider_id, providers)
+    provider = next((item for item in providers if item.get("id") == provider_id), None)
     if not provider:
         raise HTTPException(status_code=404, detail="未找到 API 平台")
     if not key_profiles_supported(provider):
@@ -2845,6 +2849,8 @@ def normalize_provider(item):
         video_models = model_list_from_values(locked_rule.get("video_models") or [])
     return {
         "id": provider_id,
+        "legacy_ids": [value for value in (item.get("legacy_ids") or [])
+                       if isinstance(value, str) and PROVIDER_ID_RE.fullmatch(value) and value != provider_id],
         "name": name,
         "base_url": base_url,
         "protocol": protocol,
@@ -2934,6 +2940,93 @@ def _backup_unreadable_data_file(path, reason=""):
     return backup_path
 
 
+def provider_id_from_address(base_url):
+    try:
+        url = urllib.parse.urlsplit(str(base_url or "").strip())
+        host = (url.hostname or "").lower()
+        port = url.port
+    except ValueError:
+        return ""
+    if url.scheme.lower() not in {"http", "https"} or not host:
+        return ""
+    for domain, provider_id in (("soonstudio.ai", "soon"), ("scnet.cn", "scnet"),
+                                ("openrouter.ai", "openrouter"), ("qianwenaiapi.com", "qwen")):
+        if host == domain or host.endswith("." + domain):
+            return provider_id
+    host = re.sub(r"^(?:(?:api\d*|www)\.)+", "", host)
+    value = re.sub(r"[^a-z0-9_-]", "-", host + (f"-{port}" if port else ""))
+    value = re.sub(r"-+", "-", value.strip("-"))[:40]
+    return value if len(value) >= 2 else ""
+
+
+def migrate_named_provider_ids(raw):
+    """Replace placeholder platform IDs while retaining keys and old references."""
+    renames = {}
+    used = {item.get("id") for item in raw if isinstance(item, dict)}
+    for item in raw:
+        if not isinstance(item, dict) or not re.fullmatch(r"custom-api(?:-\d+)?", str(item.get("id") or "")):
+            continue
+        target = provider_id_from_address(item.get("base_url"))
+        if target and target not in used:
+            renames[item["id"]] = target
+            used.add(target)
+    if not renames:
+        return raw
+    # Commit the provider list last; an interrupted migration can safely retry.
+    store = _load_key_profile_store()
+    if os.path.exists(API_KEY_PROFILES_FILE):
+        with open(API_KEY_PROFILES_FILE, encoding="utf-8-sig") as handle:
+            store = json.load(handle)
+        if not isinstance(store, dict) or not isinstance(store.get("providers"), dict):
+            raise ValueError("API Key 记录结构无效，无法迁移平台 ID")
+    env_updates = {}
+    for old, new in renames.items():
+        new_env = provider_key_env(new)
+        value = provider_env_key_value(old)
+        if value and not provider_env_key_value(new):
+            env_updates[new_env] = value
+        record = store["providers"].get(old)
+        if isinstance(record, dict) and new not in store["providers"]:
+            record = json.loads(json.dumps(record))
+            for profile in record.get("profiles") or []:
+                source = str(profile.get("env_key") or "")
+                dest = _key_profile_env_key(new, profile.get("id"))
+                value = _read_key_profile_value(source)
+                if value and not _read_key_profile_value(dest):
+                    env_updates[dest] = value
+                profile["env_key"] = dest
+            store["providers"][new] = record
+    for path in (API_PROVIDERS_FILE, API_KEY_PROFILES_FILE, API_ENV_FILE):
+        if os.path.exists(path):
+            backup = path + ".before-provider-id-migration"
+            if not os.path.exists(backup):
+                shutil.copy2(path, backup)
+    if env_updates:
+        update_env_values(env_updates)
+    _save_key_profile_store_locked(store)
+    cache_path = os.path.join(DATA_DIR, "harness_model_modalities.json")
+    if os.path.exists(cache_path):
+        with open(cache_path, encoding="utf-8-sig") as handle:
+            cache = json.load(handle)
+        if isinstance(cache, dict) and isinstance(cache.get("providers"), dict):
+            for old, new in renames.items():
+                models = cache["providers"].get(old)
+                if isinstance(models, dict):
+                    target = cache["providers"].setdefault(new, {})
+                    for model, modalities in models.items():
+                        target.setdefault(model, modalities)
+            _atomic_write_json_file(cache_path, cache)
+    migrated = []
+    for item in raw:
+        if isinstance(item, dict) and item.get("id") in renames:
+            old = item["id"]
+            item = {**item, "id": renames[old],
+                    "legacy_ids": list(dict.fromkeys([*(item.get("legacy_ids") or []), old]))}
+        migrated.append(item)
+    _atomic_write_json_file(API_PROVIDERS_FILE, migrated)
+    return migrated
+
+
 def load_api_providers():
     defaults = default_api_providers()
     if not os.path.exists(API_PROVIDERS_FILE):
@@ -2951,6 +3044,11 @@ def load_api_providers():
     if not isinstance(raw, list):
         _backup_unreadable_data_file(API_PROVIDERS_FILE, "根节点不是列表")
         return defaults
+    with GLOBAL_CONFIG_LOCK:
+        # Re-read inside the lock so concurrent loads cannot restore a stale list.
+        with open(API_PROVIDERS_FILE, "r", encoding="utf-8-sig") as f:
+            raw = json.load(f)
+        raw = migrate_named_provider_ids(raw)
     providers = []
     for item in raw:
         if not isinstance(item, dict) or is_removed_api_provider(item):
@@ -2967,6 +3065,12 @@ def load_api_providers():
 def save_api_providers(providers):
     os.makedirs(DATA_DIR, exist_ok=True)
     with GLOBAL_CONFIG_LOCK:
+        if os.path.exists(API_PROVIDERS_FILE):
+            with open(API_PROVIDERS_FILE, encoding="utf-8-sig") as handle:
+                previous = json.load(handle)
+            aliases = {item.get("id"): item.get("legacy_ids") for item in previous if isinstance(item, dict)}
+            providers = [{**item, "legacy_ids": aliases[item["id"]]}
+                         if aliases.get(item["id"]) else item for item in providers]
         _atomic_write_json_file(API_PROVIDERS_FILE, providers)
 
 def codex_visible_image_models(provider, detected_models=None):
@@ -3065,6 +3169,7 @@ def get_primary_provider_id(providers=None):
 def get_api_provider(provider_id="comfly"):
     providers = load_api_providers()
     target = (provider_id or "").strip().lower()
+    target = resolve_legacy_provider_id(target, providers)
     if target == "modelscope":
         raise HTTPException(status_code=400, detail="该平台已移除，请在 API 设置中选择其他平台及模型。")
     # 兼容旧的 "comfly" 硬编码：若 comfly 不存在或未指定，回退到首选 provider
@@ -3080,6 +3185,7 @@ def get_api_provider(provider_id="comfly"):
 def get_api_provider_exact(provider_id: str):
     providers = load_api_providers()
     target = (provider_id or "").strip().lower()
+    target = resolve_legacy_provider_id(target, providers)
     provider = next((p for p in providers if p["id"] == target), None)
     if not provider:
         raise HTTPException(status_code=400, detail=f"未找到 API 平台：{target or '(empty)'}。新增平台未保存时请使用当前表单拉取模型。")
@@ -3087,6 +3193,11 @@ def get_api_provider_exact(provider_id: str):
         raise HTTPException(status_code=400, detail=f"API 平台已禁用：{provider.get('name') or target}")
     return provider
 
+
+def resolve_legacy_provider_id(target, providers):
+    if any(item["id"] == target for item in providers):
+        return target
+    return next((item["id"] for item in providers if target in item.get("legacy_ids", [])), target)
 
 
 
@@ -3144,6 +3255,9 @@ os.makedirs(AGENT_SKILL_PACKAGES_DIR, exist_ok=True)
 os.makedirs(AGENT_SKILL_PACKAGE_BACKUPS_DIR, exist_ok=True)
 os.makedirs(CANVAS_DIR, exist_ok=True)
 
+# Windows 下 mimetypes 依赖注册表，.wasm 可能被识别成 octet-stream；内置 PhotoCraft 要求正确的 wasm MIME
+mimetypes.add_type("application/wasm", ".wasm")
+
 class ProjectStaticFiles(StaticFiles):
     async def get_response(self, path, scope):
         comfy_web = os.path.join(BASE_DIR, "ComfyUI", "web")
@@ -3154,6 +3268,15 @@ class ProjectStaticFiles(StaticFiles):
             response = await super().get_response(path, scope)
         if path.lower().endswith(".html"):
             response.headers["Cache-Control"] = "no-cache"
+        # 内置 PhotoCraft（static/photocraft/）缓存规则来自上游 HOSTING.md：
+        # 入口页与加载器 no-cache，hashed 资源 immutable；part-* 是已 gzip 的分块，保持原样返回。
+        normalized = path.replace("\\", "/")
+        if normalized.startswith("photocraft/"):
+            rel = normalized[len("photocraft/"):]
+            if rel in ("index.html", "app/photocraft-web.js", "app/parts.txt"):
+                response.headers["Cache-Control"] = "no-cache"
+            elif rel:
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         return response
 
 app.mount("/static", ProjectStaticFiles(directory=STATIC_DIR), name="static")
@@ -4294,6 +4417,8 @@ def _scheduled_parse_cron_field(raw: str, minimum: int, maximum: int) -> Tuple[s
                 start = end = int(base)
             except (TypeError, ValueError) as exc:
                 raise ValueError(f"Cron 数值无效：{token}") from exc
+            if len(pieces) == 2:
+                end = maximum
         if start < minimum or end > maximum or start > end:
             raise ValueError(f"Cron 数值超出范围：{token}")
         values.update(range(start, end + 1, step))
@@ -4385,8 +4510,12 @@ def _scheduled_normalize_schedule(schedule: Any, now_ms: Optional[int] = None) -
         return {"kind": "every", "everyMs": every_ms}, current_ms + every_ms
     if kind == "at":
         value = str(schedule.get("at") or "").strip()
-        parsed = _scheduled_parse_datetime(value, str(schedule.get("tz") or "").strip())
-        return {"kind": "at", "at": value}, int(parsed.timestamp() * 1000)
+        timezone_name = str(schedule.get("tz") or "").strip()
+        parsed = _scheduled_parse_datetime(value, timezone_name)
+        result = {"kind": "at", "at": value}
+        if timezone_name:
+            result["tz"] = timezone_name
+        return result, int(parsed.timestamp() * 1000)
     raise ValueError("执行计划必须是 cron、every 或 at")
 
 
@@ -5186,6 +5315,19 @@ class ApiProviderPayload(BaseModel):
     clear_wallet_key: bool = False
     clear_volcengine_access_key_id: bool = False
     clear_volcengine_secret_access_key: bool = False
+
+
+class RecommendedApiPayload(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    base_url: str = Field(min_length=1, max_length=2048)
+    register_url: str = Field(default="", max_length=2048)
+    summary: str = Field(default="", max_length=500)
+    protocol: str = "openai"
+    image_request_mode: str = "openai"
+    kinds: List[str] = Field(default_factory=lambda: ["image", "video", "chat"], max_length=3)
+
+    class Config:
+        extra = "forbid"
 
 
 class ApiKeyProfilePayload(BaseModel):
@@ -18364,7 +18506,8 @@ def _commerce_analysis_write_snapshot(job_id: str, result: Dict[str, Any], raw: 
     if isinstance(raw, dict):
         with open(os.path.join(target_dir, "collection.json"), "w", encoding="utf-8") as handle:
             json.dump(_commerce_agent_sanitize_context(raw), handle, ensure_ascii=False, indent=2, default=str)
-    return os.path.relpath(os.path.join(target_dir, "snapshot.json"), PROJECT_ROOT).replace(os.sep, "/")
+    # Windows 桌面版的用户数据与程序可能分属不同盘符，不能相对安装目录计算路径。
+    return os.path.abspath(os.path.join(target_dir, "snapshot.json")).replace(os.sep, "/")
 
 
 def _commerce_analysis_row_to_job(row: Optional[sqlite3.Row]) -> Optional[Dict[str, Any]]:
@@ -36158,6 +36301,104 @@ async def ai_models(response: Response):
     response.headers["Pragma"] = "no-cache"
     return {"chat_models": CHAT_MODELS, "image_models": IMAGE_MODELS, "video_models": VIDEO_MODELS}
 
+def normalize_recommended_api(payload: RecommendedApiPayload):
+    item = payload.model_dump()
+    item["name"] = item["name"].strip()
+    if not item["name"]:
+        raise HTTPException(status_code=400, detail="请填写平台名称。")
+    for key in ("base_url", "register_url"):
+        value = item[key].strip()
+        if not value and key == "register_url":
+            value = item["base_url"]
+        try:
+            parsed = urllib.parse.urlsplit(value)
+            valid = parsed.scheme in {"http", "https"} and parsed.hostname and not parsed.username and not parsed.password
+            parsed.port
+        except ValueError:
+            valid = False
+        if not valid or any(c.isspace() for c in value):
+            raise HTTPException(status_code=400, detail="请求地址和注册链接须为有效的 HTTP 或 HTTPS 地址。")
+        item[key] = value
+    if item["protocol"] not in {"openai", "apimart", "gemini", "volcengine"}:
+        raise HTTPException(status_code=400, detail="请选择支持的 API 协议。")
+    if item["image_request_mode"] not in {"openai", "openai-json", "openai-video-proxy", "openai-responses"}:
+        raise HTTPException(status_code=400, detail="请选择支持的图片接口。")
+    if not item["kinds"] or any(kind not in {"image", "video", "chat"} for kind in item["kinds"]):
+        raise HTTPException(status_code=400, detail="请至少选择一种模型类型。")
+    item["kinds"] = list(dict.fromkeys(item["kinds"]))
+    item["summary"] = item["summary"].strip()
+    return item
+
+
+def load_recommended_apis():
+    try:
+        with open(RECOMMENDED_APIS_FILE, "r", encoding="utf-8") as handle:
+            items = json.load(handle)
+        if not isinstance(items, list):
+            raise ValueError("expected a list")
+        ids = set()
+        for item in items:
+            item_id = item.get("id", "")
+            if not re.fullmatch(r"rec-[a-f0-9]{32}", item_id) or item_id in ids:
+                raise ValueError("invalid recommendation ID")
+            ids.add(item_id)
+            normalize_recommended_api(RecommendedApiPayload(**{k: v for k, v in item.items() if k != "id"}))
+        return items
+    except FileNotFoundError:
+        return []
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="推荐 API 列表读取失败，请检查本地配置文件后重试。") from exc
+
+
+@app.get("/api/recommended-apis")
+def recommended_apis(response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    with RECOMMENDED_APIS_LOCK:
+        return {"items": load_recommended_apis()}
+
+
+def write_recommended_api(payload, item_id=None):
+    item = normalize_recommended_api(payload)
+    with RECOMMENDED_APIS_LOCK:
+        items = load_recommended_apis()
+        if item_id and not any(entry["id"] == item_id for entry in items):
+            raise HTTPException(status_code=404, detail="该推荐 API 已移除，请刷新列表。")
+        if any(entry["id"] != item_id and entry["base_url"].rstrip("/").lower() == item["base_url"].rstrip("/").lower() for entry in items):
+            raise HTTPException(status_code=409, detail="这个请求地址已在推荐列表中。")
+        if not item_id and len(items) >= 200:
+            raise HTTPException(status_code=400, detail="推荐 API 已达 200 个，请移除不再使用的条目后添加。")
+        item["id"] = item_id or f"rec-{uuid.uuid4().hex}"
+        items = [item if entry["id"] == item_id else entry for entry in items] if item_id else [*items, item]
+        try:
+            _atomic_write_json_file(RECOMMENDED_APIS_FILE, items)
+        except OSError as exc:
+            raise HTTPException(status_code=503, detail="推荐 API 保存失败，请检查运行数据目录的写入权限或磁盘空间后重试。") from exc
+        return {"items": items}
+
+
+@app.post("/api/recommended-apis")
+def add_recommended_api(payload: RecommendedApiPayload):
+    return write_recommended_api(payload)
+
+
+@app.put("/api/recommended-apis/{item_id}")
+def update_recommended_api(item_id: str, payload: RecommendedApiPayload):
+    return write_recommended_api(payload, item_id)
+
+
+@app.delete("/api/recommended-apis/{item_id}")
+def delete_recommended_api(item_id: str):
+    with RECOMMENDED_APIS_LOCK:
+        items = load_recommended_apis()
+        if not any(item["id"] == item_id for item in items):
+            raise HTTPException(status_code=404, detail="该推荐 API 已移除，请刷新列表。")
+        try:
+            _atomic_write_json_file(RECOMMENDED_APIS_FILE, [item for item in items if item["id"] != item_id])
+        except OSError as exc:
+            raise HTTPException(status_code=503, detail="推荐 API 移除失败，请检查运行数据目录的写入权限后重试。") from exc
+        return {"items": [item for item in items if item["id"] != item_id]}
+
+
 @app.get("/api/providers")
 async def api_providers(response: Response):
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
@@ -36167,6 +36408,7 @@ async def api_providers(response: Response):
 
 @app.put("/api/providers")
 async def save_providers(payload: List[ApiProviderPayload]):
+    existing_providers = load_api_providers()
     providers = []
     env_updates = {}
     key_profile_sync = {}
@@ -36175,7 +36417,9 @@ async def save_providers(payload: List[ApiProviderPayload]):
     for item in payload:
         if is_removed_api_provider(item.model_dump()):
             raise HTTPException(status_code=400, detail="该平台已移除，请在 API 设置中选择其他平台。")
-        provider = normalize_provider(item.dict(exclude={"api_key"}))
+        raw_provider = item.dict(exclude={"api_key"})
+        raw_provider["id"] = resolve_legacy_provider_id(str(item.id or "").strip().lower(), existing_providers)
+        provider = normalize_provider(raw_provider)
         if provider["id"] == "runninghub":
             provider = preserve_runninghub_hidden_overrides(provider)
             prune_runninghub_workflow_store_for_provider(provider)
@@ -36234,6 +36478,7 @@ async def save_providers(payload: List[ApiProviderPayload]):
         update_env_values(env_updates)
         reload_env_globals()   # 立即将最新 env 值同步回模块全局变量，无需重启
     _sync_key_profiles_from_provider_payload(key_profile_sync)
+    providers = load_api_providers()
     capabilities = await detect_codex_image_capabilities(force=True)
     key_profile_store = ensure_key_profile_store_for_providers(providers)
     return {"providers": [public_provider(p, capabilities.get("image_models"), key_profile_store) for p in providers]}
@@ -37313,8 +37558,11 @@ def finish_product_fidelity(context, url):
     generated = load_image(url, output_file_from_url)
     config = context['config']
     if config['mode'] == 'strict':
-        compose = composite_in_output if config['dimensions']['enabled'] else composite
-        image, validation = compose(context['source'], context['mask'], generated, config.get('maskFeatherPx', 0))
+        if config['dimensions']['enabled'] or config.get('fitOutputCanvas'):
+            image, validation = composite_in_output(context['source'], context['mask'], generated, config.get('maskFeatherPx', 0),
+                                                    fit=bool(config.get('fitOutputCanvas') and not config['dimensions']['enabled']))
+        else:
+            image, validation = composite(context['source'], context['mask'], generated, config.get('maskFeatherPx', 0))
     elif context['source'] is None:
         image, validation = generated, dict(status='unknown', reason='没有原产品图，无法核验产品身份或四角')
     elif config['validation'].get('enabled', True) or config['detail']['restoreMode'] == 'auto':
@@ -38405,7 +38653,8 @@ def build_image_param_fields(engine: str, provider: dict, model: str):
 @app.get("/api/image-params")
 async def image_params(provider_id: str = "", model: str = ""):
     providers = load_api_providers()
-    provider = next((p for p in providers if p.get("id") == (provider_id or "").strip().lower()), None) or {}
+    target = resolve_legacy_provider_id((provider_id or "").strip().lower(), providers)
+    provider = next((p for p in providers if p.get("id") == target), None) or {}
     if is_runninghub_provider(provider):
         engine = "runninghub"
     elif is_volcengine_provider(provider):
@@ -38694,10 +38943,37 @@ VIDEO_TASK_FAILURE_STATUSES = {
     "CANCELED", "CANCELLED", "TIMEOUT", "TIMEDOUT", "REJECTED", "EXPIRED",
 }
 
-def humanize_video_task_failure(reason) -> str:
-    """把上游视频任务的失败原因转成对用户友好的中文提示。
-    目前主要处理 veo（Google）的内容安全过滤码。"""
+def humanize_video_task_failure(reason, *, fallback_prefix="视频生成任务失败") -> str:
+    """翻译已知的上游视频错误，并保留排障编号和未知错误原文。"""
     text = str(reason or "").strip()
+    data = reason if isinstance(reason, dict) else {}
+    if not data:
+        try:
+            parsed = json.loads(text)
+            data = parsed if isinstance(parsed, dict) else {}
+        except (ValueError, TypeError):
+            pass
+    error = data.get("error") if isinstance(data.get("error"), dict) else {}
+    message = str(data.get("msg") or data.get("message") or data.get("error_message")
+                  or error.get("message") or text).strip()
+    translated = ""
+    if re.search(r"\b(?:burst\s+)?rate\s+limit\s+exceeded\b", message, re.I):
+        model = re.search(r"\bfor\s+model\s+([^\s(),;]+)", message, re.I)
+        target = f"模型 {model.group(1)}" if model else "视频模型"
+        translated = f"{target}请求过于频繁，触发平台限流。请稍后重试，减少同时生成的任务，避免连续点击重试。"
+    elif re.fullmatch(r"Video\s+Generation\s+Error\s*(?:\(\s*request_id\s*:\s*[^)]+\))?", message, re.I):
+        translated = "上游平台视频生成失败，平台未说明具体原因。请稍后重试；若持续失败，请提供请求编号联系 API 平台排查。"
+    if translated:
+        code = data.get("code") or data.get("error_code") or error.get("code")
+        request_id = data.get("request_id") or error.get("request_id")
+        if not request_id:
+            match = re.search(r"\brequest_id\s*[:=]\s*([\w.:-]+)", message, re.I)
+            request_id = match.group(1) if match else ""
+        if code:
+            translated += f"\n错误码：{code}"
+        if request_id:
+            translated += f"\n请求编号：{request_id}"
+        return translated
     upper = text.upper()
     # veo 知名人物/真人面孔过滤
     if "PROMINENT_PEOPLE_FILTER" in upper or "PROMINENT_PEOPLE" in upper:
@@ -38718,7 +38994,7 @@ def humanize_video_task_failure(reason) -> str:
             "这是 veo 的内容审核规则，提示词或参考图触发了安全过滤。\n"
             "请调整提示词/参考图后重试，避免涉及真人、暴力、敏感或受限内容。"
         )
-    return f"视频生成任务失败：{text}"
+    return f"{fallback_prefix}：{text}"
 
 async def wait_for_video_task(client, provider, task_id, submit_url=""):
     base_url = video_api_root(provider)
@@ -39294,17 +39570,26 @@ def volcengine_video_prompt_text(prompt, aspect_ratio="", duration=None):
 async def scnet_video_reference_url(value, kind):
     text = str(value or "").strip()
     parsed = urllib.parse.urlparse(text)
-    if parsed.scheme in {"https", "http"} and parsed.hostname:
-        return text
     if text.startswith(f"data:{kind}/") and ";base64," in text:
         return text
-    if text.startswith(("/assets/", "/output/")):
-        path = local_media_path_for_cloud_upload(text, (f"{kind}/",))
-        def encode():
-            with open(path, "rb") as handle:
-                return f"data:{content_type_for_path(path)};base64,{base64.b64encode(handle.read()).decode('ascii')}"
-        return await asyncio.to_thread(encode)
     label = {"image": "图片", "video": "视频", "audio": "音频"}[kind]
+    is_local_http = parsed.scheme in {"https", "http"} and (parsed.hostname or "").lower() in {"localhost", "127.0.0.1", "::1"}
+    if text.startswith(("/assets/", "/output/", "/api/storage-files/")) or is_local_http:
+        def encode():
+            path = output_file_from_url(text)
+            if not path or not os.path.isfile(path):
+                raise HTTPException(status_code=404, detail=f"超算互联网参考{label}不存在或已被移动，请在画布中重新选择素材。")
+            content_type = content_type_for_path(path)
+            if not content_type.startswith(f"{kind}/"):
+                raise HTTPException(status_code=400, detail=f"超算互联网参考素材类型不匹配，请重新选择{label}。")
+            max_bytes = int(os.getenv("TEMP_SH_MAX_BYTES", str(4 * 1024 * 1024 * 1024)))
+            if os.path.getsize(path) > max_bytes:
+                raise HTTPException(status_code=400, detail="超算互联网参考素材超过大小限制，请缩小文件后重新选择。")
+            with open(path, "rb") as handle:
+                return f"data:{content_type};base64,{base64.b64encode(handle.read()).decode('ascii')}"
+        return await asyncio.to_thread(encode)
+    if parsed.scheme in {"https", "http"} and parsed.hostname:
+        return text
     raise HTTPException(status_code=400, detail=f"超算互联网参考素材无法读取：请使用画布中的{label}、HTTP(S) 地址或 Base64 数据。")
 
 async def generate_scnet_video(client, payload, provider):
@@ -39377,6 +39662,7 @@ async def canvas_video(payload: CanvasVideoRequest):
     submit_url = submit_urls[0]
     requested_model = selected_model(payload.model, "agnes-video-v2.0" if is_agnes else "veo3-fast")
     is_minimax_h3 = bool(re.match(r"^minimax[-_\s]*h3(?:$|[-_\s])", requested_model, re.I))
+    is_seedance = "seedance" in requested_model.lower()
     is_veo31 = is_apimart and is_apimart_veo31_model(requested_model)
     if is_scnet_provider(provider):
         try:
@@ -39384,7 +39670,8 @@ async def canvas_video(payload: CanvasVideoRequest):
                 result = await generate_scnet_video(scnet_client, payload, provider)
                 return save_canvas_video_to_history(payload, provider, result)
         except httpx.HTTPStatusError as exc:
-            raise HTTPException(status_code=exc.response.status_code, detail=f"超算互联网视频接口错误：{exc.response.text[:500]}") from exc
+            detail = humanize_video_task_failure(exc.response.text, fallback_prefix="超算互联网视频接口错误")
+            raise HTTPException(status_code=exc.response.status_code, detail=detail) from exc
         except httpx.HTTPError as exc:
             log_net_error(f"视频(SCNet) 网络/TLS错误 model={payload.model}", exc)
             raise HTTPException(status_code=502, detail=f"请求超算互联网视频接口失败：{exc}") from exc
@@ -39559,7 +39846,7 @@ async def canvas_video(payload: CanvasVideoRequest):
                         body["seed"] = payload.seed
                     if payload.return_last_frame:
                         body["return_last_frame"] = True
-                    if payload.generate_audio or is_minimax_h3:
+                    if payload.generate_audio or is_minimax_h3 or is_seedance:
                         body["generate_audio"] = bool(payload.generate_audio)
             else:
                 # 非 APIMart：data URL 方式（OpenAI / ComflyAI 接口）
@@ -39753,7 +40040,7 @@ async def canvas_video(payload: CanvasVideoRequest):
                         body["camerafixed"] = True
                     if payload.return_last_frame:
                         body["return_last_frame"] = True
-                    if payload.generate_audio or is_minimax_h3:
+                    if payload.generate_audio or is_minimax_h3 or is_seedance:
                         body["generate_audio"] = bool(payload.generate_audio)
             # --- 发起视频生成请求 ---
             raw = None

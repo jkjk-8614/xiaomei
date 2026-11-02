@@ -79,7 +79,7 @@ jobs:
           if (-not (Test-Path -LiteralPath $runtime -PathType Leaf)) { throw 'Packaged Windows Python runtime is missing' }
           if (-not (Test-Path -LiteralPath $entry -PathType Leaf)) { throw 'Packaged Windows API entry point is missing' }
           if (Test-Path -LiteralPath $oldBackend) { throw 'The packaged app still contains the old custom API loader' }
-          foreach ($relative in 'ComfyUI/tools/comfy-app-bridge/__init__.py','ComfyUI/tools/comfy-app-bridge/web/bridge.js','ComfyUI/tools/comfy-app-bridge/README.md') {
+          foreach ($relative in 'ComfyUI/tools/comfy-app-bridge/__init__.py','ComfyUI/tools/comfy-app-bridge/web/bridge.js','ComfyUI/tools/comfy-app-bridge/README.md','static/photocraft/index.html','static/photocraft/photocraft-web-boot-251aa3764a2189ed_bg.wasm','static/photocraft/app/photocraft-web-25bf2289380b561f.part-aa','static/photocraft/LICENSE-MIT','static/photocraft/LICENSE-APACHE') {
             if (-not (Test-Path -LiteralPath (Join-Path $appRoot $relative) -PathType Leaf)) { throw "Packaged ComfyUI bridge file is missing: $relative" }
           }
           foreach ($relative in 'bundled/node/node.exe','bundled/deepseek-harness/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js','bundled/deepseek-harness/node_modules/@deepseek-ai/dsh-base/package.json','bundled/deepseek-harness/node_modules/@deepseek-ai/dsh-web-app/package.json') {
@@ -87,6 +87,9 @@ jobs:
           }
           node scripts/smoke-harness-runtime.mjs (Join-Path $appRoot 'bundled/deepseek-harness') (Join-Path $appRoot 'bundled/node/node.exe')
           if ($LASTEXITCODE -ne 0) { throw 'Packaged Harness Host failed to start' }
+          $env:XIAOMEI_HARNESS_CHECK_ROOT = Join-Path $appRoot 'bundled/deepseek-harness'
+          & (Join-Path $appRoot 'bundled/node/node.exe') --test (Join-Path $appRoot 'desktop/harness-model-check.cjs')
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged Harness model capabilities failed validation' }
           if (-not (Test-Path -LiteralPath (Join-Path $appRoot 'bundled/win-api/python313.zip') -PathType Leaf)) { throw 'Packaged Python standard library is missing' }
           $signature = Get-AuthenticodeSignature -LiteralPath $runtime
           if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Python Software Foundation') { throw 'Packaged Python signature is invalid' }
@@ -195,7 +198,7 @@ jobs:
           from zipfile import ZipFile
           for package in Path('dist-package').glob('*-macOS-*.zip'):
               with ZipFile(package) as archive:
-                  for relative in ('bundled/mac-api/xiaomei-api', 'bundled/node/bin/node', 'bundled/deepseek-harness/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js', 'bundled/deepseek-harness/node_modules/@deepseek-ai/dsh-base/package.json', 'bundled/deepseek-harness/node_modules/@deepseek-ai/dsh-web-app/package.json', 'ComfyUI/tools/comfy-app-bridge/__init__.py', 'ComfyUI/tools/comfy-app-bridge/web/bridge.js', 'ComfyUI/tools/comfy-app-bridge/README.md'):
+                  for relative in ('bundled/mac-api/xiaomei-api', 'bundled/node/bin/node', 'bundled/deepseek-harness/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js', 'bundled/deepseek-harness/node_modules/@deepseek-ai/dsh-base/package.json', 'bundled/deepseek-harness/node_modules/@deepseek-ai/dsh-web-app/package.json', 'ComfyUI/tools/comfy-app-bridge/__init__.py', 'ComfyUI/tools/comfy-app-bridge/web/bridge.js', 'ComfyUI/tools/comfy-app-bridge/README.md', 'static/photocraft/index.html', 'static/photocraft/photocraft-web-boot-251aa3764a2189ed_bg.wasm', 'static/photocraft/app/photocraft-web-25bf2289380b561f.part-aa', 'static/photocraft/LICENSE-MIT', 'static/photocraft/LICENSE-APACHE'):
                       matches = [info for info in archive.infolist() if info.filename.endswith('/Contents/Resources/app/' + relative) and info.file_size > 0]
                       if not matches:
                           raise RuntimeError(f'Packaged macOS file is missing: {relative} in {package.name}')
@@ -210,6 +213,7 @@ jobs:
           [ -n "$NODE" ] || { echo 'Packaged Harness Node is missing'; exit 1; }
           RUNTIME="${NODE%/bundled/node/bin/node}/bundled/deepseek-harness"
           node scripts/smoke-harness-runtime.mjs "$RUNTIME" "$NODE"
+          XIAOMEI_HARNESS_CHECK_ROOT="$RUNTIME" "$NODE" --test "$APP_ROOT/desktop/harness-model-check.cjs"
       - name: Rename macOS packages for users
         run: |
           VERSION=$(node -p "const pkg=require('./package.json'); pkg.displayVersion || pkg.version")

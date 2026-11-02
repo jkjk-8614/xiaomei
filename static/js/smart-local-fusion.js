@@ -1,10 +1,10 @@
 /* Local repair provenance travels with images; paid generation stays in paint nodes. */
 const localFusionSessions = new Map();
-function localFusionDefaults(){return {colorMatch:true,feather:12,blend:'alpha',overlap:'reject',versions:{},excluded:[],patches:{}};}
+function localFusionDefaults(){return {colorMatch:true,feather:12,blend:'alpha',overlap:'reject',versions:{},excluded:[],patches:{},patchOpen:{}};}
 function localFusionConfig(node){return node.fusionConfig ||= localFusionDefaults();}
 function createLocalFusionNodeAt(point){
     const node=createNode(point.x-210,point.y-240,[],{nodeType:'smart-local-fusion',title:'智能局部融合',skipRender:true});
-    if(node){node.w=420;node.h=510;localFusionConfig(node);render();scheduleSave();}
+    if(node){node.w=420;node.h=600;localFusionConfig(node);render();scheduleSave();}
     return node;
 }
 function localRepairRegionFromRefs(refs){
@@ -59,44 +59,113 @@ function localFusionPayload(node){
             manualRegion:undefined,regionId:undefined}))};
 }
 function localFusionSignature(node){return JSON.stringify(localFusionPayload(node));}
+/* 节点信息架构：① 素材 → ② 融合区域 → ③ 融合设置 → 结果预览 → 高级设置。
+   底部操作条常驻（sticky），主按钮位置固定，避免「改完参数还要往上翻找按钮」。
+   文案一律用用户语言：不出现「关联裁剪 / 特征定位 / 泊松」这类实现术语当主标签。 */
+function localFusionTone(message){
+    const text=String(message||'');
+    if(!text)return 'is-idle';
+    if(/失败|错误|无效|无法|异常|超时|超出/.test(text))return 'is-error';
+    if(/完成|已输出/.test(text))return 'is-ok';
+    if(/更新|重新|已变化|请检查/.test(text))return 'is-warn';
+    return 'is-idle';
+}
+function localFusionToneIcon(tone,busy){
+    if(busy)return 'loader-circle';
+    return tone==='is-error'?'circle-alert':tone==='is-ok'?'circle-check':tone==='is-warn'?'triangle-alert':'info';
+}
+function localFusionAssetHtml(url,label,emptyText,hint){
+    return '<figure class="lf-asset'+(url?'':' is-empty')+'"><div class="lf-asset-frame">'+(url
+        ?'<img src="'+escapeAttr(url)+'" alt="'+escapeAttr(label)+'">'
+        :'<span class="lf-asset-empty"><i data-lucide="image-plus"></i><b>'+escapeHtml(emptyText)+'</b><small>'+escapeHtml(hint)+'</small></span>')+'<span class="lf-asset-badge">'+escapeHtml(label)+'</span></div></figure>';
+}
+function localFusionPatchHtml(node,p,i,busy,state){
+    const c=localFusionConfig(node),open=Boolean(c.patchOpen&&c.patchOpen[p.key]);
+    const thumb=p.selected&&p.selected.url?'<img src="'+escapeAttr(p.selected.url)+'" alt="">':'<i data-lucide="image"></i>';
+    const versions=p.images.map((img,j)=>'<option value="'+escapeAttr(img.url)+'" '+(img.url===(p.selected&&p.selected.url)?'selected':'')+'>'+(j+1)+'. '+escapeHtml(img.name||'图片')+'</option>').join('');
+    const regions=[...new Map(state.regions.map(r=>[r.id,r])).values()].filter(r=>r.sourceUrl===state.source.url);
+    return '<article class="lf-patch'+(p.enabled?'':' is-off')+'">'
+        +'<div class="lf-patch-row">'
+        +'<label class="lf-check" title="勾选后参与融合"><input type="checkbox" data-lf-enable="'+i+'" '+(p.enabled?'checked':'')+(busy?' disabled':'')+'><span>区域 '+(i+1)+'</span></label>'
+        +'<figure class="lf-patch-thumb'+(p.selected&&p.selected.url?'':' is-empty')+'">'+thumb+'</figure>'
+        +'<select data-lf-version="'+i+'" aria-label="区域 '+(i+1)+' 使用的修改图" '+(busy?'disabled':'')+'>'+versions+'</select>'
+        +'<button type="button" class="lf-patch-toggle'+(open?' is-open':'')+'" data-lf-patch-toggle="'+i+'" aria-expanded="'+(open?'true':'false')+'" title="位置与蒙版" aria-label="区域 '+(i+1)+' 的位置与蒙版"><i data-lucide="chevron-down"></i></button>'
+        +'</div>'
+        +'<div class="lf-patch-body" '+(open?'':'hidden')+'>'
+        +'<p class="lf-patch-body-head">位置与蒙版<em class="lf-tag'+(p.region?' is-on':'')+'">'+(p.region?'已定位':'未定位')+'</em></p>'
+        +'<label class="lf-field"><span>对齐方式<small>默认自动检查边界</small></span><select data-lf-patch="alignment" data-index="'+i+'">'+[['auto','自动对齐'],['coordinates','只用裁剪坐标'],['manual','手动坐标']].map(([v,l])=>'<option value="'+v+'" '+((p.options.alignment||'auto')===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'
+        +'<label class="lf-field"><span>对应裁剪区域</span><select data-lf-patch="regionId" data-index="'+i+'"><option value="">随修改图自动关联</option>'+regions.map((r,j)=>'<option value="'+escapeAttr(r.id)+'" '+(p.options.regionId===r.id?'selected':'')+'>区域 '+(j+1)+' · '+r.x+','+r.y+' · '+r.width+'×'+r.height+'</option>').join('')+'</select></label>'
+        +'<div class="lf-numbers">'+[['offsetX','水平偏移',0],['offsetY','垂直偏移',0],['scale','缩放',1],['rotation','旋转角度',0]].map(([k,l,v])=>'<label>'+l+'<input type="number" step="'+(k==='scale'?'.01':'1')+'" data-lf-patch="'+k+'" data-index="'+i+'" value="'+escapeAttr(p.options[k]??v)+'"></label>').join('')+'</div>'
+        +'<label class="lf-check lf-check-inline"><input type="checkbox" data-lf-patch="allowDistortion" data-index="'+i+'" '+(p.options.allowDistortion?'checked':'')+'><span>允许拉伸宽高比（可能变形）</span></label>'
+        +'<label class="lf-field"><span>生效范围<small>“只改变化部分”需检查预览</small></span><select data-lf-patch="maskMode" data-index="'+i+'">'+[['rectangle','整个裁剪区域'],['changes','只改有变化的部分']].map(([v,l])=>'<option value="'+v+'" '+(p.options.maskMode===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'
+        +'<div class="lf-patch-actions"><button type="button" data-lf-position="'+i+'"><i data-lucide="move"></i>填写坐标</button><button type="button" data-lf-mask="'+i+'" '+(!p.region?'disabled':'')+'><i data-lucide="brush"></i>涂抹蒙版</button>'+(p.options.maskUrl?'<button type="button" data-lf-clear-mask="'+i+'"><i data-lucide="eraser"></i>清除蒙版</button>':'')+'</div>'
+        +'</div></article>';
+}
 function localFusionNodeBodyHtml(node){
     const c=localFusionConfig(node),state=localFusionState(node),session=localFusionSessions.get(node.id);
     const busy=Boolean(session)||Boolean(node.fusionJobId),fresh=node.fusionPreview&&node.fusionPreviewSignature===localFusionSignature(node);
-    const thumb=(url,label)=>'<figure>'+(url?'<img src="'+escapeAttr(url)+'" alt="'+escapeAttr(label)+'">':'<span class="lf-placeholder">连接图片</span>')+'<figcaption>'+escapeHtml(label)+'</figcaption></figure>';
+    const patches=state.patches||[],enabled=patches.filter(p=>p.enabled),located=patches.filter(p=>p.region).length;
+    const hasSource=Boolean(state.source&&state.source.url),sourceName=(state.source&&state.source.name)||'裁剪原图';
+    const message=String(node.fusionMessage||'').trim(),tone=node.fusionStatus==='failed'?'is-error':localFusionTone(message);
+    const canRun=hasSource&&enabled.length>0&&!busy;
     const originals=[...new Map([...state.inputs,...state.regions.map(r=>({url:r.sourceUrl,name:'裁剪原图'}))].filter(x=>x.url).map(x=>[x.url,x])).values()];
-    return '<div class="local-fusion-body" data-lf-root><div class="lf-images">'+thumb(state.source.url,'原图')+'<div class="lf-patches">'+
-        (state.patches.length?state.patches.map((p,i)=>'<div class="lf-patch"><label><input type="checkbox" data-lf-enable="'+i+'" '+(p.enabled?'checked':'')+(busy?' disabled':'')+'>区域 '+(i+1)+'</label>'+thumb(p.selected.url,'局部修改')+
-            '<select aria-label="区域 '+(i+1)+' 修改版本" data-lf-version="'+i+'" '+(busy?'disabled':'')+'>'+p.images.map((img,j)=>'<option value="'+escapeAttr(img.url)+'" '+(img.url===p.selected.url?'selected':'')+'>版本 '+(j+1)+' · '+escapeHtml(img.name||'图片')+'</option>').join('')+'</select></div>').join(''):'<p class="lf-empty">连接 AI 修改后的局部图<br>裁剪坐标会自动随结果保留</p>')+'</div></div>'+
-        '<label class="lf-source">原图 <select data-lf-source '+(busy?'disabled':'')+'><option value="">自动选择裁剪原图</option>'+originals.map(img=>'<option value="'+escapeAttr(img.url)+'" '+(img.url===c.sourceUrl?'selected':'')+'>'+escapeHtml(img.name||'图片')+'</option>').join('')+'</select></label>'+
-        '<p class="lf-state" role="status">'+escapeHtml(node.fusionMessage||(state.source.url?'原图已就绪 · '+state.patches.length+' 个局部区域':'连接原图与局部修改图'))+'</p>'+
-        '<p class="lf-location">'+escapeHtml(state.patches.length?state.patches.every(p=>p.region)?'已记录位置 · 自动检查边界对齐':'部分局部图无坐标 · 将尝试特征定位':'从原图“局部修复”裁剪可保存位置')+'</p>'+
-        '<div class="lf-actions"><label><input type="checkbox" data-lf-color '+(c.colorMatch?'checked':'')+(busy?' disabled':'')+'>颜色匹配</label><button type="button" data-lf-run '+(!state.source.url||!state.patches.some(p=>p.enabled)||busy?'disabled':'')+'>开始融合</button>'+(busy?'<button type="button" data-lf-cancel>取消</button>':'')+'</div>'+
-        (node.fusionPreview?'<div class="lf-result"><button type="button" data-lf-preview><img src="'+escapeAttr(node.fusionPreview.url)+'" alt="融合结果预览"></button><button type="button" data-lf-output '+(!fresh||busy?'disabled':'')+'>输出完整图片</button><small>'+(fresh?'检查接缝、文字与产品结构后输出':'输入已变化，请重新融合')+'</small></div>':'')+
-        '<details class="lf-advanced" '+(c.advancedOpen?'open':'')+'><summary>高级设置</summary><label>边缘羽化（像素）<input type="number" min="0" max="128" data-lf-config="feather" value="'+escapeAttr(c.feather)+'"></label>'+
-        '<label>融合方式<select data-lf-config="blend"><option value="alpha" '+(c.blend==='alpha'?'selected':'')+'>羽化 · 保留文字和细节</option><option value="poisson" '+(c.blend==='poisson'?'selected':'')+'>泊松 · 适合背景纹理</option></select></label>'+
-        '<label>重叠区域<select data-lf-config="overlap"><option value="reject" '+(c.overlap==='reject'?'selected':'')+'>停止并提示</option><option value="ordered" '+(c.overlap==='ordered'?'selected':'')+'>按列表顺序融合</option></select></label><p>泊松可能改变颜色，不建议用于文字和 Logo。手动定位后请检查预览。</p>'+
-        state.patches.map((p,i)=>'<fieldset><legend>区域 '+(i+1)+'</legend><label>定位<select data-lf-patch="alignment" data-index="'+i+'">'+[['auto','自动检查与对齐'],['coordinates','仅使用裁剪坐标'],['manual','手动调整']].map(([v,l])=>'<option value="'+v+'" '+((p.options.alignment||'auto')===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
-        '<label>关联裁剪<select data-lf-patch="regionId" data-index="'+i+'"><option value="">随修改图自动关联</option>'+[...new Map(state.regions.map(r=>[r.id,r])).values()].filter(r=>r.sourceUrl===state.source.url).map((r,j)=>'<option value="'+escapeAttr(r.id)+'" '+(p.options.regionId===r.id?'selected':'')+'>区域 '+(j+1)+' · '+r.x+','+r.y+' · '+r.width+'×'+r.height+'</option>').join('')+'</select></label>'+
-        '<div class="lf-numbers">'+[['offsetX','水平偏移',0],['offsetY','垂直偏移',0],['scale','缩放',1],['rotation','旋转角度',0]].map(([k,l,v])=>'<label>'+l+'<input type="number" step="'+(k==='scale'?'.01':'1')+'" data-lf-patch="'+k+'" data-index="'+i+'" value="'+escapeAttr(p.options[k]??v)+'"></label>').join('')+'</div>'+
-        '<label><input type="checkbox" data-lf-patch="allowDistortion" data-index="'+i+'" '+(p.options.allowDistortion?'checked':'')+'>允许拉伸不同宽高比（可能变形）</label>'+
-        '<label>修改范围<select data-lf-patch="maskMode" data-index="'+i+'"><option value="rectangle">整个裁剪区域</option><option value="changes" '+(p.options.maskMode==='changes'?'selected':'')+'>检测变化区域（需检查预览）</option></select></label>'+
-        '<button type="button" data-lf-position="'+i+'">填写原图坐标</button> <button type="button" data-lf-mask="'+i+'" '+(!p.region?'disabled':'')+'>绘制修改蒙版</button>'+(p.options.maskUrl?'<button type="button" data-lf-clear-mask="'+i+'">清除蒙版</button>':'')+'</fieldset>').join('')+'</details></div>';
+    const autoOption='<option value="" '+(c.sourceUrl?'':'selected')+'>'+(hasSource?'自动 · '+escapeHtml(sourceName):'自动选择裁剪原图')+'</option>';
+    const sourceOptions=originals.map(img=>'<option value="'+escapeAttr(img.url)+'" '+(img.url===c.sourceUrl?'selected':'')+'>'+escapeHtml(img.name||'图片')+'</option>').join('');
+    const patchPreview=(enabled[0]&&enabled[0].selected)||(patches[0]&&patches[0].selected)||null;
+    const statusText=message||(busy?'正在融合…':!hasSource?'连接原图后可开始融合':!patches.length?'连接局部修改图后会列出区域':!enabled.length?'勾选至少一个区域':'可以开始融合');
+    const assetsSection='<section class="lf-section"><header class="lf-section-head"><span class="lf-step">1</span><strong>素材</strong><em>'+(hasSource&&patches.length?'已就绪':(hasSource?'待连接局部图':'待连接'))+'</em></header>'
+        +'<div class="lf-assets">'+localFusionAssetHtml(state.source.url,'原图','连接原图','拖到左侧输入口')+localFusionAssetHtml(patchPreview&&patchPreview.url||'','局部修改','连接局部图','AI 修改后的结果')+'</div>'
+        +'<label class="lf-source-row"><span>原图来源</span><select data-lf-source '+(busy?'disabled':'')+'>'+autoOption+sourceOptions+'</select></label>'
+        +'</section>';
+    // 完全没素材时给一块可读的空态说明，而不是让用户对着一排空控件猜顺序。
+    const emptyStateHtml='<div class="lf-empty"><i data-lucide="image-plus"></i><strong>连接原图开始</strong><p>在原图上用「局部修复」裁出要改的区域，AI 改完连回本节点；融合完成后会在右侧输出完整图片。</p></div>';
+    return '<div class="local-fusion-body'+(!hasSource?' is-empty':'')+'" data-lf-root><div class="lf-scroll">'
+        +(!hasSource?emptyStateHtml:assetsSection)
+        +(patches.length
+            ?'<section class="lf-section"><header class="lf-section-head"><span class="lf-step">2</span><strong>融合区域</strong><em>'+patches.length+' 个 · 启用 '+enabled.length+'</em></header>'
+                +'<div class="lf-patches">'+patches.map((p,i)=>localFusionPatchHtml(node,p,i,busy,state)).join('')+'</div>'
+                +((located<patches.length)?'<p class="lf-note">'+(patches.length-located)+' 个区域没有裁剪坐标，将按画面特征自动定位</p>':'')+'</section>'
+            :(hasSource?'<p class="lf-note">把 AI 修改后的局部图连回本节点，这里会列出可融合的区域。</p>':''))
+        +(hasSource?'<section class="lf-section"><header class="lf-section-head"><span class="lf-step">3</span><strong>融合设置</strong><em>改完需重新融合</em></header>'
+            +'<label class="lf-switch"><input type="checkbox" data-lf-color '+(c.colorMatch?'checked':'')+(busy?' disabled':'')+'><span class="lf-switch-track" aria-hidden="true"></span><span class="lf-switch-text">颜色匹配<small>让局部图色调贴合原图</small></span></label>'
+            +'<div class="lf-fields">'
+            +'<label class="lf-field lf-field-stack"><span>边缘过渡<small>越大接缝越柔和</small></span><span class="lf-field-ctl"><input type="number" min="0" max="128" data-lf-config="feather" value="'+escapeAttr(c.feather)+'"><em>px</em></span></label>'
+            +'<label class="lf-field lf-field-stack"><span>融合方式<small>羽化保留文字细节</small></span><select data-lf-config="blend">'+[['alpha','羽化 · 保留细节'],['poisson','泊松 · 融合背景纹理']].map(([v,l])=>'<option value="'+v+'" '+(c.blend===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'
+            +'</div></section>':'')
+        +(node.fusionPreview?'<section class="lf-result">'
+            +'<button type="button" class="lf-result-thumb" data-lf-preview aria-label="放大检查融合结果"><img src="'+escapeAttr(node.fusionPreview.url)+'" alt="融合结果预览"><span><i data-lucide="maximize-2"></i></span></button>'
+            +'<div class="lf-result-info"><strong>融合预览</strong><small>'+(fresh?'请检查接缝、文字与产品结构':'输入已变化，请重新融合')+'</small><button type="button" data-lf-output '+(!fresh||busy?'disabled':'')+'>查看完整图片</button></div></section>':'')
+        +(patches.length?'<details class="lf-advanced" '+(c.advancedOpen?'open':'')+'><summary>高级设置</summary>'
+            +'<label class="lf-field"><span>区域重叠时<small>多个区域压在同一处</small></span><select data-lf-config="overlap">'+[['reject','停止并提示'],['ordered','按列表顺序叠加']].map(([v,l])=>'<option value="'+v+'" '+(c.overlap===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'
+            +'<p class="lf-note">泊松融合会轻微改变颜色，不适合文字和 Logo。手动填写坐标后请先看预览。</p></details>':'')
+        +'</div><div class="lf-footer"><p class="lf-state '+tone+'" role="status"><i data-lucide="'+localFusionToneIcon(tone,busy)+'"></i><span>'+escapeHtml(statusText)+'</span>'+(busy?'<button type="button" data-lf-cancel>取消</button>':'')+'</p>'
+        +'<button type="button" class="lf-run-btn" data-lf-run '+(canRun?'':'disabled')+'><i data-lucide="'+(busy?'loader-circle':'combine')+'"></i><span>'+(busy?'正在融合':'开始融合')+'</span></button></div>'
+        +'</div>';
 }
 function bindLocalFusionNode(el,node){
     const root=el.querySelector('[data-lf-root]');if(!root)return;
     // Keep controls from starting node drag / canvas shortcuts.
     root.addEventListener('pointerdown',e=>e.stopPropagation());root.addEventListener('mousedown',e=>e.stopPropagation());
     root.addEventListener('wheel',e=>e.stopPropagation(),{passive:true});
-    const mutate=fn=>{if(localFusionSessions.has(node.id)||!collabCanMutateCanvas()||!collabCanEditNode(node.id))return;pushUndo();fn();node.fusionMessage='设置已更新，请重新融合';render();scheduleSave();};
+    // 每次改参数都会整体重绘 body，记下滚动位置，避免「调一个值就跳回顶部」。
+    const mutate=fn=>{if(localFusionSessions.has(node.id)||!collabCanMutateCanvas()||!collabCanEditNode(node.id))return;const top=(root.querySelector('.lf-scroll')||root).scrollTop;pushUndo();fn();delete node.fusionStatus;node.fusionMessage='设置已更新，重新融合后生效';render();scheduleSave();const next=document.querySelector('[data-id="'+CSS.escape(node.id)+'"] .lf-scroll');if(next)next.scrollTop=top;};
     const state=()=>localFusionState(node),c=localFusionConfig(node);
+    // 区域「位置与蒙版」展开状态跟着节点存，重绘后不收起。
+    root.querySelectorAll('[data-lf-patch-toggle]').forEach(button=>button.onclick=()=>{
+        const index=Number(button.dataset.lfPatchToggle),body=button.closest('.lf-patch').querySelector('.lf-patch-body');
+        const open=body.hasAttribute('hidden');
+        body.toggleAttribute('hidden',!open);
+        button.setAttribute('aria-expanded',String(open));button.classList.toggle('is-open',open);
+        const patch=state().patches[index];if(patch){c.patchOpen||={};c.patchOpen[patch.key]=open;}scheduleSave();
+    });
     if(localFusionSessions.has(node.id)||node.fusionJobId)root.querySelectorAll('input,select,[data-lf-position],[data-lf-mask],[data-lf-clear-mask]').forEach(input=>input.disabled=true);
-    root.querySelector('[data-lf-source]').onchange=e=>mutate(()=>{c.sourceUrl=e.target.value;});
-    root.querySelector('[data-lf-color]').onchange=e=>mutate(()=>{c.colorMatch=e.target.checked;});
+    root.querySelector('[data-lf-source]')?.addEventListener('change',e=>mutate(()=>{c.sourceUrl=e.target.value;}));
+    root.querySelector('[data-lf-color]')?.addEventListener('change',e=>mutate(()=>{c.colorMatch=e.target.checked;}));
     root.querySelectorAll('[data-lf-config]').forEach(input=>input.onchange=()=>mutate(()=>{c[input.dataset.lfConfig]=input.type==='number'?Number(input.value):input.value;}));
     root.querySelectorAll('[data-lf-enable]').forEach(input=>input.onchange=()=>mutate(()=>{const key=state().patches[Number(input.dataset.lfEnable)].key;c.excluded=c.excluded.filter(k=>k!==key);if(!input.checked)c.excluded.push(key);}));
     root.querySelectorAll('[data-lf-version]').forEach(input=>input.onchange=()=>mutate(()=>{c.versions[state().patches[Number(input.dataset.lfVersion)].key]=input.value;}));
     root.querySelectorAll('[data-lf-patch]').forEach(input=>input.onchange=()=>mutate(()=>{const p=state().patches[Number(input.dataset.index)],options=c.patches[p.key]||={};options[input.dataset.lfPatch]=input.type==='checkbox'?input.checked:input.type==='number'?Number(input.value):input.value;if(input.dataset.lfPatch==='regionId')delete options.manualRegion;}));
-    root.querySelector('.lf-advanced').ontoggle=e=>{c.advancedOpen=e.target.open;};
+    root.querySelector('.lf-advanced')?.addEventListener('toggle',e=>{c.advancedOpen=e.target.open;});
     root.querySelectorAll('[data-lf-position]').forEach(button=>button.onclick=()=>localFusionPositionDialog(node,Number(button.dataset.lfPosition)));
     root.querySelectorAll('[data-lf-mask]').forEach(button=>button.onclick=()=>localFusionMaskDialog(node,Number(button.dataset.lfMask)));
     root.querySelectorAll('[data-lf-clear-mask]').forEach(button=>button.onclick=()=>mutate(()=>{const p=state().patches[Number(button.dataset.lfClearMask)];delete c.patches[p.key].maskUrl;}));
@@ -114,13 +183,13 @@ async function runLocalFusionNode(node){
     if(!collabCanMutateCanvas()||!collabCanEditNode(node.id)||localFusionSessions.has(node.id))return;
     const signature=localFusionSignature(node),canvasToken=canvas.id;
     localFusionSessions.set(node.id,{starting:true,canvasToken});
-    node.fusionMessage='正在提交本地融合';render();
+    node.fusionStatus='queued';node.fusionMessage='正在提交本地融合';render();
     try{
         const job=await localFusionFetch('/api/local-fusion/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:signature});
         if(canvas.id!==canvasToken||!nodes.includes(node)||localFusionSessions.get(node.id)?.cancelled){await fetch('/api/local-fusion/jobs/'+job.id,{method:'DELETE'});return;}
         node.fusionJobId=job.id;node.fusionJobSignature=signature;localFusionSessions.delete(node.id);scheduleSave();
         await pollLocalFusionNode(node,job.id,signature);
-    }catch(error){node.fusionMessage=error.message;}
+    }catch(error){node.fusionStatus='failed';node.fusionMessage='融合未完成：'+error.message;toast(node.fusionMessage);}
     finally{localFusionSessions.delete(node.id);if(canvas.id===canvasToken){render();scheduleSave();}}
 }
 async function pollLocalFusionNode(node,id,signature){
@@ -130,18 +199,23 @@ async function pollLocalFusionNode(node,id,signature){
         while(true){
             if(canvas.id!==session.canvasToken||!nodes.includes(node)){await fetch('/api/local-fusion/jobs/'+id,{method:'DELETE'});return;}
             const job=await localFusionFetch('/api/local-fusion/jobs/'+id);
-            node.fusionMessage=job.message;
+            if(canvas.id!==session.canvasToken||!nodes.includes(node))return;
+            node.fusionStatus=job.status;node.fusionMessage=job.message;
             if(job.status==='completed'){
                 pushUndo();node.fusionPreview=job.result;node.fusionPreviewSignature=signature;
                 node.fusionPreviewSource=JSON.parse(signature).sourceUrl;
                 node.fusionMessage=job.result.report.warnings.join('；')||'融合预览完成 · 原图尺寸不变，修改范围外像素一致';
+                if(!session.cancelled&&signature===localFusionSignature(node))localFusionOutput(node);
                 break;
             }
-            if(['failed','cancelled'].includes(job.status))break;
-            const text=document.querySelector('[data-id="'+CSS.escape(node.id)+'"] .lf-state');if(text)text.textContent=job.message;
+            if(['failed','cancelled'].includes(job.status)){
+                if(job.status==='failed'){node.fusionMessage='融合未完成：'+job.message;toast(node.fusionMessage);}
+                break;
+            }
+            const text=document.querySelector('[data-id="'+CSS.escape(node.id)+'"] .lf-state > span');if(text)text.textContent=job.message;
             await new Promise(resolve=>setTimeout(resolve,450));
         }
-    }catch(error){node.fusionMessage=error.message;}
+    }catch(error){node.fusionStatus='failed';node.fusionMessage='融合未完成：'+error.message;toast(node.fusionMessage);}
     finally{localFusionSessions.delete(node.id);delete node.fusionJobId;if(canvas.id===session.canvasToken){render();scheduleSave();}}
 }
 async function cancelLocalFusionNode(node){
@@ -151,13 +225,17 @@ async function cancelLocalFusionNode(node){
 function localFusionOutput(node){
     if(!collabCanMutateCanvas()||!collabCanEditNode(node.id)||node.fusionPreviewSignature!==localFusionSignature(node))return;
     const result=node.fusionPreview;if(!result)return;
-    pushUndo();
-    const output=createNode(node.x+nodeRect(node).width+64,node.y,[{url:result.url,name:result.name,kind:'image',natural_w:result.width,natural_h:result.height,width:result.width,height:result.height,
-        fusionRecord:{sourceUrl:node.fusionPreviewSource,request:JSON.parse(node.fusionPreviewSignature),report:result.report,maskUrl:result.maskUrl}}],{skipUndo:true,skipRender:true,skipSave:true});
-    if(!output)return;output.title='局部修复结果';
-    addConnection(node.id,output.id,'flow');
-    node.fusionOutputs||=[];node.fusionOutputs.push({nodeId:output.id,url:result.url,createdAt:Date.now()});
-    node.images=[{...output.images[0]}];render();
+    let output=nodes.find(n=>(node.fusionOutputs||[]).some(record=>record.nodeId===n.id&&record.url===result.url)&&n.images?.some(img=>img.url===result.url));
+    if(!output){
+        pushUndo();
+        output=createNode(node.x+nodeRect(node).width+64,node.y,[{url:result.url,name:result.name,kind:'image',natural_w:result.width,natural_h:result.height,width:result.width,height:result.height,
+            fusionRecord:{sourceUrl:node.fusionPreviewSource,request:JSON.parse(node.fusionPreviewSignature),report:result.report,maskUrl:result.maskUrl}}],{skipUndo:true,skipRender:true,skipSave:true});
+        if(!output)return;output.title='局部修复结果';
+        addConnection(node.id,output.id,'flow');
+        node.fusionOutputs||=[];node.fusionOutputs.push({nodeId:output.id,url:result.url,createdAt:Date.now()});
+    }
+    node.images=[{...output.images[0]}];
+    node.fusionMessage='融合完成，完整图片已输出到右侧'+(result.report.warnings.length?'；'+result.report.warnings.join('；'):'');render();
     const a=nodeRect(node),b=nodeRect(output),left=Math.min(a.x,b.x),top=Math.min(a.y,b.y),right=Math.max(a.x+a.width,b.x+b.width),bottom=Math.max(a.y+a.height,b.y+b.height);
     viewport.scale=Math.min(viewport.scale,(shell.clientWidth-100)/Math.max(1,right-left),(shell.clientHeight-160)/Math.max(1,bottom-top));
     centerViewportOnWorldPoint({x:(left+right)/2,y:(top+bottom)/2});

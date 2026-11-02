@@ -12,6 +12,17 @@ const { DeepSeekHarnessUpdater, pnpmCommand, runRemoteGit, isNetworkError } = re
 const handshakeError = "fatal: unable to access 'https://github.com/deepseek-ai/deepseek-harness.git/': schannel: failed to receive handshake, SSL/TLS connection failed";
 const remote = 'https://github.com/deepseek-ai/deepseek-harness.git';
 
+test('command capture preserves UTF-8 characters split between pipe chunks', async () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'desktop', 'deepseek-updater.cjs'), 'utf8');
+  const sandbox = { require, module: { exports: {} }, process, setTimeout, clearTimeout };
+  vm.runInNewContext(`${source}\nmodule.exports.captureCommand = run;`, sandbox);
+  const expected = '模型与推理等级\n中文补丁路径';
+  const script = `const b = Buffer.from(${JSON.stringify(expected)}); process.stdout.write(b.subarray(0, 1)); process.stderr.write(b.subarray(0, 2)); setTimeout(() => { process.stdout.write(b.subarray(1)); process.stderr.write(b.subarray(2)); }, 50);`;
+  const result = await sandbox.module.exports.captureCommand(process.execPath, ['-e', script]);
+  assert.equal(result.stdout, expected);
+  assert.equal(result.stderr, expected);
+});
+
 test('remote checks and fetches recover from a Schannel failure using the system proxy', async () => {
   for (const args of [['ls-remote', remote, 'master'], ['fetch', '--unshallow', remote, 'master']]) {
     const calls = [];
@@ -127,11 +138,27 @@ test('deferring a network failure ends the operation without changing the checko
   assert.equal(f.context.deepSeekHarnessUpdateOperationPromise, null);
 });
 
-test('network failures allow a new startup prompt after 24 hours; adapter conflicts remain manual', async () => {
+test('the desktop does not restart a Harness build that failed rollback validation', async () => {
+  let refreshed = false;
+  const failure = new Error('restored artifacts failed validation');
+  failure.code = 'HARNESS_UPDATE_ROLLBACK_FAILED';
+  const f = desktopFixture({
+    deepSeekHarnessVisible: true,
+    deepSeekHarnessUpdater: { update: async () => { throw failure; } },
+    refreshDeepSeekHarness: async () => { refreshed = true; },
+  });
+  const result = await f.context.updateDeepSeekHarness({ remote_commit: 'new-commit' });
+  assert.equal(refreshed, false);
+  assert.equal(result.status, 'error');
+  assert.match(result.message, /restored artifacts failed validation/);
+});
+
+test('fixed clone failures prompt again; network cooldowns and adapter conflict handling remain intact', async () => {
   for (const [message, age, manual, prompt] of [
     [handshakeError, 1000, false, false],
     [handshakeError, 25 * 60 * 60 * 1000, false, true],
     [handshakeError, 1000, true, true],
+    ["DeepSeek Harness 更新失败：Cloning into 'C:\\用户数据\\merge-probe'... fatal: failed to create link 'C:\\用户数据\\merge-prob", 1000, false, true],
     ['适配补丁与上游冲突', 25 * 60 * 60 * 1000, false, false],
   ]) {
     const f = desktopFixture({
@@ -190,10 +217,14 @@ test('a conflicting adapter patch leaves the live Harness checkout intact', asyn
   }
 });
 
-test('the updater builds with the Harness-local pnpm in a Chinese path', async () => {
+test('the updater builds with source and data on separate roots in a Chinese path', async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'xiaomei-harness-update-'));
-  const remote = path.join(temp, 'remote');
-  const local = path.join(temp, '中文 路径');
+  // On Windows the workspace may be on D: while user data lives on C:.
+  const sourceParent = path.resolve(__dirname, '..', 'tmp');
+  fs.mkdirSync(sourceParent, { recursive: true });
+  const sourceTemp = fs.mkdtempSync(path.join(sourceParent, 'harness-update-'));
+  const remote = path.join(sourceTemp, 'remote');
+  const local = path.join(sourceTemp, '中文 路径');
   try {
     fs.mkdirSync(remote);
     git(remote, 'init', '-b', 'master');
@@ -204,7 +235,7 @@ test('the updater builds with the Harness-local pnpm in a Chinese path', async (
     fs.writeFileSync(path.join(remote, 'version.txt'), 'old\n');
     git(remote, 'add', '.');
     git(remote, 'commit', '-m', 'base');
-    git(temp, 'clone', remote, local);
+    git(sourceTemp, 'clone', remote, local);
     const localPnpm = path.join(local, 'node_modules', 'pnpm', 'bin', 'pnpm.mjs');
     fs.mkdirSync(path.dirname(localPnpm), { recursive: true });
     fs.writeFileSync(localPnpm, "import fs from 'node:fs'; fs.appendFileSync('pnpm-invocations.txt', `${process.argv.slice(2).join(' ')}\\n`);\n");
@@ -213,9 +244,18 @@ test('the updater builds with the Harness-local pnpm in a Chinese path', async (
     git(remote, 'commit', '-m', 'update');
 
     assert.deepEqual(pnpmCommand(local), { command: 'node', prefix: [localPnpm] });
-    const updater = new DeepSeekHarnessUpdater({ root: local, dataRoot: path.join(temp, 'data'), remote, branch: 'master' });
+    let verified = false;
+    const updater = new DeepSeekHarnessUpdater({ root: local, dataRoot: path.join(temp, 'data'), remote, branch: 'master',
+      verifyBuild: async root => {
+        assert.equal(root, local);
+        assert.equal(fs.readFileSync(path.join(root, 'version.txt'), 'utf8').trim(), 'new');
+        assert.match(fs.readFileSync(path.join(root, 'pnpm-invocations.txt'), 'utf8'), /run build:web/);
+        verified = true;
+      },
+    });
     const result = await updater.update();
     assert.equal(result.updated, true);
+    assert.equal(verified, true);
     assert.equal(fs.readFileSync(path.join(local, 'version.txt'), 'utf8').trim(), 'new');
     assert.deepEqual(fs.readFileSync(path.join(local, 'pnpm-invocations.txt'), 'utf8').trim().split('\n'), [
       'install --frozen-lockfile',
@@ -224,6 +264,54 @@ test('the updater builds with the Harness-local pnpm in a Chinese path', async (
       'run build:web',
     ]);
   } finally {
+    assert.ok(sourceTemp.startsWith(`${sourceParent}${path.sep}`));
+    fs.rmSync(sourceTemp, { recursive: true, force: true });
+    assert.ok(temp.startsWith(`${path.resolve(os.tmpdir())}${path.sep}`));
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('a failed build keeps the diagnostic tail and restores the previous checkout', async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'xiaomei-harness-update-'));
+  const remote = path.join(temp, 'remote');
+  const local = path.join(temp, 'local');
+  const diagnostic = `${'build output '.repeat(120)}\nERROR: fixture build failed at the final step`;
+  try {
+    fs.mkdirSync(remote);
+    git(remote, 'init', '-b', 'master');
+    git(remote, 'config', 'user.name', 'Harness Test');
+    git(remote, 'config', 'user.email', 'harness-test@example.invalid');
+    fs.writeFileSync(path.join(remote, '.gitignore'), 'node_modules/\n');
+    fs.writeFileSync(path.join(remote, 'package.json'), '{"name":"harness-test"}\n');
+    fs.writeFileSync(path.join(remote, 'version.txt'), 'old\n');
+    git(remote, 'add', '.');
+    git(remote, 'commit', '-m', 'base');
+    git(temp, 'clone', remote, local);
+    const previousCommit = git(local, 'rev-parse', 'HEAD');
+    const localPnpm = path.join(local, 'node_modules', 'pnpm', 'bin', 'pnpm.mjs');
+    fs.mkdirSync(path.dirname(localPnpm), { recursive: true });
+    fs.writeFileSync(localPnpm, `import fs from 'node:fs';
+      if (fs.readFileSync('version.txt', 'utf8').trim() === 'new') {
+        process.stderr.write(${JSON.stringify(diagnostic)}); process.exitCode = 1;
+      }\n`);
+    fs.writeFileSync(path.join(remote, 'version.txt'), 'new\n');
+    git(remote, 'add', '.');
+    git(remote, 'commit', '-m', 'update');
+
+    let restored = false;
+    const updater = new DeepSeekHarnessUpdater({ root: local, dataRoot: path.join(temp, 'data'), remote, branch: 'master',
+      verifyBuild: async () => { restored = true; },
+    });
+    await assert.rejects(updater.update(), error => {
+      assert.ok(error.message.includes(diagnostic));
+      return true;
+    });
+    assert.equal(git(local, 'rev-parse', 'HEAD'), previousCommit);
+    assert.equal(fs.readFileSync(path.join(local, 'version.txt'), 'utf8').trim(), 'old');
+    assert.equal(git(local, 'status', '--porcelain'), '');
+    assert.equal(restored, true);
+  } finally {
+    assert.ok(temp.startsWith(`${path.resolve(os.tmpdir())}${path.sep}`));
     fs.rmSync(temp, { recursive: true, force: true });
   }
 });
@@ -251,7 +339,7 @@ test('the updater preserves new adapter files while fast-forwarding', async () =
     git(remote, 'add', '.');
     git(remote, 'commit', '-m', 'update');
 
-    const updater = new DeepSeekHarnessUpdater({ root: local, dataRoot: path.join(temp, 'data'), remote, branch: 'master' });
+    const updater = new DeepSeekHarnessUpdater({ root: local, dataRoot: path.join(temp, 'data'), remote, branch: 'master', verifyBuild: async () => {} });
     const result = await updater.update();
     assert.equal(result.updated, true);
     assert.equal(fs.readFileSync(path.join(local, 'src', 'xiaomei-adapter.ts'), 'utf8').replace(/\r\n/g, '\n'), 'export const adapter = true\n');
@@ -260,4 +348,67 @@ test('the updater preserves new adapter files while fast-forwarding', async () =
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }
+});
+
+test('a model capability regression rejects the update and rebuilds the previous artifacts', async t => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'xiaomei-harness-model-rollback-'));
+  t.after(() => {
+    assert.ok(temp.startsWith(`${path.resolve(os.tmpdir())}${path.sep}`));
+    fs.rmSync(temp, { recursive: true, force: true });
+  });
+  const remote = path.join(temp, 'remote');
+  const local = path.join(temp, 'local');
+  fs.mkdirSync(remote);
+  git(remote, 'init', '-b', 'master');
+  git(remote, 'config', 'user.name', 'Harness Test');
+  git(remote, 'config', 'user.email', 'harness-test@example.invalid');
+  fs.writeFileSync(path.join(remote, '.gitignore'), 'node_modules/\nbuild-version.txt\n');
+  fs.writeFileSync(path.join(remote, 'package.json'), '{"name":"harness-test"}\n');
+  fs.writeFileSync(path.join(remote, 'version.txt'), 'old\n');
+  git(remote, 'add', '.');
+  git(remote, 'commit', '-m', 'base');
+  git(temp, 'clone', remote, local);
+  const previousCommit = git(local, 'rev-parse', 'HEAD');
+  const manager = path.join(local, 'node_modules', 'pnpm', 'bin', 'pnpm.mjs');
+  fs.mkdirSync(path.dirname(manager), { recursive: true });
+  fs.writeFileSync(manager, `import fs from 'node:fs';
+    if (process.argv.includes('build:web')) fs.copyFileSync('version.txt', 'build-version.txt');\n`);
+  fs.writeFileSync(path.join(local, 'build-version.txt'), 'old\n');
+  fs.writeFileSync(path.join(remote, 'version.txt'), 'new\n');
+  git(remote, 'add', '.');
+  git(remote, 'commit', '-m', 'update');
+  const verified = [], stages = [];
+  const updater = new DeepSeekHarnessUpdater({ root: local, dataRoot: path.join(temp, 'data'), remote, branch: 'master',
+    verifyBuild: async root => {
+      const built = fs.readFileSync(path.join(root, 'build-version.txt'), 'utf8').trim();
+      verified.push(built);
+      if (built === 'new') throw new Error('gpt-6-sol lost image input');
+    },
+  });
+  await assert.rejects(updater.update({ onProgress: ({ stage }) => stages.push(stage) }), /gpt-6-sol lost image input/);
+  assert.deepEqual(verified, ['new', 'old']);
+  assert.ok(stages.includes('verify'));
+  assert.ok(stages.includes('rollback'));
+  assert.ok(!stages.includes('done'));
+  assert.equal(git(local, 'rev-parse', 'HEAD'), previousCommit);
+  assert.equal(fs.readFileSync(path.join(local, 'build-version.txt'), 'utf8').trim(), 'old');
+  assert.equal(git(local, 'status', '--porcelain'), '');
+});
+
+test('the default build verification rejects missing artifacts without changing the target', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'xiaomei-harness-missing-build-'));
+  t.after(() => {
+    assert.ok(root.startsWith(`${path.resolve(os.tmpdir())}${path.sep}`));
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  const updater = new DeepSeekHarnessUpdater({ root });
+  await assert.rejects(updater.verifyBuild(root), /generated desktop profile|MODULE_NOT_FOUND|Cannot find module/);
+  assert.deepEqual(fs.readdirSync(root), []);
+});
+
+test('the default build verification loads the current built adapter in a fresh process', async () => {
+  const root = process.env.XIAOMEI_TEST_HARNESS_ROOT || path.resolve(__dirname, '..', 'vendor', 'deepseek-harness');
+  const result = await new DeepSeekHarnessUpdater({ root }).verifyBuild(root);
+  assert.match(result.stdout, /pass 4/);
+  assert.match(result.stdout, /fail 0/);
 });

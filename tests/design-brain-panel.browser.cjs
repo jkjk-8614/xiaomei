@@ -19,6 +19,101 @@ const PNG_1PX = Buffer.from(
     'base64',
 );
 
+test('项目经验列表所有状态均可删除，取消与失败保留记录，成功更新计数并持久化', async t => {
+    const experiences = ['candidate', 'pending_review', 'published', 'rejected'].map((status, i) => ({
+        id: `exp_delete_${i}`, title: `待删除经验${i}`, status, observations: ['测试观察'],
+        origin: {}, evidence: {asset_refs: []}, proposals: {profile_patch: []},
+        review: {}, publish: {}, created_at: 1, updated_at: 1,
+    }));
+    const {page, state} = await openPanel(t, {experiences});
+    await gotoTab(page, 'experiences');
+    assert.equal(await page.locator('[data-delete-experience]').count(), 4);
+    if (process.env.DELETE_SCREENSHOT_DIR) {
+        await page.evaluate(() => window.postMessage({type: 'studio-theme', theme: 'dark'}, location.origin));
+        await page.waitForTimeout(100);
+        await page.screenshot({path: path.join(process.env.DELETE_SCREENSHOT_DIR, 'experience-delete.png')});
+    }
+    let calls = 0;
+    let fail = true;
+    await page.route('**/api/design-brain/experiences/exp_delete_*', route => {
+        assert.equal(route.request().method(), 'DELETE');
+        calls++;
+        if (fail) return route.fulfill({status: 503, json: {detail: '保存失败'}});
+        const id = new URL(route.request().url()).pathname.split('/').pop();
+        state.experiences = state.experiences.filter(item => item.id !== id);
+        return route.fulfill({json: {ok: true}});
+    });
+    page.once('dialog', dialog => dialog.dismiss());
+    await page.locator('[data-delete-experience="exp_delete_0"]').click();
+    assert.equal(calls, 0);
+    assert.equal(await page.locator('#experienceOverlay').isVisible(), false);
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('[data-delete-experience="exp_delete_0"]').click();
+    await page.getByText('删除项目经验失败：保存失败', {exact: true}).waitFor();
+    assert.equal(await page.locator('[data-delete-experience]').count(), 4);
+    fail = false;
+    await page.locator('[data-exp-id="exp_delete_2"] h3').click();
+    await page.locator('[data-exp-action="delete"]').waitFor();
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('[data-exp-action="delete"]').click();
+    await page.locator('[data-exp-id="exp_delete_2"]').waitFor({state: 'detached'});
+    assert.equal(await page.locator('#experienceOverlay').isVisible(), false);
+    for (const id of ['exp_delete_0', 'exp_delete_1', 'exp_delete_3']) {
+        page.once('dialog', dialog => dialog.accept());
+        await page.locator(`[data-delete-experience="${id}"]`).click();
+        await page.locator(`[data-exp-id="${id}"]`).waitFor({state: 'detached'});
+    }
+    assert.match(await page.locator('#experienceCount').textContent(), /0 条经验/);
+    await page.reload({waitUntil: 'networkidle'});
+    await gotoTab(page, 'experiences');
+    assert.equal(await page.locator('[data-delete-experience]').count(), 0);
+    assert.deepEqual(state.pageErrors, []);
+});
+
+test('项目记录删除处理取消与失败，执行中禁删，成功后刷新保留结果', async t => {
+    const {page, state} = await openPanel(t);
+    let runs = [
+        {id: 'run_delete', title: '失败项目', status: 'failed', created_at: 1},
+        {id: 'run_active', title: '正在执行的项目', status: 'executing', created_at: 2},
+    ];
+    await page.route('**/api/design-brain/runs?*', route => route.fulfill({json: {runs}}));
+    let calls = 0;
+    let fail = true;
+    await page.route('**/api/design-brain/runs/run_delete', route => {
+        assert.equal(route.request().method(), 'DELETE');
+        calls++;
+        if (fail) return route.fulfill({status: 503, json: {detail: '保存失败'}});
+        runs = runs.filter(item => item.id !== 'run_delete');
+        return route.fulfill({json: {ok: true}});
+    });
+    await page.reload({waitUntil: 'networkidle'});
+    await gotoTab(page, 'runs');
+    await page.locator('[data-delete-run="run_delete"]').waitFor();
+    if (process.env.DELETE_SCREENSHOT_DIR) {
+        await page.evaluate(() => window.postMessage({type: 'studio-theme', theme: 'dark'}, location.origin));
+        await page.waitForTimeout(100);
+        await page.screenshot({path: path.join(process.env.DELETE_SCREENSHOT_DIR, 'run-delete.png')});
+    }
+    assert.equal(await page.locator('[data-delete-run="run_active"]').isDisabled(), true);
+    page.once('dialog', dialog => dialog.dismiss());
+    await page.locator('[data-delete-run="run_delete"]').click();
+    assert.equal(calls, 0);
+    assert.equal(await page.locator('[data-run-id="run_delete"] .run-detail').isVisible(), false);
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('[data-delete-run="run_delete"]').click();
+    await page.getByText('删除项目记录失败：保存失败', {exact: true}).waitFor();
+    assert.equal(await page.locator('[data-delete-run="run_delete"]').isEnabled(), true);
+    fail = false;
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('[data-delete-run="run_delete"]').click();
+    await page.locator('[data-run-id="run_delete"]').waitFor({state: 'detached'});
+    assert.match(await page.locator('#runCount').textContent(), /1 条执行记录/);
+    await page.reload({waitUntil: 'networkidle'});
+    await gotoTab(page, 'runs');
+    assert.equal(await page.locator('[data-run-id="run_delete"]').count(), 0);
+    assert.deepEqual(state.pageErrors, []);
+});
+
 test('设计技能共用已安装库，支持搜索、导入且不改变当前选择', async t => {
     const {page, state} = await openPanel(t);
     const library = [{id: 'main-image', name: '电商主图策划', description: '主图构图与材质', enabled: true, kind: 'package'}];

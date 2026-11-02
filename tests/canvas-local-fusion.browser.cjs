@@ -10,7 +10,7 @@ test('local crop provenance, versions, preview, output, undo, reload and cancell
     const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
     page.on('pageerror',e=>errors.push(e.message));await page.routeWebSocket('**/*',s=>s.close());
     const source='<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480"><rect width="640" height="480" fill="#bbb4a9"/><rect x="130" y="100" width="360" height="260" rx="12" fill="#8c5942"/><rect x="150" y="120" width="320" height="220" fill="#f4e6c9"/><text x="230" y="245" font-size="46" fill="#352d27">XIAOMEI</text></svg>';
-    let cropped,saved={id:'fusion-fixture',title:'局部修复测试',nodes:[],connections:[],logs:[],settings:{}},requests=[],cancelled=false,waiting=false;
+    let cropped,saved={id:'fusion-fixture',title:'局部修复测试',nodes:[],connections:[],logs:[],settings:{}},requests=[],cancelled=false,waiting=false,failure='';
     await page.route('**/*',route=>{
         const req=route.request(),url=new URL(req.url()),p=url.pathname;
         if(url.hostname!=='fusion.test')return route.abort();
@@ -28,7 +28,7 @@ test('local crop provenance, versions, preview, output, undo, reload and cancell
         }
         if(p.startsWith('/api/local-fusion/jobs/')){
             if(req.method()==='DELETE'){cancelled=true;return route.fulfill({json:{status:'cancelled'}});}
-            return route.fulfill({json:cancelled?{status:'cancelled',message:'已取消融合'}:waiting?{status:'running',message:'正在处理区域 1/1'}:{status:'completed',message:'融合预览完成',result:{url:'/output/result.png',maskUrl:'/output/mask.png',width:640,height:480,name:'局部融合结果.png',report:{warnings:[],outsideUnchanged:true,regions:[]}}}});
+            return route.fulfill({json:cancelled?{status:'cancelled',message:'已取消融合'}:waiting?{status:'running',message:'正在处理区域 1/1'}:failure?{status:'failed',message:failure}:{status:'completed',message:'融合预览完成',result:{url:'/output/result.png',maskUrl:'/output/mask.png',width:640,height:480,name:'局部融合结果.png',report:{warnings:[],outsideUnchanged:true,regions:[]}}}});
         }
         if(p==='/output/crop.png'&&cropped)return route.fulfill({contentType:'image/png',body:cropped});
         if(p.startsWith('/output/')||p==='/api/media-preview')return route.fulfill({contentType:'image/svg+xml',body:source});
@@ -66,8 +66,10 @@ test('local crop provenance, versions, preview, output, undo, reload and cancell
     const fusion=page.locator('.local-fusion-smart-node');await assert.equal(await fusion.count(),1);
     await fusion.locator('[data-lf-version]').selectOption('/output/edited1.png');
     await fusion.locator('[data-lf-run]').click();
-    await page.waitForFunction(()=>nodes.find(n=>n.id===fusionId)?.fusionPreview);
+    await page.waitForFunction(()=>nodes.some(n=>n.title==='局部修复结果')&&!nodes.find(n=>n.id===fusionId).fusionJobId);
     assert.equal(requests.length,1);assert.equal(requests[0].patches[0].url,'/output/edited1.png');
+    assert.equal(await page.evaluate(()=>nodes.filter(n=>n.title==='局部修复结果').length),1,'completion automatically creates the full image');
+    assert.ok(await page.evaluate(()=>canvas.connections.some(c=>c.from===fusionId&&nodes.some(n=>n.id===c.to&&n.title==='局部修复结果'))));
     await fusion.locator('[data-lf-preview]').click();await page.getByRole('button',{name:'原图',exact:true}).click();
     assert.equal(await page.locator('.lf-large-preview').getAttribute('src'),'/output/source.png');
     await page.locator('[data-lf-zoom]').fill('200');await page.locator('[data-lf-zoom]').dispatchEvent('input');
@@ -76,20 +78,40 @@ test('local crop provenance, versions, preview, output, undo, reload and cancell
     await page.getByRole('button',{name:'修改范围',exact:true}).click();assert.ok(await page.locator('.lf-preview-mask').isVisible());
     await page.getByRole('button',{name:'关闭',exact:true}).click();
     await fusion.locator('[data-lf-output]').click();
+    await fusion.locator('[data-lf-output]').click();
+    assert.equal(await page.evaluate(()=>nodes.filter(n=>n.title==='局部修复结果').length),1,'viewing the result reuses the automatic output');
     assert.equal(await page.evaluate(()=>nodes.find(n=>n.title==='局部修复结果')?.images[0].natural_w),640);
     assert.equal(await page.evaluate(()=>nodes.find(n=>n.title==='局部修复结果')?.images[0].fusionRecord.sourceUrl),'/output/source.png');
     const outputBox=await page.locator('.image-node').filter({has:page.locator('[data-original-src="/output/result.png"]')}).last().boundingBox();
     assert.ok(outputBox.x>=0&&outputBox.x+outputBox.width<=1440,'new full-image output is brought into view');
     const undo=await page.evaluate(()=>{performUndo();const absent=!nodes.some(n=>n.title==='局部修复结果');performRedo();return absent&&nodes.some(n=>n.title==='局部修复结果');});assert.ok(undo);
     await fusion.locator('[data-lf-color]').uncheck();assert.ok(await fusion.locator('[data-lf-output]').isDisabled());
-    waiting=true;await fusion.locator('[data-lf-run]').click();await fusion.locator('[data-lf-cancel]').click();
+    waiting=true;await fusion.locator('[data-lf-run]').click();
+    await page.waitForFunction(()=>nodes.find(n=>n.id===fusionId).fusionJobId);
+    await page.waitForTimeout(700);
+    await fusion.locator('[data-lf-cancel]').click();
     await page.waitForFunction(()=>!nodes.find(n=>n.id===fusionId).fusionJobId);assert.ok(cancelled);
     assert.equal(await page.evaluate(()=>nodes.find(n=>n.id===fusionId).fusionPreview.url),'/output/result.png');
+    assert.equal(await page.evaluate(()=>nodes.filter(n=>n.title==='局部修复结果').length),1,'cancelled job does not create another output');
+    waiting=false;failure='局部图属于另一张原图，请重新选择原图或裁剪区域';
+    await fusion.locator('[data-lf-run]').click();
+    await page.waitForFunction(()=>nodes.find(n=>n.id===fusionId).fusionStatus==='failed'&&!nodes.find(n=>n.id===fusionId).fusionJobId);
+    assert.match(await fusion.locator('.lf-state.is-error').textContent(),/融合未完成.*另一张原图/);
+    assert.ok(await fusion.locator('[data-lf-run]').isEnabled());
+    assert.equal(await page.evaluate(()=>nodes.filter(n=>n.title==='局部修复结果').length),1,'failed job preserves the previous result');
+    failure='';waiting=true;
+    await fusion.locator('[data-lf-run]').click();
+    await page.waitForFunction(()=>nodes.find(n=>n.id===fusionId).fusionStatus==='running');
+    await page.evaluate(()=>{nodes.find(n=>n.id===fusionId).fusionConfig.feather=13;render();});
+    waiting=false;
+    await page.waitForFunction(()=>!nodes.find(n=>n.id===fusionId).fusionJobId);
+    assert.equal(await page.evaluate(()=>nodes.filter(n=>n.title==='局部修复结果').length),1,'changed inputs do not automatically output a stale result');
+    assert.ok(await fusion.locator('[data-lf-output]').isDisabled());
     await page.evaluate(async()=>{await saveCanvas();});
     const id=await page.evaluate(()=>fusionId);await page.reload();await page.waitForFunction(id=>nodes.some(n=>n.id===id),id);
     const loaded=await page.evaluate(id=>{const n=nodes.find(n=>n.id===id);return {preview:n.fusionPreview.url,regions:localFusionState(n).patches.length,color:n.fusionConfig.colorMatch};},id);
     assert.deepEqual(loaded,{preview:'/output/result.png',regions:1,color:false});
-    await page.locator('.lf-advanced summary').click();
+    await page.locator('[data-lf-patch-toggle]').click();
     await page.locator('[data-lf-position]').click();
     await page.locator('.lf-dialog input[name=x]').fill('-1');
     await page.locator('.lf-dialog [data-save]').click();
@@ -107,7 +129,7 @@ test('local crop provenance, versions, preview, output, undo, reload and cancell
     await page.waitForFunction(()=>!document.querySelector('.lf-dialog[open]'));
     assert.equal(await page.evaluate(id=>localFusionPayload(nodes.find(n=>n.id===id)).patches[0].maskUrl,id),'/output/crop.png');
     await page.locator('[data-lf-clear-mask]').click();
-    await page.locator('.lf-advanced summary').click();
+    await page.locator('[data-lf-patch-toggle]').click();
     const artifacts=path.join(root,'.fusion-artifacts');fs.mkdirSync(artifacts,{recursive:true});
     await page.screenshot({path:path.join(artifacts,'fusion-canvas.png')});
     assert.deepEqual(errors,[]);

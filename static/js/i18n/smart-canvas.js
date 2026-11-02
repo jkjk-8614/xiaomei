@@ -430,6 +430,7 @@
         "smart.loopDetailManual": { zh: "手动拆分备用", en: "Manual split fallback" },
         "smart.loopDetailSeparatorHint": { zh: "留空按换行", en: "Blank = line breaks" },
         "smart.loopDetailReady": { zh: "将复用产品素材生成 {n} 个详情页任务。", en: "Reuse the product image for {n} detail-page tasks." },
+        "smart.loopMainReady": { zh: "将复用产品素材生成 {n} 个主图任务。", en: "Reuse the product image for {n} main-image tasks." },
         "smart.loopDetailSharedImage": { zh: "这 1 张产品素材会复用到每一屏。", en: "This product image will be reused for every screen." },
         "smart.loopDetailImageOrder": { zh: "多张素材按顺序使用。", en: "Multiple images are used in order." },
         "smart.loopDetailSharedImages": { zh: "这些参考图会一起用于每一屏。", en: "All reference images are used for every screen." },

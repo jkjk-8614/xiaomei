@@ -102,6 +102,33 @@ class FusionTests(unittest.TestCase):
         self.assert_preserved(result, mask)
         np.testing.assert_array_equal(np.array(result)[165:175, 210:220], self.source[165:175, 210:220])
 
+    def test_known_crop_color_and_texture_changes_warn_and_output(self):
+        rng = np.random.default_rng(192)
+        self.source[:, :, :3] = rng.integers(0, 256, (480, 640, 3), dtype=np.uint8)
+        self.write('source.png', self.source)
+        edited = self.source[130:370, 180:460].copy()
+        edited[:, :, :3] = 255-edited[:, :, :3]
+        self.write('patch.png', edited)
+        result, support, report = fuse(self.request(colorMatch=False), self.resolve)
+        self.assert_preserved(result, support)
+        self.assertGreater(report['regions'][0]['alignment']['boundaryError'], .20)
+        self.assertTrue(report['warnings'])
+        np.testing.assert_array_equal(np.array(result)[200, 300], edited[70, 120])
+
+    def test_transparent_border_does_not_reject_or_tint_patch(self):
+        self.source[130:370, 180:460, 3] = 0
+        self.source[180:320, 230:410] = [200, 20, 10, 255]
+        self.write('source.png', self.source)
+        edited = np.full((240, 280, 4), 255, np.uint8)
+        edited[:, :, 3] = self.source[130:370, 180:460, 3]
+        edited[50:190, 50:230] = [10, 20, 200, 255]
+        self.write('patch.png', edited)
+        result, support, report = fuse(self.request(), self.resolve)
+        self.assert_preserved(result, support)
+        self.assertIsNone(report['regions'][0]['alignment']['boundaryError'])
+        self.assertTrue(report['warnings'])
+        np.testing.assert_array_equal(np.array(result)[250, 320], [10, 20, 200, 255])
+
     def test_overlapping_regions_require_explicit_order(self):
         req = self.request()
         req.patches.append(req.patches[0].model_copy(deep=True))

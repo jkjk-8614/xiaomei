@@ -1,6 +1,6 @@
 {
-  "saved_at": "2026-10-24T03:01:54.322Z",
-  "base_commit": "22ddee3792402c3e70ec5f86a63c3e3e895a2f60",
+  "saved_at": "2026-10-30T02:32:45.629Z",
+  "base_commit": "ce7073d51254c26cd63b22a60835b8f948deb447",
   "base_branch": "master",
   "files": [
     {
@@ -20,23 +20,23 @@
     },
     {
       "path": "packages/client/ui-model-selection/src/client/ModelSelect.module.css",
-      "insertions": 74,
+      "insertions": 80,
       "deletions": 0
     },
     {
       "path": "packages/client/ui-model-selection/src/client/ModelSelect.tsx",
-      "insertions": 157,
-      "deletions": 93
+      "insertions": 155,
+      "deletions": 92
     },
     {
       "path": "packages/client/ui-model-selection/src/client/locales.ts",
-      "insertions": 4,
+      "insertions": 16,
       "deletions": 0
     },
     {
       "path": "packages/client/ui-model-selection/tests/model-select.client.spec.tsx",
-      "insertions": 106,
-      "deletions": 48
+      "insertions": 107,
+      "deletions": 49
     },
     {
       "path": "packages/llm/llm-pi-ai/README.md",
@@ -79,7 +79,7 @@
       "deletions": 0
     }
   ],
-  "insertions": 603,
+  "insertions": 620,
   "deletions": 144,
-  "bytes": 76143
+  "bytes": 78916
 }

@@ -7830,3 +7830,453 @@ html.studio-theme-dark body .sidebar .provider-card.active .provider-name,
 body.studio-theme-dark .sidebar .provider-card.active .provider-name {
     color:#e9f0f8 !important;
 }
+
+/* 推荐 API：平台、模型与配置操作分列，窄窗口按阅读顺序折叠。 */
+#recommendContent.content {
+    container-type:inline-size;
+    container-name:recommendations;
+    min-width:0;
+}
+#recommendPanel {
+    --rec-accent:var(--studio-accent-color, #0e7490);
+    --rec-columns:40px minmax(180px, 1fr) minmax(190px, .8fr) 216px;
+    display:block !important;
+    min-height:0 !important;
+    padding:0 !important;
+    overflow:hidden;
+    border-radius:16px;
+}
+#recommendPanel .rec-head {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:20px;
+    padding:26px 24px;
+}
+#recommendPanel .rec-head-text { min-width:0; }
+#recommendPanel .rec-head-title { font-size:21px; font-weight:750; line-height:1.4; color:var(--text); letter-spacing:-.02em; }
+#recommendPanel .rec-head-sub { margin-top:6px; font-size:14px; line-height:1.6; color:var(--muted); }
+#recommendPanel .rec-filters {
+    display:flex;
+    align-items:center;
+    gap:3px;
+    flex:0 0 auto;
+    padding:4px;
+    border:1px solid var(--line);
+    border-radius:11px;
+    background:var(--soft);
+}
+#recommendPanel .rec-filter {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:7px;
+    min-height:36px;
+    padding:0 12px;
+    border:1px solid transparent;
+    border-radius:8px;
+    background:transparent;
+    color:var(--muted);
+    font:inherit;
+    font-size:13px;
+    font-weight:600;
+    white-space:nowrap;
+    cursor:pointer;
+    transition:background .15s ease, color .15s ease, box-shadow .15s ease;
+}
+#recommendPanel .rec-filter b { font-size:12px; font-weight:650; font-variant-numeric:tabular-nums; }
+#recommendPanel .rec-filter:hover { color:var(--text); background:var(--panel); }
+#recommendPanel .rec-filter.is-active {
+    background:var(--panel);
+    border-color:var(--line);
+    color:var(--text);
+    box-shadow:0 1px 3px rgba(15,23,42,.07);
+}
+#recommendPanel :is(.rec-filter,.rec-btn,.rec-icon-btn):focus-visible { outline:2px solid var(--rec-accent); outline-offset:3px; }
+#recommendPanel .rec-columns,
+#recommendPanel .rec-row { display:grid; grid-template-columns:var(--rec-columns); column-gap:14px; align-items:center; }
+#recommendPanel .rec-columns {
+    padding:11px 24px;
+    border-block:1px solid var(--line);
+    background:color-mix(in srgb, var(--soft) 60%, var(--panel));
+    color:var(--muted);
+    font-size:12px;
+    font-weight:550;
+    line-height:1.6;
+}
+#recommendPanel .rec-columns > :first-child { grid-column:1 / 3; }
+#recommendPanel .rec-list { display:flex; flex-direction:column; }
+#recommendPanel .rec-row {
+    row-gap:12px;
+    min-height:90px;
+    padding:20px 24px;
+    border-bottom:1px solid var(--line);
+    cursor:pointer;
+    transition:background .16s ease;
+}
+#recommendPanel .rec-row:hover,
+#recommendPanel .rec-row:focus-within { background:color-mix(in srgb, var(--rec-accent) 4%, var(--panel)); }
+#recommendPanel .rec-icon {
+    position:relative;
+    width:40px;
+    height:40px;
+    border-radius:11px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+    background:hsl(var(--rec-hue, 220) 60% 95%);
+    border:1px solid hsl(var(--rec-hue, 220) 45% 86%);
+    color:hsl(var(--rec-hue, 220) 45% 38%);
+}
+#recommendPanel .rec-icon:has(.rec-icon-img.is-loaded) { background:var(--panel); border-color:var(--line); }
+#recommendPanel .rec-icon-img { position:absolute; inset:7px; width:calc(100% - 14px); height:calc(100% - 14px); object-fit:contain; opacity:0; transition:opacity .2s ease; }
+#recommendPanel .rec-icon-img.is-loaded { opacity:1; }
+#recommendPanel .rec-icon-img.is-loaded + .rec-icon-letter { opacity:0; }
+#recommendPanel .rec-icon-letter { font-size:17px; font-weight:700; line-height:1; }
+#recommendPanel .rec-main { min-width:0; display:flex; flex-direction:column; gap:5px; }
+#recommendPanel .rec-title { display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-width:0; }
+#recommendPanel .rec-name { min-width:0; max-width:100%; color:var(--text); font-size:15px; font-weight:700; line-height:1.4; overflow-wrap:anywhere; }
+#recommendPanel .rec-proto {
+    flex:0 0 auto;
+    color:var(--muted);
+    font-size:11px;
+    font-weight:500;
+    line-height:1.6;
+    letter-spacing:.035em;
+    text-transform:uppercase;
+}
+#recommendPanel .rec-meta { min-width:0; display:flex; }
+#recommendPanel .rec-host { min-width:0; color:var(--muted); font-size:13px; line-height:1.5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#recommendPanel .rec-capabilities { min-width:0; }
+#recommendPanel .rec-kinds { display:flex; gap:6px; flex-wrap:wrap; }
+#recommendPanel .rec-kind {
+    display:inline-flex;
+    align-items:center;
+    min-height:26px;
+    padding:3px 8px;
+    border:1px solid var(--line);
+    border-radius:6px;
+    background:color-mix(in srgb, var(--soft) 65%, var(--panel));
+    color:var(--muted);
+    font-size:12px;
+    font-weight:500;
+    line-height:1.5;
+    white-space:nowrap;
+}
+#recommendPanel .rec-desc { color:var(--muted); font-size:13px; line-height:1.6; overflow-wrap:anywhere; }
+#recommendPanel .rec-models-empty { color:var(--muted); font-size:13px; line-height:1.6; }
+#recommendPanel .rec-perk { display:inline-flex; align-items:center; gap:4px; padding:2px 6px; border-radius:5px; background:var(--soft); color:var(--muted); font-size:12px; line-height:1.5; }
+#recommendPanel .rec-side { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; min-width:0; }
+#recommendPanel .rec-state { display:inline-flex; align-items:center; gap:7px; color:var(--muted); font-size:13px; font-weight:550; line-height:1.5; white-space:nowrap; }
+#recommendPanel .rec-state i { flex:0 0 auto; width:6px; height:6px; border-radius:50%; background:currentColor; }
+#recommendPanel .rec-row.is-ready .rec-state { color:#247448; }
+#recommendPanel .rec-row.is-pending .rec-state { color:#9a5b13; }
+#recommendPanel .rec-btn {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    flex:0 0 auto;
+    gap:8px;
+    min-height:36px;
+    padding:0 12px;
+    border:1px solid var(--line-strong);
+    border-radius:8px;
+    background:var(--panel);
+    color:var(--text);
+    font:inherit;
+    font-size:13px;
+    font-weight:550;
+    line-height:1.5;
+    white-space:nowrap;
+    text-decoration:none;
+    cursor:pointer;
+    transition:background .15s ease, border-color .15s ease, color .15s ease;
+}
+#recommendPanel .rec-btn :is(i,svg) { width:14px; height:14px; color:var(--muted); transition:transform .15s ease; }
+#recommendPanel .rec-btn:hover { border-color:var(--rec-accent); color:var(--rec-accent); background:color-mix(in srgb, var(--rec-accent) 5%, var(--panel)); }
+#recommendPanel .rec-btn:hover svg { transform:translateX(2px); }
+#recommendPanel .rec-btn:active { transform:translateY(1px); }
+#recommendPanel .rec-btn-ghost { border-color:transparent; color:var(--rec-accent); background:transparent; padding-inline:6px; }
+#recommendPanel .rec-btn-primary { background:var(--rec-accent); border-color:var(--rec-accent); color:#fff; }
+#recommendPanel .rec-btn-primary:hover { background:color-mix(in srgb, var(--rec-accent) 88%, #000); color:#fff; }
+#recommendPanel .rec-setup { grid-column:2 / -1; display:grid; grid-template-columns:minmax(0, 1fr) auto; align-items:center; gap:8px; max-width:540px; }
+#recommendPanel .rec-key { display:block; min-width:0; }
+#recommendPanel .rec-key input {
+    width:100%;
+    height:38px;
+    box-sizing:border-box;
+    padding:0 12px;
+    border:1px solid var(--line-strong);
+    border-radius:8px;
+    background:var(--panel);
+    color:var(--text);
+    font:inherit;
+    font-size:13px;
+    transition:border-color .15s ease, box-shadow .15s ease;
+}
+#recommendPanel .rec-key input::placeholder { color:var(--muted); }
+#recommendPanel .rec-key input:focus { outline:0; border-color:var(--rec-accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--rec-accent) 15%, transparent); }
+#recommendPanel .rec-custom-actions { display:inline-flex; gap:2px; margin-left:auto; }
+#recommendPanel .rec-icon-btn { width:30px; height:30px; display:inline-flex; align-items:center; justify-content:center; border-radius:6px; color:var(--muted); cursor:pointer; }
+#recommendPanel .rec-icon-btn:hover { background:var(--soft); color:var(--text); }
+#recommendPanel .rec-icon-btn.is-danger:hover { color:#b91c1c; }
+#recommendPanel .rec-group-head { display:flex; align-items:center; gap:6px; padding:12px 24px; background:var(--soft); color:var(--muted); font-size:13px; font-weight:600; }
+#recommendPanel .rec-empty { padding:42px 24px; color:var(--muted); font-size:14px; line-height:1.7; text-align:center; }
+#recommendPanel .recommend-add-card {
+    display:flex !important;
+    flex-direction:row !important;
+    align-items:center !important;
+    justify-content:flex-start !important;
+    gap:10px !important;
+    min-height:46px !important;
+    min-width:0 !important;
+    margin:16px 24px;
+    padding:10px 14px !important;
+    border:1px dashed var(--line-strong) !important;
+    border-radius:9px !important;
+    background:transparent !important;
+    color:var(--muted) !important;
+    text-align:left;
+}
+#recommendPanel .recommend-add-card:hover { background:var(--soft) !important; border-color:var(--rec-accent) !important; }
+#recommendPanel .recommend-add-card strong { color:var(--text) !important; font-size:13px !important; font-weight:600 !important; white-space:nowrap; }
+#recommendPanel .recommend-add-card span { min-width:0; color:var(--muted) !important; font-size:13px !important; line-height:1.6 !important; }
+#recommendPanel .recommend-add-card :is(i,svg) { width:16px; height:16px; flex:0 0 auto; }
+#recommendPanel .rec-note { display:flex; align-items:flex-start; gap:8px; padding:14px 24px; border-top:1px solid var(--line); background:var(--soft); color:var(--muted); font-size:13px; line-height:1.7; }
+#recommendPanel .rec-note svg { width:16px; height:16px; margin-top:3px; flex:0 0 auto; }
+body.studio-theme-dark #recommendPanel .rec-icon,
+html.studio-theme-dark body #recommendPanel .rec-icon { background:hsl(var(--rec-hue, 220) 32% 22%); border-color:hsl(var(--rec-hue, 220) 28% 32%); color:hsl(var(--rec-hue, 220) 65% 78%); }
+body.studio-theme-dark #recommendPanel .rec-row.is-ready .rec-state,
+html.studio-theme-dark body #recommendPanel .rec-row.is-ready .rec-state { color:#7ad6a4; }
+body.studio-theme-dark #recommendPanel .rec-row.is-pending .rec-state,
+html.studio-theme-dark body #recommendPanel .rec-row.is-pending .rec-state { color:#f1bf70; }
+/* 主题层对按钮使用 important；在同一层限定推荐面板，保留暗色控件的对比。 */
+@layer fluent {
+    html body #recommendContent.content {
+        padding:0 !important;
+        border:0 !important;
+        background:transparent !important;
+        box-shadow:none !important;
+    }
+    html.studio-theme-dark body #recommendPanel :is(.rec-filter,.rec-btn) {
+        background:var(--panel) !important;
+        color:var(--text) !important;
+        border-color:var(--line-strong) !important;
+    }
+    html.studio-theme-dark body #recommendPanel .rec-filter {
+        background:transparent !important;
+        color:var(--muted) !important;
+        border-color:transparent !important;
+    }
+    html.studio-theme-dark body #recommendPanel .rec-filter.is-active {
+        background:var(--panel) !important;
+        color:var(--text) !important;
+        border-color:var(--line-strong) !important;
+    }
+    html.studio-theme-dark body #recommendPanel .rec-btn:hover {
+        background:var(--soft) !important;
+        border-color:var(--text) !important;
+    }
+    html.studio-theme-dark body #recommendPanel .rec-btn-primary {
+        background:var(--rec-accent) !important;
+        color:#fff !important;
+        border-color:var(--rec-accent) !important;
+    }
+    html.studio-theme-dark body #recommendPanel .rec-btn-ghost {
+        background:transparent !important;
+        border-color:transparent !important;
+    }
+}
+@container recommendations (max-width:900px) {
+    #recommendPanel { --rec-columns:40px minmax(0, 1fr) 216px; }
+    #recommendPanel .rec-columns { display:none; }
+    #recommendPanel .rec-list { border-top:1px solid var(--line); }
+    #recommendPanel .rec-head { align-items:flex-start; flex-direction:column; gap:16px; }
+    #recommendPanel .rec-row { row-gap:8px; }
+    #recommendPanel .rec-icon { grid-row:1 / 3; align-self:start; }
+    #recommendPanel .rec-capabilities { grid-column:2; grid-row:2; }
+    #recommendPanel .rec-side { grid-column:3; grid-row:1 / 3; }
+    #recommendPanel .rec-setup { grid-column:2 / -1; }
+}
+@container recommendations (max-width:540px) {
+    #recommendPanel { --rec-columns:36px minmax(0, 1fr); }
+    #recommendPanel .rec-head { padding:20px 16px; }
+    #recommendPanel .rec-head-title { font-size:20px; }
+    #recommendPanel .rec-filters { align-self:stretch; }
+    #recommendPanel .rec-filter { flex:1; padding-inline:8px; min-width:0; }
+    #recommendPanel .rec-row { padding:18px 16px; column-gap:12px; row-gap:10px; }
+    #recommendPanel .rec-icon { width:36px; height:36px; }
+    #recommendPanel .rec-side { grid-column:2; grid-row:auto; flex-wrap:wrap; }
+    #recommendPanel .rec-setup { grid-column:1 / -1; }
+    #recommendPanel .rec-btn { min-height:40px; }
+    #recommendPanel .rec-key input { height:40px; }
+    #recommendPanel .recommend-add-card { margin:16px; flex-wrap:wrap; }
+    #recommendPanel .recommend-add-card span { display:none; }
+    #recommendPanel .rec-note { padding:14px 16px; }
+}
+@media (prefers-reduced-motion:reduce) {
+    #recommendPanel *, #recommendPanel *::before, #recommendPanel *::after { transition:none !important; animation:none !important; }
+}
+
+
+/* 侧栏：只让平台列表自己滚动，下面的「新增平台 / 推荐API / CLI」始终留在视口里。
+   原规则给列表写死了 max-height，矮窗口下被挤到两行、CLI 入口还会被裁掉。 */
+.sidebar {
+    overflow:hidden !important;
+    top:24px !important;
+    max-height:calc(100vh - 48px) !important;
+}
+
+.sidebar .provider-list,
+.sidebar #providerList {
+    flex:1 1 auto !important;
+    min-height:88px !important;
+    max-height:none !important;
+    overflow-y:auto !important;
+    overscroll-behavior:contain;
+}
+
+@layer fluent {
+/* 推荐模式下「推荐API」按钮显示为当前页：左侧强调色竖条 + 淡色底。
+   Fluent 的按钮外观写在 @layer fluent 里且带 !important，未分层的 !important 压不过它，
+   所以这段也必须放进同名层；文字仍用 --text，0.68 缩放下彩色小字会出彩边。 */
+html[data-studio-skin] body.show-recommend-mode .layout > .sidebar .api-link-btn,
+html.studio-theme-dark body.show-recommend-mode .layout > .sidebar .api-link-btn,
+body.show-recommend-mode .layout > .sidebar .api-link-btn {
+    background:color-mix(in srgb, var(--studio-accent-color, #0e7490) 13%, var(--panel)) !important;
+    border:1px solid color-mix(in srgb, var(--studio-accent-color, #0e7490) 45%, var(--line)) !important;
+    color:var(--text) !important;
+    box-shadow:inset 3px 0 0 var(--studio-accent-color, #0e7490) !important;
+    transform:none !important;
+}
+
+html.studio-theme-dark body.show-recommend-mode .layout > .sidebar .api-link-btn,
+body.studio-theme-dark.show-recommend-mode .layout > .sidebar .api-link-btn {
+    box-shadow:inset 3px 0 0 color-mix(in srgb, var(--studio-accent-color, #0e7490) 58%, #fff) !important;
+}
+
+html[data-studio-skin] body.show-recommend-mode .layout > .sidebar .api-link-btn i,
+html[data-studio-skin] body.show-recommend-mode .layout > .sidebar .api-link-btn svg,
+body.show-recommend-mode .layout > .sidebar .api-link-btn i,
+body.show-recommend-mode .layout > .sidebar .api-link-btn svg {
+    color:var(--studio-accent-color, #0e7490) !important;
+    stroke:var(--studio-accent-color, #0e7490) !important;
+    animation:none !important;
+}
+
+html.studio-theme-dark body.show-recommend-mode .layout > .sidebar .api-link-btn i,
+html.studio-theme-dark body.show-recommend-mode .layout > .sidebar .api-link-btn svg,
+body.studio-theme-dark.show-recommend-mode .layout > .sidebar .api-link-btn i,
+body.studio-theme-dark.show-recommend-mode .layout > .sidebar .api-link-btn svg {
+    color:color-mix(in srgb, var(--studio-accent-color, #0e7490) 45%, #fff) !important;
+    stroke:color-mix(in srgb, var(--studio-accent-color, #0e7490) 45%, #fff) !important;
+}
+
+body.show-recommend-mode .layout > .sidebar .api-link-btn::after { display:none !important; }
+
+html[data-studio-skin] body.show-recommend-mode .layout > .sidebar .api-link-btn:hover,
+html.studio-theme-dark body.show-recommend-mode .layout > .sidebar .api-link-btn:hover,
+body.show-recommend-mode .layout > .sidebar .api-link-btn:hover {
+    background:color-mix(in srgb, var(--studio-accent-color, #0e7490) 19%, var(--panel)) !important;
+    color:var(--text) !important;
+}
+}
+
+/* 状态胶囊在无文案时不要留一个空心的白色圆点 */
+.page-head .status:empty { display:none !important; }
+
+/* 侧栏粘顶高度要扣掉自身偏移，否则矮窗口下底部入口会被顶出视口 */
+.sidebar {
+    top:24px !important;
+    max-height:calc(100vh - 48px) !important;
+}
+
+/* 侧栏标题右侧的平台数量：矮窗口下列表只能露两三行，这里先告诉用户总数 */
+.sidebar .side-section-title {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+}
+
+.sidebar .side-section-count {
+    min-width:18px;
+    height:16px;
+    padding:0 5px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:999px;
+    background:rgba(15,23,42,.06);
+    color:var(--side-muted, #64748b);
+    font-size:10px;
+    font-weight:800;
+    letter-spacing:0;
+    font-variant-numeric:tabular-nums;
+}
+
+.sidebar .side-section-count:empty { display:none; }
+
+body.studio-theme-dark .sidebar .side-section-count,
+html.studio-theme-dark body .sidebar .side-section-count {
+    background:rgba(255,255,255,.1);
+    color:var(--side-muted, #a4adbf);
+}
+
+/* 侧栏平台行压缩到 56px：矮窗口下能多露一行，图标同步缩到 36px 保持比例 */
+.sidebar .provider-card,
+.sidebar .provider-card.provider-card-banner {
+    min-height:56px !important;
+    grid-template-columns:14px 36px minmax(64px, 1fr) max-content !important;
+    gap:8px !important;
+    padding:7px 9px !important;
+    border-radius:13px !important;
+}
+
+.sidebar .provider-mark {
+    width:36px !important;
+    height:36px !important;
+    border-radius:11px !important;
+}
+
+.sidebar .api-provider-mark svg {
+    width:20px !important;
+    height:20px !important;
+}
+
+.provider-mark .provider-favicon {
+    width:20px !important;
+    height:20px !important;
+}
+
+/* Key 输入行与保存按钮等高，避免 2px 的错位 */
+#recommendPanel .rec-setup .rec-btn { min-height:38px; }
+
+/* 深色下输入框底色比行底色再暗一档，才看得出是可输入区域 */
+body.studio-theme-dark #recommendPanel .rec-key input,
+html.studio-theme-dark body #recommendPanel .rec-key input {
+    background:color-mix(in srgb, var(--bg) 74%, var(--panel));
+}
+
+/* 推荐模式下列表里的平台没有「当前」概念，别让第一行带着选中态和「推荐API」抢注意力。
+   皮肤把选中态写在 @layer fluent 里，这里同样进层才能压过它。 */
+@layer fluent {
+html body.show-recommend-mode #providerList .provider-card.active,
+html body.show-recommend-mode #providerList .provider-card.provider-card-sortable.active,
+html body.show-recommend-mode #providerList .provider-card.provider-card-banner.active {
+    border-color:var(--side-line) !important;
+    background:#fff !important;
+    background-image:none !important;
+    box-shadow:0 3px 10px rgba(45,42,38,.035) !important;
+    color:var(--side-text) !important;
+}
+
+html.studio-theme-dark body.show-recommend-mode #providerList .provider-card.active,
+html.studio-theme-dark body.show-recommend-mode #providerList .provider-card.provider-card-sortable.active {
+    background:#1b2a38 !important;
+    background-image:none !important;
+    border-color:#30485c !important;
+    box-shadow:none !important;
+}
+}

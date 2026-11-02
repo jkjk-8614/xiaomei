@@ -64,6 +64,8 @@
         refAnalysis: null,
         currentRefId: '',
         experiences: [],
+        deletingExperiences: new Set(),
+        deletingRuns: new Set(),
         experienceFilter: '',
         expDraft: null,
         expEditingId: '',
@@ -863,6 +865,7 @@
                 <p class="exp-sub"><span class="status-badge status-${esc(item.status)}">${EXP_STATUS_LABELS[item.status] || item.status}</span>
                     <span style="margin-left:8px">${evidenceCount} 份证据 · ${(item.observations || []).length} 条观察${skillNote}</span></p>
                 <p class="exp-obs">${esc((item.observations || []).slice(0, 3).join('；'))}</p>
+                <div class="record-actions"><button class="subtle-button danger" type="button" data-delete-experience="${esc(item.id)}" aria-label="删除项目经验：${esc(item.title)}" ${state.deletingExperiences.has(item.id) ? 'disabled' : ''}>${state.deletingExperiences.has(item.id) ? '删除中…' : '删除'}</button></div>
             </article>`;
         }).join('');
     }
@@ -970,12 +973,14 @@
                         <button class="subtle-button danger" type="button" data-exp-action="delete">删除</button>`;
             case 'pending_review':
                 return `<button class="primary-button" type="button" data-exp-action="publish">审核通过并发布</button>
-                        <button class="subtle-button danger" type="button" data-exp-action="reject">拒绝</button>`;
+                        <button class="subtle-button danger" type="button" data-exp-action="reject">拒绝</button>
+                        <button class="subtle-button danger" type="button" data-exp-action="delete">删除</button>`;
             case 'rejected':
                 return `<button class="subtle-button" type="button" data-exp-action="requeue">恢复为候选</button>
                         <button class="subtle-button danger" type="button" data-exp-action="delete">删除</button>`;
             case 'published':
-                return `<button class="primary-button" type="button" data-exp-action="skill">生成 Skill 草稿</button>`;
+                return `<button class="primary-button" type="button" data-exp-action="skill">生成 Skill 草稿</button>
+                        <button class="subtle-button danger" type="button" data-exp-action="delete">删除</button>`;
             default:
                 return '';
         }
@@ -1069,6 +1074,7 @@
     async function handleExperienceAction(action) {
         const id = state.expEditingId;
         if (!id) return;
+        if (action === 'delete') { await deleteExperience(id); return; }
         try {
             if (action === 'submit') {
                 const data = await api(`/api/design-brain/experiences/${encodeURIComponent(id)}/submit`, {method: 'POST'});
@@ -1090,15 +1096,6 @@
                 const data = await api(`/api/design-brain/experiences/${encodeURIComponent(id)}/requeue`, {method: 'POST'});
                 updateExperienceInState(data.experience);
                 toast('已恢复为候选');
-            } else if (action === 'delete') {
-                if (!window.confirm('删除这条经验记录？不会影响图片与档案。')) return;
-                await api(`/api/design-brain/experiences/${encodeURIComponent(id)}`, {method: 'DELETE'});
-                state.experiences = state.experiences.filter((item) => item.id !== id);
-                renderExperienceStatusChips();
-                renderExperiences();
-                $('experienceOverlay').hidden = true;
-                toast('已删除经验');
-                return;
             } else if (action === 'skill') {
                 await generateSkillFromExperience(id);
                 return;
@@ -1115,6 +1112,31 @@
         const index = state.experiences.findIndex((entry) => entry.id === item.id);
         if (index >= 0) state.experiences[index] = item;
         else state.experiences = [item, ...state.experiences];
+    }
+
+    async function deleteExperience(id) {
+        const item = findExperience(id);
+        if (!item || state.deletingExperiences.has(id)) return;
+        if (!window.confirm(`删除项目经验「${item.title}」？删除后无法恢复。原始图片、已写入的档案标签和已生成的 Skill 会保留。`)) return;
+        state.deletingExperiences.add(id);
+        renderExperiences();
+        document.querySelectorAll('[data-exp-action="delete"]').forEach(button => { button.disabled = true; });
+        try {
+            await api(`/api/design-brain/experiences/${encodeURIComponent(id)}`, {method: 'DELETE'});
+            state.experiences = state.experiences.filter(entry => entry.id !== id);
+            if (state.expEditingId === id) {
+                $('experienceOverlay').hidden = true;
+                state.expEditingId = '';
+            }
+            renderExperienceStatusChips();
+            toast('已删除项目经验');
+        } catch (error) {
+            toast(`删除项目经验失败：${error.message || '请重试'}`, true);
+        } finally {
+            state.deletingExperiences.delete(id);
+            renderExperiences();
+            document.querySelectorAll('[data-exp-action="delete"]').forEach(button => { button.disabled = false; });
+        }
     }
 
     async function generateSkillFromExperience(experienceId) {
@@ -1511,11 +1533,30 @@
                     ${cases.length ? `<p class="exp-obs">参考案例：${cases.map((entry) => esc(entry.title)).join('、')}</p>` : ''}
                     ${(run.events || []).length ? `<ul class="version-list">${run.events.slice(-12).map((event) => `<li><span class="v-num">${new Date(Number(event.at || 0)).toLocaleTimeString()}</span><span class="v-note">${esc(event.note || event.type)}</span></li>`).join('')}</ul>` : ''}
                 </div>
+                <div class="record-actions"><button class="subtle-button danger" type="button" data-delete-run="${esc(run.id)}" aria-label="删除项目记录：${esc(run.title)}" title="${run.status === 'executing' ? '项目正在执行，请等待结束后再删除记录' : '删除项目记录'}" ${run.status === 'executing' || state.deletingRuns.has(run.id) ? 'disabled' : ''}>${state.deletingRuns.has(run.id) ? '删除中…' : '删除'}</button></div>
             </article>`;
         }).join('');
     }
 
     /* ---------------- 质量反馈与数据管理（阶段 4） ---------------- */
+
+    async function deleteRun(id) {
+        const run = state.runs.find(item => item.id === id);
+        if (!run || run.status === 'executing' || state.deletingRuns.has(id)) return;
+        if (!window.confirm(`删除项目记录「${run.title}」？删除后无法恢复。已生成的图片、画布和历史记录会保留。`)) return;
+        state.deletingRuns.add(id);
+        renderRuns();
+        try {
+            await api(`/api/design-brain/runs/${encodeURIComponent(id)}`, {method: 'DELETE'});
+            state.runs = state.runs.filter(item => item.id !== id);
+            toast('已删除项目记录');
+        } catch (error) {
+            toast(`删除项目记录失败：${error.message || '请重试'}`, true);
+        } finally {
+            state.deletingRuns.delete(id);
+            renderRuns();
+        }
+    }
 
     async function loadReviews() {
         try {
@@ -3237,6 +3278,8 @@
         });
 
         $('experienceGrid').addEventListener('click', (event) => {
+            const remove = event.target.closest('[data-delete-experience]');
+            if (remove) { deleteExperience(remove.dataset.deleteExperience); return; }
             const card = event.target.closest('[data-exp-id]');
             if (card) openExperienceDetail(card.dataset.expId);
         });
@@ -3252,6 +3295,8 @@
             if (card) openSkillDetail(card.dataset.skillId);
         });
         $('runGrid').addEventListener('click', (event) => {
+            const remove = event.target.closest('[data-delete-run]');
+            if (remove) { deleteRun(remove.dataset.deleteRun); return; }
             const card = event.target.closest('[data-run-id]');
             if (!card) return;
             const detail = card.querySelector('.run-detail');

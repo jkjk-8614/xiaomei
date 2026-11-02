@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="/static/images/app-icon.ico?v=2026.10.29" type="image/x-icon">
+    <link rel="icon" href="/static/images/app-icon.ico?v=2026.11.02" type="image/x-icon">
     <title>小美画布</title>
     <style>
         html.studio-route-booting body {
@@ -18,12 +18,12 @@
             } catch(e) {}
         })();
     </script>
-    <script defer src="/static/vendor/js/tailwindcss-cdn.js?v=2026.10.29.1784161005"></script>
-    <script defer src="/static/js/theme.js?v=2026.10.29.1791335865"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.29.1792900345">
-    <script defer src="/static/js/i18n.js?v=2026.10.29.1793175804"></script>
-    <script src="/static/js/legacy-common.js?v=2026.10.29.1786170056"></script>
-<script defer src="/static/js/generation-notifications.js?v=2026.10.29.1787131165"></script>
+    <script defer src="/static/vendor/js/tailwindcss-cdn.js?v=2026.11.02.1784161005"></script>
+    <script defer src="/static/js/theme.js?v=2026.11.02.1791335865"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.11.02.1792900345">
+    <script defer src="/static/js/i18n.js?v=2026.11.02.1793407807"></script>
+    <script src="/static/js/legacy-common.js?v=2026.11.02.1786170056"></script>
+<script defer src="/static/js/generation-notifications.js?v=2026.11.02.1787131165"></script>
     <style>
         @import url('/static/vendor/css/fonts.css?v=2026.10.29.1784161005');
 
@@ -1773,10 +1773,10 @@
             }
         }
     </style>
-    <link rel="stylesheet" href="/static/css/workspace-polish.css?v=2026.10.29.1789456340">
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.10.29.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.10.29.1792843621">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.10.29.1790178173"></script>
+    <link rel="stylesheet" href="/static/css/workspace-polish.css?v=2026.11.02.1789456340">
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.11.02.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.11.02.1792843621">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.11.02.1790178173"></script>
 </head>
 
 <body>
@@ -1858,6 +1858,14 @@
                         <path d="M8 7a4 4 0 0 1 4 4 4 4 0 0 1 4-4"></path>
                     </svg>
                     <span class="nav-text">设计大脑</span>
+                </div>
+                <div class="nav-item" onclick="switchUI(this, 'photocraft')">
+                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"></path>
+                        <path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"></path>
+                        <path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"></path>
+                    </svg>
+                    <span class="nav-text" data-i18n="nav.photocraft">PS 修图</span>
                 </div>
             </nav>
 
@@ -1947,16 +1955,17 @@
                 </div>
             </div>
 
-                    <iframe id="frame-online" data-src="/static/comfyui.html?v=2026.10.29" class="active" scrolling="yes"></iframe>
+                    <iframe id="frame-online" data-src="/static/comfyui.html?v=2026.11.02" class="active" scrolling="yes"></iframe>
         <div id="frame-gpt-chat" class="deepseek-route-placeholder" aria-hidden="true"></div>
-        <iframe id="frame-commerce" data-src="/static/commerce.html?v=2026.10.29.1793232209&image-cancel=2026.10.17.1" scrolling="yes"></iframe>
-                <iframe id="frame-commerce-analysis" data-src="/static/commerce-analysis.html?v=2026.10.29.1793232209" scrolling="yes"></iframe>
-        <iframe id="frame-product-3d" data-src="/static/product-3d.html?v=2026.10.29.1793232209" scrolling="yes"></iframe>
-            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=2026.10.29.1793232209" scrolling="yes"></iframe>
-            <iframe id="frame-inspiration" data-src="/static/inspiration.html?v=2026.10.29.1793232209" scrolling="yes" title="灵感案例"></iframe>
-            <iframe id="frame-design-brain" data-src="/static/design-brain.html?v=2026.10.29.1793232209&batch-resolution=2026.10.25.1" scrolling="yes" title="设计大脑"></iframe>
+        <iframe id="frame-commerce" data-src="/static/commerce.html?v=2026.11.02.1793578699&image-cancel=2026.10.17.1" scrolling="yes"></iframe>
+                <iframe id="frame-commerce-analysis" data-src="/static/commerce-analysis.html?v=2026.11.02.1793578699" scrolling="yes"></iframe>
+        <iframe id="frame-product-3d" data-src="/static/product-3d.html?v=2026.11.02.1793578699" scrolling="yes"></iframe>
+            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=2026.11.02.1793578699" scrolling="yes"></iframe>
+            <iframe id="frame-inspiration" data-src="/static/inspiration.html?v=2026.11.02.1793578699" scrolling="yes" title="灵感案例"></iframe>
+            <iframe id="frame-design-brain" data-src="/static/design-brain.html?v=2026.11.02.1793578699&batch-resolution=2026.10.25.1" scrolling="yes" title="设计大脑"></iframe>
+            <iframe id="frame-photocraft" data-src="/static/photocraft/index.html?v=2026.11.02.1793408829" allow="fullscreen; clipboard-read; clipboard-write" allowfullscreen scrolling="yes" title="PS 修图"></iframe>
             <div id="historyDrawerScrim" class="history-drawer-scrim" hidden onclick="closeHistoryDrawer()"></div>
-            <iframe id="frame-history" class="history-drawer-frame" data-src="/static/history.html?v=2026.10.29.1793232209&drawer=1&outpaint-redraw=2026.10.16.1" scrolling="yes" title="历史记录"></iframe>
+            <iframe id="frame-history" class="history-drawer-frame" data-src="/static/history.html?v=2026.11.02.1793578699&drawer=1&outpaint-redraw=2026.10.16.1" scrolling="yes" title="历史记录"></iframe>
             <button id="historyDrawerClose" class="history-drawer-close" type="button" hidden onclick="closeHistoryDrawer()" aria-label="关闭历史记录">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
             </button>
@@ -1984,14 +1993,23 @@
         <div id="historyPreviewContextMenu" class="history-preview-context-menu" role="menu" aria-label="媒体操作" hidden>
             <button id="historyPreviewContextCopy" type="button" role="menuitem" onclick="copyHistoryPreviewFromContextMenu(event)"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>复制图片</span></button>
         </div>
-                <iframe id="frame-api-settings" data-src="/static/api-settings.html?v=2026.10.29.1793251677" scrolling="yes"></iframe>
-                <iframe id="frame-canvas" data-src="/static/canvas-list.html?v=2026.10.29.1793232209&image-model-picker=2026.09.27.3" scrolling="yes"></iframe>
+                <iframe id="frame-api-settings" data-src="/static/api-settings.html?v=2026.11.02.1793578699" scrolling="yes"></iframe>
+                <iframe id="frame-canvas" data-src="/static/canvas-list.html?v=2026.11.02.1793578699&image-model-picker=2026.09.27.3" scrolling="yes"></iframe>
 
                 <script>
+                    /* PhotoCraft 内置编辑器默认界面语言：首次使用前预置简体中文；
+                       用户在应用内自行更改语言后以其选择为准，不再干预。 */
+                    (function(){
+                        try {
+                            if (!localStorage.getItem('photocraft.preferences')) {
+                                localStorage.setItem('photocraft.preferences', JSON.stringify({ interface: { language: 'zh-hans' } }));
+                            }
+                        } catch (e) { /* 偏好数据异常时交给 PhotoCraft 自行重建 */ }
+                    })();
                     /* 尽早启动上次页面，避免主窗口已显示但中央 iframe 仍是空白。 */
                     (function(){
                         try {
-                            var pageIds = ['online','gpt-chat','canvas','commerce','commerce-analysis','product-3d','asset-manager','inspiration','design-brain','api-settings'];
+                            var pageIds = ['online','gpt-chat','canvas','commerce','commerce-analysis','product-3d','asset-manager','inspiration','design-brain','photocraft','api-settings'];
                             var savedId = localStorage.getItem('studio_active_page');
                             var launchId = new URLSearchParams(window.location.search).get('page');
                             if(launchId === 'task-manager') launchId = 'commerce-analysis';
@@ -2158,7 +2176,7 @@
         const SIDEBAR_SETTINGS_RESTORE_KEY = 'studio_formal_sidebar_settings_restored_v1';
         const SIDEBAR_PINNED_KEY = 'studio_sidebar_pinned';
         const DEFAULT_PAGE_ID = 'online';
-        const PAGE_IDS = ['online','gpt-chat','canvas','commerce','commerce-analysis','product-3d','asset-manager','inspiration','design-brain','api-settings'];
+        const PAGE_IDS = ['online','gpt-chat','canvas','commerce','commerce-analysis','product-3d','asset-manager','inspiration','design-brain','photocraft','api-settings'];
         const LOCAL_PAGE_IDS = [];
         const PROMPT_CASE_PENDING_KEY = 'studio_pending_prompt_case';
         const PROMPT_CASE_PENDING_TTL = 10 * 60 * 1000;
@@ -2720,6 +2738,7 @@
             'product-3d': '正在打开 3D 软装…',
             'asset-manager': '正在打开资产管理…',
             inspiration: '正在打开灵感案例…',
+            photocraft: '正在打开 PS 修图…',
             'api-settings': '正在打开 API 设置…',
         };
 
@@ -4179,8 +4198,8 @@
         }
 
     </script>
-    <link rel="stylesheet" href="/static/css/mcp-settings.css?v=2026.10.29.1789283121">
-    <script src="/static/js/mcp-settings.js?v=2026.10.29.1792660078"></script>
+    <link rel="stylesheet" href="/static/css/mcp-settings.css?v=2026.11.02.1789283121">
+    <script src="/static/js/mcp-settings.js?v=2026.11.02.1792660078"></script>
 </body>
 
 </html>

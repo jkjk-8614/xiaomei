@@ -85,7 +85,7 @@ function acceptProductFidelityResult(node,result){
     }
 }
 function productFidelityDefaults(){
-    return {version:1,enabled:false,mode:'strict',category:'auto',categoryCustom:'',geometry:'auto',geometryCustom:'',referenceIds:{},rois:[],maskStrokes:[],
+    return {version:1,enabled:false,mode:'strict',fitOutputCanvas:false,category:'auto',categoryCustom:'',geometry:'auto',geometryCustom:'',referenceIds:{},rois:[],maskStrokes:[],
         identification:{enabled:true},structure:{enabled:true,lockRatio:true,lockOutline:true,lockLines:true,lockSymmetry:false,lockLayout:true},
         detail:{enabled:true,inputMode:'combined',highPassRadiusPx:2,highPassGain:2,autoCrops:false,cropCount:2,restoreMode:'off',restoreStrength:.3},
         dimensions:XiaomeiPhysicalDimensions.defaults(),view:{enabled:false,mode:'keep',yaw:0,pitch:0,roll:0,framing:'medium',fov:50,proxyEnabled:false},
@@ -111,9 +111,9 @@ function normalizeProductFidelityNode(node){
     node.title='产品保护';
     return node;
 }
-function createProductFidelityNodeAt(point){
+function createProductFidelityNodeAt(point,options={}){
     const height=Math.max(560,Math.min(720,window.innerHeight-160));
-    const node=createNode((point?.x||0)-490,(point?.y||0)-height/2,[],{nodeType:SMART_PRODUCT_FIDELITY_NODE_TYPE,title:'产品保护',skipSave:true});
+    const node=createNode((point?.x||0)-490,(point?.y||0)-height/2,[],{nodeType:SMART_PRODUCT_FIDELITY_NODE_TYPE,title:'产品保护',skipSave:true,skipUndo:options.skipUndo});
     if(!node)return null;
     node.h=height;
     const top=clientToWorldPoint(0,76).y,bottom=clientToWorldPoint(0,window.innerHeight-20).y;
@@ -225,14 +225,69 @@ function fidelityEnsureReferences(node){
 }
 function productFidelitySourcesFor(node){
     const found=new Map(),seen=new Set();
-    function walk(item){
+    function walk(item,root=false){
         if(!item||seen.has(item.id))return;seen.add(item.id);
-        if(isProductFidelityNode(item)){normalizeProductFidelityNode(item);if(item.fidelityConfig.enabled)found.set(item.id,item);return;}
-        if(isSmartPaintNode(item)||isSmartUploadNode(item))return;
-        workflowInputNodesFor(item).forEach(walk);
+        if(!root&&isProductFidelityNode(item)){normalizeProductFidelityNode(item);if(item.fidelityConfig.enabled)found.set(item.id,item);return;}
+        if(!root&&(isSmartPaintNode(item)||isSmartUploadNode(item)))return;
+        const refs=smartLoopIsPaired(item)?smartLoopPreviewImages(item):null;
+        workflowInputNodesFor(item).forEach(input=>{
+            if(refs){
+                const urls=new Set(imagesForNode(input).map(ref=>ref.url));
+                const visible=refs.filter(ref=>urls.has(ref.url));
+                if(visible.length&&!visible.some(ref=>smartBatchRole(item,ref)==='product'))return;
+                if(!visible.length&&(canvas.connections||[]).some(c=>c.from===input.id&&c.to===item.id&&(c.input_slot||c.inputSlot)==='reference'))return;
+            }
+            walk(input);
+        });
     }
-    workflowInputNodesFor(node).forEach(walk);
+    walk(node,true);
     return [...found.values()];
+}
+function openSmartBatchProductFidelity(node){
+    if(!smartLoopIsPaired(node)||!fidelityCanEdit(node))return;
+    const sources=productFidelitySourcesFor(node);
+    if(sources.length>1){toast('当前批量生图连接了多个产品保护节点，请只保留一个保护来源');return;}
+    let source=sources[0];
+    if(!source){
+        if(smartBatchOverviewBusy(node)){toast('请等待本批次完成或停止后，再添加产品保护');return;}
+        const refs=smartLoopPreviewImages(node),products=refs.filter(ref=>smartBatchRole(node,ref)==='product');
+        if(!products.length){toast('请先添加产品图，再设置产品保护');return;}
+        const roles=new Map(refs.map(ref=>[ref.url,smartBatchRole(node,ref)]));
+        const productUrls=new Set(products.map(ref=>ref.url)),routed=new Set(),removed=[];
+        const inputs=inputNodesFor(node);
+        pushUndo();
+        source=createProductFidelityNodeAt({x:node.x-590,y:node.y+360},{skipUndo:true});
+        if(!source)return;
+        source.fidelityConfig.fitOutputCanvas=true;
+        const blocked=new Set();
+        for(const input of inputs){
+            const images=imagesForNode(input);
+            if(!images.some(ref=>productUrls.has(ref.url)))continue;
+            if(!connectInputNode(input.id,source.id))continue;
+            images.forEach(ref=>{if(productUrls.has(ref.url))routed.add(ref.url);else blocked.add(inputRefKey(ref));});
+            // Mixed image groups keep their direct style/text connection to the batch.
+            if(images.every(ref=>productUrls.has(ref.url))){
+                removed.push(...(canvas.connections||[]).filter(c=>c.from===input.id&&c.to===node.id&&(c.kind||'flow')==='input'&&(c.input_slot||c.inputSlot)!=='text'));
+            }
+        }
+        source.blockedInputRefs=[...blocked];
+        source.manualInputRefs=products.filter(ref=>!routed.has(ref.url)).map(ref=>({...ref}));
+        rememberSmartConnectionDeletions(removed);
+        canvas.connections=(canvas.connections||[]).filter(c=>!removed.includes(c));
+        node.inputNodeIds=(node.inputNodeIds||[]).filter(id=>!removed.some(c=>c.from===id)||canvas.connections.some(c=>c.from===id&&c.to===node.id));
+        node.manualInputRefs=(node.manualInputRefs||[]).filter(ref=>!productUrls.has(ref.url));
+        connectInputNode(source.id,node.id,'product');
+        fidelityEnsureReferences(source);
+        const current=smartLoopPreviewImages(node);
+        node.batchCommerceRoles=Object.fromEntries(current.map(ref=>[inputRefKey(ref),roles.get(ref.url)||'product']));
+        node.inputRefOrder=refs.map(ref=>current.find(item=>item.url===ref.url)).filter(Boolean).map(inputRefKey);
+        scheduleSave();
+    }
+    if(!fidelityCanEdit(source))return;
+    selectedId=source.id;selectedIds=[];selectedImage={nodeId:'',index:-1};
+    const rect=nodeRect(source);
+    centerViewportOnWorldPoint({x:rect.x+rect.width/2,y:rect.y+rect.height/2});
+    render();updateComposer();
 }
 function productFidelitySettingsForNode(node,base){
     if(!node||isProductFidelityNode(node))return base;
@@ -341,12 +396,12 @@ function productFidelityNodeBodyHtml(node){
             <div class="pf-simple" data-pf-ui-panel="simple" role="tabpanel" id="pf-ui-panel-${escapeAttr(node.id)}-simple" aria-labelledby="pf-ui-${escapeAttr(node.id)}-simple"><h2>3. 选择出图方式</h2><div class="pf-preset-list">${modeChoices.map(([mode,label,description])=>`<button type="button" class="pf-preset" data-pf-preset="${mode}" aria-pressed="${config.mode===mode}"><span class="pf-preset-radio" aria-hidden="true"></span><span><strong>${label}</strong><small>${description}</small></span></button>`).join('')}</div>
                 <div class="pf-mode-explanation" data-pf-mode-explanation role="status" aria-live="polite"><strong class="pf-sr-only" data-pf-mode-title></strong><div class="pf-mode-view" data-pf-mode-view hidden><span data-pf-simple-view-summary></span><button type="button" data-pf-simple-view-open>设置拍摄角度</button></div><p class="pf-mode-next" data-pf-mode-next hidden></p></div>
                 <p class="pf-custom-warning" data-pf-custom-warning hidden>当前含微调参数，切换方式前会提示关联调整。</p>
-                <div class="pf-simple-options"><label class="pf-simple-toggle"><span><strong>保护文字和花纹</strong><small>为 Logo、标签、纹理增加细节参考</small></span><input type="checkbox" data-pf-simple-detail ${config.detail.enabled?'checked':''}></label><label class="pf-simple-toggle"><span><strong>填写商品实物尺寸</strong><small>宽、高与尺寸单位</small></span><input type="checkbox" data-pf-simple-dimensions ${dimensions.enabled?'checked':''}></label></div>
+                <div class="pf-simple-options"><label class="pf-simple-toggle" data-pf-fit-option><span><strong>适配出图画幅</strong><small>产品等比缩放居中，画幅跟随下游设置</small></span><input type="checkbox" data-pf-simple-fit ${config.fitOutputCanvas?'checked':''}></label><label class="pf-simple-toggle"><span><strong>保护文字和花纹</strong><small>为 Logo、标签、纹理增加细节参考</small></span><input type="checkbox" data-pf-simple-detail ${config.detail.enabled?'checked':''}></label><label class="pf-simple-toggle"><span><strong>填写商品实物尺寸</strong><small>宽、高与尺寸单位</small></span><input type="checkbox" data-pf-simple-dimensions ${dimensions.enabled?'checked':''}></label></div>
                 <div class="pf-simple-dimensions" data-pf-simple-dimensions-content ${dimensions.enabled?'':'hidden'}><div class="pf-simple-dimensions-grid">${simpleDimension('width','宽')}${simpleDimension('height','高')}<label class="pf-simple-dimension"><span>单位</span><select data-pf-simple-dimension="unit">${[['mm','毫米'],['cm','厘米'],['m','米'],['in','英寸']].map(([unit,label])=>`<option value="${unit}" ${dimensions.unit===unit?'selected':''}>${label}</option>`).join('')}</select></label></div><p data-pf-simple-dimension-error role="status"></p></div>
                 <p class="pf-simple-note" data-pf-simple-note></p>
             </div>
             <div class="pf-all" data-pf-ui-panel="all" role="tabpanel" id="pf-ui-panel-${escapeAttr(node.id)}-all" aria-labelledby="pf-ui-${escapeAttr(node.id)}-all" hidden><h2>全部设置</h2><p class="pf-all-intro">按需要展开设置；日常出图通常只需简单设置。</p>
-                ${group('change','出图方式与改动范围',select('mode','商品保护方式',modeChoices)+section('04','generation','允许 AI 改哪里？','启用',select('generation.allowedEdits','AI 可调整的范围',[['background','只更换背景'],['lighting','背景与商品光照'],['material','局部材质质感'],['view','商品拍摄角度']])+`<p class="pf-strategy" data-pf-strategy></p>`),true)}
+                ${group('change','出图方式与改动范围',select('mode','商品保护方式',modeChoices)+`<div data-pf-fit-option>${check('fitOutputCanvas','适配出图画幅（产品等比缩放居中）')}</div>`+section('04','generation','允许 AI 改哪里？','启用',select('generation.allowedEdits','AI 可调整的范围',[['background','只更换背景'],['lighting','背景与商品光照'],['material','局部材质质感'],['view','商品拍摄角度']])+`<p class="pf-strategy" data-pf-strategy></p>`),true)}
                 ${group('identity','这是什么商品？',section('01','identification','商品信息','启用',select('category','商品类目',[['auto','不指定／请选择类目'],['textile','地毯／布艺／家纺'],['clothing','服装／鞋帽'],['bag','箱包／皮具'],['furniture','家具／家居摆件'],['frame','相框／装饰画'],['box','包装盒'],['cylinder','瓶罐／杯具'],['beauty','美妆／个护'],['jewelry','珠宝／饰品'],['electronics','电子数码'],['appliance','家用电器'],['food','食品／饮料'],['toy','玩具／文具'],['other','其他商品（手动填写）']])+custom('categoryCustom','填写商品名称','例如：入户门垫、宠物窝',config.category==='other')+select('geometry','商品外形',[['auto','不指定形状'],['plane','平整表面（如画框／地毯）'],['circle','圆形平面'],['oval','椭圆形平面'],['polygon','多边形平面'],['box','立体方盒'],['cylinder','圆柱体（如瓶罐）'],['cone','上窄下宽／收口形'],['sphere','球体'],['curved','弧面／曲面'],['soft','软质／可折叠'],['other','不规则异形'],['custom','手动描述形状']])+custom('geometryCustom','描述商品形状','例如：半圆门垫、带提手的异形瓶',config.geometry==='custom')))}
                 ${group('shape','商品怎么保持形状？',section('02','structure','形状保护','启用',fidelityMaskSelectHtml(node)+help('灰色涂抹和黑白保护图是什么关系？','<p class="pf-help">左侧半透明灰色只是保护区预览，生成黑白保护图时，涂抹的地方是白色（保留原图），未涂抹的地方是黑色（可改变）。也可导入与主图同尺寸的黑白保护图。</p>')+`<div class="pf-checks">${check('structure.lockRatio','保持长宽比例')}${check('structure.lockOutline','保持外轮廓')}${check('structure.lockLines','保持边缘直线')}${check('structure.lockSymmetry','保持左右对称')}${check('structure.lockLayout','保持商品部件位置')}</div>`))}
                 ${group('detail','Logo、文字与纹理',section('03','detail','细节参考','启用',select('detail.inputMode','细节参考方式',[['original','只用商品原图'],['highpass','增加表面纹理参考图'],['crops','增加局部细节图'],['combined','纹理图＋局部细节图']])+`<details class="pf-options" data-pf-crop-options><summary>重点细节框（Logo、标签文字）</summary>${check('detail.autoCrops','按纹理自动寻找候选区域')}${number('detail.cropCount','最多提取几处细节',0,3,1,'张')}<div class="pf-secondary-actions"><button type="button" data-pf-action="auto-crops">寻找细节并预览</button><button type="button" data-pf-action="manual-rois">自己框选细节</button></div><p class="pf-help">自动选区按图像纹理和边缘寻找，不识别 Logo 或文字；请检查后使用。点击下方裁切预览可定位；在左图拖动或缩放，按 Delete 删除后可重新圈选。</p></details><details class="pf-options"><summary>出图后恢复原图纹理</summary>${select('detail.restoreMode','纹理如何处理',[['off','不贴回原图纹理'],['auto','可靠对齐后恢复原图纹理']])}<label class="pf-field"><span>原图纹理叠加强度</span><span class="pf-range"><small>少量</small><input type="range" min="0" max="1" step=".05" data-pf-field="detail.restoreStrength" value="${config.detail.restoreStrength}"><small>较多</small></span></label><p class="pf-help" data-pf-restore-note></p></details>`))}
@@ -549,6 +604,8 @@ function fidelitySyncSimple(session){
     root.querySelector('[data-pf-mode-view]').hidden=config.mode!=='view';
     root.querySelector('[data-pf-simple-view-summary]').textContent=viewChanged?fidelityViewSummary(config.view):'当前：原图角度（0°）';
     root.querySelector('[data-pf-simple-detail]').checked=config.detail.enabled;
+    root.querySelector('[data-pf-simple-fit]').checked=Boolean(config.fitOutputCanvas);
+    root.querySelectorAll('[data-pf-fit-option]').forEach(el=>el.hidden=config.mode!=='strict'||d.enabled);
     root.querySelector('[data-pf-simple-dimensions]').checked=d.enabled;
     root.querySelector('[data-pf-simple-dimensions-content]').hidden=!d.enabled;
     root.querySelector('[data-pf-custom-warning]').hidden=!session.customized;
@@ -626,7 +683,7 @@ function fidelitySyncAvailability(session){
     if(viewThumb)viewThumb.innerHTML=viewRef?'<img src="'+escapeAttr(viewRef.url)+'" alt="当前产品主图">':'<span>暂无主图</span>';
     session.root.querySelector('[data-pf-view-summary]').textContent=config.view.enabled?fidelityViewSummary(config.view):'保持原图角度';
     for(const option of field('generation.allowedEdits').options)option.disabled=effective.mode==='strict'?option.value!=='background':effective.mode==='structure'&&option.value==='view';
-    session.root.querySelector('[data-pf-strategy]').textContent=config.mode==='strict'?'仅换背景会保留已标记商品区域的原图像素；请检查保护区是否完整。':config.mode==='view'?'使用商品与视角参考生成；未拍摄到的侧面和背面由 AI 推测。':'结合原图与细节参考生成；只有对齐可靠时才尝试恢复原图纹理。';
+    session.root.querySelector('[data-pf-strategy]').textContent=config.mode==='strict'?(config.fitOutputCanvas&&!effective.dimensions.enabled?'按下游画幅等比缩放并居中合成商品，保留比例、轮廓与花纹；商品位置和机位固定。':'仅换背景会保留已标记商品区域的原图像素；请检查保护区是否完整。'):config.mode==='view'?'使用商品与视角参考生成；未拍摄到的侧面和背面由 AI 推测。':'结合原图与细节参考生成；只有对齐可靠时才尝试恢复原图纹理。';
     session.root.querySelectorAll('[data-pf-action="preview"],[data-pf-action="auto-crops"]').forEach(el=>el.disabled=!config.enabled||(!session.refs.length&&!config.dimensions.enabled)||Boolean(session.busy));
     session.root.querySelectorAll('[data-pf-module]').forEach(module=>{
         const key=module.dataset.pfModule,off=!config[key].enabled;module.dataset.pfDisabled=String(off);
@@ -645,7 +702,7 @@ function fidelitySyncAvailability(session){
     session.root.querySelector('[data-pf-action="preview"]').disabled||=dimensionErrors.length>0;
     session.root.querySelector('[data-pf-action="preview"]').textContent=session.busy?'正在生成参考图…':'生成保护参考图';
     session.root.querySelectorAll('[data-pf-view-open],[data-pf-simple-view-open]').forEach(button=>button.disabled=!config.view.enabled||!viewRef||Boolean(session.busy));
-    session.root.querySelectorAll('[data-pf-preset],[data-pf-simple-detail],[data-pf-simple-dimensions],[data-pf-simple-dimension]').forEach(el=>el.disabled=Boolean(session.busy));
+    session.root.querySelectorAll('[data-pf-preset],[data-pf-simple-fit],[data-pf-simple-detail],[data-pf-simple-dimensions],[data-pf-simple-dimension]').forEach(el=>el.disabled=Boolean(session.busy));
     fidelitySyncSimple(session);
     if(sharedCanvasReadOnly)session.root.querySelectorAll('input,select,button').forEach(el=>el.disabled=true);
 }
@@ -894,7 +951,7 @@ function fidelityRenderResults(session){
         const snapshot=result.dimensions||paint.runSettings.productFidelity.dimensions;
         if(snapshot?.version===2&&XiaomeiPhysicalDimensions.signature(snapshot)!==XiaomeiPhysicalDimensions.signature(session.node.fidelityConfig.dimensions))return;
         found=true;const block=document.createElement('div'),title=document.createElement('strong'),text=document.createElement('p');
-        const status=result.validationStatus==='passed'&&paint.runSettings?.productFidelity?.mode==='strict'?'原产品核心像素已保留':labels[result.validationStatus]||'无法判断';
+        const status=result.validationStatus==='passed'&&paint.runSettings?.productFidelity?.mode==='strict'?(result.validations?.some(v=>v.productResized)?'产品已等比缩放并合成':'原产品核心像素已保留'):labels[result.validationStatus]||'无法判断';
         title.textContent=(paint.title||'绘画')+' · 上次生成 · '+status;
         text.textContent=(result.validations||[]).map(v=>v.reason||v.scope||'').concat(result.warnings||[]).join('\n');
         const geometry=result.validations?.[0]?.physicalGeometry;
@@ -972,6 +1029,9 @@ function bindProductFidelityNode(el,node){
     });
     root.querySelector('[data-pf-simple-detail]').onchange=event=>{
         if(fidelityCanEdit(node))void fidelityApplyFieldChange(session,'detail.enabled',event.target.checked);
+    };
+    root.querySelector('[data-pf-simple-fit]').onchange=event=>{
+        if(fidelityCanEdit(node))void fidelityApplyFieldChange(session,'fitOutputCanvas',event.target.checked);
     };
     root.querySelector('[data-pf-simple-dimensions]').onchange=event=>{
         const field=root.querySelector('[data-pd-field="enabled"]');field.checked=event.target.checked;field.dispatchEvent(new Event('change',{bubbles:true}));

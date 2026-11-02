@@ -50,7 +50,7 @@ def create_fusion_router(resolve, save_image, register_media):
                 record = register_media(url, name='局部融合结果.png', kind='image', source='generated',
                                         derived_from=[payload.sourceUrl]+[p.url for p in payload.patches],
                                         metadata={'operation': 'local-fusion', 'paid_api': False})
-                job.update(status='completed', message='融合预览已完成，请检查后输出',
+                job.update(status='completed', message='融合完成，请检查结果中的结构和接缝',
                            result={'url': url, 'maskUrl': mask_url, 'name': '局部融合结果.png',
                                    'width': report['width'], 'height': report['height'], 'report': report,
                                    'asset_ref_id': (record or {}).get('id', '')})

@@ -210,7 +210,6 @@ let rhWorkflowEditorState = { open:false, index:-1, entry:null, config:null, exp
 let rhEditorMode = 'workflow';
 let recommendInlineOpen = false;
 let providerDragId = '';
-// category: 'allround'（全能）| 'value'（性价比）| 'free'（免费），推荐面板按分组分节展示
 const RECOMMENDED_APIS = [
     {
         id:'api-6789',
@@ -225,151 +224,15 @@ const RECOMMENDED_APIS = [
         summaryKey:'api.recommend6789Summary',
         advantages:['OpenAI 兼容接口', '覆盖图像、视频和文本模型', '保存 Key 后自动拉取账号可用模型'],
         empty_models_on_save:true
-    },
-    {
-        id:'apilio',
-        name:'Apilio',
-        category:'allround',
-        base_url:'https://api.apilio.ai',
-        protocol:'openai',
-        image_request_mode:'openai',
-        register_url:'https://api.apilio.ai/register?aff=9qGS',
-        tagKeys:['api.tagImageModels','api.tagLlmModels'],
-        icons:['IMG','LLM'],
-        summaryKey:'api.recommendApilioSummary',
-        advantages:['OpenAI 兼容统一接口', '支持图像与文本模型', '保存 Key 后自动拉取账号可用模型'],
-        empty_models_on_save:true
-    },
-    {
-        id:'comfly',
-        name:'comfly',
-        category:'allround',
-        base_url:'https://ai.comfly.org',
-        protocol:'openai',
-        image_request_mode:'openai',
-        register_url:'https://ai.comfly.org/',
-        tagKeys:['api.tagImageModels','api.tagLlmModels'],
-        icons:['IMG','LLM'],
-        summaryKey:'api.recommendComflySummary',
-        advantages:['OpenAI 兼容接口', '支持主流对话与图像模型', '保存 Key 后自动拉取账号可用模型'],
-        empty_models_on_save:true
-    },
-    {
-        id:'exellome',
-        name:'EXELLOME',
-        category:'value',
-        base_url:'https://new.exellome.online',
-        // 异步协议 + 异步生图模式：提交 /v1/videos、轮询 /v1/videos/{id}，本地参考图走 multipart 直传
-        protocol:'apimart',
-        image_request_mode:'openai-video-proxy',
-        register_url:'https://new.exellome.online/register?aff=r2dZ',
-        tagKeys:['GPT-Image2','Nano-Banana'],
-        icons:['IMG'],
-        summaryKey:'api.recommendExellomeSummary',
-        perks:[{key:'api.recommendExellome2k4k'}],
-        keyHint:'使用 VIP 分组',
-        advantages:['稳定输出 GPT-Image2 和 Nano Banana 的 2K/4K', '异步协议适合长任务', '预填全系图像模型'],
-        image_models:['gpt-image2-2k', 'gpt-image2-4k', 'Nano-Banana-2-2k', 'Nano-Banana-2-4k', 'Nano-Banana-Pro-2k', 'Nano-Banana-Pro-4k'],
-        chat_models:[],
-        video_models:[]
-    },
-    {
-        id:'fhl',
-        name:'FHL',
-        category:'value',
-        base_url:'https://www.fhl.mom',
-        protocol:'openai',
-        // FHL 生图当前走 OpenAI Images 协议：文生图 /v1/images/generations，图生图 /v1/images/edits
-        image_request_mode:'openai',
-        register_url:'https://www.fhl.mom/register?aff=86L574B4T2N9',
-        tagKeys:['Codex','Claude','api.tagGptImage2'],
-        icons:['CODEX','GPT','IMG'],
-        summaryKey:'api.recommendFhlSummary',
-        advantages:['稳定便宜接入 codex/Claude/GPT Image 2出图', 'OpenAI Images 生图直连', '预填 gpt-image-2 全系模型'],
-        image_models:['gpt-image-2', 'gpt-image-2-2k', 'gpt-image-2-4k', 'nano-banana'],
-        chat_models:['gpt-5.5'],
-        video_models:[]
-    },
-    {
-        id:'vip-gpt',
-        name:'VIP-GPT',
-        category:'value',
-        base_url:VIP_GPT_DEFAULT_BASE_URL,
-        protocol:'openai',
-        register_url:VIP_GPT_REGISTER_URL,
-        tagKeys:['Codex','Claude','GPT-image-2','Nano-banana'],
-        icons:['GPT','LLM'],
-        summaryKey:'api.recommendVipGptSummary',
-        advantages:['OpenAI 兼容接入', '预填官方请求地址', '保存 Key 后可拉取模型'],
-        empty_models_on_save:true
-    },
-    {
-        id:'runninghub',
-        name:'RunningHub',
-        category:'allround',
-        base_url:RH_DEFAULT_BASE_URL,
-        protocol:'runninghub',
-        image_request_mode:'openai',
-        register_url:ONBOARDING_GUIDES.runninghub.secondaryUrl,
-        register_url_cn:ONBOARDING_GUIDES.runninghub.primaryUrl,
-        tagKeys:['api.tagImageModels','api.tagVideoModels','api.tagLlmModels','api.tagSeedance'],
-        icons:['IMG','VID','LLM'],
-        summaryKey:'api.recommendRunninghubSummary',
-        advantages:['覆盖图像、视频和 LLM', '支持 RunningHub 工作流 API', '可在推荐区域保存 RH 币 Key']
-    },
-    {
-        name:'APIMART',
-        category:'allround',
-        base_url:'https://api.apimart.ai',
-        protocol:'apimart',
-        register_url:'https://apimart.ai/zh/register?aff=1uyAbb',
-        register_url_cn:'https://apib.ai/register?aff=1uyAbb',
-        tagKeys:['api.tagImageModels','api.tagVideoModels','api.tagLlmModels','api.tagSeedance'],
-        icons:['IMG','VID','LLM'],
-        summaryKey:'api.recommendApimartSummary',
-        advantages:['模型类型覆盖广', '适合多节点混合工作流', '异步协议适合长任务']
-    },
-    {
-        id:'lingjing',
-        name:'灵境API',
-        category:'value',
-        base_url:LINGJING_DEFAULT_BASE_URL,
-        protocol:'openai',
-        register_url:LINGJING_REGISTER_URL,
-        tagKeys:['api.tagImageModels','api.tagVideoModels','api.tagLlmModels'],
-        icons:['IMG','VID','LLM'],
-        summaryKey:'api.recommendLingjingSummary',
-        advantages:['签到送积分', '六折专属优惠', '图像/视频/LLM 全覆盖'],
-        // 添加平台时预填的默认模型列表（含逐模型协议覆盖）
-        image_models:['gpt-image-2', 'gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'],
-        chat_models:['gpt-5.5'],
-        video_models:['veo3.1-fast'],
-        model_protocols:{'gemini-3.1-flash-image-preview':'gemini', 'gemini-3-pro-image-preview':'gemini'}
-    },
-    {
-        name:'Agnes AI',
-        category:'free',
-        base_url:'https://apihub.agnes-ai.com',
-        protocol:'openai',
-        image_request_mode:'openai-json',
-        register_url:'https://platform.agnes-ai.com/settings/apiKeys',
-        tagKeys:['api.tagImageModels','api.tagVideoModels','api.tagLlmModels'],
-        icons:['IMG','VID','LLM'],
-        summaryKey:'api.recommendAgnesSummary',
-        perkKey:'api.recommendAgnesFree',
-        perkClass:'recommend-free-tag',
-        advantages:['免费额度可用', '支持 Agnes 图像与视频接口', 'OpenAI 兼容地址配置简单'],
-        image_models:['agnes-image-2.1-flash', 'agnes-image-2.0-flash'],
-        chat_models:[],
-        video_models:['agnes-video-v2.0']
     }
 ];
 const RECOMMEND_GROUPS = [
-    {key:'allround', titleKey:'api.recommendGroupAllround', icon:'blocks'},
-    {key:'value', titleKey:'api.recommendGroupValue', icon:'badge-percent'},
-    {key:'free', titleKey:'api.recommendGroupFree', icon:'gift'}
+    {key:'allround', titleKey:'api.recommendGroupAllround', icon:'blocks'}
 ];
-const LOCKED_RECOMMENDED_PROTOCOL_IDS = new Set(['exellome', 'fhl']);
+const LOCKED_PROVIDER_PROTOCOLS = [
+    {id:'exellome', name:'EXELLOME', base_url:'https://new.exellome.online', protocol:'apimart', image_request_mode:'openai-video-proxy'},
+    {id:'fhl', name:'FHL', base_url:'https://www.fhl.mom', protocol:'openai', image_request_mode:'openai'}
+];
 function lockedRecommendedApi(itemOrId){
     const id = typeof itemOrId === 'string' ? itemOrId : itemOrId?.id;
     const name = typeof itemOrId === 'string' ? '' : itemOrId?.name;
@@ -380,8 +243,7 @@ function lockedRecommendedApi(itemOrId){
     const normalizedHost = (() => {
         try { return new URL(normalizedBase).host.toLowerCase(); } catch(e) { return ''; }
     })();
-    return RECOMMENDED_APIS.find(api => {
-        if(!LOCKED_RECOMMENDED_PROTOCOL_IDS.has(api.id)) return false;
+    return LOCKED_PROVIDER_PROTOCOLS.find(api => {
         const apiBase = String(api.base_url || '').trim().replace(/\/+$/, '').toLowerCase();
         const apiHost = (() => {
             try { return new URL(apiBase).host.toLowerCase(); } catch(e) { return ''; }
@@ -487,7 +349,7 @@ function findRhAppFieldCard(key){
 function normalizeId(value){
     return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/^-+|-+$/g, '').replace(/-+/g, '-').slice(0, 40);
 }
-// 平台 Key 按 ID 写入 API/.env；ID 一旦创建就保持稳定，避免改名或中文名称导致 Key 看起来丢失。
+// 平台 Key 按 ID 写入 API/.env；首次保存后保持 ID 稳定，避免改名导致 Key 看起来丢失。
 function deriveIdFromName(name, existingId){
     if(existingId) return existingId;
     let id = normalizeId(name);
@@ -500,6 +362,30 @@ function deriveIdFromName(name, existingId){
     }
     return candidate;
 }
+function newProviderId(item, name=item.name, baseUrl=item.base_url){
+    if(!item._idDraft) return item.id;
+    let base = '';
+    try {
+        const url = new URL(String(baseUrl || '').trim());
+        if(['http:', 'https:'].includes(url.protocol)){
+            const host = url.hostname.toLowerCase();
+            base = host === 'soonstudio.ai' || host.endsWith('.soonstudio.ai') ? 'soon'
+                : host === 'scnet.cn' || host.endsWith('.scnet.cn') ? 'scnet'
+                : host === 'openrouter.ai' || host.endsWith('.openrouter.ai') ? 'openrouter'
+                : host === 'qianwenaiapi.com' || host.endsWith('.qianwenaiapi.com') ? 'qwen'
+                : normalizeId(host.replace(/^(?:(?:api\d*|www)\.)+/, '') + (url.port ? '-' + url.port : ''));
+        }
+    } catch(_) {}
+    if(!base) base = normalizeId(name) === 'api' ? '' : normalizeId(name);
+    base = base.length >= 2 ? base : item.id;
+    let id = base, suffix = 2;
+    const keyId = value => String(value || '').replace(/-/g, '_').toLowerCase();
+    while(providers.some(other => other !== item && keyId(other.id) === keyId(id))){
+        const tail = '-' + suffix++;
+        id = base.slice(0, 40 - tail.length) + tail;
+    }
+    return id;
+}
 function updateIdPreview(){
     const item = provider();
     if(!item) return;
@@ -510,7 +396,7 @@ function updateIdPreview(){
         idPreview.textContent = item.id;
         return;
     }
-    idPreview.textContent = deriveIdFromName(nameInput.value, item.id);
+    idPreview.textContent = newProviderId(item, nameInput.value, baseInput.value);
 }
 function provider(){
     const available = visibleProviders();
@@ -838,8 +724,8 @@ function syncEditor(){
     if(item.id === 'comfyui') return;
     const oldId = item.id;
     const isBuiltin = item.id === 'comfly' || item.id === 'runninghub' || item.id === 'volcengine' || item.id === 'jimeng' || item.id === 'comfyui';
-    // 内置和自定义平台的 ID 都保持稳定；新建时若没有 ID 才生成一次。
-    const nextId = isBuiltin ? item.id : deriveIdFromName(nameInput.value, item.id);
+    // 首次保存前从网站地址生成 ID；已保存的平台保持原 ID。
+    const nextId = isBuiltin ? item.id : newProviderId(item, nameInput.value, baseInput.value);
     item.id = nextId;
     if(oldId !== item.id) selectedId = item.id;
     item.name = nameInput.value.trim() || item.id;
@@ -2453,6 +2339,7 @@ function openRecommendApi(){
     syncRecommendView();
     renderRecommendApi();
     renderProviderOnboarding(provider());
+    loadCustomRecommendedApis();
 }
 function closeRecommendApi(){
     if(recommendApiOverlay) recommendApiOverlay.style.display = 'none';
@@ -2470,8 +2357,62 @@ function syncRecommendView(){
     if(recommendSub) recommendSub.textContent = tr('api.recommendPanelSub');
     document.body.classList.toggle('show-recommend-mode', recommendInlineOpen);
 }
-function focusRecommendKey(event, index){
+let recommendFilter = 'all';
+const RECOMMEND_FILTERS = ['all', 'pending', 'ready'];
+// 筛选会把未配置的行整段重画，正在输入的 Key 先记在这里，切回来不会丢。
+const recommendKeyDrafts = new Map();
+function rememberRecommendKey(id, value){
+    if(!id) return;
+    if(value) recommendKeyDrafts.set(id, value);
+    else recommendKeyDrafts.delete(id);
+}
+function setRecommendFilter(key){
+    if(!RECOMMEND_FILTERS.includes(key) || key === recommendFilter) return;
+    const restoreFocus = recommendPanel?.querySelector('.rec-filter:focus') != null;
+    recommendFilter = key;
+    renderRecommendationsKeepingKeys()();
+    if(restoreFocus) recommendPanel?.querySelector(`.rec-filter[data-filter="${key}"]`)?.focus({preventScroll:true});
+}
+function recommendHasSavedKey(api){
+    return Boolean(api.existingProviderId && api.has_key);
+}
+// 平台地址收敛成「站点 + 路径」，列表里比整条 https:// 更好扫读。
+function recommendHostText(value){
+    const raw = String(value || '').trim();
+    if(!raw) return '';
+    try {
+        const url = new URL(raw);
+        if(!['http:', 'https:'].includes(url.protocol)) return raw;
+        return `${url.host}${url.pathname.replace(/\/+$/, '')}`;
+    } catch(_) { return raw; }
+}
+function providerHostText(item){
+    const raw = String(item?.base_url || '').trim();
+    if(!raw) return '未配置地址';
+    return recommendHostText(raw) || raw;
+}
+// 平台图标：有站点 favicon 就显示图片，取不到时退回首字母色块（比通用链条图标更容易区分）。
+function recommendIconHtml(api){
+    const name = String(api?.name || '').trim();
+    const letter = (Array.from(name)[0] || '?').toUpperCase();
+    let hue = 0;
+    for(const ch of name) hue = (hue * 31 + (ch.codePointAt(0) || 0)) % 360;
+    const src = providerIconSrc({base_url:api?.base_url, name});
+    const usable = src && !providerIconFailed.has(src);
+    const loaded = usable && providerIconLoaded.has(src) ? ' is-loaded' : '';
+    return `<span class="rec-icon" style="--rec-hue:${hue}">${
+        usable
+            ? `<img class="rec-icon-img${loaded}" src="${escapeAttr(src)}" alt="" data-icon-src="${escapeAttr(src)}" onload="markProviderFaviconLoaded(this)" onerror="markProviderFaviconFailed(this)">`
+            : ''
+    }<span class="rec-icon-letter" aria-hidden="true">${escapeHtml(letter)}</span></span>`;
+}
+function recommendRowClick(event, index){
     if(event?.target?.closest?.('a,button,input,textarea,select,label')) return;
+    const api = getRecommendedApis()[index];
+    if(api?.existingProviderId){
+        openRecommendedProvider(index);
+        return;
+    }
     const input = recommendPanel?.querySelector(`[data-recommend-key="${index}"]`);
     if(input){
         input.focus();
@@ -2488,96 +2429,107 @@ function renderRecommendApi(){
         ? 'RH'
         : api.protocol === 'apimart'
         ? 'APIMart'
-        : 'OpenAI';
-    const recommendCardHtml = (api, index) => `
-        <section class="recommend-card recommend-platform-card" style="--recommend-index:${index}" onclick="focusRecommendKey(event, ${index})">
-            <div class="recommend-platform-info">
-                <div class="recommend-platform-head">
-                    <div>
-                        <div class="recommend-name"><span>${escapeHtml(api.name)}</span></div>
-                    </div>
-                    <span class="recommend-badge">${escapeHtml(recommendProtocolBadge(api))}</span>
-                </div>
-                <p class="recommend-platform-summary">${escapeHtml(tr(api.summaryKey))}</p>
-                <div class="recommend-tags">
-                    ${(api.perks || (api.perkKey ? [{key:api.perkKey, className:api.perkClass || ''}] : [])).map(perk => `<span class="recommend-tag recommend-perk-tag ${escapeAttr(perk.className || '')}"><i data-lucide="gift" class="w-3 h-3"></i><span>${escapeHtml(tr(perk.key))}</span></span>`).join('')}
-                    ${(api.tagKeys || []).map(tag => tag === 'api.tagSeedance'
-                        ? `<span class="recommend-tag recommend-seedance-tag"><i data-lucide="video" class="w-3 h-3"></i><span>${escapeHtml(tr(tag))}</span></span>`
-                        : `<span class="recommend-tag">${escapeHtml(tag.startsWith('api.') ? tr(tag) : tag)}</span>`
-                    ).join('')}
-                </div>
-            </div>
-            <div class="recommend-platform-setup">
-                <div class="recommend-setup-title">${escapeHtml(tr('api.recommendQuickSetup'))}</div>
-                <div class="recommend-quick-stack recommend-setup-flow">
-                    <div class="recommend-guide-source onboarding-rh-source-group">
-                        <div class="onboarding-rh-source-label">${escapeHtml(tr('api.getKey'))}</div>
-                        <div class="onboarding-key-actions onboarding-rh-key-actions ${api.register_url_cn ? 'recommend-guide-key-stack' : 'recommend-single-action'}">
-                            ${api.register_url_cn ? `
-                            <a class="onboarding-key-btn recommend-guide-key-btn" href="${escapeAttr(api.register_url)}" target="_blank" rel="noopener noreferrer" onclick="openExternalWebPage(event, this.href)"><i data-lucide="key-round" class="w-3.5 h-3.5"></i><span>${escapeHtml(tr('api.getKeyGlobal'))}</span></a>
-                            <a class="onboarding-key-btn recommend-guide-key-btn" href="${escapeAttr(api.register_url_cn)}" target="_blank" rel="noopener noreferrer" onclick="openExternalWebPage(event, this.href)"><i data-lucide="key-round" class="w-3.5 h-3.5"></i><span>${escapeHtml(tr('api.getKeyCn'))}</span></a>
-                            ` : `
-                            <a class="onboarding-key-btn recommend-guide-key-btn" href="${escapeAttr(api.register_url)}" target="_blank" rel="noopener noreferrer" onclick="openExternalWebPage(event, this.href)"><i data-lucide="key-round" class="w-3.5 h-3.5"></i><span>${escapeHtml(tr('api.getKey'))}</span></a>
-                            `}
-                        </div>
-                    </div>
-                    <div class="recommend-flow-arrow onboarding-flow-arrow recommend-guide-arrow" aria-hidden="true"><span></span><b></b></div>
-                    <div class="recommend-guide-save">
-                        <label class="onboarding-key-field onboarding-rh-row-field">
-                            <span class="recommend-api-key-label">API Key${api.keyHint ? `<em class="recommend-key-inline-hint">${escapeHtml(api.keyHint)}</em>` : ''}</span>
-                            <input type="password" data-recommend-key="${index}" placeholder="${escapeAttr(trf('api.recommendKeyPlaceholder', {name:api.name}))}">
-                        </label>
-                        <button class="onboarding-save-btn recommend-guide-save-btn" type="button" onclick="saveRecommendedApi(${index})"><span>${escapeHtml(tr('api.save'))}</span></button>
-                    </div>
-                </div>
-            </div>
-        </section>
-    `;
-    // 所有分组共用同一张两列网格。后续分组的第一张卡会衔接到上一组的空位，
-    // 同时保留紧贴该卡的分组标题，避免最后一张全能卡右侧留下大块空白。
-    const recommendGroupHeadHtml = group => `
-        <div class="recommend-group-head recommend-group-${escapeAttr(group.key)}">
-            <i data-lucide="${escapeAttr(group.icon)}" class="w-3.5 h-3.5"></i>
-            <span>${escapeHtml(tr(group.titleKey))}</span>
-        </div>`;
-    const groups = RECOMMEND_GROUPS
-        .map(group => ({
-            group,
-            items: RECOMMENDED_APIS
-                .map((api, index) => ({api, index}))
-                .filter(item => (item.api.category || 'cheap') === group.key)
-        }))
-        .filter(entry => entry.items.length);
-    const html = groups.map((entry, groupIndex) => {
-        const [firstItem, ...remainingItems] = entry.items;
-        if(groupIndex === 0){
-            return `${recommendGroupHeadHtml(entry.group)}${entry.items.map(item => recommendCardHtml(item.api, item.index)).join('')}`;
-        }
+        : api.protocol === 'gemini' ? 'Gemini' : api.protocol === 'volcengine' ? 'Ark' : 'OpenAI';
+    const recommendRowHtml = (api, index) => {
+        const ready = Boolean(api.existingProviderId);
+        const off = ready && api.enabled === false;
+        const hasKey = recommendHasSavedKey(api);
+        const stateClass = off ? 'is-off' : hasKey ? 'is-ready' : 'is-pending';
+        const stateText = off ? tr('api.recommendationDisabled') : hasKey ? tr('api.recommendStateReady') : ready ? tr('api.recommendationKeyMissing') : tr('api.recommendStatePending');
+        const perks = api.perks || (api.perkKey ? [{key:api.perkKey, className:api.perkClass || ''}] : []);
+        const kinds = api.tagKeys || [];
+        const desc = ready ? '' : String(api.summaryKey ? tr(api.summaryKey) : (api.summary || '')).trim();
+        const host = recommendHostText(api.base_url);
+        const keyLinks = api.register_url_cn
+            ? `<a class="rec-btn rec-btn-ghost" href="${escapeAttr(api.register_url)}" target="_blank" rel="noopener noreferrer" onclick="openExternalWebPage(event, this.href)"><i data-lucide="key-round" class="w-3.5 h-3.5"></i><span>${escapeHtml(tr('api.getKeyGlobal'))}</span></a>
+               <a class="rec-btn rec-btn-ghost" href="${escapeAttr(api.register_url_cn)}" target="_blank" rel="noopener noreferrer" onclick="openExternalWebPage(event, this.href)"><i data-lucide="key-round" class="w-3.5 h-3.5"></i><span>${escapeHtml(tr('api.getKeyCn'))}</span></a>`
+            : `<a class="rec-btn rec-btn-ghost" href="${escapeAttr(api.register_url || api.base_url)}" target="_blank" rel="noopener noreferrer" onclick="openExternalWebPage(event, this.href)"><i data-lucide="key-round" class="w-3.5 h-3.5"></i><span>${escapeHtml(tr('api.getKey'))}</span></a>`;
         return `
-            <div class="recommend-flow-group-start">
-                ${recommendGroupHeadHtml(entry.group)}
-                ${recommendCardHtml(firstItem.api, firstItem.index)}
+        <div class="rec-row ${stateClass}" style="--recommend-index:${index}" onclick="recommendRowClick(event, ${index})">
+            ${recommendIconHtml(api)}
+            <div class="rec-main">
+                <div class="rec-title">
+                    <span class="rec-name" title="${escapeAttr(api.name)}">${escapeHtml(api.name)}</span>
+                    <span class="rec-proto">${escapeHtml(recommendProtocolBadge(api))}</span>
+                    ${perks.map(perk => `<span class="rec-perk ${escapeAttr(perk.className || '')}"><i data-lucide="gift" class="w-3 h-3"></i><span>${escapeHtml(tr(perk.key))}</span></span>`).join('')}
+                    ${api.custom ? `<span class="rec-custom-actions">
+                        <button type="button" class="rec-icon-btn" onclick="openRecommendationEditor('${escapeAttr(api.id)}')" aria-label="${escapeAttr(tr('api.editRecommendation'))}" title="${escapeAttr(tr('api.editRecommendation'))}"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+                        <button type="button" class="rec-icon-btn is-danger" onclick="removeCustomRecommendation('${escapeAttr(api.id)}')" aria-label="${escapeAttr(tr('api.removeRecommendation'))}" title="${escapeAttr(tr('api.removeRecommendation'))}"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                    </span>` : ''}
+                </div>
+                <div class="rec-meta">
+                    <span class="rec-host" title="${escapeAttr(api.base_url || '')}">${escapeHtml(host || '—')}</span>
+                </div>
+                ${desc ? `<div class="rec-desc">${escapeHtml(desc)}</div>` : ''}
             </div>
-            ${remainingItems.map(item => recommendCardHtml(item.api, item.index)).join('')}`;
-    }).join('');
+            <div class="rec-capabilities">
+                ${kinds.length ? `<span class="rec-kinds">${kinds.map(tag => `<span class="rec-kind${tag === 'api.tagSeedance' ? ' is-seedance' : ''}">${escapeHtml(tr(tag))}</span>`).join('')}</span>` : `<span class="rec-models-empty">${escapeHtml(tr('api.recommendModelsNotFetched'))}</span>`}
+            </div>
+            <div class="rec-side">
+                <span class="rec-state"><i aria-hidden="true"></i>${escapeHtml(stateText)}</span>
+                ${ready
+                    ? `<button class="rec-btn" type="button" aria-label="${escapeAttr(api.name + ' · ' + tr('api.manageRecommendationProvider'))}" onclick="event.stopPropagation();openRecommendedProvider(${index})"><span>${escapeHtml(tr('api.manageRecommendationProvider'))}</span><i data-lucide="chevron-right" class="w-3.5 h-3.5"></i></button>`
+                    : keyLinks}
+            </div>
+            ${ready ? '' : `<div class="rec-setup">
+                <label class="rec-key">
+                    <input type="password" data-recommend-key="${index}" autocomplete="off" spellcheck="false" value="${escapeAttr(recommendKeyDrafts.get(api.id) || '')}" oninput="rememberRecommendKey('${escapeAttr(api.id)}', this.value)" aria-label="${escapeAttr(trf('api.recommendKeyPlaceholder', {name:api.name}))}" placeholder="${escapeAttr(trf('api.recommendKeyPlaceholder', {name:api.name}))}">
+                </label>
+                <button class="rec-btn rec-btn-primary" type="button" onclick="event.stopPropagation();saveRecommendedApi(${index})"><span>${escapeHtml(tr('api.save'))}</span></button>
+            </div>`}
+        </div>`;
+    };
+    const all = getRecommendedApis();
+    const readyCount = all.filter(recommendHasSavedKey).length;
+    const pendingCount = all.length - readyCount;
+    const visible = all
+        .map((api, index) => ({api, index}))
+        .filter(({api}) => recommendFilter === 'ready' ? recommendHasSavedKey(api)
+            : recommendFilter === 'pending' ? !recommendHasSavedKey(api) : true);
+    // 只有一个分组时不再画分组标题，避免「推荐API / 平台注册 / 全部可用」三层标题叠在一起。
+    const multiGroup = new Set(all.map(api => api.category || 'cheap')).size > 1;
+    let rows = '';
+    let lastCategory = '';
+    visible.forEach(({api, index}) => {
+        const category = api.category || 'cheap';
+        if(multiGroup && category !== lastCategory){
+            const group = RECOMMEND_GROUPS.find(item => item.key === category);
+            if(group) rows += `<div class="rec-group-head rec-group-${escapeAttr(group.key)}"><i data-lucide="${escapeAttr(group.icon)}" class="w-3.5 h-3.5"></i><span>${escapeHtml(tr(group.titleKey))}</span></div>`;
+            lastCategory = category;
+        }
+        rows += recommendRowHtml(api, index);
+    });
+    const filterBtn = (key, label, count) => `<button type="button" data-filter="${key}" class="rec-filter${recommendFilter === key ? ' is-active' : ''}" aria-pressed="${recommendFilter === key}" onclick="setRecommendFilter('${key}')">${escapeHtml(label)}<b>${count}</b></button>`;
     recommendPanel.innerHTML = `
-        <div class="onboarding-head">
-            <div>
-                <div class="onboarding-title">${escapeHtml(tr('api.recommendPanelHintTitle'))}</div>
-                <div class="onboarding-desc">${escapeHtml(tr('api.recommendPanelHintDesc'))}</div>
+        <div class="rec-head">
+            <div class="rec-head-text">
+                <div class="rec-head-title">${escapeHtml(tr('api.recommendPanelTitle'))}</div>
+                <div class="rec-head-sub">${escapeHtml(tr('api.recommendPanelSub'))}</div>
+            </div>
+            <div class="rec-filters" role="group" aria-label="${escapeAttr(tr('api.recommendFilterLabel'))}">
+                ${filterBtn('all', tr('api.recommendFilterAll'), all.length)}
+                ${filterBtn('pending', tr('api.recommendFilterPending'), pendingCount)}
+                ${filterBtn('ready', tr('api.recommendFilterReady'), readyCount)}
             </div>
         </div>
-        <div class="recommend-api-body recommend-inline-body">
-            <div class="recommend-flow-grid">${html}</div>
+        <div class="rec-columns" aria-hidden="true">
+            <span>${escapeHtml(tr('api.recommendColumnProvider'))}</span>
+            <span>${escapeHtml(tr('api.recommendationKinds'))}</span>
+            <span>${escapeHtml(tr('api.recommendColumnActions'))}</span>
         </div>
-        <div class="recommend-note">${escapeHtml(tr('api.recommendApiNote'))}</div>
+        <div class="rec-list">
+            ${rows || `<div class="rec-empty">${escapeHtml(tr(recommendFilter === 'pending' ? 'api.recommendEmptyPending' : 'api.recommendEmptyReady'))}</div>`}
+            ${recommendationAddCardHtml()}
+        </div>
+        <div class="rec-note"><i data-lucide="info" aria-hidden="true"></i><span>${escapeHtml(tr('api.recommendApiNote'))}</span></div>
     `;
     refreshIcons();
 }
 function recommendedProviderForApi(api){
     let item = providers.find(provider =>
         (api.id && String(provider.id || '').toLowerCase() === String(api.id).toLowerCase())
-        || String(provider.name || '').toLowerCase() === api.name.toLowerCase()
+        || (api.custom && String(provider.base_url || '').replace(/\/+$/, '').toLowerCase() === api.base_url.replace(/\/+$/, '').toLowerCase())
+        || (!api.custom && String(provider.name || '').toLowerCase() === api.name.toLowerCase())
     );
     if(item){
         item.base_url = api.base_url || item.base_url || '';
@@ -2593,7 +2545,7 @@ function recommendedProviderForApi(api){
         }
         return item;
     }
-    const baseId = normalizeId(api.id || api.name) || 'custom-api';
+    const baseId = api.custom ? newProviderId({id:'custom-api', _idDraft:true}, api.name, api.base_url) : normalizeId(api.id || api.name) || 'custom-api';
     let id = baseId;
     let suffix = 2;
     while(providers.some(provider => provider.id === id)) id = `${baseId}-${suffix++}`;
@@ -2619,11 +2571,27 @@ function recommendedProviderForApi(api){
     return item;
 }
 async function saveRecommendedApi(index){
-    const api = RECOMMENDED_APIS[index];
+    const api = getRecommendedApis()[index];
     if(!api) return;
     const input = recommendPanel?.querySelector(`[data-recommend-key="${index}"]`);
     const key = input?.value.trim() || '';
     if(!key){ alert(tr('api.enterApiKey')); return; }
+    const previousProviders = structuredClone(providers);
+    const previousSelectedId = selectedId;
+    rememberRecommendKey(api.id, key);
+    const finishSave = ok => {
+        if(ok){
+            recommendKeyDrafts.delete(api.id);
+            setStatus(trf('api.recommendSaved', {name:api.name}));
+            return;
+        }
+        providers = previousProviders;
+        selectedId = previousSelectedId;
+        recommendInlineOpen = true;
+        syncRecommendView();
+        renderProviderList();
+        renderEditor();
+    };
     const item = recommendedProviderForApi(api);
     if(api.id === 'runninghub'){
         // RunningHub 只恢复到推荐卡片，不重新加入左侧平台列表。
@@ -2642,7 +2610,7 @@ async function saveRecommendedApi(index){
         recommendInlineOpen = false;
         syncRecommendView();
         const ok = await saveProviders();
-        if(ok) setStatus(trf('api.recommendSaved', {name:api.name}));
+        finishSave(ok);
         return;
     }
     selectedId = item.id;
@@ -2661,7 +2629,7 @@ async function saveRecommendedApi(index){
     }
     syncEditor();
     const ok = await saveProviders();
-    if(ok) setStatus(trf('api.recommendSaved', {name:api.name}));
+    finishSave(ok);
 }
 function sortedProviders(){
     const order = ['api-6789', 'comfly', 'volcengine'];
@@ -2769,7 +2737,10 @@ function resetProviderIcon(item){
     providerIconLoaded.delete(src);
 }
 function renderProviderList(){
-    providerList.innerHTML = sortedProviders().map(item => {
+    const providerCountEl = document.getElementById('providerCount');
+    const visibleItems = sortedProviders();
+    if(providerCountEl) providerCountEl.textContent = visibleItems.length ? String(visibleItems.length) : '';
+    providerList.innerHTML = visibleItems.map(item => {
         const active = item.id === selectedId ? 'active' : '';
         const itemProtocol = String(item.protocol || 'openai').toLowerCase();
         const stateClass = item.id === 'comfyui'
@@ -2822,7 +2793,7 @@ function renderProviderList(){
                 <span class="provider-mark api-provider-mark">${providerIconMarkup(item)}</span>
                 <span class="provider-info">
                     <div class="provider-name">${escapeHtml(item.name || item.id)}</div>
-                    <div class="provider-meta">${escapeHtml(item.base_url || '未配置地址')}</div>
+                    <div class="provider-meta" title="${escapeAttr(item.base_url || '')}">${escapeHtml(providerHostText(item))}</div>
                 </span>
                 <span class="provider-side-meta">
                     <span class="provider-status-dot"></span>
@@ -2908,10 +2879,10 @@ function renderEditor(){
     editorTitle.textContent = item.name || item.id;
     nameInput.value = item.name || '';
     idInput.value = item.id || '';
-    updateIdPreview();
     clearVerifyResult();
     baseInput.placeholder = EXAMPLE_BASE_URL;
     baseInput.value = item.base_url || '';
+    updateIdPreview();
     const lockedApi = lockedRecommendedApi(item);
     if(lockedApi) applyLockedRecommendedProtocol(item);
     if(protocolInput){
@@ -4834,10 +4805,8 @@ function addProvider(){
     syncRecommendView();
     renderRecommendApi();
     syncEditor();
-    let id = 'custom-api';
-    let index = 2;
-    while(providers.some(item => item.id === id)) id = `custom-api-${index++}`;
-    providers.push({id, name:'API', base_url:'', protocol:'openai', image_request_mode:'openai', image_edit_route:'general', image_generation_endpoint:'', image_edit_endpoint:'', enabled:true, primary:false, image_models:[], chat_models:[], video_models:[], has_key:false, key_preview:''});
+    const id = deriveIdFromName('api-' + Math.random().toString(36).slice(2, 10));
+    providers.push({id, _idDraft:true, name:'API', base_url:'', protocol:'openai', image_request_mode:'openai', image_edit_route:'general', image_generation_endpoint:'', image_edit_endpoint:'', enabled:true, primary:false, image_models:[], chat_models:[], video_models:[], has_key:false, key_preview:''});
     selectedId = id;
     renderEditor();
 }
@@ -5050,7 +5019,9 @@ async function loadProviders(){
 async function saveProviders(){
     syncEditor();
     providers.forEach(item => {
-        item.id = normalizeId(item.id);
+        const oldId = item.id;
+        item.id = normalizeId(newProviderId(item));
+        if(selectedId === oldId) selectedId = item.id;
         applyLockedRecommendedProtocol(item);
         item.protocol = item.id === 'runninghub'
             ? 'runninghub'
@@ -5146,7 +5117,7 @@ async function saveProviders(){
             delete item._clearVolcengineAccessKey;
             delete item._clearVolcengineSecretKey;
         });
-        selectedId = provider()?.id || providers[0]?.id || '';
+        selectedId = providers.find(item => item.id === selectedId || (item.legacy_ids || []).includes(selectedId))?.id || providers[0]?.id || '';
         renderEditor();
         setStatus(tr('api.saved'));
         // 广播变更，画布等其他 iframe 立即重新拉取最新平台/模型列表
@@ -5205,6 +5176,7 @@ window.onload = () => {
     });
     if(baseInput) baseInput.addEventListener('input', () => {
         clearFetchedModelState();
+        updateIdPreview();
         updateApimartDomesticHint();
     });
     if(imageRequestModeInput) imageRequestModeInput.addEventListener('change', () => {

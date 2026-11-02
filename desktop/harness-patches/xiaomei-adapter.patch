@@ -1,8 +1,8 @@
 diff --git a/apps/desktop-host/src/index.ts b/apps/desktop-host/src/index.ts
-index 3109537b63..137cbe6943 100644
+index 31bbbffe15..38643db056 100644
 --- a/apps/desktop-host/src/index.ts
 +++ b/apps/desktop-host/src/index.ts
-@@ -28,7 +28,7 @@ async function main(): Promise<void> {
+@@ -33,7 +33,7 @@ async function main(): Promise<void> {
      profile: 'desktop',
      resolvedProfile: { profile, installAnchor },
      patchFiles: [],
@@ -12,19 +12,19 @@ index 3109537b63..137cbe6943 100644
        packageManager: {
          command: process.execPath,
 diff --git a/docs/config-catalog.md b/docs/config-catalog.md
-index 86cb2f94cb..fabbd8be02 100644
+index f092895106..9429f4fe34 100644
 --- a/docs/config-catalog.md
 +++ b/docs/config-catalog.md
-@@ -1843,7 +1843,7 @@ export interface Config extends ProtocolConfig, ModelListingConfig {
-
+@@ -1960,7 +1960,7 @@ export interface Config extends ProtocolConfig, ModelListingConfig {
+ 
  - `inject`: `llm`
  - `refs`: `Api` (`@earendil-works/pi-ai`) · `CacheRetention` (`@earendil-works/pi-ai`) · `Model` (`@earendil-works/pi-ai`) · `ModelThinkingLevel` (`@earendil-works/pi-ai`) · `OpenAICompletionsCompat` (`@earendil-works/pi-ai`) · [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts) · `ThinkingBudgets` (`@earendil-works/pi-ai`) · `Transport` (`@earendil-works/pi-ai`) · `Volatile` (`@deepseek-ai/cordis`)
 -- `source`: [`packages/llm/llm-pi-ai/src/config.ts:222`](../packages/llm/llm-pi-ai/src/config.ts)
 +- `source`: [`packages/llm/llm-pi-ai/src/config.ts:224`](../packages/llm/llm-pi-ai/src/config.ts)
-
+ 
  ```ts config-catalog
  /** Plugin configuration: the provider routes this instance owns. */
-@@ -1893,6 +1893,8 @@ export interface PiAiProviderProfile {
+@@ -2010,6 +2010,8 @@ export interface PiAiProviderProfile {
     * refused rather than left looking applied.
     */
    compat?: PiAiCompatProfile
@@ -34,19 +34,19 @@ index 86cb2f94cb..fabbd8be02 100644
     * Context capacity for a model this route lists that neither the entry nor
     * the installed catalog sizes (default 1,000,000). A guess by construction, so
 diff --git a/docs/config-catalog.zh.md b/docs/config-catalog.zh.md
-index 762ef0cf9d..f479f70114 100644
+index a172536133..f825122bf1 100644
 --- a/docs/config-catalog.zh.md
 +++ b/docs/config-catalog.zh.md
-@@ -1845,7 +1845,7 @@ export interface Config extends ProtocolConfig, ModelListingConfig {
-
+@@ -1962,7 +1962,7 @@ export interface Config extends ProtocolConfig, ModelListingConfig {
+ 
  - `inject`: `llm`
  - `refs`: `Api` (`@earendil-works/pi-ai`) · `CacheRetention` (`@earendil-works/pi-ai`) · `Model` (`@earendil-works/pi-ai`) · `ModelThinkingLevel` (`@earendil-works/pi-ai`) · `OpenAICompletionsCompat` (`@earendil-works/pi-ai`) · [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts) · `ThinkingBudgets` (`@earendil-works/pi-ai`) · `Transport` (`@earendil-works/pi-ai`) · `Volatile` (`@deepseek-ai/cordis`)
 -- `source`: [`packages/llm/llm-pi-ai/src/config.ts:222`](../packages/llm/llm-pi-ai/src/config.ts)
 +- `source`: [`packages/llm/llm-pi-ai/src/config.ts:224`](../packages/llm/llm-pi-ai/src/config.ts)
-
+ 
  ```ts config-catalog
  /** Plugin configuration: the provider routes this instance owns. */
-@@ -1895,6 +1895,8 @@ export interface PiAiProviderProfile {
+@@ -2012,6 +2012,8 @@ export interface PiAiProviderProfile {
     * refused rather than left looking applied.
     */
    compat?: PiAiCompatProfile
@@ -56,10 +56,10 @@ index 762ef0cf9d..f479f70114 100644
     * Context capacity for a model this route lists that neither the entry nor
     * the installed catalog sizes (default 1,000,000). A guess by construction, so
 diff --git a/packages/client/ui-model-selection/src/client/ModelSelect.module.css b/packages/client/ui-model-selection/src/client/ModelSelect.module.css
-index 76532308c9..4c0f1d7f66 100644
+index c36809acaa..05a8e51084 100644
 --- a/packages/client/ui-model-selection/src/client/ModelSelect.module.css
 +++ b/packages/client/ui-model-selection/src/client/ModelSelect.module.css
-@@ -347,3 +347,77 @@
+@@ -371,3 +371,83 @@
    height: 12px;
    color: var(--dsw-alias-menu-icon);
  }
@@ -110,10 +110,16 @@ index 76532308c9..4c0f1d7f66 100644
 +  cursor: pointer;
 +}
 +
-+.back:hover,
 +.back:focus-visible {
 +  background: var(--dsw-alias-interactive-bg-hover);
 +  outline: none;
++}
++
++@media (hover: hover) {
++  .back:hover {
++    background: var(--dsw-alias-interactive-bg-hover);
++    outline: none;
++  }
 +}
 +
 +.backChevron {
@@ -138,7 +144,7 @@ index 76532308c9..4c0f1d7f66 100644
 +  font-size: 11px;
 +}
 diff --git a/packages/client/ui-model-selection/src/client/ModelSelect.tsx b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
-index 59dbf85427..ef5ed6e48a 100644
+index f68d355317..47943c518b 100644
 --- a/packages/client/ui-model-selection/src/client/ModelSelect.tsx
 +++ b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
 @@ -1,33 +1,34 @@
@@ -196,21 +202,11 @@ index 59dbf85427..ef5ed6e48a 100644
 + * carries shows one in place of its check mark.
   */
 -import { MenuGroup, MenuSurface, observeStickyMenuGroups } from '@deepseek-ai/dsh-client-ui-primitives'
-+import { MenuSurface } from '@deepseek-ai/dsh-client-ui-primitives'
++import { IconChevronLeftOutlineRegular, MenuSurface } from '@deepseek-ai/dsh-client-ui-primitives'
  import {
    useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore,
    type CSSProperties, type KeyboardEvent, type FocusEvent,
-@@ -36,7 +37,8 @@ import { createPortal } from 'react-dom'
- import clsx from 'clsx'
- import type { ModelReasoningEffort, ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
- import {
--  IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconCloseFillRegular,
-+  IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconChevronLeftOutlineRegular,
-+  IconChevronRightOutlineRegular, IconCloseFillRegular,
-   IconDataOutlineRegular, IconWarningOutlineRegular, Input, isMobileDevice, rankByName, StateDot, Toast,
- } from '@deepseek-ai/dsh-client-ui-primitives'
- import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-@@ -74,6 +76,8 @@ export function ModelSelect(
+@@ -74,6 +75,8 @@ export function ModelSelect(
    )
    const [open, setOpen] = useState(false)
    const [pane, setPane] = useState<Pane>('root')
@@ -219,7 +215,7 @@ index 59dbf85427..ef5ed6e48a 100644
    const [query, setQuery] = useState('')
    const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null)
    const [selectionFocus, setSelectionFocus] = useState(false)
-@@ -113,10 +117,11 @@ export function ModelSelect(
+@@ -113,10 +116,11 @@ export function ModelSelect(
            : { reasoningEffort: model.reasoning.defaultEffort },
        } satisfies ModelSelection,
      }))), [groups])
@@ -235,9 +231,9 @@ index 59dbf85427..ef5ed6e48a 100644
    const visibleModels = useMemo(() => filteredGroups.flatMap(group => group.models.map(model => ({
      provider: group.id, model: model.id,
    }))), [filteredGroups])
-@@ -176,8 +181,10 @@ export function ModelSelect(
+@@ -176,8 +180,10 @@ export function ModelSelect(
    }, [showSearch])
-
+ 
    // Pane switches unmount the focused row; restore focus inside the menu so
 -  // keyboard navigation remains available.
 +  // keyboard navigation remains available. Returning to the platform list
@@ -247,7 +243,7 @@ index 59dbf85427..ef5ed6e48a 100644
    const previousShowSearch = useRef(showSearch)
    useEffect(() => {
      const changedSearchMode = previousShowSearch.current !== showSearch
-@@ -199,16 +206,10 @@ export function ModelSelect(
+@@ -199,16 +205,10 @@ export function ModelSelect(
        ;(target ?? triggerRef.current)?.focus()
        return
      }
@@ -255,7 +251,7 @@ index 59dbf85427..ef5ed6e48a 100644
 +    const cell = itemRefs.current[rootFocusIndex.current] ?? itemRefs.current[0]
      ;(cell !== null && cell !== undefined && !cell.disabled ? cell : triggerRef.current)?.focus()
    }, [open, pane, showSearch])
-
+ 
 -  useEffect(() => {
 -    const viewport = groupsRef.current
 -    if (viewport === null) return
@@ -265,7 +261,7 @@ index 59dbf85427..ef5ed6e48a 100644
    useLayoutEffect(() => {
      if (open && pane === 'model' && activeModelIndex >= 0) {
        itemRefs.current[activeModelIndex]?.scrollIntoView({ block: 'nearest' })
-@@ -254,8 +255,10 @@ export function ModelSelect(
+@@ -254,8 +254,10 @@ export function ModelSelect(
      triggerRef.current?.focus()
      setQuery('')
      setHighlightedIndex(null)
@@ -278,18 +274,18 @@ index 59dbf85427..ef5ed6e48a 100644
      setOpen(true)
      reload()
    }
-@@ -268,6 +271,7 @@ export function ModelSelect(
+@@ -268,6 +270,7 @@ export function ModelSelect(
    const close = (restoreFocus = false): void => {
      setOpen(false)
      setPane('root')
 +    setProviderId(null)
      if (restoreFocus) queueMicrotask(() => { triggerRef.current?.focus() })
    }
-
-@@ -276,14 +280,26 @@ export function ModelSelect(
+ 
+@@ -276,14 +279,26 @@ export function ModelSelect(
      close(true)
    }
-
+ 
 -  const drill = (next: Pane): void => {
 +  /** Drill from the platform list into one platform's models. */
 +  const openProvider = (id: string, index: number): void => {
@@ -310,13 +306,13 @@ index 59dbf85427..ef5ed6e48a 100644
 -    setPane(next)
 +    setPane('effort')
    }
-
+ 
 -  /** Leave a drilled pane for the root one, handing the keyboard back to its cell. */
 +  /** Leave a drilled pane for the platform list, handing the keyboard back to its cell. */
    const back = (from: Exclude<Pane, 'root'>): void => {
      paneFocus.current = from
      setPane('root')
-@@ -307,7 +323,7 @@ export function ModelSelect(
+@@ -307,7 +322,7 @@ export function ModelSelect(
      if (event.key === 'Escape' && open) {
        event.preventDefault()
        // Escape backs out of a drilled pane first, then closes.
@@ -325,7 +321,7 @@ index 59dbf85427..ef5ed6e48a 100644
        else close(true)
        return
      }
-@@ -335,7 +351,7 @@ export function ModelSelect(
+@@ -335,7 +350,7 @@ export function ModelSelect(
      if (event.key === 'Tab') {
        if (event.shiftKey) {
          event.preventDefault()
@@ -334,7 +330,7 @@ index 59dbf85427..ef5ed6e48a 100644
          else close(true)
          return
        }
-@@ -446,6 +462,7 @@ export function ModelSelect(
+@@ -454,6 +469,7 @@ export function ModelSelect(
    )
    let itemIndex = 0
    let modelIndex = 0
@@ -342,7 +338,7 @@ index 59dbf85427..ef5ed6e48a 100644
    const itemRef = () => {
      const at = itemIndex++
      return (node: HTMLButtonElement | null) => { itemRefs.current[at] = node }
-@@ -508,15 +525,60 @@ export function ModelSelect(
+@@ -516,15 +532,60 @@ export function ModelSelect(
          >
            {pane === 'root' && (
              <>
@@ -411,8 +407,8 @@ index 59dbf85427..ef5ed6e48a 100644
                    <span className={css.cellLabel}>{t('menu.effort')}</span>
                    <span className={css.cellValue}>{effortLabel}</span>
                    <IconChevronRightOutlineRegular className={css.cellChevron} />
-@@ -527,6 +589,11 @@ export function ModelSelect(
-
+@@ -535,6 +596,11 @@ export function ModelSelect(
+ 
            {pane === 'model' && (
              <>
 +              <button type="button" className={css.back} onClick={() => { back('model') }}>
@@ -423,7 +419,7 @@ index 59dbf85427..ef5ed6e48a 100644
                {showSearch && <div className={css.searchRow}>
                  <Input
                    ref={searchRef}
-@@ -576,54 +643,51 @@ export function ModelSelect(
+@@ -584,54 +650,51 @@ export function ModelSelect(
                  id={`${id}-models`}
                  className={clsx(css.groups, 'scrollable')}
                  role="menu"
@@ -517,7 +513,7 @@ index 59dbf85427..ef5ed6e48a 100644
              </>
            )}
 diff --git a/packages/client/ui-model-selection/src/client/locales.ts b/packages/client/ui-model-selection/src/client/locales.ts
-index cb2749f9a9..1a268f7eda 100644
+index cb2749f9a9..d22ed1ce43 100644
 --- a/packages/client/ui-model-selection/src/client/locales.ts
 +++ b/packages/client/ui-model-selection/src/client/locales.ts
 @@ -22,6 +22,8 @@ export const zh = {
@@ -538,14 +534,68 @@ index cb2749f9a9..1a268f7eda 100644
    'effort.providerDefault': 'Default',
    'status.loading': 'Refreshing model list…',
    'error.action': 'Model operation failed: {message}',
+@@ -79,6 +83,8 @@ export const ja = {
+   'menu.aria': 'モデルと推論強度',
+   'menu.model': 'モデル',
+   'menu.effort': '強度',
++  'menu.back': 'プラットフォームに戻る',
++  'provider.count': '{count} 個のモデル',
+   'effort.providerDefault': 'デフォルト',
+   'status.loading': 'モデル一覧を更新中…',
+   'error.action': 'モデル操作に失敗しました: {message}',
+@@ -106,6 +112,8 @@ export const es = {
+   'menu.aria': 'Esfuerzo de modelo y razonamiento.',
+   'menu.model': 'modelo',
+   'menu.effort': 'Esfuerzo',
++  'menu.back': 'Volver a las plataformas',
++  'provider.count': '{count} modelos',
+   'effort.providerDefault': 'Predeterminado',
+   'status.loading': 'Lista de modelos refrescante...',
+   'error.action': 'Error en la operación del modelo: {message}',
+@@ -134,6 +142,8 @@ export const fr = {
+   'menu.model': 'Modèle',
+   'menu.effort': 'Effort',
+   'effort.providerDefault': 'Par défaut',
++  'menu.back': 'Retour aux plateformes',
++  'provider.count': '{count} modèles',
+   'status.loading': 'Liste des modèles actualisée…',
+   'error.action': "Échec de l'opération du modèle : {message}",
+   'error.sessionInUse': "Cette session est déjà utilisée, éventuellement par une autre instance DSH en cours d'exécution (telle que le Web dsh ou l'application de bureau). Quittez les autres instances DSH en cours d'exécution et réessayez.",
+@@ -160,6 +170,8 @@ export const de = {
+   'menu.aria': 'Modell- und Argumentationsaufwand',
+   'menu.model': 'Modell',
+   'menu.effort': 'Aufwand',
++  'menu.back': 'Zurück zu den Plattformen',
++  'provider.count': '{count} Modelle',
+   'effort.providerDefault': 'Standard',
+   'status.loading': 'Erfrischende Modellliste…',
+   'error.action': 'Modellvorgang fehlgeschlagen: {message}',
+@@ -187,6 +199,8 @@ export const ru = {
+   'menu.aria': 'Модель и рассуждения',
+   'menu.model': 'Модель',
+   'menu.effort': 'Усилие',
++  'menu.back': 'Назад к платформам',
++  'provider.count': 'Модели: {count}',
+   'effort.providerDefault': 'По умолчанию',
+   'status.loading': 'Обновление списка моделей…',
+   'error.action': 'Не удалось выполнить операцию модели: {message}.',
+@@ -214,6 +228,8 @@ export const pt = {
+   'menu.aria': 'Modelo e esforço de raciocínio',
+   'menu.model': 'Modelo',
+   'menu.effort': 'Esforço',
++  'menu.back': 'Voltar às plataformas',
++  'provider.count': '{count} modelos',
+   'effort.providerDefault': 'Padrão',
+   'status.loading': 'Atualizando lista de modelos…',
+   'error.action': 'Falha na operação do modelo: {message}',
 diff --git a/packages/client/ui-model-selection/tests/model-select.client.spec.tsx b/packages/client/ui-model-selection/tests/model-select.client.spec.tsx
-index bb4832a0ce..268353f920 100644
+index dbb5b247db..c8b599d3d2 100644
 --- a/packages/client/ui-model-selection/tests/model-select.client.spec.tsx
 +++ b/packages/client/ui-model-selection/tests/model-select.client.spec.tsx
-@@ -66,6 +66,22 @@ function modelGroups(count: number): ModelDirectoryState['groups'] {
+@@ -68,6 +68,22 @@ function modelGroups(count: number): ModelDirectoryState['groups'] {
    ].slice(0, count) }]
  }
-
+ 
 +/**
 + * The menu opens on the platform list, so reaching model rows means drilling
 + * into a platform first — the two-level replacement for the old single
@@ -565,7 +615,7 @@ index bb4832a0ce..268353f920 100644
  const scrollIntoView = vi.fn()
  beforeEach(() => {
    scrollIntoView.mockClear()
-@@ -116,14 +132,18 @@ describe('ModelSelect label slot', () => {
+@@ -119,14 +135,18 @@ describe('ModelSelect label slot', () => {
      expect(trigger.querySelector('div')).toBeNull()
      fireEvent.click(trigger)
      expect(screen.getByTestId('menu-trusted').textContent).toBe('trusted: Same model')
@@ -587,7 +637,7 @@ index bb4832a0ce..268353f920 100644
      fireEvent.keyDown(external, { key: 'Tab' })
      await waitFor(() => { expect(screen.getByTestId('trigger-external')).toBeTruthy() })
      expect(select).toHaveBeenCalledWith({ provider: 'external', model: 'same-model' })
-@@ -133,8 +153,8 @@ describe('ModelSelect label slot', () => {
+@@ -136,8 +156,8 @@ describe('ModelSelect label slot', () => {
      expect(trigger.textContent).toBe('Same model')
      expect(trigger.querySelector('[data-provider-id="external"][data-model-id="same-model"]')).toBeTruthy()
      fireEvent.click(trigger)
@@ -596,9 +646,18 @@ index bb4832a0ce..268353f920 100644
 +    expect(screen.getAllByRole('menuitem').filter(cell => cell.hasAttribute('data-provider-id'))
 +      .map(cell => cell.textContent)).toEqual(['trusted gateway1 个模型', 'external gatewaySame model'])
    })
-
+ 
    it('does not decorate loading or missing selections with a stale provider', () => {
-@@ -234,7 +254,11 @@ describe('ModelSelect reasoning effort', () => {
+@@ -175,7 +195,7 @@ describe('ModelSelect catalog badges', () => {
+     expect(trigger.textContent).toBe('新 DeepSeek-V4.1-Flash')
+     expect(screen.getByText('新').getAttribute('data-tone')).toBe('info')
+     fireEvent.click(trigger)
+-    const current = screen.getByRole('menuitem', { name: /^模型/ })
++    const current = platformCell('deepseek-official')
+     expect(current.textContent).toContain('DeepSeek-V4.1-Flash 新')
+     fireEvent.click(current)
+     expect(screen.getAllByRole('menuitemradio').map(row => row.textContent)).toEqual(['DeepSeek-V4.1-Flash 新', 'DeepSeek-V4-Pro'])
+@@ -289,7 +309,11 @@ describe('ModelSelect reasoning effort', () => {
      expect(trigger.textContent).toBe('请选择模型')
      fireEvent.click(trigger)
      expect(screen.queryByRole('menuitem', { name: /推理等级/ })).toBeNull()
@@ -611,16 +670,16 @@ index bb4832a0ce..268353f920 100644
      expect(screen.queryByRole('menuitemradio', { name: 'removed-model' })).toBeNull()
      expect(screen.getByRole('menuitemradio', { name: 'DeepSeek-V4-Flash' })).toBeTruthy()
      expect(screen.queryByText('Fast catalog description')).toBeNull()
-@@ -242,6 +266,8 @@ describe('ModelSelect reasoning effort', () => {
+@@ -297,6 +321,8 @@ describe('ModelSelect reasoning effort', () => {
      expect(directory.getSnapshot().current).toEqual({ provider: 'deepseek-official', model: 'removed-model' })
      fireEvent.keyDown(screen.getByRole('menuitemradio', { name: 'DeepSeek-V4-Flash' }), { key: 'Escape' })
      expect(screen.queryByRole('group', { name: '模型与推理等级' })).toBeNull()
 +    fireEvent.keyDown(platformCell(), { key: 'Escape' })
 +    expect(screen.queryByRole('menu')).toBeNull()
    })
-
+ 
    it.each(['model', 'provider'])('hides the saved id and effort when the selected %s disappears', (removed) => {
-@@ -256,9 +282,13 @@ describe('ModelSelect reasoning effort', () => {
+@@ -312,9 +338,13 @@ describe('ModelSelect reasoning effort', () => {
      expect(trigger.textContent).toBe('请选择模型')
      expect(directory.getSnapshot().current).toEqual(state().current)
      fireEvent.click(trigger)
@@ -634,10 +693,10 @@ index bb4832a0ce..268353f920 100644
 +    fireEvent.keyDown(trigger, { key: 'Escape' })
 +    expect(screen.queryByRole('menu')).toBeNull()
    })
-
+ 
    it.each([null, state().current])('shows loading until the catalog and Session projection are both ready (%j)', async (current) => {
-@@ -315,7 +345,7 @@ describe('ModelSelect reasoning effort', () => {
-
+@@ -371,7 +401,7 @@ describe('ModelSelect reasoning effort', () => {
+ 
      const trigger = screen.getByRole('button', { name: /选择模型|当前/ })
      fireEvent.click(trigger)
 -    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
@@ -645,8 +704,8 @@ index bb4832a0ce..268353f920 100644
      const rejected = screen.getByRole('menuitemradio', { name: /DeepSeek-V4-Pro/ })
      fireEvent.mouseMove(rejected)
      fireEvent.click(rejected)
-@@ -356,7 +386,7 @@ describe('ModelSelect reasoning effort', () => {
-
+@@ -413,7 +443,7 @@ describe('ModelSelect reasoning effort', () => {
+ 
      const trigger = screen.getByRole('button', { name: /选择模型|当前/ })
      fireEvent.click(trigger)
 -    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
@@ -654,16 +713,16 @@ index bb4832a0ce..268353f920 100644
      fireEvent.click(screen.getByRole('menuitemradio', { name: /DeepSeek-V4-Pro/ }))
      expect(spinners()).toHaveLength(2)
      expect(screen.getByRole('menuitemradio', { name: /DeepSeek-V4-Pro/ }).querySelector('[data-state="ongoing"]')).not.toBeNull()
-@@ -485,7 +515,7 @@ describe('ModelSelect keyboard walk', () => {
+@@ -543,7 +573,7 @@ describe('ModelSelect keyboard walk', () => {
        fireEvent.click(trigger)
        expect(document.activeElement).toBe(trigger)
-
+ 
 -      const modelCell = screen.getByRole('menuitem', { name: /^模型/ })
 +      const modelCell = platformCell()
        const effortCell = screen.getByRole('menuitem', { name: /推理等级/ })
        fireEvent.keyDown(trigger, { key: 'ArrowDown' })
        fireEvent.keyDown(modelCell, { key: 'ArrowDown' })
-@@ -501,7 +531,7 @@ describe('ModelSelect keyboard walk', () => {
+@@ -559,7 +589,7 @@ describe('ModelSelect keyboard walk', () => {
        const restoredEffortCell = screen.getByRole('menuitem', { name: /推理等级/ })
        expect(document.activeElement).toBe(restoredEffortCell)
        fireEvent.keyDown(restoredEffortCell, { key: 'ArrowUp' })
@@ -672,7 +731,7 @@ index bb4832a0ce..268353f920 100644
        expect(document.activeElement).toBe(restoredModelCell)
        fireEvent.keyDown(restoredModelCell, { key: 'Tab' })
        const model = screen.getByRole('menuitemradio', { name: 'DeepSeek-V4-Flash' })
-@@ -515,7 +545,7 @@ describe('ModelSelect keyboard walk', () => {
+@@ -573,7 +603,7 @@ describe('ModelSelect keyboard walk', () => {
          expect(screen.queryByRole('searchbox')).toBeNull()
        }
        fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
@@ -681,8 +740,8 @@ index bb4832a0ce..268353f920 100644
        fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
        expect(screen.queryByRole('menu')).toBeNull()
        await waitFor(() => { expect(document.activeElement).toBe(trigger) })
-@@ -525,7 +555,7 @@ describe('ModelSelect keyboard walk', () => {
-
+@@ -583,7 +613,7 @@ describe('ModelSelect keyboard walk', () => {
+ 
    it.each(['model', 'effort'])('prevents button mousedown defaults in the %s pane without selecting it', (pane) => {
      const select = mountOpen()
 -    const cell = screen.getByRole('menuitem', { name: pane === 'model' ? /^模型/ : /推理等级/ })
@@ -690,16 +749,16 @@ index bb4832a0ce..268353f920 100644
      expect(fireEvent.mouseDown(cell.firstElementChild!)).toBe(false)
      fireEvent.click(cell)
      const rows = screen.getAllByRole('menuitemradio')
-@@ -534,7 +564,7 @@ describe('ModelSelect keyboard walk', () => {
+@@ -592,7 +622,7 @@ describe('ModelSelect keyboard walk', () => {
      fireEvent.mouseUp(screen.getByRole('menu'))
      expect(select).not.toHaveBeenCalled()
      fireEvent.keyDown(focused!, { key: 'Escape' })
 -    expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: pane === 'model' ? /^模型/ : /推理等级/ }))
 +    expect(document.activeElement).toBe(pane === 'model' ? platformCell() : screen.getByRole('menuitem', { name: /推理等级/ }))
    })
-
+ 
    it('↑↓ walk the rows of the shown pane, wrapping, and stay open', () => {
-@@ -647,17 +677,18 @@ describe('ModelSelect keyboard walk', () => {
+@@ -705,17 +735,18 @@ describe('ModelSelect keyboard walk', () => {
      expect(fireEvent.mouseDown(retry)).toBe(false)
      fireEvent.click(retry)
      expect(load).toHaveBeenCalledTimes(2)
@@ -713,7 +772,7 @@ index bb4832a0ce..268353f920 100644
 -    expect(screen.queryByRole('group', { name: '模型与推理等级' })).toBeNull()
 +    expect(screen.queryByRole('menu', { name: '模型与推理等级' })).toBeNull()
    })
-
+ 
    it('focuses the checked model in a small catalog', () => {
      mountOpen()
 -    fireEvent.click(screen.getByRole('menuitem', { name: /^模型/ }))
@@ -721,8 +780,8 @@ index bb4832a0ce..268353f920 100644
      const rows = screen.getAllByRole('menuitemradio')
      expect(rows[0]!.getAttribute('aria-checked')).toBe('true')
      expect(screen.queryByRole('searchbox')).toBeNull()
-@@ -681,7 +712,7 @@ describe('ModelSelect keyboard walk', () => {
-
+@@ -739,7 +770,7 @@ describe('ModelSelect keyboard walk', () => {
+ 
    it('Escape from the model list lands back on the model cell', () => {
      mountOpen()
 -    fireEvent.click(screen.getByRole('menuitem', { name: /^模型/ }))
@@ -730,7 +789,7 @@ index bb4832a0ce..268353f920 100644
      fireEvent.keyDown(screen.getAllByRole('menuitemradio')[0]!, { key: 'Escape' })
      const cells = screen.getAllByRole('menuitem')
      expect(document.activeElement).toBe(cells[0])
-@@ -698,6 +729,7 @@ describe('ModelSelect keyboard walk', () => {
+@@ -756,6 +787,7 @@ describe('ModelSelect keyboard walk', () => {
        t={t}
      />)
      fireEvent.click(screen.getByRole('button', { name: /选择模型/ }))
@@ -738,8 +797,8 @@ index bb4832a0ce..268353f920 100644
      const rows = screen.getAllByRole('menuitemradio')
      expect(rows.every(row => row.getAttribute('aria-checked') === 'false')).toBe(true)
      expect(screen.queryByRole('searchbox')).toBeNull()
-@@ -713,7 +745,7 @@ describe('ModelSelect catalog size', () => {
-       load={vi.fn()} select={vi.fn()} t={t} />)
+@@ -771,7 +803,7 @@ describe('ModelSelect catalog size', () => {
+       load={vi.fn()} resolveText={resolveText} select={vi.fn()} t={t} />)
      const trigger = screen.getByRole('button', { name: /选择模型/ })
      fireEvent.click(trigger)
 -    if (count > 0) fireEvent.click(screen.getByRole('menuitem', { name: /^模型/ }))
@@ -747,25 +806,25 @@ index bb4832a0ce..268353f920 100644
      const rows = screen.queryAllByRole('menuitemradio')
      expect(rows).toHaveLength(count)
      if (count > 4) {
-@@ -736,6 +768,7 @@ describe('ModelSelect catalog size', () => {
-       load={vi.fn()} select={vi.fn()} t={t} />)
+@@ -794,6 +826,7 @@ describe('ModelSelect catalog size', () => {
+       load={vi.fn()} resolveText={resolveText} select={vi.fn()} t={t} />)
      const trigger = screen.getByRole('button', { name: '请选择模型' })
      fireEvent.click(trigger)
 +    fireEvent.click(platformCell())
      const rows = screen.queryAllByRole('menuitemradio')
      expect(rows).toHaveLength(count)
      expect(rows.every(row => row.getAttribute('aria-checked') === 'false')).toBe(true)
-@@ -748,7 +781,7 @@ describe('ModelSelect catalog size', () => {
-     const directory = createSnapshotStore(state({ groups: modelGroups(5), current }))
-     render(<ModelSelect renderSlot={renderLabel} locked={false} available directory={directory} load={vi.fn()} select={vi.fn()} t={t} />)
+@@ -807,7 +840,7 @@ describe('ModelSelect catalog size', () => {
+     render(<ModelSelect renderSlot={renderLabel} locked={false} available directory={directory} load={vi.fn()}
+       resolveText={resolveText} select={vi.fn()} t={t} />)
      fireEvent.click(screen.getByRole('button', { name: /选择模型/ }))
 -    if (checked) fireEvent.click(screen.getByRole('menuitem', { name: /^模型/ }))
 +    fireEvent.click(platformCell())
      const search = screen.getByRole('searchbox')
      fireEvent.change(search, { target: { value: 'Model 5' } })
      expect(screen.getAllByRole('menuitemradio')).toHaveLength(1)
-@@ -778,7 +811,7 @@ describe('ModelSelect catalog size', () => {
-       load={vi.fn()} select={select} t={t} />)
+@@ -837,7 +870,7 @@ describe('ModelSelect catalog size', () => {
+       load={vi.fn()} resolveText={resolveText} select={select} t={t} />)
      const trigger = screen.getByRole('button', { name: /选择模型/ })
      fireEvent.click(trigger)
 -    fireEvent.click(screen.getByRole('menuitem', { name: /^模型/ }))
@@ -773,18 +832,18 @@ index bb4832a0ce..268353f920 100644
      const rows = screen.getAllByRole('menuitemradio')
      expect(document.activeElement).toBe(rows[1])
      expect(fireEvent.keyDown(rows[1]!, { key: 'ArrowDown' })).toBe(false)
-@@ -808,7 +841,7 @@ describe('ModelSelect catalog size', () => {
+@@ -867,7 +900,7 @@ describe('ModelSelect catalog size', () => {
      render(<ModelSelect renderSlot={renderLabel} locked={false} available directory={createSnapshotStore(state({ groups: modelGroups(4) }))}
-       load={vi.fn()} select={select} t={t} />)
+       load={vi.fn()} resolveText={resolveText} select={select} t={t} />)
      fireEvent.click(screen.getByRole('button', { name: /选择模型/ }))
 -    fireEvent.click(screen.getByRole('menuitem', { name: /^模型/ }))
 +    fireEvent.click(platformCell())
      const row = screen.getByRole('menuitemradio', { name: 'Model 3' })
      fireEvent.mouseMove(row)
      expect(document.activeElement).toBe(row)
-@@ -823,10 +856,10 @@ describe('ModelSelect catalog size', () => {
+@@ -882,10 +915,10 @@ describe('ModelSelect catalog size', () => {
      render(<ModelSelect renderSlot={renderLabel} locked={false} available directory={createSnapshotStore(state({ groups: modelGroups(4) }))}
-       load={vi.fn()} select={select} t={t} />)
+       load={vi.fn()} resolveText={resolveText} select={select} t={t} />)
      fireEvent.click(screen.getByRole('button', { name: /选择模型/ }))
 -    fireEvent.click(screen.getByRole('menuitem', { name: /^模型/ }))
 +    fireEvent.click(platformCell())
@@ -795,8 +854,8 @@ index bb4832a0ce..268353f920 100644
      expect(document.activeElement).toBe(cell)
      expect(select).not.toHaveBeenCalled()
      fireEvent.keyDown(cell, { key, shiftKey: key === 'Tab' })
-@@ -841,12 +874,16 @@ describe('ModelSelect search', () => {
-       load={vi.fn()} select={vi.fn()} t={t} />)
+@@ -900,12 +933,16 @@ describe('ModelSelect search', () => {
+       load={vi.fn()} resolveText={resolveText} select={vi.fn()} t={t} />)
      const trigger = screen.getByRole('button', { name: '请选择模型' })
      fireEvent.click(trigger)
 +    fireEvent.click(platformCell())
@@ -812,16 +871,16 @@ index bb4832a0ce..268353f920 100644
      expect(screen.getByRole('searchbox').getAttribute('value')).toBe('')
      expect(document.activeElement).toBe(screen.getByRole('searchbox'))
      expect(screen.getAllByRole('menuitemradio')).toHaveLength(5)
-@@ -858,7 +895,7 @@ describe('ModelSelect search', () => {
-     ] }))
-     render(<ModelSelect renderSlot={renderLabel} locked={false} available directory={directory} load={vi.fn()} select={vi.fn()} t={t} />)
+@@ -918,7 +955,7 @@ describe('ModelSelect search', () => {
+     render(<ModelSelect renderSlot={renderLabel} locked={false} available directory={directory} load={vi.fn()}
+       resolveText={resolveText} select={vi.fn()} t={t} />)
      fireEvent.click(screen.getByRole('button', { name: /选择模型/ }))
 -    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
 +    fireEvent.click(platformCell())
      expect(screen.queryByRole('group', { name: 'Empty Provider' })).toBeNull()
      act(() => { directory.set(state({ groups: [] })) })
      expect(screen.getByRole('status').textContent).toBe(zh['empty.models'])
-@@ -874,7 +911,7 @@ describe('ModelSelect search', () => {
+@@ -934,7 +971,7 @@ describe('ModelSelect search', () => {
      </>)
      const trigger = screen.getByRole('button', { name: /选择模型/ })
      fireEvent.click(trigger)
@@ -830,10 +889,10 @@ index bb4832a0ce..268353f920 100644
      fireEvent.keyDown(screen.getByRole('searchbox'), { key })
      await waitFor(() => { expect(document.activeElement).toBe(trigger) })
      expect(trigger.hasAttribute('data-selection-focus')).toBe(true)
-@@ -885,20 +922,25 @@ describe('ModelSelect search', () => {
+@@ -945,21 +982,26 @@ describe('ModelSelect search', () => {
      expect(trigger.hasAttribute('data-selection-focus')).toBe(false)
    })
-
+ 
 -  it.each(['Enter', 'Tab'])('keeps typing focus while arrows wrap across groups and %s accepts the highlight', async (key) => {
 +  it.each(['Enter', 'Tab'])('keeps typing focus while arrows wrap across the platform and %s accepts the highlight', async (key) => {
      const select = vi.fn().mockResolvedValue({ ok: true, value: undefined })
@@ -854,14 +913,15 @@ index bb4832a0ce..268353f920 100644
          ] },
        ],
      }))
-     render(<ModelSelect renderSlot={renderLabel} locked={false} available directory={directory} load={vi.fn()} select={select} t={t} />)
+     render(<ModelSelect renderSlot={renderLabel} locked={false} available directory={directory} load={vi.fn()}
+       resolveText={resolveText} select={select} t={t} />)
      fireEvent.click(screen.getByRole('button', { name: /选择模型/ }))
 -    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
 +    fireEvent.click(platformCell())
      const search = screen.getByRole('searchbox')
      expect(search).toBeInstanceOf(HTMLInputElement)
      const [alpha, beta, delta, epsilon, gamma] = screen.getAllByRole('menuitemradio')
-@@ -935,23 +977,23 @@ describe('ModelSelect search', () => {
+@@ -996,24 +1038,24 @@ describe('ModelSelect search', () => {
      expect(search.getAttribute('aria-activedescendant')).toBe(restored[4]!.id)
      expect(document.activeElement).toBe(search)
      fireEvent.keyDown(search, { key })
@@ -872,7 +932,7 @@ index bb4832a0ce..268353f920 100644
      await waitFor(() => { expect(document.activeElement).toBe(trigger) })
      expect(trigger.hasAttribute('data-selection-focus')).toBe(true)
    })
-
+ 
 -  it('filters model names fuzzily, hides empty groups, clears on reopening, and selects a result', async () => {
 -    const directory = createSnapshotStore(state({ groups: [
 -      ...modelGroups(4),
@@ -884,7 +944,8 @@ index bb4832a0ce..268353f920 100644
 +      models: [...modelGroups(4)[0]!.models, { id: 'gemini', name: 'Gemini Flash' }],
 +    }] }))
      const select = vi.fn().mockResolvedValue({ ok: true, value: undefined })
-     render(<ModelSelect renderSlot={renderLabel} locked={false} available directory={directory} load={vi.fn()} select={select} t={t} />)
+     render(<ModelSelect renderSlot={renderLabel} locked={false} available directory={directory} load={vi.fn()}
+       resolveText={resolveText} select={select} t={t} />)
      const trigger = screen.getByRole('button', { name: /选择模型/ })
      fireEvent.click(trigger)
 -    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
@@ -892,7 +953,7 @@ index bb4832a0ce..268353f920 100644
      const search = screen.getByRole('searchbox')
      expect(document.activeElement).toBe(search)
      expect(search.closest('[role="menu"]')).toBeNull()
-@@ -977,18 +1019,18 @@ describe('ModelSelect search', () => {
+@@ -1039,18 +1081,18 @@ describe('ModelSelect search', () => {
      expect(screen.getAllByRole('menuitemradio')).toHaveLength(5)
      fireEvent.change(search, { target: { value: 'gmfl' } })
      fireEvent.keyDown(search, { key: 'Escape' })
@@ -913,8 +974,8 @@ index bb4832a0ce..268353f920 100644
 +    expect(select).toHaveBeenCalledWith({ provider: 'deepseek-official', model: 'gemini' })
    })
  })
-
-@@ -1000,27 +1042,41 @@ it('hides the inherited effort until a listed model is selected', async () => {
+ 
+@@ -1063,20 +1105,24 @@ it('hides the inherited effort until a listed model is selected', async () => {
    await expect(`${trigger.textContent}\n`).toMatchFileSnapshot('./expected/unselected-model.txt')
    expect(trigger.textContent).not.toContain('High')
    fireEvent.click(trigger)
@@ -934,15 +995,16 @@ index bb4832a0ce..268353f920 100644
    expect(screen.queryByRole('searchbox')).toBeNull()
    expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: 'DeepSeek-V4-Flash' }))
  })
-
-
+ 
+ 
 -it('places account and official models before third-party models', async () => {
 +it('places account and official platforms before third-party platforms', async () => {
    const groups = ['custom', 'deepseek-official', 'deepseek-account', 'another'].map(id => ({
      id, name: id, models: [1, 2].map(index => ({ id: `${id}-${index}`, name: `${id}-${index}` })),
    }))
-   const directory = createSnapshotStore<ModelDirectoryState>(state({ current: null, groups }))
-   render(<ModelSelect renderSlot={renderLabel} locked={false} available directory={directory} load={vi.fn()} select={vi.fn()} t={t} />)
+@@ -1084,7 +1130,17 @@ it('places account and official models before third-party models', async () => {
+   render(<ModelSelect renderSlot={renderLabel} locked={false} available directory={directory} load={vi.fn()}
+     resolveText={resolveText} select={vi.fn()} t={t} />)
    fireEvent.click(screen.getByRole('button', { name: '请选择模型' }))
 -  const names = screen.getAllByRole('menuitemradio').map(row => row.textContent)
 +  const cells = screen.getAllByRole('menuitem').filter(cell => cell.hasAttribute('data-provider-id'))
@@ -959,18 +1021,18 @@ index bb4832a0ce..268353f920 100644
    expect(names).toEqual([
      'deepseek-account-1', 'deepseek-account-2', 'deepseek-official-1', 'deepseek-official-2',
      'custom-1', 'custom-2', 'another-1', 'another-2',
-@@ -1029,7 +1085,7 @@ it('places account and official models before third-party models', async () => {
+@@ -1093,7 +1149,7 @@ it('places account and official models before third-party models', async () => {
    await expect(`${names.join('\n')}\n`).toMatchFileSnapshot('./expected/account-first.txt')
  })
-
+ 
 -it.each([en, zh])('localizes the account group while preserving external names', (copy) => {
 +it.each([en, zh])('localizes the account platform while preserving external names', (copy) => {
    const groups = ['deepseek-account', 'custom'].map(id => ({
      id, name: id === 'deepseek-account' ? 'DeepSeek Account' : 'My Gateway',
      models: [{ id: 'model', name: 'Model' }],
-@@ -1038,8 +1094,10 @@ it.each([en, zh])('localizes the account group while preserving external names',
+@@ -1102,8 +1158,10 @@ it.each([en, zh])('localizes the account group while preserving external names',
      directory={createSnapshotStore(state({ current: null, groups }))}
-     load={vi.fn()} select={vi.fn()} t={key => key in copy ? copy[key as keyof typeof copy] : key} />)
+     load={vi.fn()} resolveText={resolveText} select={vi.fn()} t={key => key in copy ? copy[key as keyof typeof copy] : key} />)
    fireEvent.click(screen.getByRole('button', { name: copy['trigger.selectAria'] }))
 -  expect(screen.getByRole('group', { name: copy['provider.account'] })).toBeTruthy()
 -  expect(screen.getByRole('group', { name: 'My Gateway' })).toBeTruthy()
@@ -979,10 +1041,10 @@ index bb4832a0ce..268353f920 100644
 +    .map(cell => cell.firstElementChild?.textContent)
 +  expect(labels).toEqual([copy['provider.account'], 'My Gateway'])
  })
-
+ 
  it('restores the account model name after login without changing the saved route', () => {
 diff --git a/packages/llm/llm-pi-ai/README.md b/packages/llm/llm-pi-ai/README.md
-index 0dcf15b97a..2fb64961f8 100644
+index 1021dea71d..d3d9ddf1cd 100644
 --- a/packages/llm/llm-pi-ai/README.md
 +++ b/packages/llm/llm-pi-ai/README.md
 @@ -70,6 +70,8 @@ Each profile may set a `retryPolicy`; omission uses normal mode with five retrie
@@ -992,7 +1054,7 @@ index 0dcf15b97a..2fb64961f8 100644
 +        # Some gateways split one tool call across unrelated streaming ids.
 +        nonStreamingModels: [acme-think]
  ```
-
+ 
  | Field | Default | Meaning |
 @@ -81,6 +83,7 @@ Each profile may set a `retryPolicy`; omission uses normal mode with five retrie
  | `models` | installed catalog | Replaces the route's catalog wholesale; each entry defaults from the installed model |
@@ -1003,16 +1065,16 @@ index 0dcf15b97a..2fb64961f8 100644
  | `defaultMaxTokens` | `128,000` | Output-cap fallback for undescribed models |
  | `requestImagePixelBudget` | `4,194,304` | Total-pixel budget for each deterministic request image |
 @@ -104,6 +107,8 @@ A profile's `models` list replaces the route's installed catalog rather than ext
-
+ 
  Exact-model metadata lists `reasoning.efforts` from least to greatest selectable effort. A configuration function can select from that list before `prepareCall()` validates the concrete effort. The adapter receives only the resolved controls. Selecting `off` does not guarantee disabled reasoning: a protocol that expresses it by omitting the reasoning field leaves the gateway's default in effect. Reasoning tokens at any selected level count toward the request's output cap.
-
+ 
 +Gateways whose streaming tool-call chunks cannot be correlated can list their declared model ids in `nonStreamingModels`. Those models use the same `openai-completions` request with `stream: false`; the complete assistant message is converted into one validated SSE chunk so tool-call ids, names, and arguments stay together. The field is accepted only on an explicit route with a matching `models` entry, and it does not hide upstream model or availability errors.
 +
  For self-hosted Chat Completions endpoints, `thinkingTokenBudgetField` selects the reasoning-budget parameter, and `vllmPriority` sets an integer scheduler priority when the server enables priority scheduling. Template arguments accept `$var: thinking.budget`. `openai-responses` gateways can set `supportsMaxOutputTokens: false` to omit `max_output_tokens`; Azure and Codex transports ignore this shared compatibility field. These controls are opt-in; catalog-owned Anthropic effort and fallback capabilities are not configurable switches.
-
+ 
  ### Change configuration at runtime
 diff --git a/packages/llm/llm-pi-ai/README.zh.md b/packages/llm/llm-pi-ai/README.zh.md
-index c434554f7d..9e3dbfad79 100644
+index 1526faa4b8..ba021638b8 100644
 --- a/packages/llm/llm-pi-ai/README.zh.md
 +++ b/packages/llm/llm-pi-ai/README.zh.md
 @@ -70,6 +70,8 @@ kind: "package-reference"
@@ -1022,7 +1084,7 @@ index c434554f7d..9e3dbfad79 100644
 +        # 某些网关会把一次工具调用拆成互不相关的流式 id。
 +        nonStreamingModels: [acme-think]
  ```
-
+ 
  | 字段 | 默认值 | 含义 |
 @@ -81,6 +83,7 @@ kind: "package-reference"
  | `models` | 已安装目录 | 整体替换路由目录；每个条目从已安装模型取默认值 |
@@ -1033,27 +1095,27 @@ index c434554f7d..9e3dbfad79 100644
  | `defaultMaxTokens` | `128,000` | 未描述模型的输出上限回退 |
  | `requestImagePixelBudget` | `4,194,304` | 每张确定性请求图片的总像素预算 |
 @@ -104,6 +107,8 @@ profile 的 `models` 列表会替换而非扩展路由的已安装目录；每
-
+ 
  确切模型元数据将 `reasoning.efforts` 按可选强度从低到高排列。配置函数可从该列表中选择，再由 `prepareCall()` 校验具体强度。适配器只接收解析后的控制项。选择 `off` 不保证禁用推理：以省略推理字段表达该值的协议会沿用网关默认行为。所选等级下产生的推理 token 都计入该请求的输出上限。
-
-+如果网关的流式工具调用分片无法关联，可在 `nonStreamingModels` 中列出已声明的模型 id。������些模型仍使用 `openai-completions` 请求，但发送 `stream: false`；完整 assistant 消息随后转换为一个经过校验的 SSE 分片，使工具调用的 id、名称和参数保持在一起。该字段只接受显式路由中 `models` 已声明的模型，不会隐藏上游模型不存在或服务不可用的错误。
+ 
++如果网关的流式工具调用分片无法关联，可在 `nonStreamingModels` 中列出已声明的模型 id。这些模型仍使用 `openai-completions` 请求，但发送 `stream: false`；完整 assistant 消息随后转换为一个经过校验的 SSE 分片，使工具调用的 id、名称和参数保持在一起。该字段只接受显式路由中 `models` 已声明的模型，不会隐藏上游模型不存在或服务不可用的错误。
 +
  对于自托管 Chat Completions 端点，`thinkingTokenBudgetField` 选择推理预算参数，`vllmPriority` 在服务端启用优先级调度时设置整数调度优先级。模板参数接受 `$var: thinking.budget`。`openai-responses` 网关可设置 `supportsMaxOutputTokens: false` 来省略 `max_output_tokens`；Azure 与 Codex 传输会忽略这个共享兼容字段。这些控制均需显式启用；目录拥有的 Anthropic effort 和回退能力不是可配置开关。
-
+ 
  ### 运行时更改配置
 diff --git a/packages/llm/llm-pi-ai/src/adapter.ts b/packages/llm/llm-pi-ai/src/adapter.ts
-index 9c8b4d3f60..2cd004a8fb 100644
+index 4c3bdce845..bcc26bcd72 100644
 --- a/packages/llm/llm-pi-ai/src/adapter.ts
 +++ b/packages/llm/llm-pi-ai/src/adapter.ts
-@@ -62,6 +62,7 @@ import type { ResolvedPiAiProviderProfile } from './config.ts'
+@@ -59,6 +59,7 @@ import type {
+ import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+ import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
+ import type { ResolvedPiAiProviderProfile } from './config.ts'
++import { completeChatFetch } from './completions-fetch.ts'
  import { requestImageTarget, toPiContext } from './context.ts'
  import { conversationUpdates, createModels, getSupportedThinkingLevels } from './models.ts'
  import { toStreamChunks } from './stream.ts'
-+import { completeChatFetch } from './completions-fetch.ts'
-
- /**
-  * Initially active declaration added to an Anthropic request whose projected
-@@ -415,6 +416,7 @@ export class PiAiAdapter extends LlmAdapter {
+@@ -457,6 +458,7 @@ export class PiAiAdapter extends LlmAdapter {
          }, onReplayDegrade, updates.systemPromptUpdate === 'in-history')
        const events = snapshot.models.streamSimple(model, context, {
          ...profileOptions(profile, reasoning, apiKey),
@@ -1277,21 +1339,21 @@ index fe667fe58d..e531f39e65 100644
 +  })
 +})
 diff --git a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
-index 7c65de41f2..858b011ab8 100644
+index 324574bfb9..f39ffe3b10 100644
 --- a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
 +++ b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
-@@ -10,6 +10,7 @@ import Loader, { type ModuleLoaderV2 } from '@deepseek-ai/cordis-plugin-loader'
- import Include from '@deepseek-ai/cordis-plugin-include'
+@@ -11,6 +11,7 @@ import Include from '@deepseek-ai/cordis-plugin-include'
  import LlmRuntime, { createMessage, createUserMessage, userAgent } from '@deepseek-ai/dsh-llm'
+ import { SessionId } from '@deepseek-ai/dsh-session'
  import AuthorizationService from '@deepseek-ai/dsh-authorization'
 +import { createToolResultMessage } from '@deepseek-ai/dsh-llm'
  import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
  import { profileComposition } from '../../../settings/settings/tests/profile-composition.ts'
  import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
-@@ -87,6 +88,78 @@ async function loadComposition(): Promise<{ ctx: Context; settingsPath: string }
- }
-
- describe('llm-pi-ai real dormant composition', () => {
+@@ -309,4 +310,76 @@ describe('llm-pi-ai real dormant composition', () => {
+       ],
+     })
+   })
 +  it('replays complete gateway tool calls and accepts a streamed follow-up through the loaded profile', async () => {
 +    vi.stubEnv('PI_COMPOSITION_KEY', '')
 +    const server = await mockServer([
@@ -1364,6 +1426,4 @@ index 7c65de41f2..858b011ab8 100644
 +      `)
 +  })
 +
-   it('boots with zero routes and registers one the moment settings supply a profile', async () => {
-     vi.stubEnv('PI_COMPOSITION_KEY', '')
-     const server = await mockServer([{ events: textEvents }])
+ })

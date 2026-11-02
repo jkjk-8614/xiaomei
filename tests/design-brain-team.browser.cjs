@@ -16,6 +16,78 @@ const { chromium } = require('../tools/commerce-analysis/node_modules/playwright
 
 const root = path.resolve(__dirname, '..');
 
+test('删除设计组支持取消与失败重试，删掉最后一组后清理会话且刷新不复现', async t => {
+    const state = fixture({messages: [message(1, 'user', '旧设计需求')]});
+    const {page, errors} = await openTeam(t, state);
+    let calls = 0;
+    let fail = true;
+    await page.route('**/api/design-brain/groups/grp_default', route => {
+        assert.equal(route.request().method(), 'DELETE');
+        calls++;
+        if (fail) return route.fulfill({status: 503, json: {detail: '磁盘暂时不可写'}});
+        state.groups = [];
+        state.chats = [];
+        return route.fulfill({json: {archived: true}});
+    });
+    const button = page.getByRole('button', {name: '删除设计组：设计项目群', exact: true});
+    if (process.env.DELETE_SCREENSHOT_DIR) {
+        await page.evaluate(() => window.postMessage({type: 'studio-theme', theme: 'dark'}, location.origin));
+        await page.waitForTimeout(100);
+        await page.screenshot({path: path.join(process.env.DELETE_SCREENSHOT_DIR, 'group-delete.png')});
+    }
+    await page.locator('#teamInput').fill('未发送草稿');
+    page.once('dialog', dialog => dialog.dismiss());
+    await button.click();
+    assert.equal(calls, 0);
+    assert.equal(await page.locator('#teamInput').inputValue(), '未发送草稿');
+    page.once('dialog', dialog => dialog.accept());
+    await button.click();
+    await page.getByText('删除设计组失败：磁盘暂时不可写', {exact: true}).waitFor();
+    await button.locator('..').waitFor();
+    assert.equal(await button.isEnabled(), true);
+    assert.equal(await page.locator('#teamInput').inputValue(), '未发送草稿');
+    fail = false;
+    page.once('dialog', dialog => dialog.accept());
+    await button.click();
+    await button.waitFor({state: 'detached'});
+    assert.equal(await page.locator('#teamInput').inputValue(), '');
+    assert.equal(await page.evaluate(() => localStorage.getItem('xiaomei_team_chat_v1')), null);
+    assert.equal(await page.locator('#teamMessages .team-row').count(), 0);
+    await page.reload({waitUntil: 'networkidle'});
+    assert.equal(await page.locator('[data-team-delete-group]').count(), 0);
+    assert.equal(await page.locator('#teamTitle').textContent(), '设计讨论');
+    assert.deepEqual(errors, []);
+});
+
+test('删除非当前设计组保留草稿，删除当前组切换到剩余组', async t => {
+    const state = fixture({messages: [message(1, 'user', '讨论')]});
+    state.groups.push(group({id: 'grp_other', name: '另一设计组'}));
+    state.chats.push(chat({id: 'grp_other', group_id: 'grp_other', title: '另一设计组'}));
+    const {page, errors} = await openTeam(t, state);
+    await page.route('**/api/design-brain/groups/*', route => {
+        const id = new URL(route.request().url()).pathname.split('/').pop();
+        state.groups = state.groups.filter(item => item.id !== id);
+        state.chats = state.chats.filter(item => item.id !== id);
+        return route.fulfill({json: {archived: true}});
+    });
+    await page.locator('#teamInput').fill('当前草稿');
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('[data-team-delete-group="grp_other"]').click();
+    await page.locator('[data-team-delete-group="grp_other"]').waitFor({state: 'detached'});
+    assert.equal(await page.locator('#teamTitle').textContent(), '设计项目群');
+    assert.equal(await page.locator('#teamInput').inputValue(), '当前草稿');
+    // Reintroduce a second group through a normal team refresh.
+    state.groups.push(group({id: 'grp_other', name: '另一设计组'}));
+    state.chats.push(chat({id: 'grp_other', group_id: 'grp_other', title: '另一设计组'}));
+    await page.route('**/api/design-brain/chats/grp_other/messages*', route => route.fulfill({json: {messages: [], cursor: 0}}));
+    await page.reload({waitUntil: 'networkidle'});
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('[data-team-delete-group="grp_default"]').click();
+    await page.waitForFunction(() => document.querySelector('#teamTitle').textContent === '另一设计组');
+    assert.equal(await page.locator('[data-team-chat="grp_other"]').getAttribute('aria-current'), 'true');
+    assert.deepEqual(errors, []);
+});
+
 // 9 个模块收成 4 组后，子标签要先点组标签才可见；按用户路径先组后子。
 const TAB_GROUP_OF = {cases: 'asset', references: 'asset', experiences: 'asset', profile: 'asset', team: 'team', skills: 'team', runs: 'log', reviews: 'log'};
 async function gotoTab(page, tab) {

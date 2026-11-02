@@ -169,8 +169,8 @@ function verify() {
   // 每次用独立目录：清理失败（被杀软/同步盘占用）也不影响下一次校验。
   const probe = path.join(DATA_ROOT, `harness-patch-probe-${process.pid}-${Date.now()}`);
   try {
-    // --local 走硬链接，探针必须与仓库同盘，否则 Windows 上会 "Improper link"。
-    run('git', ['clone', '--local', '--no-checkout', HARNESS_ROOT, probe], { cwd: DATA_ROOT });
+    // User data may be on a different volume from the source checkout.
+    run('git', ['clone', '--local', '--no-hardlinks', '--no-checkout', HARNESS_ROOT, probe], { cwd: DATA_ROOT });
     run('git', ['checkout', '--detach', 'HEAD'], { cwd: probe });
     const applied = gitAllowFailureAt(probe, 'apply', '--3way', PATCH_FILE);
     if (applied.status !== 0) {

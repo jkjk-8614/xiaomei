@@ -10,19 +10,21 @@ from pathlib import Path
 
 
 ECOMMERCE_RULES = """小美的电商视觉规范（本软件的默认设计标准）：
-一、主图完整一组固定5张，第1张用于测点击率，其余4张是提升转化的展示图，统一风格、配色与产品机位。第1张1:1；第2至5张默认2:3营销长图，以比例为准，不把750×1000误称为2:3。产品约70%、文案约30%，3秒内看懂，手机缩略图仍清楚，拒绝模糊、脏乱、粗糙素材。
+一、主图完整一组固定5张，第1张用于测点击率，其余4张是提升转化的展示图，5张默认均为1:1，统一风格、配色与产品机位。产品约70%、文案约30%，3秒内看懂，手机缩略图仍清楚，拒绝模糊、脏乱、粗糙素材。
 设计五步：定位市场与人群→分析同类TOP竞对并跨类目找思路→精简文案→用场景化、数据化、细节特写、促销氛围可视化卖点→在文案、产品表现与背景上创新。先说消费者得到的利益，再说产品特点。文案类型可按产品选择促销、情感、理想效果、对比、风险提醒、专业、卖点、夸张修辞或创意，不编造事实或恐吓用户。
 差异化四步：分析搜索环境TOP10直接竞对的风格/边框/产品摆放/场景/配色→统计少数项→每张可收集20至50张参考学习→自主创新、做减法；未实际读取竞对或参考时注明资料待补，不能编造已调研数量或结论。
 七天测图是独立于5张正式主图的运营实验：第1天上4张创意、测1天、再做2张；第2至5天每天09:00换掉点击率最低的2张并再做2张；第6天09:00再换最差2张；第7天把4张创意统一为点击率最高的那张，选为正式第1张。前三天测热度与背景、后三天测文案；一次只变一个变量。这里只提供测图方案，不伪称已上传广告或获得CTR数据，不自动创建排期。没有展现量/点击量/CTR就标待测；这些是用户的设计经验，不保证转化率提升。
 二、SKU数量无上限，按真实SKU逐一规划，不为了凑数编造SKU。仅替换数据参数、赠品、属性名称时，共用同一底图加固定文字位，其余像素不变。用户明确要求不同框色、产品颜色、照片组合或内芯图案时，按外观款式逐张规划和生成，只改变用户指定的外观内容；统一背景场景、光感、装裱工艺、机位、角度、大小比例、版式和品牌。未指定的外观变化不能擅自添加。
-三、详情页屏数和总长度无上限，一般每屏9:16、整页同宽纵向连贯；第1屏展示商品，第2屏卖点，第3屏好处与特性，第4屏强视觉抓回注意力，之后反复强化核心卖点。前三屏放消费者最关心的利益点，完成后回查前三个卖点是否通顺、有无矛盾；每屏围绕一个主题，不平均用力。
-详情排版按750宽参考稿同比缩放：首屏约1200px；主标题至少48px、优先60px以上，参考60至70pt；副标题至少24px、参考40至50pt；正文手机至少25pt、PC至少18pt，参考25至30pt。行距为字号高度加10px，主标题字距紧凑可为负、副标题0或正整数，两行间距不超过字高。所有标题字号与间距一致，中西文分开调字级、优先偶数字号。主副标题相隔半字高，副标题与正文隔一字高或加间距。
-三三原则：字体、设计主辅色、逻辑、排版各不超过3种。商品实色及照片素材中的自然颜色不计入设计配色，不得为了凑三色改变商品或照片。通栏约150px、底栏120至130px；侧边距参考40至70px且必须大于20px，手机参考左右40px内、避免超过80px；屏间间隔不超过160px。主标题4至8字，副标题15字内。文字不用纯黑。
+三、详情页整页宽度790px，总高度无限制，由实际设计屏数和各屏内容高度决定，整页同宽纵向连贯；第1屏展示商品，第2屏卖点，第3屏好处与特性，第4屏强视觉抓回注意力，之后反复强化核心卖点。前三屏放消费者最关心的利益点，完成后回查前三个卖点是否通顺、有无矛盾；每屏围绕一个主题，不平均用力。
+详情排版按790px宽参考稿同比缩放：首屏约1200至1400px高，后续每屏约1200px高，单屏可随内容调整，单屏参考高度不限制整页总高度。字号统一使用px：主标题参考46至74px、优先60px以上，字重Medium至Heavy；副标题参考24至36px，字重Regular至Light，和主标题拉开层级；正文手机至少25px、PC至少18px，参考25至30px。两行主标题之间的净空参考15至30px，两行副标题之间的净空参考8至12px，正文行距为字号高度加10px；净空不等同于整行行高。主标题字距紧凑可为负、副标题0或正整数。所有同级标题字号与间距一致，中西文分开调字级、优先偶数字号。
+常规版式参考：顶部留白100至150px，底部留白80至150px，左右安全边距40至80px，英文点缀到主标题、主标题到副标题的区块间距参考40至80px；按实际文案长度、构图与阅读顺序调整，不机械填满。英文点缀和小图形只在有助品牌或层级时使用，不强加无意义英文与装饰。
+常用构图可选左右构图、上下构图、对角构图。左右构图通过左右分区或元素走势组织信息，平衡稳定、适合一侧文案一侧商品；上下构图先文字后商品，主次明确、视觉集中；对角构图通过斜向走势带动视线、增强动势，仍须保持文字可读与商品真实。文字准确传递逻辑信息，商品图片直观呈现产品与利益点，两者配合形成完整表达；整页围绕统一风格有节奏地变化，不为变化而打乱阅读顺序。
+三三原则：字体、设计主辅色、逻辑、排版各不超过3种。商品实色及照片素材中的自然颜色不计入设计配色，不得为了凑三色改变商品或照片。屏间间隔不超过160px。主标题4至8字，副标题15字内。文字不用纯黑。
 FABE按本用户定义：F/A为属性功能与优势，结合需求情景；B为消费者好处/结果；E为情感吸引力。卖点按1级核心至4级辅助排序，文案公式A+B、A+E、E，最大好处进标题。
 卖点从原料（地域/时间/历史/气候）、工艺（配方/标准/工序/人工）、设计（设计师/奖项/专利/风格/人群）、功效、价格（性价比/赠品/促销）、服务（售后/质保/安装/物流）、工厂（研发/供应链）、品牌（资历/荣誉）八维提炼；仅使用已提供的真实证据，不虚构功效、认证、促销、专利或数据。
 人群画像九维：性别、年龄、学历、收入、地域、兴趣、职业、生活行为、消费者类型（价格诱导/冲动/日常/高端）；未知项标待确认，不臆造个人属性。
-配色简单干净，避免大面积高饱和或分散注意的渐变；高饱和点缀配低饱和底色，同类产品色相协调，用边框或边角图标适度吸引注意。使用明确HEX/RGB/HSB值统一整组主辅色，深浅冷暖搭配可参考灰蓝+浅米、深青绿+米黄、深墨+酒红。
-质检须检查各图用途、前三屏顺序、缩略图可读性、字号层级、三三原则、标题长度、配色、商品真实性、品牌标识与SKU模板一致性。看不清文字或无法从位图测定字体/字号时标needs_human，不能假装测量通过。"""
+配色从三个方向选择依据：产品本身颜色、页面主题、情绪与使用环境；说明本次选择及其与商品、场景的关系，再确定统一主辅色。配色简单干净，避免大面积高饱和或分散注意的渐变；高饱和点缀配低饱和底色，同类产品色相协调，用边框或边角图标适度吸引注意。使用明确HEX/RGB/HSB值统一整组主辅色，深浅冷暖搭配可参考灰蓝+浅米、深青绿+米黄、深墨+酒红。
+质检须检查各图用途、前三屏顺序、缩略图可读性、790px同宽设计稿与整页连续性、字号字重层级、主副标题行间净空、留白安全边距、构图阅读顺序、三三原则、标题长度、配色依据、商品真实性、品牌标识与SKU模板一致性。看不清文字或无法从位图测定字体/字号时标needs_human，不能假装测量通过。"""
 
 SKU_RULES = """电商 SKU 规则：按用户实际要求选择文字模板或外观款式。
 仅替换数据参数、赠品、属性名称时使用series_mode=sku：固定版式、背景、配色、产品造型、机位、角度、大小比例、字体字号、文案位置、品牌标识。
@@ -41,9 +43,9 @@ CTR_TEST_SCHEDULE = [
     {"day": 7, "time": "", "action": "4张创意统一为点击率最高的那张，选为正式第1张主图", "variable": "依据真实展现量、点击量和CTR选优；缺数据则待测"},
 ]
 DEFAULT_LAYOUT = {
-    "parameters": {"box": [0.06, 0.70, 0.88, 0.09], "font_pt": 26, "color": "#252525", "background": "#F5F1E8"},
-    "gifts": {"box": [0.06, 0.80, 0.88, 0.09], "font_pt": 26, "color": "#252525", "background": "#F5F1E8"},
-    "attributes": {"box": [0.06, 0.90, 0.88, 0.09], "font_pt": 26, "color": "#252525", "background": "#F5F1E8"},
+    "parameters": {"box": [0.06, 0.70, 0.88, 0.09], "font_px": 26, "color": "#252525", "background": "#F5F1E8"},
+    "gifts": {"box": [0.06, 0.80, 0.88, 0.09], "font_px": 26, "color": "#252525", "background": "#F5F1E8"},
+    "attributes": {"box": [0.06, 0.90, 0.88, 0.09], "font_px": 26, "color": "#252525", "background": "#F5F1E8"},
 }
 
 
@@ -102,15 +104,15 @@ def normalize_layout(raw):
         item = raw[key]
         try:
             x, y, w, h = map(float, item["box"])
-            font_pt = float(item["font_pt"])
+            font_px = float(item["font_px"])
         except (TypeError, ValueError, KeyError):
-            raise VisualRuleError("SKU 信息位必须包含归一化 box=[x,y,w,h] 与固定 font_pt") from None
-        if not all(math.isfinite(v) for v in (x, y, w, h, font_pt)) or not (0 <= x < 1 and 0 <= y < 1 and w > 0 and h > 0 and x + w <= 1 and y + h <= 1 and 25 <= font_pt <= 70):
-            raise VisualRuleError("SKU 信息位超出画布或字号不合规范（正文至少25pt）")
+            raise VisualRuleError("SKU 信息位必须包含归一化 box=[x,y,w,h] 与固定 font_px（px字号）") from None
+        if not all(math.isfinite(v) for v in (x, y, w, h, font_px)) or not (0 <= x < 1 and 0 <= y < 1 and w > 0 and h > 0 and x + w <= 1 and y + h <= 1 and 25 <= font_px <= 70):
+            raise VisualRuleError("SKU 信息位超出画布或字号不合规范（正文至少25px）")
         colors = {name: str(item.get(name) or "") for name in ("color", "background")}
         if any(not re.fullmatch(r"#[0-9a-fA-F]{6}", c) for c in colors.values()) or colors["color"].lower() == "#000000" or colors["color"].lower() == colors["background"].lower():
             raise VisualRuleError("SKU 信息位需使用不同的HEX文字色与底色，文字不用纯黑")
-        result[key] = {"box": [x, y, w, h], "font_pt": font_pt, **colors}
+        result[key] = {"box": [x, y, w, h], "font_px": font_px, **colors}
     boxes = [v["box"] for v in result.values()]
     for i, (x, y, w, h) in enumerate(boxes):
         for a, b, c, d in boxes[i + 1:]:
@@ -139,15 +141,20 @@ def validate_framework(raw):
     for key in ("style", "brand", "product_pose"):
         if not isinstance(raw.get(key), str) or not raw[key].strip():
             raise VisualRuleError(f"全组视觉框架缺少 {key}（风格、品牌位置、产品机位）；无品牌时明确写无Logo")
-    typography = raw.get("typography") or {"title_pt": 64, "subtitle_pt": 44, "body_pt": 26, "line_extra_px": 10}
+    typography = raw.get("typography") or {"title_px": 64, "subtitle_px": 32, "body_px": 26, "line_extra_px": 10}
     try:
-        title, subtitle, body = [float(typography[k]) for k in ("title_pt", "subtitle_pt", "body_pt")]
+        title, subtitle, body = [float(typography[k]) for k in ("title_px", "subtitle_px", "body_px")]
         extra = float(typography["line_extra_px"])
+        title_gap = float(typography.get("title_line_gap_px", 20))
+        subtitle_gap = float(typography.get("subtitle_line_gap_px", 10))
     except (TypeError, ValueError, KeyError):
-        raise VisualRuleError("字级需包含 title_pt、subtitle_pt、body_pt 和 line_extra_px") from None
-    if not all(math.isfinite(v) for v in (title, subtitle, body, extra)) or title < 36 or subtitle < 18 or body < 25 or extra != 10 or any(v % 2 for v in (title, subtitle, body)):
-        raise VisualRuleError("字级应使用偶数：主标题至少48px、建议60px以上，副标题至少24px、手机正文至少25pt，行距增加10px")
-    return {"palette": palette, "fonts": fonts, "typography": {"title_pt": title, "subtitle_pt": subtitle, "body_pt": body, "line_extra_px": extra},
+        raise VisualRuleError("字级需包含 title_px、subtitle_px、body_px 和 line_extra_px（单位均为px）") from None
+    if not all(math.isfinite(v) for v in (title, subtitle, body, extra, title_gap, subtitle_gap)) or title < 46 or subtitle < 24 or body < 25 or extra != 10 or any(v % 2 for v in (title, subtitle, body)):
+        raise VisualRuleError("字级应使用偶数：主标题至少46px、参考46至74px，副标题至少24px、参考24至36px，手机正文至少25px，正文行距增加10px")
+    if not 15 <= title_gap <= 30 or not 8 <= subtitle_gap <= 12:
+        raise VisualRuleError("主标题行间净空应为15至30px，副标题行间净空应为8至12px，请统一字级间距")
+    return {"palette": palette, "fonts": fonts, "typography": {"title_px": title, "subtitle_px": subtitle, "body_px": body, "line_extra_px": extra,
+            "title_line_gap_px": title_gap, "subtitle_line_gap_px": subtitle_gap},
             **{k: raw[k].strip()[:600] for k in ("style", "brand", "product_pose")}}
 
 
@@ -194,13 +201,16 @@ def default_visual_framework(brief=None, plan=None):
     typography = plan.get("typography") if isinstance(plan.get("typography"), dict) else {}
     try:
         typography = {
-            "title_pt": float(typography.get("title_pt", 64)),
-            "subtitle_pt": float(typography.get("subtitle_pt", 44)),
-            "body_pt": float(typography.get("body_pt", 26)),
+            "title_px": float(typography.get("title_px", 64)),
+            "subtitle_px": float(typography.get("subtitle_px", 32)),
+            "body_px": float(typography.get("body_px", 26)),
             "line_extra_px": 10,
+            "title_line_gap_px": float(typography.get("title_line_gap_px", 20)),
+            "subtitle_line_gap_px": float(typography.get("subtitle_line_gap_px", 10)),
         }
     except (TypeError, ValueError):
-        typography = {"title_pt": 64, "subtitle_pt": 44, "body_pt": 26, "line_extra_px": 10}
+        typography = {"title_px": 64, "subtitle_px": 32, "body_px": 26, "line_extra_px": 10,
+                      "title_line_gap_px": 20, "subtitle_line_gap_px": 10}
 
     style = str(plan.get("style") or plan.get("visual_style") or plan.get("direction")
                 or brief.get("style_direction") or "").strip()
@@ -294,23 +304,23 @@ def apply_visual_plan(brief, plan, *, compose=False, offset=0):
         if compose:
             shot["role"] = role
             shot["purpose"] = ROLE_TEXT[role]
-            ratio = "1:1" if role == "ctr" else "2:3" if kind == "main_image" else str(brief.get("aspect_ratio") or "9:16")
+            ratio = "1:1" if kind == "main_image" else str(brief.get("aspect_ratio") or "9:16")
             shot["aspect_ratio"] = ratio
-            shot["size"] = {"1:1": "1024x1024", "2:3": "1024x1536", "9:16": "864x1536"}.get(ratio, shot["size"])
+            shot["size"] = {"1:1": "1024x1024", "9:16": "864x1536"}.get(ratio, shot["size"])
             shot["prompt"] = (ROLE_TEXT[role] + "\n全组视觉框架：" + json.dumps(framework, ensure_ascii=False)
                               + "\n" + shot["prompt"])
             if kind == "detail_images":
                 shot["prompt"] += "\n本屏原文文案：" + json.dumps(shot["copy"], ensure_ascii=False)
-                shot["prompt"] += "\n按750宽参考稿同比缩放：主标题4至8字、至少48px且优先60px以上，副标题15字内且至少24px，手机正文至少25pt；行距加10px、侧边距40至70px且大于20px、屏间距不超过160px；三三原则、文字不用纯黑。"
+                shot["prompt"] += "\n按790px宽、首屏约1200至1400px高、后续每屏约1200px高的设计标准同比缩放，整页总高度无限制、随屏数和内容决定。主标题4至8字、参考46至74px且优先60px以上，字重Medium至Heavy、行间净空15至30px；副标题15字内、参考24至36px，字重Regular至Light、行间净空8至12px；手机正文至少25px、正文行距加10px。顶部留白100至150px、底部留白80至150px、左右安全边距40至80px；点缀到主标题及主副标题区块间距参考40至80px、屏间距不超过160px。按信息关系选择左右、上下或对角构图，文字传递逻辑、图片呈现商品。配色依据产品本身颜色、页面主题或情绪与使用环境，统一整组主辅色；三三原则、文字不用纯黑。"
             shot["acceptance"] = [ROLE_TEXT[role], "全组风格、HEX配色、字体字级、产品机位与品牌标识一致"] + shot.get("acceptance", [])[:4]
         if shot.get("role") != role:
             raise VisualRuleError("图片分工或前三屏顺序不符，请重新规划后再确认")
         if shot.get("count", 1) != 1:
             raise VisualRuleError("电商方案须逐张规划，每张 count=1")
         width, height = map(int, shot["size"].split("x"))
-        target = 1 if role == "ctr" else 2 / 3 if kind == "main_image" else None
+        target = 1 if kind == "main_image" else None
         if target and abs(width / height - target) > .02:
-            raise VisualRuleError("主图第1张应为1:1，展示图应为2:3，请统一画幅后再确认")
+            raise VisualRuleError("主图第1至5张均应为1:1，请统一画幅后再确认")
         if kind == "detail_images" and not brief.get("aspect_ratio") and abs(width / height - 9 / 16) > .02:
             raise VisualRuleError("详情页默认9:16竖版，请重新设置画幅")
         if len(shot["prompt"]) > 4000:
@@ -351,7 +361,7 @@ def render_sku_image(template_path, layout, values):
         x, y, w, h = spec["box"]
         left, top = round(x * width), round(y * height)
         right, bottom = round((x + w) * width), round((y + h) * height)
-        font = ImageFont.truetype(font_path, max(1, round(spec["font_pt"] * 96 / 72 * width / 750)))
+        font = ImageFont.truetype(font_path, max(1, round(spec["font_px"] * width / 750)))
         padding = max(2, round(8 * width / 750))
         max_width = right - left - 2 * padding
         lines, line = [], ""

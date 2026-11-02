@@ -278,6 +278,11 @@ async def update_group(group_id: str, payload: GroupUpdateRequest, request: Requ
 async def archive_group(group_id: str, request: Request):
     _local_only_dependency(request)
     _ensure_same_origin(request)
+    group = _guarded(lambda: TEAM.get_group(group_id))
+    if isinstance(group, JSONResponse):
+        return group
+    if ENGINE:
+        await ENGINE.stop(group_id)
     return _guarded(lambda: TEAM.archive_group(group_id))
 
 

@@ -50,6 +50,11 @@ function isProductSource(file, tracked) {
     return ['.json', '.md', '.patch'].includes(extension);
   }
   if (file.startsWith('static/')) {
+    if (/^static\/photocraft\//.test(file)) {
+      return !/(?:^|\/)\.env(?:\.|$)/i.test(file)
+        && ['.html', '.js', '.css', '.json', '.md', '.wasm', '.part-aa', '.txt'].includes(extension)
+        || /^static\/photocraft\/(?:_headers|\.htaccess|LICENSE-APACHE|LICENSE-MIT|NOTICE)$/.test(file);
+    }
     if (['.html', '.js', '.css', '.svg', '.json'].includes(extension)) {
       return !/^static\/_probe(?:[_./]|$)/i.test(file) && !/\.bak-/i.test(file);
     }

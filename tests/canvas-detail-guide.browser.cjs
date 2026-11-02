@@ -6,7 +6,7 @@ const { chromium } = require('../tools/commerce-analysis/node_modules/playwright
 
 const root = path.resolve(__dirname, '..');
 
-test('each successful detail split refreshes the guide and all screen drafts', { timeout: 30000 }, async t => {
+test('detail splitting leaves the optional guide blank and preserves user requirements', { timeout: 30000 }, async t => {
     const browser = await chromium.launch({ channel: 'msedge', headless: true });
     t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width: 1400, height: 1600 } });
@@ -35,7 +35,7 @@ test('each successful detail split refreshes the guide and all screen drafts', {
                 id: 'loop-guide', type: 'smart-loop', batchUiMode: 'paired', batchDetailModeV2: true,
                 x: 30, y: 30, w: 420, h: 640, batchSourceNodeId: 'local',
                 batchSourceText: '生成中古玄关风格的两屏详情页，保留地垫产品与材质信息。',
-                batchVisualGuide: '宋代极简、浅暖米白、克制留白', batchAiTargetCount: 2,
+                batchAiTargetCount: 2,
                 variablePrompts: ['']
             }]
         } } });
@@ -62,27 +62,26 @@ test('each successful detail split refreshes the guide and all screen drafts', {
         };
     });
     const split = () => page.evaluate(() => runSmartLoopAiSplit('loop-guide'));
-    await page.locator('[data-id="loop-guide"] [data-loop-ai-split]').click();
+    await split();
     await page.waitForFunction(() => !nodes.find(item => item.id === 'loop-guide').aiSplitRunning && nodes.find(item => item.id === 'loop-guide').aiSplitPrompts?.length === 2);
     const first = await state();
-    assert.equal(first.guide, reply.visual_guide);
-    assert.equal(first.displayed, reply.visual_guide);
+    assert.equal(first.guide, '');
+    assert.equal(first.displayed, '');
     assert.equal(first.ids.length, 2);
-    first.drafts.forEach(prompt => {
-        assert.ok(prompt.includes(reply.visual_guide));
-        assert.ok(!prompt.includes('宋代极简'));
+    first.drafts.forEach((prompt, index) => {
+        assert.ok(prompt.includes(reply.screens[index].prompt));
+        assert.ok(!prompt.includes(reply.visual_guide));
     });
-    assert.ok(!requests[0].message.includes('宋代极简'), 'old extracted guide is not an input to the new split');
+    assert.ok(!requests[0].system_prompt.includes('visual_guide'), 'splitting requests only screen prompts');
+    assert.ok(!requests[0].message.includes('【用户补充的统一视觉要求'));
+    assert.equal(await page.evaluate(() => Object.hasOwn(nodes.find(item => item.id === 'loop-guide'), 'batchVisualGuide')), false);
 
     reply.visual_guide = '工业风、深灰色、冷光';
     await split();
     const second = await state();
-    assert.equal(second.displayed, reply.visual_guide);
+    assert.equal(second.displayed, '');
     assert.deepEqual(second.ids, first.ids, 'resplitting updates the existing screen nodes');
-    second.drafts.forEach(prompt => {
-        assert.ok(prompt.includes(reply.visual_guide));
-        assert.ok(!prompt.includes(first.guide));
-    });
+    assert.deepEqual(second.drafts, first.drafts);
 
     fail = true;
     await split();
@@ -105,14 +104,30 @@ test('each successful detail split refreshes the guide and all screen drafts', {
     const cleared = await state();
     assert.equal(cleared.guide, '');
     assert.equal(cleared.displayed, '');
-    assert.deepEqual(cleared.drafts, reply.screens.map(item => item.prompt));
+    assert.deepEqual(cleared.drafts, first.drafts);
 
     await page.locator('[data-id="loop-guide"] [data-loop-detail-guide]').fill('手工修改后的统一风格');
     assert.equal((await state()).guide, '手工修改后的统一风格');
     (await state()).drafts.forEach(prompt => assert.ok(prompt.includes('手工修改后的统一风格')));
     reply.visual_guide = '重新拆分后的当前风格';
     await split();
-    assert.equal((await state()).displayed, reply.visual_guide);
+    assert.equal((await state()).displayed, '手工修改后的统一风格');
+    assert.ok(requests.at(-1).message.includes('手工修改后的统一风格'));
+    (await state()).drafts.forEach(prompt => {
+        assert.ok(prompt.includes('手工修改后的统一风格'));
+        assert.ok(!prompt.includes(reply.visual_guide));
+    });
+
+    const priorScreens = await page.evaluate(() => nodes.find(item => item.id === 'loop-guide').aiSplitPrompts);
+    beforeReply = () => page.evaluate(() => {
+        nodes.find(item => item.id === 'loop-guide').batchVisualGuide = '拆分期间修改的要求';
+    });
+    await split();
+    assert.match((await state()).error, /输入已改变/);
+    assert.equal((await state()).guide, '拆分期间修改的要求');
+    assert.deepEqual(await page.evaluate(() => nodes.find(item => item.id === 'loop-guide').aiSplitPrompts), priorScreens);
+    beforeReply = null;
+    await page.locator('[data-id="loop-guide"] [data-loop-detail-guide]').fill('');
 
     await page.evaluate(() => {
         nodes.find(item => item.id === 'loop-guide').batchSourceText = '### 第 1 屏：首屏\n保留首屏原文\n### 第 2 屏：细节\n保留细节原文';
@@ -121,7 +136,7 @@ test('each successful detail split refreshes the guide and all screen drafts', {
     await split();
     const recovered = await state();
     assert.equal(recovered.error, '');
-    assert.equal(recovered.guide, '', 'recovery from source screens also clears an absent guide');
+    assert.equal(recovered.guide, '', 'source recovery leaves the optional guide blank');
     assert.deepEqual(recovered.ids, first.ids);
     assert.ok(recovered.drafts[0].includes('保留首屏原文'));
     assert.ok(recovered.drafts[1].includes('保留细节原文'));
