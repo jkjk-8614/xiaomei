@@ -1,0 +1,107 @@
+.image-node.product-retouch-smart-node{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:visible}
+.product-retouch-smart-node>.node-head{display:flex!important;flex:none;height:40px;padding:0 16px;border-bottom:1px solid var(--line);cursor:grab}
+.product-retouch-smart-node>.node-head .node-title{display:block!important;font-size:14px;font-weight:600}
+.product-retouch-smart-node>.node-body{flex:1;min-height:0;width:100%;padding:0!important;overflow:hidden!important;display:block;border-radius:0 0 12px 12px}
+.product-retouch-smart-node>.node-hint{display:none}
+.product-retouch-smart-node>.node-resize-handle{display:flex;right:2px;bottom:2px}
+.product-retouch-panel{--pr-accent:var(--studio-skin-accent,var(--strong,#327cdd));width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden;background:var(--card);color:var(--text);font:13px/1.5 var(--font-ui,system-ui,"Microsoft YaHei",sans-serif)}
+.product-retouch-panel *{box-sizing:border-box}
+.product-retouch-panel [hidden]{display:none!important}
+.product-retouch-panel button,.product-retouch-panel select{min-height:32px;min-width:0;border:1px solid var(--line);border-radius:8px;background:var(--card);color:inherit;font:inherit;padding:4px 8px;cursor:pointer;transition:background 150ms,border-color 150ms}
+.product-retouch-panel button:hover:not(:disabled){background:var(--soft)}
+.product-retouch-panel :is(button,select):disabled{opacity:.5;cursor:default}
+.product-retouch-panel :is(button,select,input,textarea):focus-visible{outline:2px solid var(--pr-accent);outline-offset:2px}
+.product-retouch-panel select{width:100%;text-overflow:ellipsis}
+@supports (appearance:base-select) and selector(::picker(select)){
+    .product-retouch-panel select,.product-retouch-panel select::picker(select){appearance:base-select}
+    .product-retouch-panel select{align-items:center;gap:4px}
+    .product-retouch-panel select::picker-icon{
+        content:"";flex:none;inline-size:6px;block-size:6px;margin-inline:auto 3px;
+        border-inline-end:1.5px solid currentColor;border-block-end:1.5px solid currentColor;
+        color:var(--muted);transform:translateY(-1px) rotate(45deg);
+    }
+    .product-retouch-panel select:open::picker-icon{rotate:180deg}
+    .product-retouch-panel select::picker(select){
+        --pr-picker-min:144px;
+        box-sizing:border-box;inline-size:max-content;
+        min-inline-size:min(max(anchor-size(width, 0px),var(--pr-picker-min)),calc(100vw - 24px));
+        max-inline-size:min(384px,calc(100vw - 24px));max-block-size:min(320px,50vh);
+        margin-block:4px;padding:6px;border:1px solid var(--line);border-radius:12px;
+        background:var(--card);color:var(--text);box-shadow:var(--shadow16,0 8px 24px rgba(0,0,0,.16));
+        overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;
+    }
+    .product-retouch-panel [data-pr-model]::picker(select){--pr-picker-min:240px}
+    .product-retouch-panel [data-pr-model] selectedcontent{display:block;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+    .product-retouch-panel [data-pr-resolution]::picker(select){--pr-picker-min:80px}
+    .product-retouch-panel optgroup::before{display:block;padding:6px 8px 4px;color:var(--muted);font-size:.75rem;font-weight:600}
+    .product-retouch-panel optgroup+optgroup{margin-top:4px;padding-top:4px;border-top:1px solid var(--line)}
+    .product-retouch-panel option{
+        min-block-size:32px;padding:6px 8px;border-radius:8px;gap:8px;
+        font-weight:400;white-space:normal;overflow-wrap:anywhere;cursor:pointer;
+    }
+    .product-retouch-panel option:is(:hover,:focus-visible){background:var(--soft);outline:none}
+    .product-retouch-panel option:checked{background:color-mix(in srgb,var(--pr-accent) 12%,var(--card));font-weight:600}
+    .product-retouch-panel option:checked:is(:hover,:focus-visible){background:color-mix(in srgb,var(--pr-accent) 20%,var(--card))}
+    .product-retouch-panel option::checkmark{order:1;margin-inline-start:auto;color:var(--pr-accent)}
+}
+.product-retouch-panel .pr-scroll{flex:1;min-height:0;display:flex;flex-direction:column;gap:12px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--line) transparent;padding:12px 16px}
+.product-retouch-panel .pr-source{flex:1 0 auto;display:flex;flex-direction:column;gap:8px}
+.product-retouch-panel .pr-source-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:32px;font-weight:500}
+.product-retouch-panel .pr-source-head small{margin-left:6px;font-size:12px;font-weight:400;color:var(--muted);font-variant-numeric:tabular-nums}
+.product-retouch-panel .pr-preview-actions{display:flex;gap:4px}
+.product-retouch-panel .pr-preview-actions button{font-size:12px}
+.product-retouch-panel .pr-preview{position:relative;flex:1 0 112px;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.product-retouch-panel .pr-preview>img{position:absolute;inset:0;width:100%;height:100%;padding:8px;object-fit:contain}
+.product-retouch-panel .pr-empty{display:grid;justify-items:center;gap:8px;padding:12px;text-align:center}
+.product-retouch-panel .pr-preview:has(.pr-empty:not([hidden])){border-style:dashed}
+.product-retouch-panel .pr-scroll:has(.pr-plan-editor:not([hidden])){overflow:hidden;padding-bottom:28px}
+.product-retouch-panel .pr-scroll:has(.pr-plan-editor:not([hidden])) :is(.pr-source,.pr-setting-row){display:none}
+.product-retouch-panel .pr-inputs{display:flex;gap:6px;overflow-x:auto;padding:3px;margin:-3px}
+.product-retouch-panel .pr-inputs:empty{display:none}
+.product-retouch-panel .pr-inputs button{position:relative;flex-shrink:0;padding:2px;width:44px;height:44px}
+.product-retouch-panel .pr-inputs button[aria-pressed=true]{border-color:var(--pr-accent)}
+.product-retouch-panel .pr-inputs img{width:100%;height:100%;object-fit:contain}
+.product-retouch-panel .pr-inputs span{position:absolute;bottom:1px;right:3px;background:var(--card);font-size:12px;padding:0 3px}
+.product-retouch-panel .pr-backgrounds{display:flex;gap:4px}
+.product-retouch-panel .pr-backgrounds>button{flex:1;white-space:nowrap}
+.product-retouch-panel .pr-backgrounds>button[aria-pressed=true]{background:color-mix(in srgb,var(--pr-accent) 10%,var(--card));border-color:color-mix(in srgb,var(--pr-accent) 65%,var(--line));font-weight:500}
+.product-retouch-panel .pr-settings{flex:none;display:grid;gap:8px}
+.product-retouch-panel .pr-setting-row{display:grid;grid-template-columns:64px minmax(0,1fr);align-items:center;gap:8px}
+.product-retouch-panel .pr-setting-row>span{color:var(--muted)}
+.product-retouch-panel .pr-setting-row>label{color:var(--muted)}
+.product-retouch-panel .pr-plan-choice{display:flex;align-items:center;gap:6px;min-width:0}
+.product-retouch-panel .pr-plan-choice select{flex:1;width:0}
+.product-retouch-panel .pr-plan-choice button{flex:none}
+.product-retouch-panel .pr-settings:has(.pr-plan-editor:not([hidden])){display:flex;flex:1;min-height:0;flex-direction:column}
+.product-retouch-panel .pr-plan-editor{display:flex;flex:1;min-height:0;flex-direction:column}
+.product-retouch-panel .pr-plan-fields{display:flex;flex:1;min-height:0;flex-direction:column;gap:8px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--line) transparent;padding:4px;margin:-4px -4px 0}
+.product-retouch-panel .pr-plan-editor :is(input,textarea){width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--card);color:var(--text);font:13px/1.5 var(--font-ui,system-ui,"Microsoft YaHei",sans-serif)}
+.product-retouch-panel .pr-plan-editor textarea{field-sizing:content;flex:1 0 auto;min-height:64px;resize:none}
+.product-retouch-panel .pr-plan-editor [data-pr-plan-improve]{min-height:96px}
+.product-retouch-panel .pr-plan-actions{display:none;flex:none;gap:8px;justify-content:flex-end;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:12px}
+.product-retouch-panel .pr-settings:has(.pr-plan-editor:not([hidden])) .pr-plan-actions{display:flex}
+.product-retouch-panel .pr-plan-actions button{font-size:12px;min-height:32px}
+.product-retouch-panel .pr-plan-message:empty{display:none}
+.product-retouch-panel .pr-plan-message.is-error{color:var(--danger,#c84141)}
+.product-retouch-panel .pr-field{display:flex;flex-direction:column;gap:6px;margin:0 0 12px;font-size:12px;color:var(--muted)}
+.product-retouch-panel .pr-plan-editor .pr-field{flex:none;gap:4px;margin:0}
+.product-retouch-panel .pr-plan-editor .pr-field:has(textarea){flex:1 0 auto}
+.product-retouch-panel .pr-plan-editor .pr-field:has([data-pr-plan-improve]){flex-grow:2}
+.product-retouch-panel .pr-field>select{font-size:13px;color:var(--text)}
+.product-retouch-panel .pr-note{font-size:12px;color:var(--muted);line-height:1.5;margin:0}
+.product-retouch-panel .pr-text-button{padding:4px 8px;color:var(--text);font-size:12px}
+.product-retouch-panel footer{flex:none;border-top:1px solid var(--line);padding:12px 16px 26px;background:var(--card)}
+.product-retouch-panel .pr-generation{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.8fr) 68px;gap:8px;margin-bottom:12px}
+.product-retouch-panel:has(.pr-plan-editor:not([hidden])) footer{display:none}
+.product-retouch-panel .pr-generation .pr-field{min-width:0;margin:0}
+.product-retouch-panel footer [data-pr-model-retry]{margin-bottom:8px}
+.product-retouch-panel .pr-run-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.product-retouch-panel footer p{font-size:12px;color:var(--muted);margin:0 0 8px;overflow-wrap:anywhere}
+.product-retouch-panel footer p:empty{display:none}
+.product-retouch-panel footer p.is-error{color:var(--danger,#c84141)}
+.product-retouch-panel .pr-start{flex:1;min-height:36px;font-weight:600;background:var(--pr-accent);border-color:transparent;color:var(--on-accent,#fff)}
+.product-retouch-panel .pr-start:hover:not(:disabled){background:color-mix(in srgb,var(--pr-accent) 90%,#000)}
+.product-retouch-panel .pr-start:active:not(:disabled){transform:translateY(1px)}
+.product-retouch-review{position:absolute;left:8px;bottom:8px;z-index:3;border:1px solid var(--line);border-radius:6px;padding:5px 8px;background:var(--card);color:var(--text);font-size:12px;cursor:pointer}
+.product-retouch-review.has-difference{color:var(--warning,#e6b46c);border-color:currentColor}
+@media(prefers-reduced-motion:reduce){.product-retouch-panel button{transition:none}}

@@ -1726,29 +1726,27 @@ class AppLibrary:
         return self.read(identity)
 
     def backend(self, item=None, *, start=False):
-        if item and item.get('managed'):
-            try:
-                return self.runtime.address, self.runtime.info()
-            except requests.RequestException as exc:
-                if start:
+        managed = bool(item and item.get('managed'))
+        if not managed:
+            for address in self.host.COMFYUI_INSTANCES:
+                if re.fullmatch(r'(127\.0\.0\.1|localhost):\d+', address):
                     try:
-                        return self.runtime.address, self.runtime.start_existing()
-                    except (RuntimeError, OSError, requests.RequestException) as start_error:
-                        raise HTTPException(503, str(start_error)) from start_error
-                raise HTTPException(503, '应用独立环境未启动，请点击“准备运行环境”') from exc
-        for address in self.host.COMFYUI_INSTANCES:
-            if re.fullmatch(r'(127\.0\.0\.1|localhost):\d+', address):
-                try:
-                    response = requests.get(f'http://{address}/object_info', timeout=8)
-                    response.raise_for_status()
-                    return address, response.json()
-                except requests.RequestException:
-                    continue
+                        response = requests.get(f'http://{address}/object_info', timeout=8)
+                        response.raise_for_status()
+                        return address, response.json()
+                    except requests.RequestException:
+                        continue
         try:
             return self.runtime.address, self.runtime.info()
-        except requests.RequestException:
-            pass
-        raise HTTPException(503, '本地 ComfyUI 未连接。请启动本机服务后重新检查。')
+        except requests.RequestException as exc:
+            if start and (managed or (item and item.get('backend') == self.runtime.address)):
+                try:
+                    return self.runtime.address, self.runtime.start_existing()
+                except (RuntimeError, OSError, requests.RequestException) as start_error:
+                    raise HTTPException(503, str(start_error)) from start_error
+            if managed:
+                raise HTTPException(503, '应用独立环境未启动，请点击“准备运行环境”') from exc
+            raise HTTPException(503, '本地 ComfyUI 未连接。请启动本机服务后重新检查。') from exc
 
     def _graphs(self, item):
         graphs = []

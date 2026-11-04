@@ -1,4 +1,4 @@
-import { default as _default } from './app/photocraft-web.js';
+import { default as _default } from './app/photocraft-web.js?v=20261103-adapter-info-1';
 
 function __wbg_get_imports() {
     const import0 = {

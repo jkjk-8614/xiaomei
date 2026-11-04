@@ -5,8 +5,37 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
   <title>PhotoCraft</title>
   
+<script>
+(() => {
+  let failed = false;
+  function showStartupError(message) {
+    function render() {
+      const loading = document.getElementById('photocraft_loading');
+      if (!loading || failed) return;
+      failed = true;
+      loading.querySelector('p').textContent = 'PS 修图启动失败';
+      const detail = document.getElementById('photocraft_error');
+      detail.textContent = message;
+      detail.hidden = false;
+      document.getElementById('photocraft_stalled').style.visibility = 'visible';
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', render, { once: true });
+    } else {
+      render();
+    }
+  }
+  window.addEventListener('error', event => {
+    const resource = event.target && (event.target.src || event.target.href);
+    showStartupError(event.message || (resource ? '资源加载失败：' + resource : '页面加载失败'));
+  }, true);
+  window.addEventListener('unhandledrejection', event => {
+    showStartupError(event.reason && event.reason.message || String(event.reason));
+  });
+})();
+</script>
 <script type="module">
-import init, * as bindings from './photocraft-web-boot-251aa3764a2189ed.js';
+import init, * as bindings from './photocraft-web-boot-251aa3764a2189ed.js?v=20261103-adapter-info-1';
 const wasm = await init({ module_or_path: './photocraft-web-boot-251aa3764a2189ed_bg.wasm' });
 
 
@@ -23,19 +52,19 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
       padding: 0 16px; text-align: center; color: #b8b8b8; font: 14px system-ui, sans-serif; pointer-events: none; }
     #photocraft_loading p { margin: 0 0 8px; max-width: 420px; line-height: 1.5; }
     #photocraft_loading a { color: #e0e0e0; pointer-events: auto; }
+    #photocraft_error { overflow-wrap: anywhere; white-space: pre-wrap; }
     /* The app removes this element once it runs. If the WebAssembly never downloads or doesn't match
        this page, no Rust runs to say so, so the page itself shows what to do after a while. */
     #photocraft_stalled { color: #8c8c8c; visibility: hidden; animation: photocraft-stalled 0s 20s forwards; }
     @keyframes photocraft-stalled { to { visibility: visible; } }
   </style>
-<link rel="modulepreload" href="./photocraft-web-boot-251aa3764a2189ed.js" crossorigin="anonymous" integrity="sha384-yNt0bAtHUoay5vgElwlTAEVxV1J781ZltBC335HKI5bKcknXxxrIkiXbcQM+GbGp"><link rel="modulepreload" href="./snippets/eframe-d31a8450ea12dfc1/inline0.js" crossorigin="anonymous" integrity="sha384-uPZQ72BwgZ4v7Km6+UIFbkDDlt7ShGEsAVEHVN/+wZSGFhItJZB83iKMFQXauTSs"><link rel="preload" href="./photocraft-web-boot-251aa3764a2189ed_bg.wasm" crossorigin="anonymous" integrity="sha384-7H8M0aRaBozsu0hazfrz/JKaSPwSPYKVOtCLy8+lq+1+QCcT15jsL1UgSAR7xx2y" as="fetch" type="application/wasm"></head>
+<link rel="modulepreload" href="./photocraft-web-boot-251aa3764a2189ed.js?v=20261103-adapter-info-1" crossorigin="anonymous" integrity="sha384-xYmgqWrTF+VYO1QnxX+DtWwGRC5wx7mbfD/GV1KE5AFVMHQ8DQ5CKX9LWi611g9+"><link rel="modulepreload" href="./snippets/eframe-d31a8450ea12dfc1/inline0.js" crossorigin="anonymous" integrity="sha384-uPZQ72BwgZ4v7Km6+UIFbkDDlt7ShGEsAVEHVN/+wZSGFhItJZB83iKMFQXauTSs"><link rel="preload" href="./photocraft-web-boot-251aa3764a2189ed_bg.wasm" crossorigin="anonymous" integrity="sha384-7H8M0aRaBozsu0hazfrz/JKaSPwSPYKVOtCLy8+lq+1+QCcT15jsL1UgSAR7xx2y" as="fetch" type="application/wasm"></head>
 <body>
   <canvas id="photocraft_canvas"></canvas>
   <div id="photocraft_loading">
-    <p>Loading PhotoCraft&hellip;</p>
-    <p id="photocraft_stalled">This is taking longer than usual. If PhotoCraft doesn't start, its files may have failed to
-      download or come from a different version of this page. <a href="">Reload</a> to try again; the browser
-      console lists what failed.</p>
+    <p>正在加载 PS 修图&hellip;</p>
+    <p id="photocraft_error" role="alert" hidden></p>
+    <p id="photocraft_stalled">若长时间未打开，请<a href="">重新加载</a>；仍然失败时，请将此处的错误信息发给开发者。</p>
   </div>
 </body>
 </html>

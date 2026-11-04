@@ -3872,11 +3872,11 @@
     const kind = String(change?.kind || '');
     if (kind === 'visual_plan') {
       const segments = Array.isArray(after.segments) ? after.segments : [];
-      return segments.slice(0, 5).map((item, index) => `${index + 1}. ${String(item?.title || `方案 ${index + 1}`)}${item?.purpose ? `：${String(item.purpose)}` : ''}`).join('\n') || '将填充可编辑的分段提示词。';
+      return segments.slice(0, 5).map((item, index) => `${index + 1}. ${String(item?.title || `方案 ${index + 1}`)}${item?.purpose ? `：${String(item.purpose)}` : ''}`).join('\n') || '视觉方案保留在当前对话中。';
     }
-    if (kind === 'generation_batch') return (Array.isArray(after.prompts) ? after.prompts : []).slice(0, 5).map((item, index) => `${index + 1}. ${String(item)}`).join('\n') || '将进入现有批量生图草稿。';
+    if (kind === 'generation_batch') return (Array.isArray(after.prompts) ? after.prompts : []).slice(0, 5).map((item, index) => `${index + 1}. ${String(item)}`).join('\n') || '批量生图方案保留在当前对话中。';
     if (kind === 'listing_copy') return [after.title && `标题：${after.title}`, ...(Array.isArray(after.selling_points) ? after.selling_points.map((item) => `卖点：${item}`) : []), after.detail_copy && '详情文案已准备', after.customer_service && '客服话术已准备'].filter(Boolean).slice(0, 5).join('\n') || '将导出可编辑文案稿。';
-    if (kind === 'campaign_plan') return (Array.isArray(after.assets) ? after.assets : []).slice(0, 5).map((item, index) => `${index + 1}. ${String(item)}`).join('\n') || '将送到电商工作台继续制作。';
+    if (kind === 'campaign_plan') return (Array.isArray(after.assets) ? after.assets : []).slice(0, 5).map((item, index) => `${index + 1}. ${String(item)}`).join('\n') || '推广计划保留在当前对话中。';
     return '待确认方案。';
   }
   function merchantChangeCardMarkup(change = {}) {
@@ -3886,9 +3886,8 @@
     const evidence = Array.isArray(change?.evidence) ? change.evidence.slice(0, 5) : [];
     const title = String(after.title || merchantKindLabels[kind] || '经营方案');
     const summary = String(after.summary || '基于本次读取的商品资料整理，尚未执行。');
-    const actionLabel = kind === 'listing_copy' ? '导出修改稿' : kind === 'generation_batch' ? '送到批量生图' : kind === 'campaign_plan' ? '送到电商工作台' : '送到一键主图 / 详情页';
     const pendingActions = `<button type="button" data-merchant-change-action="edit" data-change-id="${escapeHtml(id)}">在对话中编辑</button><button type="button" data-merchant-change-action="approve" data-change-id="${escapeHtml(id)}">批准</button><button type="button" data-merchant-change-action="discard" data-change-id="${escapeHtml(id)}">丢弃</button>`;
-    const approvedActions = `<button type="button" data-merchant-change-action="apply" data-change-id="${escapeHtml(id)}">${escapeHtml(actionLabel)}</button><button type="button" data-merchant-change-action="discard" data-change-id="${escapeHtml(id)}">丢弃</button>`;
+    const approvedActions = `${kind === 'listing_copy' ? `<button type="button" data-merchant-change-action="apply" data-change-id="${escapeHtml(id)}">导出修改稿</button>` : ''}<button type="button" data-merchant-change-action="discard" data-change-id="${escapeHtml(id)}">丢弃</button>`;
     const actions = status === 'pending' ? pendingActions : status === 'approved' ? approvedActions : '';
     const evidenceHtml = evidence.length ? `<div class="merchant-change-evidence">${evidence.map((item) => `<span title="${escapeHtml(String(item?.locator || item?.label || item?.id || ''))}">${escapeHtml(String(item?.id || '证据'))}${item?.label ? ` · ${escapeHtml(String(item.label))}` : ''}</span>`).join('')}</div>` : '<div class="merchant-change-evidence"><span>证据未返回</span></div>';
     return `<article class="merchant-change-card is-${escapeHtml(status)}" data-merchant-change-card="${escapeHtml(id)}"><div class="merchant-change-head"><strong>${escapeHtml(title)}</strong><span class="merchant-change-status">${escapeHtml(merchantStatusLabels[status] || status)}</span></div><div class="merchant-change-body"><p><b>依据</b>\n${escapeHtml(summary)}</p><p><b>拟执行</b>\n${escapeHtml(merchantExecutionSummary(change))}</p>${evidenceHtml}</div>${actions ? `<div class="merchant-change-actions">${actions}</div>` : ''}</article>`;
@@ -3936,11 +3935,10 @@
       const body = action === 'approve' ? JSON.stringify({}) : action === 'discard' ? JSON.stringify({}) : undefined;
       const data = await api(`/api/merchant-agent/changes/${encodeURIComponent(id)}/${action}`, { method: 'POST', body });
       if (data?.change) replaceMerchantChangeCard(data.change);
-      if (action === 'approve') toast('方案已批准；仍需点击下一步送到工作台。');
+      if (action === 'approve') toast(data?.change?.kind === 'listing_copy' ? '方案已批准，可导出修改稿。' : '方案已批准并保留在当前对话中。');
       else if (action === 'discard') toast('方案已丢弃。');
       else if (action === 'apply') {
         if (data?.export?.content || data?.change?.kind === 'listing_copy') { downloadMerchantListingCopy(data.change); toast('已导出可编辑文案稿；不会写入店铺。'); }
-        if (data?.handoff?.change_id) { postParent({ type: 'merchant-change-handoff', change_id: data.handoff.change_id }); toast('已送到电商工作台，可继续核对和生成。'); }
       }
     } catch (error) { toast(error.message || '变更操作失败'); }
     finally { button.disabled = false; }

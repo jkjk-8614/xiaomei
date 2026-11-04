@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="/static/images/app-icon.ico?v=2026.11.02" type="image/x-icon">
+    <link rel="icon" href="/static/images/app-icon.ico?v=2026.11.04" type="image/x-icon">
     <title>小美画布</title>
     <style>
         html.studio-route-booting body {
@@ -18,14 +18,14 @@
             } catch(e) {}
         })();
     </script>
-    <script defer src="/static/vendor/js/tailwindcss-cdn.js?v=2026.11.02.1784161005"></script>
-    <script defer src="/static/js/theme.js?v=2026.11.02.1791335865"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.11.02.1792900345">
-    <script defer src="/static/js/i18n.js?v=2026.11.02.1793407807"></script>
-    <script src="/static/js/legacy-common.js?v=2026.11.02.1786170056"></script>
-<script defer src="/static/js/generation-notifications.js?v=2026.11.02.1787131165"></script>
+    <script defer src="/static/vendor/js/tailwindcss-cdn.js?v=2026.11.04.1784161005"></script>
+    <script defer src="/static/js/theme.js?v=2026.11.04.1791335865"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.11.04.1792900345">
+    <script defer src="/static/js/i18n.js?v=2026.11.04.1793778755"></script>
+    <script src="/static/js/legacy-common.js?v=2026.11.04.1786170056"></script>
+<script defer src="/static/js/generation-notifications.js?v=2026.11.04.1787131165"></script>
     <style>
-        @import url('/static/vendor/css/fonts.css?v=2026.10.29.1784161005');
+        @import url('/static/vendor/css/fonts.css?v=2026.11.04.1784161005');
 
         /* 本地 Tailwind 工具类兜底：CDN 慢/未就绪时也能立刻给图标尺寸，避免首屏左侧栏空白 */
         .w-1\.5 { width: 0.375rem; }
@@ -1773,10 +1773,11 @@
             }
         }
     </style>
-    <link rel="stylesheet" href="/static/css/workspace-polish.css?v=2026.11.02.1789456340">
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.11.02.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.11.02.1792843621">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.11.02.1790178173"></script>
+    <link rel="stylesheet" href="/static/css/workspace-polish.css?v=2026.11.04.1789456340">
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.11.04.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.11.04.1792843621">
+    <script src="/static/js/image-clipboard.js?v=2026.11.04.1793781409"></script>
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.11.04.1790178173"></script>
 </head>
 
 <body>
@@ -1815,12 +1816,6 @@
                         <path d="M4 19V5"></path><path d="M4 19h16"></path><path d="m7 15 3-4 3 2 5-6"></path><path d="M18 7h2v2"></path>
                     </svg>
                     <span class="nav-text">商品分析</span>
-                </div>
-                <div class="nav-item" onclick="switchUI(this, 'commerce')">
-                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M4 7h16"></path><path d="M5 7l1 13h12l1-13"></path><path d="M9 11v5"></path><path d="M15 11v5"></path><path d="M8 7l1-3h6l1 3"></path>
-                    </svg>
-                    <span class="nav-text">电商工作台</span>
                 </div>
                 <div class="nav-item" onclick="switchUI(this, 'product-3d')">
                     <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1932,6 +1927,10 @@
             (function(){
                 try {
                     var pageId = localStorage.getItem('studio_active_page');
+                    if(pageId === 'commerce') {
+                        pageId = 'canvas';
+                        localStorage.setItem('studio_active_page', pageId);
+                    }
                     if(pageId === 'task-manager') {
                         pageId = 'commerce-analysis';
                         localStorage.setItem('studio_active_page', pageId);
@@ -1955,17 +1954,16 @@
                 </div>
             </div>
 
-                    <iframe id="frame-online" data-src="/static/comfyui.html?v=2026.11.02" class="active" scrolling="yes"></iframe>
+                    <iframe id="frame-online" data-src="/static/comfyui.html?v=2026.11.04" class="active" scrolling="yes"></iframe>
         <div id="frame-gpt-chat" class="deepseek-route-placeholder" aria-hidden="true"></div>
-        <iframe id="frame-commerce" data-src="/static/commerce.html?v=2026.11.02.1793578699&image-cancel=2026.10.17.1" scrolling="yes"></iframe>
-                <iframe id="frame-commerce-analysis" data-src="/static/commerce-analysis.html?v=2026.11.02.1793578699" scrolling="yes"></iframe>
-        <iframe id="frame-product-3d" data-src="/static/product-3d.html?v=2026.11.02.1793578699" scrolling="yes"></iframe>
-            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=2026.11.02.1793578699" scrolling="yes"></iframe>
-            <iframe id="frame-inspiration" data-src="/static/inspiration.html?v=2026.11.02.1793578699" scrolling="yes" title="灵感案例"></iframe>
-            <iframe id="frame-design-brain" data-src="/static/design-brain.html?v=2026.11.02.1793578699&batch-resolution=2026.10.25.1" scrolling="yes" title="设计大脑"></iframe>
-            <iframe id="frame-photocraft" data-src="/static/photocraft/index.html?v=2026.11.02.1793408829" allow="fullscreen; clipboard-read; clipboard-write" allowfullscreen scrolling="yes" title="PS 修图"></iframe>
+                <iframe id="frame-commerce-analysis" data-src="/static/commerce-analysis.html?v=2026.11.04.1793750648" scrolling="yes"></iframe>
+        <iframe id="frame-product-3d" data-src="/static/product-3d.html?v=2026.11.04.1793750649" scrolling="yes"></iframe>
+            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=2026.11.04.1793791708" scrolling="yes"></iframe>
+            <iframe id="frame-inspiration" data-src="/static/inspiration.html?v=2026.11.04.1793750649" scrolling="yes" title="灵感案例"></iframe>
+            <iframe id="frame-design-brain" data-src="/static/design-brain.html?v=2026.11.04.1793750648&batch-resolution=2026.10.25.1" scrolling="yes" title="设计大脑"></iframe>
+            <iframe id="frame-photocraft" data-src="/static/photocraft/index.html?v=2026.11.04.1793693158" allow="fullscreen; clipboard-read; clipboard-write" allowfullscreen scrolling="yes" title="PS 修图"></iframe>
             <div id="historyDrawerScrim" class="history-drawer-scrim" hidden onclick="closeHistoryDrawer()"></div>
-            <iframe id="frame-history" class="history-drawer-frame" data-src="/static/history.html?v=2026.11.02.1793578699&drawer=1&outpaint-redraw=2026.10.16.1" scrolling="yes" title="历史记录"></iframe>
+            <iframe id="frame-history" class="history-drawer-frame" data-src="/static/history.html?v=2026.11.04.1793750648&drawer=1&outpaint-redraw=2026.10.16.1" scrolling="yes" title="历史记录"></iframe>
             <button id="historyDrawerClose" class="history-drawer-close" type="button" hidden onclick="closeHistoryDrawer()" aria-label="关闭历史记录">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
             </button>
@@ -1993,8 +1991,8 @@
         <div id="historyPreviewContextMenu" class="history-preview-context-menu" role="menu" aria-label="媒体操作" hidden>
             <button id="historyPreviewContextCopy" type="button" role="menuitem" onclick="copyHistoryPreviewFromContextMenu(event)"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>复制图片</span></button>
         </div>
-                <iframe id="frame-api-settings" data-src="/static/api-settings.html?v=2026.11.02.1793578699" scrolling="yes"></iframe>
-                <iframe id="frame-canvas" data-src="/static/canvas-list.html?v=2026.11.02.1793578699&image-model-picker=2026.09.27.3" scrolling="yes"></iframe>
+                <iframe id="frame-api-settings" data-src="/static/api-settings.html?v=2026.11.04.1793780199" scrolling="yes"></iframe>
+                <iframe id="frame-canvas" data-src="/static/canvas-list.html?v=2026.11.04.1793780199&image-model-picker=2026.09.27.3" scrolling="yes"></iframe>
 
                 <script>
                     /* PhotoCraft 内置编辑器默认界面语言：首次使用前预置简体中文；
@@ -2009,9 +2007,10 @@
                     /* 尽早启动上次页面，避免主窗口已显示但中央 iframe 仍是空白。 */
                     (function(){
                         try {
-                            var pageIds = ['online','gpt-chat','canvas','commerce','commerce-analysis','product-3d','asset-manager','inspiration','design-brain','photocraft','api-settings'];
+                            var pageIds = ['online','gpt-chat','canvas','commerce-analysis','product-3d','asset-manager','inspiration','design-brain','photocraft','api-settings'];
                             var savedId = localStorage.getItem('studio_active_page');
                             var launchId = new URLSearchParams(window.location.search).get('page');
+                            if(launchId === 'commerce') launchId = 'canvas';
                             if(launchId === 'task-manager') launchId = 'commerce-analysis';
                             var launchUsed = sessionStorage.getItem('xiaomei_launch_page_used') === '1';
                             var id = !launchUsed && pageIds.includes(launchId) ? launchId : savedId;
@@ -2176,7 +2175,7 @@
         const SIDEBAR_SETTINGS_RESTORE_KEY = 'studio_formal_sidebar_settings_restored_v1';
         const SIDEBAR_PINNED_KEY = 'studio_sidebar_pinned';
         const DEFAULT_PAGE_ID = 'online';
-        const PAGE_IDS = ['online','gpt-chat','canvas','commerce','commerce-analysis','product-3d','asset-manager','inspiration','design-brain','photocraft','api-settings'];
+        const PAGE_IDS = ['online','gpt-chat','canvas','commerce-analysis','product-3d','asset-manager','inspiration','design-brain','photocraft','api-settings'];
         const LOCAL_PAGE_IDS = [];
         const PROMPT_CASE_PENDING_KEY = 'studio_pending_prompt_case';
         const PROMPT_CASE_PENDING_TTL = 10 * 60 * 1000;
@@ -2410,59 +2409,11 @@
             button.setAttribute('aria-label','已复制图片');
             button._historyCopyTimer = setTimeout(() => resetHistoryPreviewCopyState(button),1600);
         }
-        async function historyImageBlobToPng(blob){
-            if(String(blob?.type || '').toLowerCase() === 'image/png') return blob;
-            const objectUrl = URL.createObjectURL(blob);
-            try{
-                const imageEl = await new Promise((resolve,reject) => {
-                    const image = new Image();
-                    image.onload = () => resolve(image);
-                    image.onerror = () => reject(new Error('图片解码失败'));
-                    image.src = objectUrl;
-                });
-                const canvasEl = document.createElement('canvas');
-                canvasEl.width = Math.max(1,imageEl.naturalWidth || imageEl.width || 1);
-                canvasEl.height = Math.max(1,imageEl.naturalHeight || imageEl.height || 1);
-                const context = canvasEl.getContext('2d');
-                if(!context) throw new Error('无法创建图片画布');
-                context.drawImage(imageEl,0,0,canvasEl.width,canvasEl.height);
-                const png = await new Promise(resolve => canvasEl.toBlob(resolve,'image/png'));
-                if(!png) throw new Error('无法转换图片格式');
-                return png;
-            }finally{ URL.revokeObjectURL(objectUrl); }
-        }
-        function historyPreviewElectronApi(){
-            if(window.electronAPI?.writeImageToClipboard) return window.electronAPI;
-            try{
-                if(window.parent && window.parent !== window && window.parent.electronAPI?.writeImageToClipboard){
-                    return window.parent.electronAPI;
-                }
-            }catch(error){}
-            return null;
-        }
-        async function loadHistoryPreviewImagePng(url){
-            const response = await fetch(url,{credentials:'same-origin'});
-            if(!response.ok) throw new Error(`图片读取失败（${response.status}）`);
-            const blob = await response.blob();
-            if(!/^image\//i.test(String(blob.type || ''))) throw new Error('读取到的内容不是图片');
-            return historyImageBlobToPng(blob);
-        }
         async function copyHistoryImage(url,button){
             if(!url || button?.disabled) return false;
             if(button) button.disabled = true;
             try{
-                const electron = historyPreviewElectronApi();
-                if(electron?.writeImageToClipboard){
-                    const png = await loadHistoryPreviewImagePng(url);
-                    const result = await electron.writeImageToClipboard(await png.arrayBuffer());
-                    if(!result?.ok) throw new Error(result?.message || '桌面剪贴板写入失败');
-                }else{
-                    const ClipboardItemCtor = window.ClipboardItem;
-                    if(!navigator.clipboard?.write || typeof ClipboardItemCtor !== 'function') throw new Error('当前浏览器不支持复制图片');
-                    // 在用户点击的同步调用栈内先发起写入，避免图片读取完成后失去临时授权。
-                    const pngPromise = loadHistoryPreviewImagePng(url);
-                    await navigator.clipboard.write([new ClipboardItemCtor({'image/png':pngPromise})]);
-                }
+                await window.StudioImageClipboard.writeImage(url);
                 markHistoryPreviewCopied(button);
                 return true;
             }catch(error){
@@ -2733,7 +2684,6 @@
             online: '正在打开 ComfyUI…',
             'gpt-chat': '正在打开 DeepSeek…',
             canvas: '正在打开小美画布…',
-            commerce: '正在打开电商工作台…',
             'commerce-analysis': '正在打开商品分析…',
             'product-3d': '正在打开 3D 软装…',
             'asset-manager': '正在打开资产管理…',
@@ -3094,16 +3044,6 @@
                 postToStudioFrame('canvas', { type:'smart-workflow-inbox' }, 60);
                 return;
             }
-            if(event.data?.type === 'merchant-change-handoff') {
-                const changeId = String(event.data.change_id || event.data.changeId || '').trim();
-                if(!/^[A-Za-z0-9_-]{8,120}$/.test(changeId)) return;
-                const commerceTrigger = document.querySelector(`[onclick*="'commerce'"],[onclick*='"commerce"']`);
-                switchUI(commerceTrigger, 'commerce');
-                // The payload deliberately carries only the opaque ledger ID.
-                // The workbench fetches the approved server record itself.
-                postToStudioFrame('commerce', { type:'merchant-change-handoff', change_id:changeId }, 60);
-                return;
-            }
             if(event.data?.type === 'commerce-shell-action') {
                 if(event.data.action === 'open-product' && event.data.url) {
                     try {
@@ -3195,10 +3135,11 @@
         function restoreActivePage() {
             restoreSidebarPinned();
             const savedId = localStorage.getItem(ACTIVE_PAGE_KEY);
-            const launchPage = new URLSearchParams(window.location.search).get('page');
+            const requestedLaunchPage = new URLSearchParams(window.location.search).get('page');
+            const launchPage = requestedLaunchPage === 'commerce' ? 'canvas' : requestedLaunchPage;
             const launchPageUsed = sessionStorage.getItem('xiaomei_launch_page_used') === '1';
             const useLaunchPage = !launchPageUsed && PAGE_IDS.includes(launchPage);
-            const restoredPage = savedId === 'task-manager' ? 'commerce-analysis' : savedId;
+            const restoredPage = savedId === 'commerce' ? 'canvas' : savedId === 'task-manager' ? 'commerce-analysis' : savedId;
             const id = useLaunchPage ? launchPage : (PAGE_IDS.includes(restoredPage) ? restoredPage : DEFAULT_PAGE_ID);
             if (useLaunchPage) sessionStorage.setItem('xiaomei_launch_page_used', '1');
             if(savedId !== id) localStorage.setItem(ACTIVE_PAGE_KEY, id);
@@ -4198,8 +4139,8 @@
         }
 
     </script>
-    <link rel="stylesheet" href="/static/css/mcp-settings.css?v=2026.11.02.1789283121">
-    <script src="/static/js/mcp-settings.js?v=2026.11.02.1792660078"></script>
+    <link rel="stylesheet" href="/static/css/mcp-settings.css?v=2026.11.04.1789283121">
+    <script src="/static/js/mcp-settings.js?v=2026.11.04.1792660078"></script>
 </body>
 
 </html>

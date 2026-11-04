@@ -11,18 +11,18 @@
             } catch(e) {}
         })();
     </script>
-    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.11.02.1784161005"></script>
-    <script src="/static/vendor/js/lucide.js?v=2026.11.02.1784161005"></script>
-    <script src="/static/vendor/js/qrcode-generator-2.0.4.js?v=2026.11.02.499162500"></script>
-    <script src="/static/vendor/js/qrcode-generator-utf8-2.0.4.js?v=2026.11.02.499162500"></script>
-    <script src="/static/js/theme.js?v=2026.11.02.1791335865"></script>
-    <script src="/static/js/i18n.js?v=2026.11.02.1801000000"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.11.02.1792900345">
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.11.02.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.11.02.1792843621">
-    <link rel="stylesheet" href="/static/css/api-settings.css?v=2026.11.02.1801000000">
-    <link rel="stylesheet" href="/static/css/api-recommendations.css?v=2026.11.02.1793356450">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.11.02.1790178173"></script>
+    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.11.04.1784161005"></script>
+    <script src="/static/vendor/js/lucide.js?v=2026.11.04.1784161005"></script>
+    <script src="/static/vendor/js/qrcode-generator-2.0.4.js?v=2026.11.04.499162500"></script>
+    <script src="/static/vendor/js/qrcode-generator-utf8-2.0.4.js?v=2026.11.04.499162500"></script>
+    <script src="/static/js/theme.js?v=2026.11.04.1791335865"></script>
+    <script src="/static/js/i18n.js?v=2026.11.04.1793778755"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.11.04.1792900345">
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.11.04.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.11.04.1792843621">
+    <link rel="stylesheet" href="/static/css/api-settings.css?v=2026.11.04.1793586015">
+    <link rel="stylesheet" href="/static/css/api-recommendations.css?v=2026.11.04.1793356450">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.11.04.1790178173"></script>
 </head>
 <body>
     <div class="page">
@@ -424,6 +424,7 @@
                     <button class="picker-cat-tab" data-cat="chat" onclick="selectPickerCat('chat')">LLM <span class="cat-count">0</span></button>
                     <button class="picker-cat-tab" data-cat="video" onclick="selectPickerCat('video')">视频 <span class="cat-count">0</span></button>
                 </div>
+                <button id="pickerSelectAllBtn" class="action-btn" type="button" data-i18n="bulk.selectAll" onclick="selectAllPickerModels()" disabled>全选</button>
             </div>
             <div id="pickerList" class="picker-body"></div>
             <div id="pickerSummary" class="picker-summary">
@@ -522,7 +523,7 @@
         </div>
     </div>
 
-    <script src="/static/js/api-settings.js?v=2026.11.02.1801000000"></script>
-    <script src="/static/js/api-recommendations.js?v=2026.11.02.1793356500"></script>
+    <script src="/static/js/api-settings.js?v=2026.11.04.1793777869"></script>
+    <script src="/static/js/api-recommendations.js?v=2026.11.04.1793356500"></script>
 </body>
 </html>

@@ -41,6 +41,9 @@ def capabilities(provider, model, protocol, request_mode, transport_limit=16):
     known_route = transport in {'google-generate-content', 'openai-images', 'codex', 'openai-json', 'openai-responses'}
     supported = known_route and (gpt or google or alias)
     legacy = name in {'gemini-2.5-flash-image', 'gemini-2.5-flash-image-preview', 'nano-banana'}
+    ratios = RATIOS + ['1:4', '4:1', '1:8', '8:1'] if name.removesuffix('-preview') in {
+        'gemini-3.1-flash-image', 'gemini-nano-banana-2.1', 'nano-banana-2', 'nano-banana-2.1',
+    } else RATIOS
     lite = 'lite' in name
     pro = 'pro' in name
     limit = 16 if gpt else (14 if google and not legacy else None)
@@ -58,7 +61,7 @@ def capabilities(provider, model, protocol, request_mode, transport_limit=16):
                 maskEditMode='native-raster-mask' if gpt and transport == 'openai-images' else 'semantic-only' if google or alias else 'none',
                 maskAppliesToFirstImage=bool(gpt and transport == 'openai-images'),
                 nativeMaskUsed=False, supportsTransparentOutput=bool(gpt and '2.5' in name),
-                supportedAspectRatios=RATIOS if google or alias else [],
+                supportedAspectRatios=ratios if google or alias else [],
                 supportedOutputSizes=(['1K'] if legacy or lite else ['1K', '2K', '4K']) if google or alias else ['auto', 'pixel-dimensions'],
                 availableQualities=(['auto', 'low', 'medium', 'high', 'xhigh', 'max'] if '2.5' in name else ['auto', 'low', 'medium', 'high']) if gpt else [],
                 supportsNativeControlNet=False, supportsNativeDepthControl=False,
@@ -182,7 +185,7 @@ def normalize(raw):
     if scope not in {'background', 'lighting', 'material', 'view'}:
         raise ValueError('允许变化范围无效')
     if raw['mode'] != 'view' and (scope == 'view' or view_changed):
-        raise ValueError('改变视角请切换视角保真，结构模式仅支持同视角约束')
+        raise ValueError('指定拍摄角度请切换为「换拍摄角度」；光影融合由 AI 自由决定机位')
     tolerance = float(raw['validation'].get('ratioTolerancePct', 5))
     if not 1 <= tolerance <= 20:
         raise ValueError('实验比例误差阈值应为 1–20%')
@@ -481,6 +484,9 @@ def preprocess(refs, config, caps, resolve, save):
 
 def prompt_for(prompt, context):
     config = context['config']
+    view = config['view']
+    view_specified = config['mode'] == 'view' and (view['mode'] != 'keep' or
+        any(float(view[key]) for key in ('yaw', 'pitch', 'roll')) or view['framing'] != 'medium' or view['fov'] != 50)
     lines = [prompt, '产品保真参考说明：']
     category = config.get('categoryCustom') if config.get('category') == 'other' else PRODUCT_CATEGORIES.get(config.get('category'))
     geometry = config.get('geometryCustom') if config.get('geometry') == 'custom' else PRODUCT_GEOMETRIES.get(config.get('geometry'))
@@ -503,8 +509,14 @@ def prompt_for(prompt, context):
     scope = config['generation'].get('allowedEdits', 'view' if config['mode']=='view' else 'lighting' if config['mode']=='structure' else 'background')
     if scope not in scopes:
         raise ValueError('允许变化范围无效')
+    if scope == 'view' and not view_specified:
+        scope = 'lighting'
     if config['generation'].get('enabled', True) or config['mode']=='strict':
         lines.append(scopes[scope])
+        if config['mode'] != 'strict' and scope in {'lighting', 'view'}:
+            lines.append('根据场景统一商品受光方向、明暗、色温与接触阴影，让商品与背景光影自然融合；保持商品固有颜色和材质特征。')
+    if config['mode'] != 'strict' and not view_specified and scope == 'lighting':
+        lines.append('未指定拍摄角度时，根据绘画要求与场景自由决定机位、产品朝向、透视和构图，并自然融合光影；不锁定原图机位。保持同一商品的真实结构、固有颜色、材质、标识和部件关系。')
     lines.append('保持真实产品身份，不增删 LOGO、文字、接口或部件。')
     if config['mode'] == 'strict':
         position = '将原图等比放入目标画幅并居中后的产品位置' if fit_output else '产品原位置'
@@ -516,7 +528,7 @@ def prompt_for(prompt, context):
     for flag, instruction in dict(lockRatio='保持产品实体长宽比例', lockOutline='保持产品外轮廓', lockLines='保持真实直线、四角和矩形边界', lockSymmetry='保持已有对称结构', lockLayout='保持部件相对布局').items():
         if config['structure'].get(flag):
             lines.append(instruction + '（普通参考约束，不是模型原生控制参数）。')
-    if config['mode'] == 'view':
+    if view_specified:
         view = config['view']
         yaw, pitch, roll = (float(view[key]) for key in ('yaw', 'pitch', 'roll'))
         framing = dict(closeup='特写', close='近景', medium='中景', full='全景', wide='远景')[view['framing']]

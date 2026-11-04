@@ -4522,6 +4522,7 @@ function renderModelPicker(){
         return pickerState.category[id] === currentTab;
     });
     pickerVisibleIds = list;
+    document.getElementById('pickerSelectAllBtn').disabled = list.every(id => pickerState.selected[id]);
     document.getElementById('pickerCount').textContent = `共 ${totals.all} 个模型 · 当前显示 ${list.length} 个`;
     document.querySelectorAll('.picker-cat-tab').forEach(tab => {
         const cat = tab.dataset.cat;
@@ -4564,6 +4565,10 @@ function togglePickerRowByIndex(index){
     const id = pickerVisibleIds[index];
     if(typeof id !== 'string') return;
     togglePickerRow(id);
+}
+function selectAllPickerModels(){
+    pickerVisibleIds.forEach(id => { pickerState.selected[id] = true; });
+    renderModelPicker();
 }
 function selectPickerCat(cat){
     document.querySelectorAll('.picker-cat-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === cat));

@@ -315,7 +315,9 @@ class DeepSeekHarnessUpdater {
           if (!sameFileContents(source, target)) throw new Error(`未跟踪适配文件与上游冲突：${rel}`);
         }
       } finally {
-        fs.rmSync(probeDir, { recursive: true, force: true });
+        // Windows may briefly lock Git's files. A cleanup failure must not
+        // replace the preflight result or prevent an otherwise valid update.
+        await fs.promises.rm(probeDir, { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
       }
       worktreeChanged = true;
       for (const rel of check.untracked_files || []) {

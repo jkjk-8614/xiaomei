@@ -1131,7 +1131,13 @@ function __wbg_get_imports() {
             console.info(getStringFromWasm0(arg0, arg1));
         },
         __wbg_info_971d8b9db3dae69f: function(arg0) {
-            const ret = arg0.info;
+            // Some embedded Chromium versions expose WebGPU without GPUAdapter.info.
+            const ret = arg0.info || {
+                vendor: '',
+                architecture: '',
+                device: '',
+                description: 'WebGPU adapter'
+            };
             return ret;
         },
         __wbg_inlineSize_edbf0c52598aa763: function(arg0) {

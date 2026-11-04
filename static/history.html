@@ -11,9 +11,9 @@
             if(params.get('manager') === '1') document.documentElement.classList.add('manager-mode');
         } catch(e) {}
     </script>
-    <script src="/static/vendor/js/lucide.js?v=2026.11.02.1784161005"></script>
-    <script src="/static/js/theme.js?v=2026.11.02.1791335865"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.11.02.1792900345">
+    <script src="/static/vendor/js/lucide.js?v=2026.11.04.1784161005"></script>
+    <script src="/static/js/theme.js?v=2026.11.04.1791335865"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.11.04.1792900345">
     <style>
         *{box-sizing:border-box}
         :root{--bg:#f7faf6;--card:#fff;--text:#111827;--muted:#8993a4;--line:#e5ebe4;--soft:#eef5ec;--accent:#111827;--danger:#d94b4b}
@@ -171,7 +171,7 @@
         html.manager-mode .toolbar{min-width:0;justify-content:flex-end;align-content:center;row-gap:8px}
         html.manager-mode .search{width:260px}
         html.manager-mode .manage-open-button{display:none}
-        html.manager-mode .filters > .filter[data-type="all"],html.manager-mode .filters > .filter[data-type="chat"],html.manager-mode .filters > .filter[data-type="canvas"],html.manager-mode .filters > .filter[data-type="comfyui"],html.manager-mode .filters > .filter[data-type="commerce"],html.manager-mode .filters > .filter[data-type="video"]{display:none}
+        html.manager-mode .filters > .filter[data-type="all"],html.manager-mode .filters > .filter[data-type="chat"],html.manager-mode .filters > .filter[data-type="canvas"],html.manager-mode .filters > .filter[data-type="comfyui"],html.manager-mode .filters > .filter[data-type="video"]{display:none}
         html.manager-mode .manager-media-filters{display:flex}
         html.manager-mode .history-sort-controls{display:flex}
         html.manager-mode .manager-sidebar-project-heading{padding-top:22px}
@@ -341,9 +341,9 @@
             html.manager-mode body > .page > .filters{padding:10px 16px !important}
         }
     </style>
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.11.02.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.11.02.1792843621">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.11.02.1790178173"></script>
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.11.04.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.11.04.1792843621">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.11.04.1790178173"></script>
 </head>
 <body>
     <div class="page">
@@ -368,9 +368,6 @@
             </button>
             <button class="manager-filter" type="button" data-manager-source="comfyui" onclick="setManagerSourceFilter(this)">
                 <i data-lucide="box"></i><span>ComfyUI 工作台</span><b id="managerComfyuiCount">0</b>
-            </button>
-            <button class="manager-filter" type="button" data-manager-source="commerce" onclick="setManagerSourceFilter(this)">
-                <i data-lucide="shopping-bag"></i><span>电商工作台</span><b id="managerCommerceCount">0</b>
             </button>
             <div class="history-manager-sidebar-heading manager-sidebar-project-heading">按项目</div>
             <div id="managerProjectFilters" class="manager-project-filters"></div>
@@ -398,7 +395,6 @@
             <button class="filter" data-type="chat" onclick="setFilter(this)">DeepSeek 对话</button>
             <button class="filter" data-type="canvas" onclick="setFilter(this)">小美画布</button>
             <button class="filter" data-type="comfyui" onclick="setFilter(this)">ComfyUI 工作台</button>
-            <button class="filter" data-type="commerce" onclick="setFilter(this)">电商工作台</button>
             <button class="filter" data-type="video" onclick="setFilter(this)">视频</button>
             <div class="manager-media-filters" aria-label="媒体类型">
                 <button class="manager-media-filter active" type="button" data-media-type="all" onclick="setMediaFilter(this)">全部</button>
@@ -480,7 +476,7 @@
 
         const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
         const VIDEO_URL_RE = /\.(mp4|webm|mov|m4v|avi|mkv|flv)(?:[?#].*)?$/i;
-        const GROUP_LABELS = {online:'生成记录',chat:'DeepSeek 对话',canvas:'小美画布',comfyui:'ComfyUI 工作台',commerce:'电商工作台',design_brain:'设计大脑',video:'视频'};
+        const GROUP_LABELS = {online:'生成记录',chat:'DeepSeek 对话',canvas:'小美画布',comfyui:'ComfyUI 工作台',design_brain:'设计大脑',video:'视频'};
         const COMFYUI_PROJECT_ID = '__comfyui__';
         const UNASSIGNED_PROJECT_ID = '__unassigned__';
         function mediaUrl(value){
@@ -1244,7 +1240,7 @@
             if(element) element.textContent = String(value);
         }
         function updateManagerCounts(){
-            const counts = {all:allRecords.length, recent:0, failed:0, chat:0, canvas:0, comfyui:0, commerce:0};
+            const counts = {all:allRecords.length, recent:0, failed:0, chat:0, canvas:0, comfyui:0};
             allRecords.forEach(item => {
                 if(recordIsRecent(item)) counts.recent += 1;
                 if(recordIsFailed(item)) counts.failed += 1;
@@ -1257,7 +1253,6 @@
             setManagerCount('managerChatCount', counts.chat);
             setManagerCount('managerCanvasCount', counts.canvas);
             setManagerCount('managerComfyuiCount', counts.comfyui);
-            setManagerCount('managerCommerceCount', counts.commerce);
             renderManagerProjectFilters();
         }
         function historyManagerEnabled(){

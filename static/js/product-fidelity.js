@@ -119,6 +119,7 @@ function createProductFidelityNodeAt(point,options={}){
     const top=clientToWorldPoint(0,76).y,bottom=clientToWorldPoint(0,window.innerHeight-20).y;
     if(bottom-top>=height)node.y=Math.max(top,Math.min(node.y,bottom-height));
     normalizeProductFidelityNode(node);
+    fidelityChangeMode(node.fidelityConfig,'structure');
     node.fidelityConfig.detail.autoCrops=true;
     render();updateComposer();scheduleSave();
     return node;
@@ -133,7 +134,7 @@ function fidelityChangeMode(config,mode){
     config.mode=mode;config.generation.allowedEdits=mode==='strict'?'background':mode==='view'?'view':'lighting';
     if(mode!=='view')config.view.enabled=false;
     if(mode==='view'){
-        config.view.enabled=true;config.view.mode='target';config.detail.restoreMode='off';
+        config.view.enabled=true;config.detail.restoreMode='off';
         if(config.dimensions.enabled&&config.dimensions.constraintMode==='protect')config.dimensions.constraintMode='prompt';
     }
 }
@@ -163,7 +164,7 @@ function fidelityConfigurationWarning(config,effective){
 function fidelityHasCustomSettings(config){
     const base=productFidelityDefaults();
     fidelityChangeMode(base,config.mode);
-    return ['category','categoryCustom','geometry','geometryCustom','structure.lockRatio','structure.lockOutline','structure.lockLines','structure.lockSymmetry','structure.lockLayout','detail.inputMode','detail.cropCount','detail.restoreMode','detail.restoreStrength','view.yaw','view.pitch','view.roll','view.framing','view.fov','generation.allowedEdits','validation.enabled','validation.ratioTolerancePct','advanced.enabled','maskFeatherPx','alignmentThreshold'].some(key=>fidelityGetValue(config,key)!==fidelityGetValue(base,key));
+    return ['category','categoryCustom','geometry','geometryCustom','structure.lockRatio','structure.lockOutline','structure.lockLines','structure.lockSymmetry','structure.lockLayout','detail.inputMode','detail.cropCount','detail.restoreMode','detail.restoreStrength','generation.allowedEdits','validation.enabled','validation.ratioTolerancePct','advanced.enabled','maskFeatherPx','alignmentThreshold'].some(key=>fidelityGetValue(config,key)!==fidelityGetValue(base,key));
 }
 function fidelityConfirmReplacement(message){
     return new Promise(resolve=>{
@@ -356,6 +357,11 @@ function fidelityReferenceLabel(ref,index){
     return !name||/^(?:\d{13,}|[a-f\d]{24,}|[a-f\d-]{36})(?:\.[a-z\d]+)?$/i.test(name)?'产品图 '+(index+1):name;
 }
 const FIDELITY_VIEW_FRAMING={closeup:'特写',close:'近景',medium:'中景',full:'全景',wide:'远景'};
+const FIDELITY_MODE_CHOICES=[['strict','仅换背景','保留标记区原图，保持原机位和商品原有光照。'],['structure','光影融合','AI 自由决定拍摄角度与构图，融合商品与场景的受光、色温和阴影；颜色和细节可能变化。'],['view','换拍摄角度','按指定机位重绘并融合场景光影；未见面由 AI 推测。']];
+function fidelityHasSpecifiedView(config){
+    const view=config.view;
+    return Boolean(config.mode==='view'&&view.enabled&&(view.mode!=='keep'||['yaw','pitch','roll'].some(key=>Number(view[key])!==0)||view.framing!=='medium'||Number(view.fov)!==50));
+}
 function fidelityViewSummary(view){
     const yaw=Number(view?.yaw)||0,pitch=Number(view?.pitch)||0,roll=Number(view?.roll)||0;
     const direction=Math.abs(yaw)===180?'反向机位 180°':Math.abs(yaw)<1?'原图机位':`相机向${yaw<0?'左':'右'} ${Math.abs(yaw)}°`;
@@ -376,7 +382,7 @@ function productFidelityNodeBodyHtml(node){
     const current=refs.find(ref=>config.referenceIds[ref.url]===config.productReferenceId);
     const assets=fresh?previous.generatedAssets||[]:[];
     const productChoices=[...(!current?[[config.productReferenceId||'',refs.length?'请重新选择产品主图':'请先连接产品图片']]:[]),...refs.map((ref,index)=>[config.referenceIds[ref.url],fidelityReferenceLabel(ref,index)])];
-    const modeChoices=[['strict','仅换背景','保留标记区原图，保持原机位'],['structure','光影融合','同角度调整光照，颜色和细节可能变化'],['view','换拍摄角度','按新机位重绘，未见面由 AI 推测']];
+    const modeChoices=FIDELITY_MODE_CHOICES;
     const dimensions=config.dimensions;
     const simpleDimension=(key,label)=>`<label class="pf-simple-dimension"><span>${label}</span><input type="number" min="0" step="any" data-pf-simple-dimension="${key}" value="${dimensions[key]===null?'':escapeAttr(Number(XiaomeiPhysicalDimensions.convertFromMillimeters(dimensions[key],dimensions.unit).toPrecision(12)))}" placeholder="未知"></label>`;
     return `<div class="pf-workbench" data-pf-root>
@@ -393,10 +399,10 @@ function productFidelityNodeBodyHtml(node){
             </div>
             <div class="pf-roi-list" data-pf-rois></div><details class="pf-asset-panel" hidden ${assets.length?'open':''}><summary>查看保护参考图 <span data-pf-asset-count>${assets.filter(asset=>asset.role!=='product-mask').length} 张</span></summary><p class="pf-help" data-pf-assets-empty ${assets.some(asset=>asset.role!=='product-mask')?'hidden':''}>点击底部「生成保护参考图」后可在这里查看。</p><div class="pf-assets" data-pf-assets>${assets.filter(asset=>asset.role!=='product-mask').map(asset=>fidelityAssetHtml(asset,fidelityAssetLabel(asset))).join('')}</div></details>
         </div><div class="pf-settings-column"><div class="pf-settings-content">
-            <div class="pf-simple" data-pf-ui-panel="simple" role="tabpanel" id="pf-ui-panel-${escapeAttr(node.id)}-simple" aria-labelledby="pf-ui-${escapeAttr(node.id)}-simple"><h2>3. 选择出图方式</h2><div class="pf-preset-list">${modeChoices.map(([mode,label,description])=>`<button type="button" class="pf-preset" data-pf-preset="${mode}" aria-pressed="${config.mode===mode}"><span class="pf-preset-radio" aria-hidden="true"></span><span><strong>${label}</strong><small>${description}</small></span></button>`).join('')}</div>
-                <div class="pf-mode-explanation" data-pf-mode-explanation role="status" aria-live="polite"><strong class="pf-sr-only" data-pf-mode-title></strong><div class="pf-mode-view" data-pf-mode-view hidden><span data-pf-simple-view-summary></span><button type="button" data-pf-simple-view-open>设置拍摄角度</button></div><p class="pf-mode-next" data-pf-mode-next hidden></p></div>
+            <div class="pf-simple" data-pf-ui-panel="simple" role="tabpanel" id="pf-ui-panel-${escapeAttr(node.id)}-simple" aria-labelledby="pf-ui-${escapeAttr(node.id)}-simple"><h2>3. 选择出图方式</h2><div class="pf-preset-list" role="group" aria-label="出图方式">${modeChoices.map(([mode,label,description])=>`<button type="button" class="pf-preset" data-pf-preset="${mode}" aria-pressed="${config.mode===mode}" aria-describedby="pf-mode-description-${escapeAttr(node.id)}"><span class="pf-preset-radio" aria-hidden="true"></span><strong>${label}</strong></button>`).join('')}</div>
+                <div class="pf-mode-explanation" data-pf-mode-explanation><div role="status" aria-live="polite"><strong class="pf-sr-only" data-pf-mode-title></strong><p class="pf-mode-description" id="pf-mode-description-${escapeAttr(node.id)}" data-pf-mode-description>${escapeHtml(modeChoices.find(([mode])=>mode===config.mode)?.[2]||'')}</p></div><div class="pf-mode-view" data-pf-mode-view hidden><div><span class="pf-view-label">拍摄角度</span><strong data-pf-simple-view-summary></strong></div><button type="button" data-pf-simple-view-open>设置拍摄角度</button></div><p class="pf-mode-next" data-pf-mode-next hidden></p></div>
                 <p class="pf-custom-warning" data-pf-custom-warning hidden>当前含微调参数，切换方式前会提示关联调整。</p>
-                <div class="pf-simple-options"><label class="pf-simple-toggle" data-pf-fit-option><span><strong>适配出图画幅</strong><small>产品等比缩放居中，画幅跟随下游设置</small></span><input type="checkbox" data-pf-simple-fit ${config.fitOutputCanvas?'checked':''}></label><label class="pf-simple-toggle"><span><strong>保护文字和花纹</strong><small>为 Logo、标签、纹理增加细节参考</small></span><input type="checkbox" data-pf-simple-detail ${config.detail.enabled?'checked':''}></label><label class="pf-simple-toggle"><span><strong>填写商品实物尺寸</strong><small>宽、高与尺寸单位</small></span><input type="checkbox" data-pf-simple-dimensions ${dimensions.enabled?'checked':''}></label></div>
+                <div class="pf-simple-options"><label class="pf-simple-toggle" data-pf-fit-option><span><strong>适配出图画幅</strong><small>产品等比缩放居中，画幅跟随下游设置</small></span><input type="checkbox" data-pf-simple-fit ${config.fitOutputCanvas?'checked':''}></label><label class="pf-simple-toggle"><span><strong>保护文字和花纹</strong><small data-pf-simple-detail-note>增加细节参考，生成后仍需核对</small></span><input type="checkbox" data-pf-simple-detail ${config.detail.enabled?'checked':''}></label><label class="pf-simple-toggle"><span><strong>填写商品实物尺寸</strong><small>宽、高与尺寸单位</small></span><input type="checkbox" data-pf-simple-dimensions ${dimensions.enabled?'checked':''}></label></div>
                 <div class="pf-simple-dimensions" data-pf-simple-dimensions-content ${dimensions.enabled?'':'hidden'}><div class="pf-simple-dimensions-grid">${simpleDimension('width','宽')}${simpleDimension('height','高')}<label class="pf-simple-dimension"><span>单位</span><select data-pf-simple-dimension="unit">${[['mm','毫米'],['cm','厘米'],['m','米'],['in','英寸']].map(([unit,label])=>`<option value="${unit}" ${dimensions.unit===unit?'selected':''}>${label}</option>`).join('')}</select></label></div><p data-pf-simple-dimension-error role="status"></p></div>
                 <p class="pf-simple-note" data-pf-simple-note></p>
             </div>
@@ -405,7 +411,7 @@ function productFidelityNodeBodyHtml(node){
                 ${group('identity','这是什么商品？',section('01','identification','商品信息','启用',select('category','商品类目',[['auto','不指定／请选择类目'],['textile','地毯／布艺／家纺'],['clothing','服装／鞋帽'],['bag','箱包／皮具'],['furniture','家具／家居摆件'],['frame','相框／装饰画'],['box','包装盒'],['cylinder','瓶罐／杯具'],['beauty','美妆／个护'],['jewelry','珠宝／饰品'],['electronics','电子数码'],['appliance','家用电器'],['food','食品／饮料'],['toy','玩具／文具'],['other','其他商品（手动填写）']])+custom('categoryCustom','填写商品名称','例如：入户门垫、宠物窝',config.category==='other')+select('geometry','商品外形',[['auto','不指定形状'],['plane','平整表面（如画框／地毯）'],['circle','圆形平面'],['oval','椭圆形平面'],['polygon','多边形平面'],['box','立体方盒'],['cylinder','圆柱体（如瓶罐）'],['cone','上窄下宽／收口形'],['sphere','球体'],['curved','弧面／曲面'],['soft','软质／可折叠'],['other','不规则异形'],['custom','手动描述形状']])+custom('geometryCustom','描述商品形状','例如：半圆门垫、带提手的异形瓶',config.geometry==='custom')))}
                 ${group('shape','商品怎么保持形状？',section('02','structure','形状保护','启用',fidelityMaskSelectHtml(node)+help('灰色涂抹和黑白保护图是什么关系？','<p class="pf-help">左侧半透明灰色只是保护区预览，生成黑白保护图时，涂抹的地方是白色（保留原图），未涂抹的地方是黑色（可改变）。也可导入与主图同尺寸的黑白保护图。</p>')+`<div class="pf-checks">${check('structure.lockRatio','保持长宽比例')}${check('structure.lockOutline','保持外轮廓')}${check('structure.lockLines','保持边缘直线')}${check('structure.lockSymmetry','保持左右对称')}${check('structure.lockLayout','保持商品部件位置')}</div>`))}
                 ${group('detail','Logo、文字与纹理',section('03','detail','细节参考','启用',select('detail.inputMode','细节参考方式',[['original','只用商品原图'],['highpass','增加表面纹理参考图'],['crops','增加局部细节图'],['combined','纹理图＋局部细节图']])+`<details class="pf-options" data-pf-crop-options><summary>重点细节框（Logo、标签文字）</summary>${check('detail.autoCrops','按纹理自动寻找候选区域')}${number('detail.cropCount','最多提取几处细节',0,3,1,'张')}<div class="pf-secondary-actions"><button type="button" data-pf-action="auto-crops">寻找细节并预览</button><button type="button" data-pf-action="manual-rois">自己框选细节</button></div><p class="pf-help">自动选区按图像纹理和边缘寻找，不识别 Logo 或文字；请检查后使用。点击下方裁切预览可定位；在左图拖动或缩放，按 Delete 删除后可重新圈选。</p></details><details class="pf-options"><summary>出图后恢复原图纹理</summary>${select('detail.restoreMode','纹理如何处理',[['off','不贴回原图纹理'],['auto','可靠对齐后恢复原图纹理']])}<label class="pf-field"><span>原图纹理叠加强度</span><span class="pf-range"><small>少量</small><input type="range" min="0" max="1" step=".05" data-pf-field="detail.restoreStrength" value="${config.detail.restoreStrength}"><small>较多</small></span></label><p class="pf-help" data-pf-restore-note></p></details>`))}
-                ${group('angle','商品拍摄角度',section('05','view','调整拍摄角度','启用',`<div class="pf-view-card"><div class="pf-view-card-main"><div class="pf-view-thumb">${current?`<img src="${escapeAttr(current.url)}" alt="当前产品主图">`:'<span>暂无主图</span>'}</div><div class="pf-view-card-copy"><span>当前拍摄角度</span><strong data-pf-view-summary>${escapeHtml(config.view.enabled?fidelityViewSummary(config.view):'保持原图角度')}</strong><small>以原图当前角度为 0°</small></div></div><button type="button" data-pf-view-open>选择新角度</button></div><p class="pf-help" data-pf-view-note>换角度时 AI 会重绘商品；原图看不到的侧面和背面需要推测。</p>`+help('其他角度的实拍图','<p class="pf-help">可连接同一商品其他角度的实拍图，并在绘画提示词中说明方向，提高结构参考的可靠性。</p>')))}
+                ${group('angle','商品拍摄角度',section('05','view','调整拍摄角度','启用',`<div class="pf-view-card"><div class="pf-view-card-main"><div class="pf-view-thumb">${current?`<img src="${escapeAttr(current.url)}" alt="当前产品主图">`:'<span>暂无主图</span>'}</div><div class="pf-view-card-copy"><span>当前拍摄角度</span><strong data-pf-view-summary>${escapeHtml(fidelityHasSpecifiedView(config)?fidelityViewSummary(config.view):config.mode==='strict'?'保持原图角度':'自由发挥（未指定角度）')}</strong><small>以原图当前角度为 0°</small></div></div><button type="button" data-pf-view-open>选择新角度</button></div><p class="pf-help" data-pf-view-note>换角度时 AI 会重绘商品；原图看不到的侧面和背面需要推测。</p>`+help('其他角度的实拍图','<p class="pf-help">可连接同一商品其他角度的实拍图，并在绘画提示词中说明方向，提高结构参考的可靠性。</p>')))}
                 ${group('size','商品实物尺寸',physicalDimensionPanelHtml(dimensions))}
                 ${group('check','出图后检查',section('06','validation','结果检查','启用',`<div class="pf-results" data-pf-results></div><details class="pf-options"><summary>比例偏差提醒</summary>${number('validation.ratioTolerancePct','允许的外形比例偏差',1,20,1,'%')}<p class="pf-help">遮挡或匹配不足时会显示无法判断；文字和接缝仍需人工检查。</p></details>`))}
                 ${group('more','微调参数',section('07','advanced','本地处理（日常无需修改）','启用',number('detail.highPassRadiusPx','纹理提取粗细',.5,8,.5,'px')+number('detail.highPassGain','纹理图清晰度',.5,4,.25)+number('maskFeatherPx','商品边缘过渡',0,8,.5,'px')+number('alignmentThreshold','原图纹理匹配门槛',.7,1,.05)+`<details class="pf-debug"><summary>查看模型与实际参考图</summary><pre data-pf-debug></pre></details>`))}
@@ -476,11 +482,11 @@ function fidelityViewInstruction(view){
 }
 function openProductViewEditor(session){
     const node=session.node,config=node.fidelityConfig;
-    if(!fidelityCanEdit(node)||!config.view.enabled)return;
+    if(!fidelityCanEdit(node)||(config.mode!=='structure'&&!config.view.enabled))return;
     const refs=fidelityEnsureReferences(node),source=refs.find(ref=>config.referenceIds[ref.url]===config.productReferenceId);
     if(!source){fidelityStatus(session,'请先连接并选择商品原图，再调整角度');return;}
     activeProductViewEditor?.close();
-    const original=fidelityViewDraft(config.view),draft={...original};
+    const original=fidelityViewDraft(config.view.enabled?config.view:{}),draft={...original};
     const dialog=document.createElement('dialog');
     dialog.className='pf-view-dialog';
     dialog.setAttribute('aria-labelledby','pfViewDialogTitle');
@@ -548,11 +554,16 @@ function openProductViewEditor(session){
     dialog.addEventListener('paste',event=>event.stopPropagation());
     dialog.addEventListener('cancel',event=>{event.preventDefault();close();});
     dialog.addEventListener('click',event=>{if(event.target===dialog)close();});
-    dialog.querySelector('[data-pf-view-apply]').onclick=()=>{
+    dialog.querySelector('[data-pf-view-apply]').onclick=async()=>{
         if(!fidelityCanEdit(node)||!nodes.includes(node)){close();return;}
-        if(JSON.stringify(original)!==JSON.stringify(draft)){
-            pushUndo();fidelityChangeMode(config,'view');Object.assign(config.view,draft);
-            config.view.mode=draft.yaw||draft.pitch||draft.roll||draft.framing!=='medium'||draft.fov!==50?'target':'keep';
+        if(JSON.stringify(original)!==JSON.stringify(draft)||!fidelityHasSpecifiedView(config)){
+            const proposed=cloneSmartSettings(config);
+            fidelityChangeMode(proposed,'view');Object.assign(proposed.view,draft);
+            proposed.view.mode='target';
+            const warning=config.mode!=='view'&&config.detail.restoreMode!=='off'?fidelityLinkedChangeMessage(config,proposed,'view'):'';
+            if(warning&&!(await fidelityConfirmReplacement(warning)))return;
+            if(!session.root.isConnected||!fidelityCanEdit(node)||!nodes.includes(node)){close();return;}
+            pushUndo();fidelityAssignConfig(config,proposed);
             session.root.querySelector('[data-pd-root]')?.pdRefresh?.();
             fidelitySyncFields(session);fidelityCommit(session);
         }
@@ -597,13 +608,16 @@ function fidelitySyncSimple(session){
         strict:'已选：仅换背景',structure:'已选：光影融合',view:'已选：换拍摄角度'
     }[config.mode]||'';
     root.querySelector('[data-pf-mode-title]').textContent=modeCopy;
-    const viewChanged=config.view.enabled&&(['yaw','pitch','roll'].some(key=>Number(config.view[key])!==0)||config.view.framing!=='medium'||Number(config.view.fov)!==50);
+    root.querySelector('[data-pf-mode-description]').textContent=FIDELITY_MODE_CHOICES.find(([mode])=>mode===config.mode)?.[2]||'';
+    const viewChanged=fidelityHasSpecifiedView(config);
     const next=root.querySelector('[data-pf-mode-next]');
     next.hidden=config.mode!=='view';
-    next.textContent=viewChanged?'目标机位已设置，生成时将按该角度重绘。':'要换机位，请先设置拍摄角度。';
-    root.querySelector('[data-pf-mode-view]').hidden=config.mode!=='view';
-    root.querySelector('[data-pf-simple-view-summary]').textContent=viewChanged?fidelityViewSummary(config.view):'当前：原图角度（0°）';
+    next.textContent=viewChanged?'目标机位已设置，生成时将按该角度重绘并融合光影。':'未指定拍摄角度，AI 自由发挥并融合场景光影。';
+    root.querySelector('[data-pf-mode-view]').hidden=config.mode==='strict';
+    root.querySelector('[data-pf-simple-view-summary]').textContent=viewChanged?fidelityViewSummary(config.view):'自由发挥（未指定角度）';
+    root.querySelector('[data-pf-simple-view-open]').textContent=viewChanged?'调整角度':'设置拍摄角度';
     root.querySelector('[data-pf-simple-detail]').checked=config.detail.enabled;
+    root.querySelector('[data-pf-simple-detail-note]').textContent=config.mode==='strict'?'标记区的文字和花纹随原图保留':'增加细节参考，生成后仍需核对';
     root.querySelector('[data-pf-simple-fit]').checked=Boolean(config.fitOutputCanvas);
     root.querySelectorAll('[data-pf-fit-option]').forEach(el=>el.hidden=config.mode!=='strict'||d.enabled);
     root.querySelector('[data-pf-simple-dimensions]').checked=d.enabled;
@@ -681,7 +695,7 @@ function fidelitySyncAvailability(session){
     const viewRef=session.refs.find(ref=>config.referenceIds[ref.url]===config.productReferenceId);
     const viewThumb=session.root.querySelector('.pf-view-thumb');
     if(viewThumb)viewThumb.innerHTML=viewRef?'<img src="'+escapeAttr(viewRef.url)+'" alt="当前产品主图">':'<span>暂无主图</span>';
-    session.root.querySelector('[data-pf-view-summary]').textContent=config.view.enabled?fidelityViewSummary(config.view):'保持原图角度';
+    session.root.querySelector('[data-pf-view-summary]').textContent=fidelityHasSpecifiedView(config)?fidelityViewSummary(config.view):config.mode==='strict'?'保持原图角度':'自由发挥（未指定角度）';
     for(const option of field('generation.allowedEdits').options)option.disabled=effective.mode==='strict'?option.value!=='background':effective.mode==='structure'&&option.value==='view';
     session.root.querySelector('[data-pf-strategy]').textContent=config.mode==='strict'?(config.fitOutputCanvas&&!effective.dimensions.enabled?'按下游画幅等比缩放并居中合成商品，保留比例、轮廓与花纹；商品位置和机位固定。':'仅换背景会保留已标记商品区域的原图像素；请检查保护区是否完整。'):config.mode==='view'?'使用商品与视角参考生成；未拍摄到的侧面和背面由 AI 推测。':'结合原图与细节参考生成；只有对齐可靠时才尝试恢复原图纹理。';
     session.root.querySelectorAll('[data-pf-action="preview"],[data-pf-action="auto-crops"]').forEach(el=>el.disabled=!config.enabled||(!session.refs.length&&!config.dimensions.enabled)||Boolean(session.busy));
@@ -701,7 +715,7 @@ function fidelitySyncAvailability(session){
     validationStatus.textContent=[dimensionErrors.length?'产品尺寸需要修改：'+dimensionErrors.join('；')+'。':'',conflict].filter(Boolean).join(' ');
     session.root.querySelector('[data-pf-action="preview"]').disabled||=dimensionErrors.length>0;
     session.root.querySelector('[data-pf-action="preview"]').textContent=session.busy?'正在生成参考图…':'生成保护参考图';
-    session.root.querySelectorAll('[data-pf-view-open],[data-pf-simple-view-open]').forEach(button=>button.disabled=!config.view.enabled||!viewRef||Boolean(session.busy));
+    session.root.querySelectorAll('[data-pf-view-open],[data-pf-simple-view-open]').forEach(button=>button.disabled=(!config.view.enabled&&config.mode!=='structure')||!viewRef||Boolean(session.busy));
     session.root.querySelectorAll('[data-pf-preset],[data-pf-simple-fit],[data-pf-simple-detail],[data-pf-simple-dimensions],[data-pf-simple-dimension]').forEach(el=>el.disabled=Boolean(session.busy));
     fidelitySyncSimple(session);
     if(sharedCanvasReadOnly)session.root.querySelectorAll('input,select,button').forEach(el=>el.disabled=true);

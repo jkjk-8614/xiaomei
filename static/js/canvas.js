@@ -14300,6 +14300,8 @@ window.addEventListener('paste', e => {
 });
 window.addEventListener('keydown', e => {
     if(!canvas) return;
+    // Ctrl/Cmd + 5：刷新画布（先等当前保存落盘，再整页重载）。
+    if(isCanvasRefreshShortcut(e)){ refreshCanvasPage(e); return; }
     const key = String(e.key || '').toLowerCase();
     if(key === 'r' && !isEditableTarget(e.target)) isRKeyDown = true;
     if(e.key === 'Shift' && !e.altKey && !isEditableTarget(document.activeElement)) setKnifeMode(true);
@@ -14365,6 +14367,27 @@ window.addEventListener('keyup', e => {
     if(String(e.key || '').toLowerCase() === 'r') isRKeyDown = false;
     if(e.key === 'Shift') setKnifeMode(false);
 });
+// Ctrl/Cmd + 5：刷新画布。先把当前改动存好，再整页重载。
+function isCanvasRefreshShortcut(e){
+    if(e.isComposing) return false;
+    if(!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return false;
+    return (e.code || '') === 'Digit5' || (e.code || '') === 'Numpad5' || String(e.key || '') === '5';
+}
+function refreshCanvasPage(e){
+    e.preventDefault?.();
+    e.stopPropagation?.();
+    e.stopImmediatePropagation?.();
+    try { window.onbeforeunload = null; } catch(_) {}
+    const reload = () => { location.reload(); };
+    if(!canvas || applyingRemoteCanvas){ reload(); return; }
+    clearTimeout(saveTimer);
+    // saveCanvas 自身会把进行中的再次保存排到后面（saveCanvasAgain），这里只等它返回。
+    // 超过 1.2 秒还没返回（画布很大或网络慢）就不再阻塞刷新，服务端已有上一版快照。
+    let reloading = false;
+    const reloadOnce = () => { if(reloading) return; reloading = true; reload(); };
+    Promise.race([saveCanvas().catch(() => {}), new Promise(done => setTimeout(done, 1200))])
+        .then(reloadOnce, reloadOnce);
+}
 window.addEventListener('blur', () => { isRKeyDown = false; setKnifeMode(false); });
 window.addEventListener('blur', () => {
     if(selectDrag){

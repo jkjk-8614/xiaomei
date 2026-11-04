@@ -8,6 +8,8 @@ const shareQueryId = params.get('share_id') || params.get('share') || '';
 const shareQueryToken = params.get('share_token') || params.get('token') || '';
 let canvasShareSession = null;
 let sharedCanvasReadOnly = false;
+// 画布快照是否已经从服务端加载完成；加载完成前禁止保存，避免 Ctrl/Cmd+5 刷新用空画布覆盖服务端。
+let smartCanvasReady = false;
 const CANVAS_LIST_PROJECT_KEY = 'canvasListCurrentProjectId';
 const SOFT_FURNISHING_INBOX_KEY = 'soft_furnishing_canvas_inbox_v1';
 const SOFT_FURNISHING_INBOX_TTL = 10 * 60 * 1000;
@@ -45,6 +47,7 @@ const SMART_UPLOAD_NODE_TYPE = 'smart-upload';
 const SMART_PAINT_NODE_TYPE = 'smart-paint';
 const SMART_VIDEO_NODE_TYPE = 'smart-video';
 const SMART_AI_RENDER_NODE_TYPE = 'smart-ai-render';
+const SMART_REPLICA_NODE_TYPE = 'oneClickReplica';
 const SMART_PRODUCT_FIDELITY_NODE_TYPE = 'smart-product-fidelity';
 const SMART_COMFY_WORKFLOW_NODE_TYPE = 'smart-comfy-workflow';
 const SMART_DRAWING_BOARD_NODE_TYPE = 'smart-drawing-board';
@@ -509,6 +512,21 @@ function smartCanvasRenderBounds(extraMarginScreen=0){
     const top = -Number(viewport.y || 0) / scale;
     return {left:left - margin, top:top - margin,
         right:left + width / scale + margin, bottom:top + height / scale + margin};
+}
+// 相机（viewport）是否落在内容上：为 false 时画布会渲染成一片空白（缩略图里
+// 还能看到节点），说明存下来的相机位置被拖到了内容之外的空白区。
+// 打开画布时用它兜底，避免"每次打开都是空画布"的卡死状态。
+function canvasViewportHitsContent(){
+    if(!nodes.length) return true;
+    const scale = safeScale(viewport.scale);
+    const width = Math.max(1, shell?.clientWidth || window.innerWidth || 1200);
+    const height = Math.max(1, shell?.clientHeight || window.innerHeight || 800);
+    const left = -Number(viewport.x || 0) / scale;
+    const top = -Number(viewport.y || 0) / scale;
+    const bounds = {left, top, right:left + width / scale, bottom:top + height / scale};
+    return nodes.some(node => node.id !== SMART_LOG_PREVIEW_NODE_ID
+        && !smartBatchIsHidden(node)
+        && smartCanvasNodeIntersectsBounds(node, bounds));
 }
 function smartCanvasNodeIntersectsBounds(node, bounds, rectCache=null){
     if(!node || !bounds) return false;
@@ -1136,6 +1154,10 @@ function clearSmartNodeTransientRunState(node, options={}){
     delete node.jimengPending;
     delete node.pendingTasks;
     delete node._runMetaTargetId;
+    if(isProductRetouchNode(node)){
+        node.retouchOutputIds=[];node.images=[];
+        delete node.retouchRunSignature;delete node.dependencyRunSignature;
+    }
     if(options.clearRunHistory){
         delete node.runStartedAt;
         delete node.runFinishedAt;
@@ -1165,6 +1187,8 @@ function serializableSmartNode(node){
     prepareSmartNodeMediaForStorage(copy);
     if(copy.runSettings) copy.runSettings = settingsForStorage(copy.runSettings);
     clearSmartNodeTransientRunState(copy);
+    window.SmartCanvasSku?.prepareCopy(copy);
+    if(isSmartReplicaNode(copy)) window.SmartCanvasReplica.prepareCopy(copy);
     delete copy._dom;
     return copy;
 }
@@ -1608,6 +1632,7 @@ function rememberRecentSmartSettings(source=settings, node=null){
     }
     delete clean.outpaintResolutionLocked;
     delete clean.productFidelity;
+    delete clean.productRetouch;
     const key = smartSettingsModeKey(clean);
     recentSmartSettingsByMode[key] = settingsForStorage(clean);
     if(!isSmartComfyWorkflowNode(node)) recentSmartSettingsByMode.__lastKey = key;
@@ -1639,9 +1664,11 @@ function clearVolcengineSelectionOutsideVolcengine(target=settings){
     return target;
 }
 function isSmartImageNode(node){
-    return Boolean(node && [SMART_UPLOAD_NODE_TYPE, SMART_PAINT_NODE_TYPE, SMART_VIDEO_NODE_TYPE, SMART_AI_RENDER_NODE_TYPE, SMART_COMFY_WORKFLOW_NODE_TYPE, SMART_DRAWING_BOARD_NODE_TYPE, 'smart-image'].includes(node.type || 'smart-image'));
+    return Boolean(node && [SMART_UPLOAD_NODE_TYPE, SMART_PAINT_NODE_TYPE, SMART_VIDEO_NODE_TYPE, SMART_AI_RENDER_NODE_TYPE, SMART_REPLICA_NODE_TYPE, SMART_COMFY_WORKFLOW_NODE_TYPE, SMART_DRAWING_BOARD_NODE_TYPE, 'smart-image'].includes(node.type || 'smart-image'));
 }
+function isSmartReplicaNode(node){return node?.type === SMART_REPLICA_NODE_TYPE;}
 function isLocalFusionNode(node){return node?.type === 'smart-local-fusion';}
+function isProductRetouchNode(node){return node?.type === 'smart-product-retouch';}
 function isSmartVideoNode(node){
     return Boolean(node && node.type === SMART_VIDEO_NODE_TYPE);
 }
@@ -2128,6 +2155,9 @@ function isProductFidelityNode(node){
 function isSmartGroupNode(node){
     return Boolean(node && node.type === 'smart-group');
 }
+function clampSmartComparePosition(position){
+    return Math.max(0, Math.min(100, Math.round(position * 10) / 10));
+}
 function normalizeSmartCompareNode(node){
     if(!isSmartCompareNode(node)) return node;
     node.title = smartCompareText('smart.createCompareNode', '对比');
@@ -2136,10 +2166,8 @@ function normalizeSmartCompareNode(node){
     }
     node.w = Math.max(320, Math.round(Number(node.w) || SMART_COMPARE_DEFAULT_WIDTH));
     node.h = Math.max(240, Math.round(Number(node.h) || SMART_COMPARE_DEFAULT_HEIGHT));
-    const position = Number(node.comparePosition);
-    node.comparePosition = Number.isFinite(position)
-        ? Math.max(5, Math.min(95, Math.round(position * 10) / 10))
-        : 50;
+    const position = Number(node.comparePosition ?? 50);
+    node.comparePosition = Number.isFinite(position) ? clampSmartComparePosition(position) : 50;
     delete node.compareMode;
     return node;
 }
@@ -2219,6 +2247,7 @@ function normalizeLegacySmartNode(node){
     if(node.type === 'smart-prompt' && node.llmSystemPrompt === 'You are a helpful prompt assistant.') node.llmSystemPrompt = '';
     if(isProductFidelityNode(node) && typeof normalizeProductFidelityNode === 'function') return normalizeProductFidelityNode(node);
     if(node.type === SMART_DRAWING_BOARD_NODE_TYPE) return normalizeSmartDrawingBoardNode(node);
+    if(isSmartReplicaNode(node)) return window.SmartCanvasReplica.normalize(node);
     if(isSmartAiRenderNode(node)) return normalizeSmartAiRenderNode(node);
     if(node.type === 'smart-container'){
         const fallbackImage = node.inputImage?.url ? stripImageGenerationMeta({
@@ -2255,6 +2284,10 @@ function normalizeLegacySmartNode(node){
     if(!node.type) node.type = 'smart-image';
     if(node.type === 'smart-image') delete node.imageMode;
     if(node.type === 'smart-image' && node.historyFor) node.isHistoryGroup = true;
+    if(node.type === 'smart-image' && node.retouchOwnerId && !node.isHistoryGroup){
+        node.type = SMART_UPLOAD_NODE_TYPE;
+        migratedLegacySmartUploadNodes = true;
+    }
     // Before the split, imported media and generation nodes both used
     // smart-image. Nodes without a recorded run or generation setup are
     // source material, so make them pure upload nodes when loading an
@@ -2350,6 +2383,7 @@ function smartSettingsForNode(node){
         ...nodeSettings
     };
     if(!nodeSettings.productFidelity) delete base.productFidelity;
+    if(!nodeSettings.productRetouch) delete base.productRetouch;
     if(typeof productFidelitySettingsForNode === 'function') base = productFidelitySettingsForNode(node, base);
     if(!isSmartComfyWorkflowNode(node) && base.engine === 'comfy') base = apiSettingsOutsideComfyNode();
     // 新版画布由节点类型决定媒体模式；apiKind 只作为旧画布存档的兼容字段。
@@ -3979,6 +4013,7 @@ function copyMediaSizeFields(source, target={}){
     if(!source || typeof source !== 'object') return target;
     if(source.localRepair) target.localRepair=cloneSmartSettings(source.localRepair);
     if(source.fusionRecord) target.fusionRecord=cloneSmartSettings(source.fusionRecord);
+    if(source.product_retouch) target.product_retouch=cloneSmartSettings(source.product_retouch);
     ['natural_w','natural_h','width','height','w','h','layout_w','layout_h'].forEach(key => {
         const n = Number(source[key]);
         if(Number.isFinite(n) && n > 0) target[key] = n;
@@ -4181,10 +4216,10 @@ function promptNodeInputMediaForLLM(node){
 function smartNodeInputThumbsHtml(images, opts={}){
     const refs = (images || []).filter(img => img?.url);
     if(!refs.length) return '';
-    let imageNumber = 0;
+    let imageNumber = Number(opts.imageNumberOffset) || 0;
     const items = refs.map((img, index) => {
         const isDocument = isFileMediaItem(img) || isTextMediaItem(img);
-        const label = isDocument ? tr('smart.fileLabel') : opts.labelPrefix ? `${opts.labelPrefix}${index + 1}` : (window.StudioI18n?.lang?.() === 'en' ? `Image ${++imageNumber}` : `图${++imageNumber}`);
+        const label = isDocument ? tr('smart.fileLabel') : opts.label || (opts.labelPrefix ? `${opts.labelPrefix}${index + 1}` : (window.StudioI18n?.lang?.() === 'en' ? `Image ${++imageNumber}` : `图${++imageNumber}`));
         const media = isDocument ? thumbMediaHtml(img) : isAudioMediaItem(img)
             ? `<div class="media-thumb audio-thumb"><i data-lucide="file-audio"></i><span>${escapeHtml(img.name || 'Audio')}</span></div>`
             : isVideoMediaItem(img)
@@ -4445,6 +4480,8 @@ function activeGenerationLayout(node, count=0){
     };
 }
 function imageLayout(images, scale=1, node=null){
+    if(isSmartReplicaNode(node)) return window.SmartCanvasReplica.layout(node);
+    if(isProductRetouchNode(node))return {cols:1,rows:1,width:Math.max(380,Number(node.w)||440),height:Math.max(520,Number(node.h)||680),thumb:96,single:true};
     if(isLocalFusionNode(node)) return {cols:1,rows:1,width:Math.max(380,Number(node.w)||420),height:Math.max(440,Number(node.h)||600),thumb:96,single:true};
     if(isProductFidelityNode(node)) return {cols:1, rows:1, width:Math.max(760,Number(node.w)||980), height:Math.max(560,Number(node.h)||720), thumb:96, single:true};
     if(isSmartAiRenderNode(node)){
@@ -4624,6 +4661,7 @@ function scheduleSmartLoopCardResizeRender(){
     smartLoopCardResizeRenderPending = true;
     requestAnimationFrame(() => {
         smartLoopCardResizeRenderPending = false;
+        if(document.activeElement?.closest('.sku-card')) return;
         render();
     });
 }
@@ -4640,15 +4678,13 @@ function measureSmartLoopCard(card){
         const rect = el.getBoundingClientRect(), sourceRect = source.getBoundingClientRect();
         if(rect.height > 0) textPort.style.top = `${(sourceRect.top + sourceRect.height / 2 - rect.top) * el.offsetHeight / rect.height - el.clientTop}px`;
     }
-    ['product', 'reference'].forEach(role => {
+    ['product', 'reference', 'template', 'gift'].forEach(role => {
         const port = el.querySelector(`.batch-image-input-port[data-input-slot="${role}"]`);
-        const label = card.querySelector(`[data-batch-input-slot="${role}"] .batch-asset-meta > span`);
+        const label = card.querySelector(`[data-batch-input-slot="${role}"] .batch-asset-meta > span, [data-batch-input-slot="${role}"] .batch-sec-title`);
         if(!port || !label) return;
         const rect = el.getBoundingClientRect(), labelRect = label.getBoundingClientRect();
         if(rect.height > 0) port.style.top = `${(labelRect.top + labelRect.height / 2 - rect.top) * el.offsetHeight / rect.height - el.clientTop}px`;
     });
-    const manual = card.querySelector('.loop-detail-manual');
-    if(manual) node.batchManualSplitOpen = manual.open;
     syncSmartBatchOverviewGeometry(card);
     const height = el.offsetHeight;
     if(!height || smartLoopMeasuredHeights.get(node) === height && node.h === height) return false;
@@ -5345,7 +5381,9 @@ function nodePortWorldPoint(nodeOrId, port='out', clientToWorld=null, inputSlot=
     const inputRatio = colorSlot === 'reference' || colorSlot === 'style' ? .5 : colorSlot === 'product' ? .76 : colorSlot === 'white' ? .24 : .33;
     const fallback = rect ? {
         x:port === 'in' ? rect.x : rect.x + rect.width,
-        y:rect.y + rect.height * (port === 'in' && colorSlot ? inputRatio : .5)
+        y:rect.y + (isSmartReplicaNode(node) && (port === 'out' || colorSlot)
+            ? window.SmartCanvasReplica.portOffset(colorSlot)
+            : rect.height * (port === 'in' && colorSlot ? inputRatio : .5))
     } : null;
     if(!node?.id) return fallback;
     const nodeEl = world.querySelector(`.image-node[data-id="${CSS.escape(node.id)}"]`);
@@ -5369,7 +5407,9 @@ function nodeConnectionWorldPoint(nodeOrId, port='out', clientToWorld=null, inpu
     // 只用数据里的 width/height 会让线端落在卡片内部，视觉上像没有接上。
     const fallback = {
         x:port === 'in' ? rect.x : rect.x + rect.width,
-        y:rect.y + rect.height * (port === 'in' && colorSlot ? inputRatio : .5)
+        y:rect.y + (isSmartReplicaNode(node) && (port === 'out' || colorSlot)
+            ? window.SmartCanvasReplica.portOffset(colorSlot)
+            : rect.height * (port === 'in' && colorSlot ? inputRatio : .5))
     };
     if(!node?.id) return fallback;
     const nodeEl = world?.querySelector?.(`.image-node[data-id="${CSS.escape(String(node.id))}"]`);
@@ -5526,14 +5566,56 @@ function centerViewportOnWorldPoint(point){
 }
 function fitAllNodesViewport(){
     cancelViewportWheelAnimation();
+    fitViewportToAllNodes({apply:true});
+}
+// 相机被存到内容之外时（打开就是空画布）用它复位：优先"适配全部节点"；
+// 但节点铺得又长又散时适配会把缩放压到 6%，看起来还是一片空白，
+// 这种情况改成落在离内容中心最近的那个节点上，保证一打开就看得见真实内容。
+function focusViewportOnContent(options={}){
+    const apply = options.apply !== false;
+    if(!nodes.length) return false;
+    const applyNow = () => {
+        if(!apply) return;
+        applyViewport();
+        scheduleCanvasViewportRender();
+        scheduleSave();
+    };
+    if(!fitViewportToAllNodes({apply:false})) return false;
+    if(safeScale(viewport.scale) >= 0.18){
+        applyNow();
+        return true;
+    }
+    const rects = nodes.filter(n => !smartBatchIsHidden(n)).map(smartBatchVisualRect);
+    if(!rects.length) return false;
+    const cx = (Math.min(...rects.map(r => r.x)) + Math.max(...rects.map(r => r.x + r.width))) / 2;
+    const cy = (Math.min(...rects.map(r => r.y)) + Math.max(...rects.map(r => r.y + r.height))) / 2;
+    let best = null;
+    rects.forEach(rect => {
+        const px = rect.x + rect.width / 2;
+        const py = rect.y + rect.height / 2;
+        const distance = Math.hypot(px - cx, py - cy);
+        if(!best || distance < best.distance) best = {distance, x:px, y:py};
+    });
+    if(!best) return false;
+    viewport.scale = 0.45;
+    viewport.x = shell.clientWidth / 2 - best.x * viewport.scale;
+    viewport.y = shell.clientHeight / 2 - best.y * viewport.scale;
+    applyNow();
+    return true;
+}
+// 计算"适配全部节点"的相机位置。apply=false 时只写 viewport、不立刻应用，
+// 供打开画布时在 render 之前修正相机使用（随后统一走 applyViewport/render）。
+function fitViewportToAllNodes(options={}){
+    const apply = options.apply !== false;
     if(!nodes.length){
+        if(!apply) return false;
         viewport.scale = 0.45;
         viewport.x = shell.clientWidth / 2;
         viewport.y = shell.clientHeight / 2;
         applyViewport();
         scheduleCanvasViewportRender();
         scheduleSave();
-        return;
+        return true;
     }
     const rects = nodes.filter(n => !smartBatchIsHidden(n)).map(smartBatchVisualRect);
     const minX = Math.min(...rects.map(r => r.x));
@@ -5549,9 +5631,12 @@ function fitAllNodesViewport(){
     viewport.scale = nextScale;
     viewport.x = shell.clientWidth / 2 - cx * viewport.scale;
     viewport.y = shell.clientHeight / 2 - cy * viewport.scale;
-    applyViewport();
-    scheduleCanvasViewportRender();
-    scheduleSave();
+    if(apply){
+        applyViewport();
+        scheduleCanvasViewportRender();
+        scheduleSave();
+    }
+    return true;
 }
 function enterZoomPreview(){
     if(zoomPreviewState) return;
@@ -5609,6 +5694,26 @@ function exitZoomPreviewToNode(nodeId){
 function toggleZoomPreview(){
     if(zoomPreviewState) exitZoomPreview();
     else enterZoomPreview();
+}
+// Ctrl/Cmd + 5：刷新画布。先把未落盘的改动排队存好，再整页重载。
+function isSmartCanvasRefreshShortcut(e){
+    if(e.isComposing) return false;
+    if(!(e.ctrlKey || e.metaKey) || e.altKey) return false;
+    return (e.code || '') === 'Digit5' || (e.code || '') === 'Numpad5' || String(e.key || '') === '5';
+}
+function refreshSmartCanvasPage(e){
+    e.preventDefault?.();
+    e.stopPropagation?.();
+    e.stopImmediatePropagation?.();
+    try { window.onbeforeunload = null; } catch(_) {}
+    const reload = () => { location.reload(); };
+    // 画布快照还没加载时没有改动要存，直接重载（此时也不能保存，否则会用空画布覆盖服务端）。
+    if(!smartCanvasReady || !canvasId || !canvas || sharedCanvasReadOnly){ reload(); return; }
+    let reloading = false;
+    const reloadOnce = () => { if(reloading) return; reloading = true; reload(); };
+    // 保存超过 1.2 秒（大画布、粘贴图片仍在上传）就不再等，直接重载；服务端已有上一版快照。
+    Promise.race([saveCanvas().catch(() => false), new Promise(done => setTimeout(done, 1200, false))])
+        .then(saved => { if(!saved) toast('画布仍在保存，已直接刷新', 3600); reloadOnce(); }, reloadOnce);
 }
 function isModelScopeProvider(provider){
     const id = String(provider?.id || '').trim().toLowerCase();
@@ -6947,7 +7052,9 @@ function sourceDimensionsForImage(img){
     return {w:size.w, h:size.h};
 }
 async function sourceDimensionsForRun(node){
-    const image = sourceRatioImageForNode(node);
+    return sourceDimensionsForReference(sourceRatioImageForNode(node));
+}
+async function sourceDimensionsForReference(image){
     const known = sourceDimensionsForImage(image);
     if(known || !image?.url) return known;
     return new Promise(resolve => {
@@ -9503,7 +9610,7 @@ function syncRunButtonState(node=selectedNode()){
     // 不再因为“画布上有任意循环/级联在跑”就全局禁用——跑循环时仍可对其他节点点生成。
     const disabled = !isSmartRunnableNode(node) || smartNodeInFlight(node) || smartCascadeIsLoopRunning(node?.id);
     runBtn.disabled = disabled;
-    runBtn.hidden = comfyNodeOwnsVisibleParams(node) || smartLoopIsPaired(node);
+    runBtn.hidden = isSmartComfyWorkflowNode(node) || smartLoopIsPaired(node);
 }
 function mergeSmartNode(local, remote){
     const images = mergeSmartImageLists(local.images, remote.images);
@@ -10891,6 +10998,7 @@ async function loadCanvas(){
         );
         const restoredLegacyAgentTextStacks = restoreLegacyAgentTextStacks();
         const protectedConnectionsRemovedOnLoad = canvas.connections.length !== serverConnectionsBeforeDeletionGuard.length;
+        const restoredReplicaOutputs = window.SmartCanvasReplica.restoreOutputs();
         const comfyWorkflowIds = new Set(nodes.filter(isSmartComfyWorkflowNode).map(node => node.id));
         const comfyOutputIds = new Set(canvas.connections
             .filter(conn => comfyWorkflowIds.has(conn.from) && conn.kind === 'flow')
@@ -10928,6 +11036,10 @@ async function loadCanvas(){
             .reduce((changed, node) => syncDetailStitchConnections(node, node.detailStitchSourceNodeIds) || changed, false);
         viewport = {...viewport, ...(canvas.viewport || {})};
         viewport.scale = safeScale(viewport.scale);
+        // 存下来的相机可能停在内容之外的空白区（表现：画布全白、缩略图里还能看到节点，
+        // 且因为视口会被保存，重新打开仍然是空白）。这种情况直接按全部节点重新适配。
+        const refittedOffContentViewport = !canvasViewportHitsContent()
+            && focusViewportOnContent({apply:false});
         // 共享编辑者首次进入时默认选中当前视口内、距离视口中心最近的一张可操作图片，
         // 让节点工具栏、缩放柄和连接入口立即可见；只读访客仍保持纯预览状态。
         // 必须放在载入画布 viewport 之后，否则旧画布的偏移会把选中目标算到屏幕外。
@@ -10946,7 +11058,7 @@ async function loadCanvas(){
         render();
         if(!sharedCanvasMode) void window.SmartExpertWorkflow?.restore?.(nodes);
         window.ProjectAgent?.openCanvas(canvas);
-        if(migratedLegacySmartUploadNodes || migratedLegacySmartVideoNodes || migratedInvalidImageTaskRecoveries || cleanedDetachedInputs || interruptedRunState || cleanedCompletedState || recoveredLoggedOutputs || hiddenCompletedTimers || protectedConnectionsRemovedOnLoad || repairedDetailStitchConnections || restoredLegacyAgentTextStacks || removedStalePasteImages) scheduleSave();
+        if(migratedLegacySmartUploadNodes || migratedLegacySmartVideoNodes || migratedInvalidImageTaskRecoveries || cleanedDetachedInputs || interruptedRunState || cleanedCompletedState || recoveredLoggedOutputs || hiddenCompletedTimers || protectedConnectionsRemovedOnLoad || repairedDetailStitchConnections || restoredLegacyAgentTextStacks || restoredReplicaOutputs || removedStalePasteImages || refittedOffContentViewport) scheduleSave();
         startCanvasMetaPoll();
     } catch(e) { toast(tr('smart.toastCanvasFail')); }
 }
@@ -10963,6 +11075,8 @@ function saveCanvas(){
     return canvasSaveQueue;
 }
 async function performCanvasSave(){
+    // 画布首次加载完成前没有画布快照，不能保存，否则会把空画布写到服务端。
+    if(!smartCanvasReady) return false;
     if(!canvasId || !canvas) return;
     if(sharedCanvasReadOnly) return;
     if(collabConflictState) return;
@@ -11142,7 +11256,7 @@ function createNode(x, y, images=[], options={}){
         source.apiKind = nodeType === SMART_VIDEO_NODE_TYPE ? 'video' : 'image';
         node.runSettings = settingsForStorage(apiOnlySettings(source));
     }
-    if(options.autoAvoid !== false && [SMART_UPLOAD_NODE_TYPE, SMART_PAINT_NODE_TYPE, SMART_VIDEO_NODE_TYPE, SMART_AI_RENDER_NODE_TYPE, SMART_COMFY_WORKFLOW_NODE_TYPE, 'smart-image'].includes(nodeType)){
+    if(options.autoAvoid !== false && [SMART_UPLOAD_NODE_TYPE, SMART_PAINT_NODE_TYPE, SMART_VIDEO_NODE_TYPE, SMART_AI_RENDER_NODE_TYPE, SMART_REPLICA_NODE_TYPE, SMART_COMFY_WORKFLOW_NODE_TYPE, 'smart-image'].includes(nodeType)){
         const position = smartAutoAvoidNodePosition(node, {x:Number(x) || 0, y:Number(y) || 0}, options);
         node.x = position.x;
         node.y = position.y;
@@ -11231,7 +11345,7 @@ function createLoopNode(x, y, options={}){
     const node = {
         id:uid('loop'), type:'smart-loop', x, y,
         w:paired ? 420 : 340, h:paired ? 760 : 228,
-        title:paired ? tr('smart.loopPairedTitle') : tr('smart.createLoopNode'), count:1, mode:paired ? 'parallel' : 'serial',
+        title:paired ? tr('smart.loopPairedTitle') : tr('smart.createLoopNode'), count:1, mode:'serial',
         showPrompt:paired, imageInput:paired, loopStart:1, imageBatchSize:1,
         variablePrompt:'', variablePrompts:paired ? [''] : undefined,
         batchUiMode:paired ? 'paired' : 'advanced',
@@ -12266,6 +12380,7 @@ function resultMediaUrls(result){
                 const url = value.url || value.path || value.src || value.uri;
                 if(url){
                     const item = {url, kind:value.kind || value.type || value.mediaKind || '', name:value.name || value.filename || ''};
+                    if(value.product_retouch) item.product_retouch=cloneSmartSettings(value.product_retouch);
                     if(value.outpaint_center_locked === true || value.outpaintCenterLocked === true) item.outpaintCenterLocked = true;
                     if(value.outpaint_original_redrawn === true || value.outpaintOriginalRedrawn === true) item.outpaintOriginalRedrawn = true;
                     ['natural_w','natural_h','width','height','w','h','layout_w','layout_h'].forEach(key => {
@@ -13834,7 +13949,7 @@ function smartLoopPairedState(node){
     else if(typeof smartLoopAiSplitIsStale === 'function' && smartLoopAiSplitIsStale(node)) message = tr('smart.loopDetailStale');
     else if(!imageCount) message = tr('smart.loopPairedNeedImages');
     else if(!promptCount) message = node.batchUiMode === 'paired'
-        ? tr('smart.loopDetailNeedPrompts')
+        ? tr(smartLoopCommerceFields(node).mode === '主图' ? 'smart.loopMainNeedPrompts' : 'smart.loopDetailNeedPrompts')
         : tr('smart.loopPairedNeedPrompts');
     else if(Array.isArray(node.aiSplitPrompts) && node.aiSplitPrompts.some(item => !String(typeof item === 'string' ? item : item?.prompt || '').trim())) message = tr('smart.loopDetailEmptyScreen');
     else if(exceedsLimit) message = trf('smart.loopPairedMax', {max:100});
@@ -14315,7 +14430,7 @@ function smartLoopPairedPromptValues(node, upstreamItems=null){
     const aiPrompts = typeof smartLoopAiSplitPrompts === 'function' ? smartLoopAiSplitPrompts(node) : [];
     if(aiPrompts.length) return aiPrompts;
     // 已有旧版图文配对节点仍按原来的上游拆分规则读取；新建详情页模式
-    // 必须先点击 AI 拆分或展开手动备用入口，避免误把长文案按换行切碎。
+    // 通过 AI 生成分屏提示词，避免误把长文案按换行切碎。
     if(!node?.batchDetailModeV2 && Array.isArray(upstreamItems) && upstreamItems.length){
         const separator = String(node.batchSplitSeparator || '');
         return upstreamItems.flatMap(item => splitSmartLoopPromptLines(item, separator));
@@ -14324,6 +14439,8 @@ function smartLoopPairedPromptValues(node, upstreamItems=null){
 }
 function syncSmartLoopPairedSettings(node){
     if(!smartLoopIsPaired(node)) return;
+    pruneBlockedSmartBatchConnections(node);
+    if(window.SmartCanvasSku?.is(node)) { node.batchCompactV3 = true; node.imageInput = true; node.showPrompt = true; return; }
     node.batchCompactV3 = true;
     smartLoopDetailPaintNodes(node).forEach(smartBatchSyncPaintDraft);
     // 已经拆分过的详情页旧画布可能只保存了一个绘画节点；打开或刷新时
@@ -14567,7 +14684,7 @@ const SMART_BATCH_COMMERCE_PLATFORMS = [
     {name:'京东', hint:'突出品质、工艺细节与真实参数。', rules:'采用清晰、克制的品质展示，强化材质、工艺、结构与真实规格；详情用细节特写和参数解释建立信任，服务承诺只使用已提供的资料。'},
     {name:'拼多多', hint:'商品醒目、卖点直接，清楚展示规格与组合。', rules:'优先让商品和核心利益在小尺寸预览中清晰可辨，减少装饰，突出已确认的规格、数量、组合与实用价值；不编造低价、补贴、销量或促销标签。'},
     {name:'抖音电商', hint:'用真实使用场景和直观演示快速说明卖点。', rules:'以真实使用场景、动作演示和前后步骤快速讲清商品价值，首屏聚焦一个可见利益点；构图适合移动端阅读，避免大段文字，不虚构效果对比。'},
-    {name:'亚马逊 · 主图组', hint:'首张白底商品图，后续展示场景、细节和参数。', rules:'输出商品图库：第1张为白底主图，后续为用途、场景、细节和真实参数副图；主图与副图共享商品外观，但不强行共用背景或版式。'},
+    {name:'亚马逊 · 主图组', hint:'全部生成商品副图，展示场景、卖点、细节和参数。', rules:'白底主图由用户自行提供，不占生成屏数。所有输出均为商品副图，不生成纯白背景的独立商品主图，即使已有提示词或参考素材中包含白底主图。首屏展示核心卖点或使用场景，其余各屏按用途、细节、尺寸和已确认的参数分工；各屏保持商品外观一致，背景和版式按内容设计。'},
     {name:'亚马逊 · A+ 模块', hint:'按品牌故事、功能、场景和对比组织图文模块。', rules:'输出A+图文模块，按品牌故事、功能解释、使用场景、细节和有依据的产品对比组织；每屏只承担一个模块职责，采用清晰的图文分区，跨模块保持品牌视觉连续。不得虚构品牌故事、认证、评论、价格或限时促销。'},
     {name:'Shopee', hint:'面向移动端，清楚区分规格、组合和使用步骤。', rules:'采用移动端易读的商品构图，突出核心利益、规格差异、套装内容与使用步骤；文字简短，促销信息须有资料支撑，文案按用户所选语种表达。'},
     {name:'Lazada', hint:'统一品牌视觉，展示生活场景、细节和选购信息。', rules:'围绕品牌一致性组织生活场景与商品细节，详情清楚展示功能、材质、规格和选购信息；画面整洁，避免堆叠促销贴纸，按用户所选语种表达。'},
@@ -14585,25 +14702,24 @@ function smartBatchCommercePlatform(node){
 }
 function smartBatchPlatformSequence(node){
     const d = smartLoopCommerceFields(node);
-    if(d.platform === '亚马逊 · 主图组') return '第1屏为商品白底主图，其余为商品副图；即使生成类型为主图，也按主图组分工。';
+    if(d.platform === '亚马逊 · 主图组') return '从第1屏开始按商品副图分工，各屏展示不同重点。';
     if(d.platform === '亚马逊 · A+ 模块') return '每屏是一个A+内容模块，模块之间连贯；即使生成类型为主图，也按A+模块分工。';
     return d.mode === '主图' ? '每个方案独立，构图不同。' : '各屏职责明确、前后连贯，构图不同。';
 }
-function smartBatchPlatformRules(node, index=null){
+function smartBatchPlatformRules(node){
     const d = smartLoopCommerceFields(node), platform = smartBatchCommercePlatform(node);
     const rules = [`平台设计策略（${d.platform}）：${platform.rules}`, '用户所选语种、比例、分辨率和无文字要求继续生效；平台侧重点用于内容组织，不擅自更换输出参数。'];
-    if(d.platform === '亚马逊 · 主图组'){
-        const main = '白底主图：纯白背景（#FFFFFF），只展示实际售卖商品及随售配件，保持完整外观；不叠加文字、促销贴纸、Logo、水印或拼图，不添加模特及无关道具。商品本身已有的真实标识保留。此主图要求优先于参考图背景、通用文案、模特和风格设置。';
-        const secondary = '副图：可用使用场景、细节、尺寸或已确认的参数解释商品，文字仍服从图中文字和语种设置；不将白底主图限制强加给副图。';
-        rules.push(index === null ? `第1屏执行${main}\n第2屏起执行${secondary}` : index === 0 ? `当前屏执行${main}` : `当前屏执行${secondary}`);
-    } else if(d.platform === '亚马逊 · A+ 模块'){
-        rules.push('当前输出为A+内容模块，不套用商品图库首张白底主图规则；背景、场景和图文布局按模块职责设计，是否绘制文字仍服从图中文字设置。');
+    if(d.platform === '亚马逊 · A+ 模块'){
+        rules.push('当前输出为A+内容模块；背景、场景和图文布局按模块职责设计，是否绘制文字仍服从图中文字设置。');
     }
     return rules.join('\n');
 }
 function smartLoopCommerceFields(node){
     const old = node.batchCommerce || {};
     return {mode:'详情页', platform:'亚马逊 · 主图组', language:'中文', copy:'主图零字 · 副图可加短标题', richness:'中等', font:'自动判断（跟首屏）', model:'自动判断', pose:'常规姿态', usage:'4', reverse:'0', rhythm:'错落', productName:'', requirements:'', ...old};
+}
+function smartBatchCommerceCopyLabel(platform, copy){
+    return platform === '亚马逊 · 主图组' ? copy.replace(/^主图零字 · 副图/, '每屏') : copy;
 }
 function smartLoopReadyKey(node){
     // 状态条跟随「生成类型」：主图模式显示主图任务，其余仍按详情页描述。
@@ -14640,9 +14756,9 @@ function syncSmartBatchOverviewGeometry(card){
     if(!overview || !link || !node) return;
     const origin = card.getBoundingClientRect(), panel = overview.getBoundingClientRect();
     const scale = origin.width / card.offsetWidth || safeScale(viewport.scale);
-    const port = nodeEl.querySelector('.port-out')?.getBoundingClientRect();
-    const sx = ((port ? port.left + port.width / 2 : origin.right) - origin.left) / scale;
-    const sy = ((port ? port.top + port.height / 2 : origin.top + origin.height / 2) - origin.top) / scale;
+    const source = nodeEl.getBoundingClientRect();
+    const sx = (source.right - origin.left) / scale;
+    const sy = (source.top + source.height / 2 - origin.top) / scale;
     const tx = ((panel.left >= origin.right ? panel.left : panel.right) - origin.left) / scale;
     const ty = (panel.top + panel.height / 2 - origin.top) / scale;
     const bend = Math.max(40, Math.abs(tx - sx) / 2);
@@ -14669,15 +14785,25 @@ function smartBatchVisualRect(node){
     return {x:rect.x + left,y:rect.y + top,width:Math.max(rect.width,offset.x + size.width) - left,height:Math.max(rect.height,offset.y + (size.height || 740)) - top};
 }
 function smartBatchRole(node, ref){
+    if(window.SmartCanvasSku?.is(node)){
+        const matches = (canvas.connections || []).filter(conn => {
+            if(conn.to !== node.id || (conn.kind || 'flow') !== 'input') return false;
+            if(conn.from === ref.nodeId) return true;
+            const input = nodes.find(item => item.id === conn.from);
+            return input && outputImagesForNode(input).some(image => inputRefKey(image) === inputRefKey(ref));
+        });
+        if(matches.some(conn => (conn.input_slot || conn.inputSlot) === 'template') && !matches.some(conn => ['product','reference','gift'].includes(conn.input_slot || conn.inputSlot))) return 'template';
+    }
     const override = node.batchCommerceRoles?.[inputRefKey(ref)];
-    if(override === 'product' || override === 'reference') return override;
+    if(override === 'product' || override === 'reference' || (override === 'gift' && window.SmartCanvasSku?.is(node))) return override;
     const connection = (canvas.connections || []).find(conn => {
-        if(conn.to !== node.id || (conn.kind || 'flow') !== 'input' || !['product','reference'].includes(conn.input_slot || conn.inputSlot)) return false;
+        if(conn.to !== node.id || (conn.kind || 'flow') !== 'input' || !['product','reference',...(window.SmartCanvasSku?.is(node) ? ['gift'] : [])].includes(conn.input_slot || conn.inputSlot)) return false;
         if(conn.from === ref.nodeId) return true;
         const source = nodes.find(item => item.id === conn.from);
         return source && outputImagesForNode(source).some(image => inputRefKey(image) === inputRefKey(ref));
     });
-    return (connection?.input_slot || connection?.inputSlot) === 'reference' ? 'reference' : 'product';
+    const slot = connection?.input_slot || connection?.inputSlot;
+    return slot === 'reference' || slot === 'gift' ? slot : 'product';
 }
 function smartBatchDetachPaint(owner, paint){
     if(paint.batchOverviewOnly && !nonPreviewOutputImages(paint.images || []).length && !smartNodeInFlight(paint) && !(canvas.connections || []).some(c => c.from === paint.id)){
@@ -14769,9 +14895,11 @@ function smartBatchScreenPrompt(node, index){
     const d = smartLoopCommerceFields(node);
     const refs = smartLoopPreviewImages(node);
     const roles = refs.map((ref, i) => `图${i + 1}：${smartBatchRole(node, ref) === 'reference' ? '仅参考配色、排版和风格，不替换产品' : '产品图，保持外观、结构和颜色'}`).join('；');
-    const copyRule = d.platform === '亚马逊 · 主图组' && index === 0 ? '白底主图不叠加文字，商品本身已有的真实标识保留' : d.copy.startsWith('主图零字') ? (index === 0 ? '当前是第 1 屏，画面不得出现文字' : d.copy.includes('只标参数') ? '当前屏仅标注已确认的产品参数，不编造参数' : '当前屏可以使用简短标题') : d.copy;
-    const rules = [`用途：${d.mode}，平台：${d.platform}；当前为第 ${index + 1} 屏`, `图中文字：${copyRule}；语种：${d.language}；字体：${d.font}`, `模特：${d.model}${d.model === '无模特' ? '' : `，姿态：${d.pose}`}；画面丰富度：${d.richness}；色彩节奏：${d.rhythm}`, d.requirements, roles && `参考素材分工：${roles}`].filter(Boolean).join('\n');
-    return [smartLoopDetailVisualGuide(node), node.batchGeneratedGuide || '', raw, rules, smartBatchReferenceStyleRules(node, refs), smartBatchPlatformRules(node, index)].filter(Boolean).join('\n\n');
+    const copy = smartBatchCommerceCopyLabel(d.platform, d.copy);
+    const copyRule = copy.startsWith('主图零字') ? (index === 0 ? '当前是第 1 屏，画面不得出现文字' : copy.includes('只标参数') ? '当前屏仅标注已确认的产品参数，不编造参数' : '当前屏可以使用简短标题') : copy;
+    const purpose = d.platform === '亚马逊 · 主图组' ? '商品副图' : d.mode;
+    const rules = [`用途：${purpose}，平台：${d.platform}；当前为第 ${index + 1} 屏`, `图中文字：${copyRule}；语种：${d.language}；字体：${d.font}`, `模特：${d.model}${d.model === '无模特' ? '' : `，姿态：${d.pose}`}；画面丰富度：${d.richness}；色彩节奏：${d.rhythm}`, d.requirements, roles && `参考素材分工：${roles}`].filter(Boolean).join('\n');
+    return [smartLoopDetailVisualGuide(node), node.batchGeneratedGuide || '', raw, rules, smartBatchReferenceStyleRules(node, refs), smartBatchPlatformRules(node)].filter(Boolean).join('\n\n');
 }
 function smartBatchSetScreenPrompt(node, index, value){
     if(!Array.isArray(node.aiSplitPrompts)) node.aiSplitPrompts = smartLoopPromptFieldValues(node).map(prompt => ({prompt}));
@@ -14801,24 +14929,23 @@ function smartBatchSyncPaintDraft(paint){
 }
 function smartBatchAssetRowsHtml(node){
     const refs = smartLoopPreviewImages(node);
+    const imageNumbers = new Map(refs.map((ref, index) => [inputRefKey(ref), index]));
     const productRefs = refs.filter(ref => smartBatchRole(node, ref) === 'product');
     const referenceRefs = refs.filter(ref => smartBatchRole(node, ref) === 'reference');
+    const sku = window.SmartCanvasSku?.is(node);
+    const giftRefs = sku ? refs.filter(ref => smartBatchRole(node, ref) === 'gift') : [];
     const protections = productFidelitySourcesFor(node);
     const protectionMode = protections.length === 1 ? fidelityEffectiveConfig(protections[0].fidelityConfig).mode : '';
     const protectionNote = protections.length > 1 ? '多个保护来源，请检查连线' : protectionMode ? ({strict:'仅换背景 · 保留标记区原图',structure:'光影融合 · 比例与轮廓参考',view:'换拍摄角度 · AI 重绘产品'}[protectionMode]) : '标记商品区域，控制比例与轮廓';
-    const track = (role, items) => items.map(ref => `<div class="batch-asset-item">
-        ${smartNodeInputThumbsHtml([ref], {removable:true,nodeId:node.id})}
-        <select class="batch-asset-role" data-loop-commerce-role="${escapeAttr(inputRefKey(ref))}" aria-label="${escapeAttr(`${ref.name || '图片'}用途`)}">
-            <option value="product" ${role === 'product' ? 'selected' : ''}>产品</option>
-            <option value="reference" ${role === 'reference' ? 'selected' : ''}>参考</option>
-        </select>
+    const track = items => items.map(ref => `<div class="batch-asset-item">
+        ${smartNodeInputThumbsHtml([ref], {removable:true,nodeId:node.id,imageNumberOffset:imageNumbers.get(inputRefKey(ref)),label:sku ? (smartBatchRole(node,ref) === 'product' ? '图1' : smartBatchRole(node,ref) === 'gift' ? `图${giftRefs.indexOf(ref)+2}` : '备选') : ''})}
     </div>`).join('');
-    const addTile = role => `<button class="batch-add-image" type="button" data-batch-add-image="${role}" aria-label="添加${role === 'product' ? '产品图' : '参考图'}">
+    const addTile = role => `<button class="batch-add-image" type="button" data-batch-add-image="${role}" aria-label="添加${role === 'product' ? '产品图' : role === 'gift' ? '赠品图' : '参考图'}">
         <i data-lucide="plus"></i><span>添加</span>
     </button>`;
     return `<div class="batch-asset-row" data-batch-input-slot="product">
         <div class="batch-asset-meta"><span>产品图</span><small>${productRefs.length} 张</small></div>
-        <div class="batch-asset-track">${track('product', productRefs)}${addTile('product')}</div>
+        <div class="batch-asset-track">${track(productRefs)}${addTile('product')}</div>
     </div>
     <div class="batch-product-protection">
         <button type="button" class="batch-head-link" data-batch-product-protection ${!productRefs.length && !protections.length ? 'disabled' : ''}><i data-lucide="shield-check"></i>${protections.length ? '编辑产品保护' : '设置产品保护'}</button>
@@ -14826,14 +14953,14 @@ function smartBatchAssetRowsHtml(node){
     </div>
     <div class="batch-asset-row" data-batch-input-slot="reference">
         <div class="batch-asset-meta"><span>参考图</span><small>${referenceRefs.length} 张</small></div>
-        <div class="batch-asset-track">${track('reference', referenceRefs)}${addTile('reference')}</div>
-    </div>`;
+        <div class="batch-asset-track">${track(referenceRefs)}${addTile('reference')}</div>
+    </div>${sku ? `<div class="batch-asset-row" data-batch-input-slot="gift"><div class="batch-asset-meta"><span>赠品图</span><small>${giftRefs.length} 张</small></div><div class="batch-asset-track">${track(giftRefs)}${addTile('gift')}</div></div><p class="batch-hint">赠品可连接图片组，每款共用，不单独建立 SKU；从图2开始提交，模板另行分析。</p>` : ''}`;
 }
 function smartBatchDesignHtml(node){
     const d = smartLoopCommerceFields(node);
-    const select = (key, label, options) => { const values = [...new Set([...options, d[key]].filter(Boolean))]; return `<label class="batch-field"><span>${label}</span><select class="batch-control" data-loop-commerce="${key}" aria-label="${label}">${values.map(value => `<option ${d[key] === value ? 'selected' : ''}>${escapeHtml(value)}</option>`).join('')}</select></label>`; };
+    const select = (key, label, options) => { const values = [...new Set([...options, d[key]].filter(Boolean))]; return `<label class="batch-field"><span>${label}</span><select class="batch-control" data-loop-commerce="${key}" aria-label="${label}">${values.map(value => `<option value="${escapeAttr(value)}" ${d[key] === value ? 'selected' : ''}>${escapeHtml(key === 'copy' ? smartBatchCommerceCopyLabel(d.platform, value) : value)}</option>`).join('')}</select></label>`; };
     return `<div class="batch-grid">
-        ${select('mode','生成类型',['详情页','主图'])}
+        ${select('mode','生成类型',['详情页','主图','SKU'])}
         ${select('platform','平台',SMART_BATCH_COMMERCE_PLATFORMS.map(item => item.name))}
         <label class="batch-field"><span>屏数</span><div class="batch-stepper">
             <button type="button" data-batch-count-step="-1" aria-label="减少一屏"><i data-lucide="minus"></i></button>
@@ -14842,7 +14969,7 @@ function smartBatchDesignHtml(node){
         </div></label>
         ${select('copy','图中文字',['主图零字 · 副图可加短标题','主图零字 · 副图只标参数','全部无文字','每屏需要文案','预留文案区域'])}
         ${select('language','语种',['中文','英语','俄语','日语','韩语','西班牙语','法语','德语','葡萄牙语','阿拉伯语','意大利语'])}
-        ${select('font','字体风格',['自动判断（跟首屏）','现代无衬线 · 干净','粗黑标题 · 有冲击力','经典衬线 · 沉稳','圆润黑体 · 亲和','手写书法 · 国风','科技字体 · 硬朗'])}
+        ${select('font','字体风格',['自动判断（跟首屏）','现代中性无衬线','人文柔和无衬线','圆润可爱字体','典雅简约衬线','现代宋意字体','新中式毛笔字','几何科技字体','工业力量字体','潮流手写展示字体','现代无衬线 · 干净','粗黑标题 · 有冲击力','经典衬线 · 沉稳','圆润黑体 · 亲和','手写书法 · 国风','科技字体 · 硬朗'])}
     </div><p class="batch-hint" data-batch-platform-hint aria-live="polite">${escapeHtml(smartBatchCommercePlatform(node).hint)}</p>`;
 }
 function smartBatchDetailFieldsHtml(node){
@@ -14862,18 +14989,32 @@ function smartBatchRatioLabel(value){
     const found = [...SMART_STANDARD_RATIO_OPTIONS, ...SMART_GPT_RATIO_OPTIONS, ...SMART_GOOGLE_RATIO_OPTIONS].find(item => item[0] === raw);
     return found ? found[1] : raw;
 }
+function smartBatchScreenHtml({index, state, status, title, error='', nodeId='', media, details='', extra='', actions, time=''}){
+    const shortError = error.length > 18 ? `${error.slice(0, 18)}…` : error;
+    return `<article class="batch-screen" data-state="${escapeAttr(state)}" ${nodeId ? `data-batch-screen-node="${escapeAttr(nodeId)}"` : ''}>
+        <div class="batch-screen-media"><span class="batch-screen-no">${String(index + 1).padStart(2, '0')}</span><span class="batch-screen-badge"><i></i>${escapeHtml(status)}</span>${media}</div>
+        <div class="batch-screen-info"><strong title="${escapeAttr(title)}">${escapeHtml(title)}</strong><span class="batch-screen-sub" ${error ? `title="${escapeAttr(error)}"` : ''}><span class="dot"></span>${escapeHtml(status)}${shortError ? ` · ${escapeHtml(shortError)}` : ''}</span>${time}</div>
+        ${details}${extra}<div class="batch-screen-actions">${actions}</div>
+    </article>`;
+}
+function smartBatchOverviewPanelHtml(node, {done, total, tools, cards, footer, className='', label='批量生成结果总览'}){
+    const offset = smartBatchOverviewOffset(node), size = smartBatchOverviewSize(node);
+    const percent = total ? Math.round(done / total * 100) : 0;
+    return `<svg class="batch-overview-link" aria-hidden="true"><path fill="none"></path><circle r="5"></circle></svg><aside class="loop-batch-overview ${className}" style="left:${offset.x}px;top:${offset.y}px;width:${size.width}px;${size.height ? `height:${size.height}px;max-height:none;` : ''}" aria-label="${escapeAttr(label)}">
+        <header title="拖动移动结果总览"><div class="batch-ov-title"><strong>结果总览</strong><span class="batch-ov-count"><b>${done}</b> / ${total} 完成</span></div><div class="batch-ov-tools">${tools}</div></header>
+        <div class="batch-ov-progress"><i style="width:${percent}%"></i></div><div class="batch-overview-grid">${cards}</div><footer>${footer}</footer>
+        <div class="batch-overview-resize" data-batch-overview-resize title="拖动调整结果总览大小"></div>
+    </aside>`;
+}
 function smartBatchOverviewHtml(node, state){
     const run = smartCascadeRunForLoop(node.id), running = Boolean(run);
     const screenRunsBlocked = Boolean(node.aiSplitRunning || (run && (!run.screenRuns || run.stopRequested)));
     const prompts = Array.isArray(node.aiSplitPrompts) ? node.aiSplitPrompts : smartLoopPromptFieldValues(node).filter(Boolean).map(prompt => ({prompt}));
     const targets = smartLoopDetailPaintNodes(node);
     const stitch = detailStitchStateForLoop(node);
-    const offset = smartBatchOverviewOffset(node);
-    const size = smartBatchOverviewSize(node);
     const done = targets.filter(paint => nonPreviewOutputImages(paint.images || []).length && !smartNodeInFlight(paint) && !paint.runError).length;
     const failed = targets.filter(paint => paint.runError).length;
     const total = prompts.length;
-    const percent = total ? Math.round(done / total * 100) : 0;
     const ratio = smartBatchRatioLabel(smartLoopBatchImageSettings(node).ratio);
     const cards = prompts.map((screen, index) => {
         const paint = targets.find(item => Number(item.batchDetailScreenIndex) === index + 1);
@@ -14887,21 +15028,13 @@ function smartBatchOverviewHtml(node, state){
         const title = typeof screen === 'string' ? '' : String(screen?.title || '').trim();
         const prompt = typeof screen === 'string' ? screen : String(screen?.prompt || '');
         const shortError = error.length > 18 ? `${error.slice(0, 18)}…` : error;
-        return `<article class="batch-screen" data-state="${cardState}" data-batch-screen-node="${escapeAttr(paint?.id || '')}">
-            <div class="batch-screen-media">
-                <span class="batch-screen-no">${String(index + 1).padStart(2, '0')}</span>
-                <span class="batch-screen-badge"><i></i>${statusText}</span>
-                ${result
+        return smartBatchScreenHtml({index, state:cardState, status:statusText, title:title || `第 ${index + 1} 屏`, error, nodeId:paint?.id,
+            media:`${result
                     ? `<button type="button" data-loop-result-preview="${index}" data-ref-node-id="${escapeAttr(paint.id)}" data-ref-image-index="${paint.images.indexOf(result)}" aria-label="查看第 ${index + 1} 屏大图">${smartPreviewImgHtml(result, 512, 'alt="生成结果"')}</button>`
                     : `<div class="batch-screen-empty">${busy ? generationProgressRingHtml(paint, true, task, false) : `<i data-lucide="${error ? 'alert-triangle' : 'image'}"></i><span>${escapeHtml(error ? (shortError || '生成失败') : '等待生成')}</span>`}<em>${escapeHtml(ratio)}</em></div>`}
-                ${result && busy ? `<div class="batch-screen-empty is-regenerating">${generationProgressRingHtml(paint, true, task, false)}</div>` : ''}
-            </div>
-            <div class="batch-screen-info">
-                <strong title="${escapeAttr(title || `第 ${index + 1} 屏`)}">${escapeHtml(title || `第 ${index + 1} 屏`)}</strong>
-                <span class="batch-screen-sub" ${error ? `title="${escapeAttr(error)}"` : ''}><span class="dot"></span>${statusText}${shortError ? ` · ${escapeHtml(shortError)}` : ''}</span>
-                <span class="batch-screen-time" data-batch-screen-time ${paint?.runStartedAt ? '' : 'hidden'}>${paint?.runStartedAt ? `已用 ${formatRunDuration(nodeRunElapsedMs(paint))}` : ''}</span>
-            </div>
-            <details class="batch-screen-prompt" ${node.batchEditingScreen === index ? 'open' : ''}>
+                ${result && busy ? `<div class="batch-screen-empty is-regenerating">${generationProgressRingHtml(paint, true, task, false)}</div>` : ''}`,
+            time:`<span class="batch-screen-time" data-batch-screen-time ${paint?.runStartedAt ? '' : 'hidden'}>${paint?.runStartedAt ? `已用 ${formatRunDuration(nodeRunElapsedMs(paint))}` : ''}</span>`,
+            details:`<details class="batch-screen-prompt" ${node.batchEditingScreen === index ? 'open' : ''}>
                 <summary>提示词</summary>
                 <textarea data-batch-screen-prompt="${index}" aria-label="第 ${index + 1} 屏提示词">${escapeHtml(prompt)}</textarea>
                 <div class="batch-screen-order">
@@ -14909,34 +15042,24 @@ function smartBatchOverviewHtml(node, state){
                     <button type="button" data-batch-move-screen="${index}" data-direction="1" ${index === total - 1 || running ? 'disabled' : ''}>后移</button>
                     <button type="button" data-batch-remove-screen="${index}" ${running ? 'disabled' : ''}>移除</button>
                 </div>
-            </details>
-            <div class="batch-screen-actions">
-                <button type="button" data-loop-result-edit="${index}" ${paint ? '' : 'disabled'}>在画布中编辑</button>
+            </details>`,
+            actions:`<button type="button" data-loop-result-edit="${index}" ${paint ? '' : 'disabled'}>在画布中编辑</button>
                 <button type="button" data-batch-screen-run="${index}" class="${error ? 'is-retry' : result ? '' : 'is-primary'}" ${busy || screenRunsBlocked ? 'disabled' : ''}><i data-lucide="${error ? 'rotate-ccw' : result ? 'refresh-cw' : 'play'}"></i>${busy ? '生成中' : error ? '重试' : result ? '重生成' : '生成'}</button>
-            </div>
-        </article>`;
+            `
+        });
     }).join('');
-    return `<svg class="batch-overview-link" aria-hidden="true"><path fill="none"></path><circle r="5"></circle></svg><aside class="loop-batch-overview" style="left:${offset.x}px;top:${offset.y}px;width:${size.width}px;${size.height ? `height:${size.height}px;max-height:none;` : ''}" aria-label="批量生成结果总览">
-        <header title="拖动移动结果总览">
-            <div class="batch-ov-title"><strong>结果总览</strong><span class="batch-ov-count"><b>${done}</b> / ${total} 完成</span></div>
-            <div class="batch-ov-tools">
-                <button class="batch-tool-btn" type="button" data-batch-duplicate title="复制提示词、参考图和设置，切换模型后重新生成" aria-label="复制整组"><i data-lucide="copy"></i>复制整组</button>
+    return smartBatchOverviewPanelHtml(node, {done, total,
+        tools:`<button class="batch-tool-btn" type="button" data-batch-duplicate title="复制提示词、参考图和设置，切换模型后重新生成" aria-label="复制整组"><i data-lucide="copy"></i>复制整组</button>
                 <button class="batch-tool-btn" type="button" data-batch-add-screen ${running || node.aiSplitRunning ? 'disabled' : ''} title="添加一屏"><i data-lucide="plus"></i>添加屏</button>
                 <span class="batch-tool-sep"></span>
                 <button class="batch-tool-btn" type="button" data-batch-download ${!targets.some(paint => nonPreviewOutputImages(paint.images || []).length) ? 'disabled' : ''} title="下载全部结果"><i data-lucide="download"></i>下载</button>
                 <button class="batch-tool-btn" type="button" data-loop-detail-stitch="${escapeAttr(node.id)}" ${!stitch?.ready || running ? 'disabled' : ''} title="拼接成长图"><i data-lucide="panel-top"></i>拼接</button>
                 <span class="batch-tool-sep"></span>
-                <button class="batch-tool-btn batch-tool-delete" type="button" data-batch-delete-overview ${smartBatchOverviewBusy(node) ? 'disabled' : ''} title="删除总览及其中结果，保留左侧设置" aria-label="删除结果总览"><i data-lucide="trash-2"></i>删除</button>
-            </div>
-        </header>
-        <div class="batch-ov-progress"><i style="width:${percent}%"></i></div>
-        <div class="batch-overview-grid">${total ? cards : '<div class="batch-overview-empty"><i data-lucide="layout-grid"></i><strong>还没有分屏</strong><span>先在左侧生成分屏提示词</span></div>'}</div>
-        <footer>
-            <span class="batch-ov-foot-left"><i></i>${failed ? `${failed} 屏失败 · ` : ''}${done}/${total} 屏完成${running ? ' · 正在生成' : ''}</span>
-            <span data-loop-detail-stitch-status>${stitch ? `长图拼接：${escapeHtml(detailStitchStatusText(stitch))}` : '长图拼接：先把详情页画布设为 9:16'}</span>
-        </footer>
-        <div class="batch-overview-resize" data-batch-overview-resize title="拖动调整结果总览大小"></div>
-    </aside>`;
+                <button class="batch-tool-btn batch-tool-delete" type="button" data-batch-delete-overview ${smartBatchOverviewBusy(node) ? 'disabled' : ''} title="删除总览及其中结果，保留左侧设置" aria-label="删除结果总览"><i data-lucide="trash-2"></i>删除</button>`,
+        cards:total ? cards : '<div class="batch-overview-empty"><i data-lucide="layout-grid"></i><strong>还没有分屏</strong><span>先在左侧生成分屏提示词</span></div>',
+        footer:`<span class="batch-ov-foot-left"><i></i>${failed ? `${failed} 屏失败 · ` : ''}${done}/${total} 屏完成${running ? ' · 正在生成' : ''}</span>
+            <span data-loop-detail-stitch-status>${stitch ? `长图拼接：${escapeHtml(detailStitchStatusText(stitch))}` : '长图拼接：先把详情页画布设为 9:16'}</span>`
+    });
 }
 function refreshSmartBatchOverviewProgress(nodeMap){
     world.querySelectorAll('.batch-screen[data-batch-screen-node]').forEach(card => {
@@ -14970,10 +15093,10 @@ function refreshSmartBatchOverviewProgress(nodeMap){
 }
 function smartLoopPairedBodyHtml(node){
     syncSmartLoopPairedSettings(node);
+    if(window.SmartCanvasSku?.is(node)) return window.SmartCanvasSku.html(node);
     const state = smartLoopPairedState(node), d = smartLoopCommerceFields(node);
     const run = smartCascadeRunForLoop(node.id), running = Boolean(run);
     const source = smartLoopDetailSourceText(node), inputs = smartLoopDetailTextInputs(node);
-    const sourceId = node.batchSourceNodeId === 'local' || inputs.some(input => input.id === node.batchSourceNodeId) ? node.batchSourceNodeId : '';
     const provider = resolveAgentProviderId(node.batchAiProvider || '');
     const model = resolveAgentModel(node.batchAiModel || '', provider);
     const settings = smartLoopBatchImageSettings(node);
@@ -15004,17 +15127,16 @@ function smartLoopPairedBodyHtml(node){
         ? `点「生成」时会自动补齐 ${promptCount} 个屏节点`
         : (state.message || tr('smart.loopPairedNeedImages'));
     return `<div class="loop-paired-card loop-detail-card batch-compact-card">
-        <header class="batch-head">
+        <header class="batch-head batch-head-simple">
             <div class="batch-head-main">
                 <span class="batch-head-icon"><i data-lucide="layers"></i></span>
                 <div class="batch-head-text">
                     <strong>批量生图</strong>
-                    <span class="batch-head-sub">${promptCount || 0} 屏 · ${state.images.length} 张素材 · ${escapeHtml(settings.model || '未选模型')}</span>
+                    <span class="batch-head-sub">${promptCount || 0} 屏 · ${state.images.length} 张素材</span>
                 </div>
             </div>
             <div class="batch-head-side">
                 <span class="batch-status ${status.cls}"><i></i><span data-batch-status-text>${escapeHtml(status.text)}</span></span>
-                ${showOverview ? '<button class="batch-head-link" type="button" data-batch-locate title="定位结果总览">结果总览<i data-lucide="arrow-up-right"></i></button>' : ''}
             </div>
         </header>
         <section class="batch-sec">
@@ -15024,7 +15146,6 @@ function smartLoopPairedBodyHtml(node){
         <section class="batch-sec">
             <div class="batch-sec-head">
                 <span class="batch-sec-title">文案</span>
-                <select class="batch-source" data-loop-detail-source aria-label="文本来源"><option value="" ${!sourceId ? 'selected' : ''}>使用连接的文本</option>${inputs.filter(input => input.id !== node.batchGuideNodeId).map((input, index) => `<option value="${escapeAttr(input.id)}" ${sourceId === input.id ? 'selected' : ''}>${escapeHtml(input.title || `连接的文本 ${index + 1}`)}</option>`).join('')}<option value="local" ${sourceId === 'local' ? 'selected' : ''}>直接输入</option></select>
             </div>
             <label class="batch-field"><span>产品名称</span><input class="batch-control" data-loop-commerce="productName" value="${escapeAttr(d.productName)}" placeholder="例如：淋浴门"></label>
             <label class="batch-field">
@@ -15039,9 +15160,11 @@ function smartLoopPairedBodyHtml(node){
                 </div>
             </div>
             <label class="batch-field"><span>统一视觉要求</span><textarea class="batch-control loop-paired-prompts loop-detail-guide" data-loop-detail-guide placeholder="选填，补充整套图片共同遵守的视觉要求" ${node.batchGuideNodeId ? 'readonly' : ''}>${escapeHtml(smartLoopDetailVisualGuide(node))}</textarea></label>
-            <div class="batch-prompt-actions" aria-busy="${Boolean(node.aiSplitRunning)}">
-                <button class="batch-btn is-accent" type="button" data-loop-commerce-plan ${node.aiSplitRunning || running ? 'disabled' : ''}><i data-lucide="sparkles" aria-hidden="true"></i>${node.aiSplitRunning ? '正在生成提示词…' : '生成分屏提示词'}</button>
-                ${node.aiSplitRunning ? smartBatchPromptProgressHtml(node) : node.aiSplitError ? `<p class="batch-notice is-blocked" data-batch-prompt-status role="alert"><i data-lucide="alert-triangle"></i><span>${escapeHtml(node.aiSplitError)}</span></p>` : !stale && promptCount ? `<p class="batch-notice" data-batch-prompt-status role="status" aria-live="polite"><i data-lucide="check-circle-2"></i><span>已准备 ${promptCount} 屏提示词，可在右侧总览检查后生图。</span></p>` : ''}
+            <div class="batch-prompt-actions">
+                ${node.aiSplitRunning ? smartBatchPromptProgressHtml(node) : `
+                    <button class="batch-btn is-accent" type="button" data-loop-commerce-plan ${running ? 'disabled' : ''}><i data-lucide="sparkles" aria-hidden="true"></i>生成分屏提示词</button>
+                    ${node.aiSplitError ? `<p class="batch-notice is-blocked" data-batch-prompt-status role="alert"><i data-lucide="alert-triangle"></i><span>${escapeHtml(node.aiSplitError)}</span></p>` : !stale && promptCount ? `<p class="batch-notice" data-batch-prompt-status role="status" aria-live="polite"><i data-lucide="check-circle-2"></i><span>已准备 ${promptCount} 屏提示词，可在右侧总览检查后生图。</span></p>` : ''}
+                `}
             </div>
         </section>
         <section class="batch-sec">
@@ -15054,7 +15177,7 @@ function smartLoopPairedBodyHtml(node){
             ${smartLoopBatchImageSettingsHtml(node)}
         </section>
         <details class="batch-advanced" ${node.batchAdvancedOpen ? 'open' : ''}>
-            <summary><span class="batch-more-label">更多设置</span><span class="batch-more-note">生成顺序 · 手动拆分</span><i class="batch-more-chevron" data-lucide="chevron-down"></i></summary>
+            <summary><span class="batch-more-label">更多设置</span><span class="batch-more-note">生成顺序 · 高级循环模式</span><i class="batch-more-chevron" data-lucide="chevron-down"></i></summary>
             <div class="batch-more-body">
                 <div class="batch-order">
                     <span class="batch-field-label">生成顺序</span>
@@ -15064,13 +15187,6 @@ function smartLoopPairedBodyHtml(node){
                     </div>
                     <p class="batch-hint">${escapeHtml(node.mode === 'parallel' ? tr('smart.loopDetailParallelHint') : tr('smart.loopSerialHint'))}</p>
                 </div>
-                <details class="batch-manual loop-detail-manual" ${node.batchManualSplitOpen ? 'open' : ''}>
-                    <summary>手动拆分</summary>
-                    <div class="batch-manual-body">
-                        <input class="batch-control" data-loop-prompt-separator="1" value="${escapeAttr(node.batchSplitSeparator || '')}" placeholder="分隔符，留空按空行">
-                        <button type="button" data-loop-prompt-split="1">拆分文本</button>
-                    </div>
-                </details>
                 <button class="batch-wide-btn" type="button" data-loop-switch-advanced="1"><i data-lucide="settings-2"></i>高级循环模式</button>
             </div>
         </details>
@@ -15112,14 +15228,17 @@ function preserveSmartBatchPromptRequests(nextNodes){
 }
 function smartBatchPromptProgressHtml(node){
     const progress = smartBatchPromptProgress.get(node);
-    const phase = progress?.phase || '正在整理分屏提示词，等待文本模型返回';
     const elapsed = progress ? Math.max(0, nowMs() - progress.startedAt) : 0;
-    return `<div class="batch-notice batch-prompt-progress" data-batch-prompt-status data-batch-prompt-progress="${escapeAttr(node.id)}" role="status" aria-live="polite">
-        <div class="batch-prompt-progress-meta">
-            <span class="batch-prompt-progress-label"><span class="batch-prompt-spinner" aria-hidden="true"></span><span data-batch-prompt-phase>${escapeHtml(phase)}</span></span>
-            <span class="batch-prompt-progress-right"><span data-batch-prompt-elapsed>已用 ${formatRunDuration(elapsed)}</span><button class="batch-prompt-cancel" type="button" data-batch-prompt-cancel="${escapeAttr(node.id)}" title="停止本次生成，已填写的内容不受影响"><i data-lucide="x"></i>取消</button></span>
+    return `<div class="batch-prompt-progress" data-batch-prompt-status data-batch-prompt-progress="${escapeAttr(node.id)}">
+        <span class="batch-head-icon" aria-hidden="true"><span class="batch-prompt-spinner"></span></span>
+        <div class="batch-prompt-progress-copy">
+            <strong>${escapeHtml(progress?.label || '正在生成分屏提示词')}</strong>
+            <div class="batch-prompt-progress-meta">
+                <span data-batch-prompt-phase role="status">${escapeHtml(progress?.phase || '等待文本模型返回')}</span>
+                <span data-batch-prompt-elapsed>已用 ${formatRunDuration(elapsed)}</span>
+            </div>
         </div>
-        <div class="batch-prompt-progress-track" role="progressbar" aria-label="分屏提示词生成进度" aria-valuetext="${escapeAttr(phase)}"><span></span></div>
+        <button class="batch-prompt-cancel" type="button" data-batch-prompt-cancel="${escapeAttr(node.id)}" title="取消本次提示词处理">取消</button>
     </div>`;
 }
 function refreshSmartBatchPromptProgress(nodeMap){
@@ -15127,9 +15246,11 @@ function refreshSmartBatchPromptProgress(nodeMap){
         const node = nodeMap.get(el.dataset.batchPromptProgress);
         const progress = node && smartBatchPromptProgress.get(node);
         if(!node?.aiSplitRunning || !progress) return;
-        el.querySelector('[data-batch-prompt-phase]').textContent = progress.phase;
-        el.querySelector('[data-batch-prompt-elapsed]').textContent = `已用 ${formatRunDuration(Math.max(0, nowMs() - progress.startedAt))}`;
-        el.querySelector('[role="progressbar"]').setAttribute('aria-valuetext', progress.phase);
+        const phase = el.querySelector('[data-batch-prompt-phase]');
+        if(phase.textContent !== progress.phase) phase.textContent = progress.phase;
+        const elapsed = el.querySelector('[data-batch-prompt-elapsed]');
+        const elapsedText = `已用 ${formatRunDuration(Math.max(0, nowMs() - progress.startedAt))}`;
+        if(elapsed.textContent !== elapsedText) elapsed.textContent = elapsedText;
     });
 }
 function smartBatchPromptCancelled(node){
@@ -15186,13 +15307,17 @@ async function runSmartBatchPromptGeneration(nodeId){
         const d = smartLoopCommerceFields(node), source = smartLoopDetailSourceText(node), guideInput = smartLoopDetailGuideInput(node), guide = smartLoopDetailVisualGuide(node);
         const imageSettings = smartLoopBatchImageSettings(node);
         const count = Math.max(1, Math.min(100, Number(node.batchAiTargetCount) || 7));
+        const previousTitles = (Array.isArray(node.aiSplitPrompts) ? node.aiSplitPrompts : []).map((screen, index) => String(screen?.title || `第 ${index + 1} 屏`).trim());
+        const regeneration = previousTitles.length ? `\n\n【重新策划】\n上一版分屏标题（仅供识别旧方案，不是本次内容要求）：${JSON.stringify(previousTitles)}\n请基于当前产品资料、参考图和表单要求重新安排每屏的切入点、内容分工与画面构图，并同步重写每屏的 title 和 prompt。不要沿用上一版整套标题和分屏框架后只改写提示词措辞；标题必须准确概括本次该屏的新内容。用户明确指定的卖点、风格和顺序，以及平台强制要求继续遵守，不为求变化编造产品信息。` : '';
         const snapshot = JSON.stringify([d, source, guideInput, guide, count, imageSettings, images.map(ref => [inputRefKey(ref), ref.url, smartBatchRole(node, ref)]), node.batchCommerceRoles || {}]);
         const controller = new AbortController();
         timeout = setTimeout(() => controller.abort(), 360000);
-        smartBatchPromptProgress.set(node, {startedAt:nowMs(), phase:'正在分析素材，等待文本模型返回', controller});
+        smartBatchPromptProgress.set(node, {startedAt:nowMs(), label:'正在生成分屏提示词', phase:'等待文本模型返回', controller});
         node.aiSplitRunning = true; node.aiSplitError = ''; render();
         const platformRules = smartBatchPlatformRules(node);
-        const message = `请生成${count}个${d.mode}的生图提示词。目标平台：${d.platform}；比例：${imageSettings.ratio}；分辨率：${imageSettings.resolution}。图片用途：${roles}。${smartBatchPlatformSequence(node)}\n${platformRules}\n输出语言：${d.language}\n文案：${d.copy}\n丰富度：${d.richness}\n字体：${d.font}\n模特：${d.model}，姿态：${d.pose}，使用量：${d.usage}\n反转屏：${d.reverse}；色彩节奏：${d.rhythm}\n产品名称：${d.productName}\n产品卖点与资料：${source}\n补充要求：${d.requirements}\n视觉限制：${guide}\n不要编造产品参数。先确定统一的配色、字体与光线，保持整套风格一致。只返回 JSON：{"visual_guide":"全套统一视觉要求","screens":[{"title":"标题","prompt":"完整生图提示词"}]}，必须正好${count}项。`;
+        const purpose = d.platform === '亚马逊 · 主图组' ? '商品副图' : d.mode;
+        const copy = smartBatchCommerceCopyLabel(d.platform, d.copy);
+        const message = `请生成${count}个${purpose}的生图提示词。目标平台：${d.platform}；比例：${imageSettings.ratio}；分辨率：${imageSettings.resolution}。图片用途：${roles}。${smartBatchPlatformSequence(node)}\n${platformRules}\n输出语言：${d.language}\n文案：${copy}\n丰富度：${d.richness}\n字体：${d.font}\n模特：${d.model}，姿态：${d.pose}，使用量：${d.usage}\n反转屏：${d.reverse}；色彩节奏：${d.rhythm}\n产品名称：${d.productName}\n产品卖点与资料：${source}\n补充要求：${d.requirements}\n视觉限制：${guide}\n不要编造产品参数。先确定统一的配色、字体与光线，保持整套风格一致。只返回 JSON：{"visual_guide":"全套统一视觉要求","screens":[{"title":"标题","prompt":"完整生图提示词"}]}，必须正好${count}项。`;
         const systemPrompt = `你是电商视觉策划师。只生成供用户确认的提示词，不生成图片。严格返回 JSON。
 电商卖点、文案与视觉标准：
 1. 先讲消费者得到的利益，再讲产品特点，最大好处放进标题。卖点按核心到辅助分级，从原料、工艺、设计、功效、价格、服务、工厂、品牌八个维度提炼；只选择有真实资料支撑的维度，不为凑齐维度编造内容。
@@ -15202,12 +15327,13 @@ async function runSmartBatchPromptGeneration(nodeId){
 5. 每屏提示词写清主体、构图、材质、光线、背景和氛围，并落实参考图的可借鉴点；产品图保持商品外观，参考图只借风格、配色和排版，不替换商品。
 6. 遵守“三三原则”：全套字体、设计主辅色、逻辑、排版各不超过3种。商品实色和照片自然颜色不计入设计配色，不得为控制颜色而改变商品。
 7. 配色使用明确的HEX色值；在visual_guide中写清全套配色、字体、字级、品牌位置和产品机位并统一执行，按每屏职责安排不同构图。未提供品牌时不虚构Logo。
+8. 每屏的title和prompt必须一起策划，title具体概括本次该屏的核心利益、画面或内容主题，不套用固定分类标签。重新策划时同时更新分屏内容与标题，不只改写prompt；用户明确固定的内容和平台必需屏仍须保留。
 按用户表单的生成类型、平台、屏数、比例、分辨率、图中文字、语种及统一视觉要求执行。无文字或预留文案区域时，利益点标题只用于策划，不在图中绘制文字。沿用请求中的visual_guide和screens输出格式，逐屏细节及待确认项写入prompt，不增设额外输出字段。
 ${smartBatchPlatformSequence(node)}
 ${platformRules}
-将平台策略落实到每屏的主体、构图和内容分工中。平台策略与参考图风格不一致时，优先保证平台的图片用途要求；亚马逊首张白底主图不套用标题、模特、品牌位置或彩色场景背景。
+将平台策略落实到每屏的主体、构图和内容分工中。平台策略与参考图风格不一致时，优先保证平台的图片用途要求。
 ${referenceStyleRules ? `${referenceStyleRules}\n先逐张查看风格参考，再写方案。将从主参考中实际观察到的主辅色HEX及面积比例、版式骨架、标题字形与层级、图文占比和留白、背景质感、光影及装饰语言写入visual_guide，注明对应参考图号；看不清的特征明确说明，不凭空补造。每屏prompt说明借用了哪张参考的哪个局部或模块、保留哪些具体视觉特征、如何替换为当前商品和真实文案。字体设为自动判断时优先沿用参考图可见的字形特征与字级关系，无须臆造具体字体名称。不要只写抽象风格词，也不要把产品照片的背景风格当成参考图分析结果。` : ''}`;
-        const response = await fetch('/api/canvas-llm', {method:'POST', headers:{'Content-Type':'application/json'}, signal:controller.signal, body:JSON.stringify({message, messages:[], images:images.map(image => smartOriginalMediaUrl(image)), videos:[], model, provider, system_prompt:systemPrompt})});
+        const response = await fetch('/api/canvas-llm', {method:'POST', headers:{'Content-Type':'application/json'}, signal:controller.signal, body:JSON.stringify({message:message + regeneration, messages:[], images:images.map(image => smartOriginalMediaUrl(image)), videos:[], model, provider, system_prompt:systemPrompt})});
         if(!response.ok) throw new Error(await smartResponseErrorMessage(response, '生成分屏提示词失败'));
         if(smartBatchPromptCancelled(node)) throw Object.assign(new Error('已取消'), {name:'SmartBatchCancelled'});
         smartBatchPromptProgress.get(node).phase = '正在接收分屏提示词';
@@ -15258,7 +15384,7 @@ async function runSmartLoopAiSplit(nodeId){
     node.batchAiModel = model;
     node.aiSplitRunning = true;
     node.aiSplitError = '';
-    smartBatchPromptProgress.set(node, {startedAt:nowMs(), phase:'正在拆分已有文案，等待文本模型返回', controller});
+    smartBatchPromptProgress.set(node, {startedAt:nowMs(), label:'正在拆分已有文案', phase:'等待文本模型返回', controller});
     render();
     try {
         const systemPrompt = `你是电商详情页文案拆分助手。用户已经完成详情页策划，禁止重新策划、删改产品卖点或虚构产品信息。你的任务是从已有长文案中识别详情页屏幕结构，拆成 ${targetCount} 屏。每个 screen.prompt 只写当前屏可直接交给图片模型的提示词；原文中的视觉风格和限制落实到对应屏幕，不另行提取或生成统一视觉要求。只返回 JSON，不要 Markdown：{"screens":[{"title":"第1屏标题","source_text":"对应原文","prompt":"当前屏提示词"}]}`;
@@ -16081,12 +16207,12 @@ function smartCompareNodeBodyHtml(node){
     normalizeSmartCompareNode(node);
     const images = smartCompareInputImages(node);
     const ready = images.length >= 2;
-    const position = Number(node.comparePosition) || 50;
+    const position = node.comparePosition;
     const imageOneLabel = escapeHtml(smartCompareTextf('smart.compareNodeImageLabel', '图 {n}', {n:1}));
     const imageTwoLabel = escapeHtml(smartCompareTextf('smart.compareNodeImageLabel', '图 {n}', {n:2}));
     let viewHtml;
     if(ready){
-        viewHtml = `<div class="smart-compare-stage smart-compare-stage-slider" data-compare-stage tabindex="0" role="slider" aria-label="${escapeAttr(smartCompareText('smart.compareNodeDragHint', '拖动中间滑块对比'))}" aria-valuemin="5" aria-valuemax="95" aria-valuenow="${position}" style="--compare-position:${position}%">
+        viewHtml = `<div class="smart-compare-stage smart-compare-stage-slider" data-compare-stage tabindex="0" role="slider" aria-label="${escapeAttr(smartCompareText('smart.compareNodeDragHint', '拖动中间滑块对比'))}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${position}" style="--compare-position:${position}%">
             <div class="smart-compare-frame smart-compare-frame-base">${smartPreviewImgHtml(images[0], 768, 'class="smart-compare-media" draggable="false" alt=""')}</div>
             <div class="smart-compare-frame smart-compare-frame-overlay">${smartPreviewImgHtml(images[1], 768, 'class="smart-compare-media" draggable="false" alt=""')}</div>
             <span class="smart-compare-panel-label smart-compare-label-left">${imageOneLabel}</span>
@@ -16257,7 +16383,8 @@ function smartComfyWorkflowNodeBodyHtml(node){
 }
 function normalizeSmartNodeInputSlot(node, value){
     const slot = String(value || '').trim().toLowerCase();
-    if(smartLoopIsPaired(node)) return ['text','product','reference'].includes(slot) ? slot : '';
+    if(isSmartReplicaNode(node)) return ['product','template'].includes(slot) ? slot : '';
+    if(smartLoopIsPaired(node)) return ['text','product','reference',...(window.SmartCanvasSku?.is(node) ? ['template','gift'] : [])].includes(slot) ? slot : '';
     if(isSmartAiRenderNode(node)){
         if(['white','whitemodel','base','白模'].includes(slot)) return 'white';
         if(['style','reference','ref','风格'].includes(slot)) return 'style';
@@ -16403,6 +16530,8 @@ function smartTextStackBodyHtml(node, layout){
     return `<div class="collapsed-text-stack" style="width:${Number(layout?.width || 328)}px;height:${Number(layout?.height || 156)}px" aria-label="已折叠 ${items.length || 1} 个文字节点">${cards}</div>`;
 }
 function nodeBodyHtml(node, layout){
+    if(isSmartReplicaNode(node)) return window.SmartCanvasReplica.html(node);
+    if(isProductRetouchNode(node))return typeof productRetouchNodeBodyHtml==='function'?productRetouchNodeBodyHtml(node):'';
     if(isLocalFusionNode(node)) return typeof localFusionNodeBodyHtml === 'function' ? localFusionNodeBodyHtml(node) : '';
     if(node.collapsed) ensureSmartColorLocalMedia(node);
     if(isProductFidelityNode(node)) return productFidelityNodeBodyHtml(node);
@@ -16534,10 +16663,10 @@ function generationFailedBodyHtml(node, layout){
         <div class="generation-failed-title">${cancelled ? '已取消' : '生成失败'}</div>
         ${model ? `<div class="generation-failed-model">${escapeHtml(model)}</div>` : ''}
         <div class="generation-failed-message" title="${escapeAttr(message)}">${escapeHtml(message)}</div>
-        <div class="generation-failed-hint">${cancelled ? '可修改参数后重新生成' : canRetryInPlace ? '可修改参数后重新生成，结果会更新到当前节点' : '失败结果已保留，可修改参数后重新运行'}</div>
+        <div class="generation-failed-hint">${recoveryId ? '可先恢复已扣费结果，避免重复提交' : cancelled ? '可修改参数后重新生成' : canRetryInPlace ? '可修改参数后重新生成，结果会更新到当前节点' : '失败结果已保留，可修改参数后重新运行'}</div>
+        ${recoveryId ? `<button class="jimeng-pending-query" type="button" data-image-result-recovery="${escapeAttr(node.id)}" data-recovery-id="${escapeAttr(recoveryId)}"><i data-lucide="archive-restore"></i><span>恢复已扣费结果</span></button>` : ''}
         ${canRetryInPlace ? `<button class="jimeng-pending-query" type="button" data-image-rerun="${escapeAttr(node.id)}"><i data-lucide="refresh-cw"></i><span>重新生成</span></button>` : ''}
         ${quotaFallback ? `<button class="jimeng-pending-query" type="button" data-image-quota-retry="${escapeAttr(node.id)}" data-fallback-resolution="${escapeAttr(quotaFallback)}"><i data-lucide="refresh-cw"></i><span>改用${escapeHtml(quotaFallback.toUpperCase())}重试</span></button>` : ''}
-        ${recoveryId ? `<button class="jimeng-pending-query" type="button" data-image-result-recovery="${escapeAttr(node.id)}" data-recovery-id="${escapeAttr(recoveryId)}"><i data-lucide="archive-restore"></i><span>恢复已扣费结果</span></button>` : ''}
     </div>`;
 }
 async function retryFailedImageGeneration(nodeId){
@@ -16858,6 +16987,8 @@ function smartNodeToolbarImageIndex(node){
     return 0;
 }
 function smartNodeToolbarHtml(node){
+    if(isSmartReplicaNode(node)) return '';
+    if(isProductRetouchNode(node))return '';
     // ComfyUI 工作流节点的操作入口都在节点卡片内；通用悬浮栏会遮挡参数区并触发错误点击。
     if(isSmartComfyWorkflowNode(node)) return '';
     if(isSmartDrawingBoardNode(node)) return '';
@@ -16920,6 +17051,7 @@ function smartNodeToolbarHtml(node){
         {key:'prompt-case', icon:'star', label:savedCase ? '打开收藏案例' : '收藏案例', enabled:!sharedCanvasMode && (canSaveCase || Boolean(savedCase))},
         {key:'replace', icon:'image-plus', label:'替换', enabled:canReplaceImage},
         {key:'background-remove', icon:'eraser', label:imageCount > 1 ? '批量去背景' : '去背景', enabled:canUseBackgroundRemoval},
+        {key:'product-retouch', icon:'sparkles', label:'产品精修', enabled:canUseSharedImageEditor && !sharedCanvasMode},
         {key:'crop', icon:'crop', label:'裁剪', enabled:canUseSharedImageEditor},
         {key:'local-repair', icon:'scan-line', label:'局部修复', enabled:canUseSharedImageEditor},
         {key:'rotate', icon:'rotate-cw', label:'旋转', enabled:canUseSharedImageEditor},
@@ -17658,6 +17790,10 @@ function openDetailStitchOrderDialog(){
 }
 function runSmartSelectionToolbarAction(action){
     if(action === 'collapse') collapseSelectedImageNodes();
+    else if(action === 'product-retouch'){
+        const node=nodes.find(n=>isNodeSelected(n.id)&&(n.images||[]).some(i=>i.url&&mediaKindForItem(i)==='image'));
+        if(node)void openProductRetouch(node.id,0,true);
+    }
     else if(action === 'group') groupSelectedNodes();
     else if(action === 'background-remove'){
         const selected = selectedNodeIds();
@@ -17740,6 +17876,7 @@ function renderSmartSelectionToolbar(){
         <button type="button" data-smart-selection-action="group" title="打组" ${isSingleMultiImageNode ? 'disabled' : ''}><i data-lucide="layers-2"></i><span>打组</span></button>` : ''}
         ${imageNodes.length || canCollapse || canCollapseTextNodes ? `<button type="button" data-smart-selection-action="collapse" title="${canCollapseTextNodes && textNodes.every(node => node.collapsed) ? '展开' : '折叠'}" ${(canCollapse || canCollapseTextNodes) ? '' : 'disabled'}><i data-lucide="layers"></i><span>${canCollapseTextNodes && textNodes.every(node => node.collapsed) ? '展开' : '折叠'}</span></button>` : ''}
         ${imageNodes.length ? `
+        ${!sharedCanvasMode ? '<button type="button" data-smart-selection-action="product-retouch" title="批量产品精修"><i data-lucide="sparkles"></i><span>产品精修</span></button>' : ''}
         ${canBatchRemoveBackground ? `<button type="button" data-smart-selection-action="background-remove" title="批量去背景" ${smartBackgroundRemovalBusy ? 'disabled' : ''}><i data-lucide="eraser"></i><span>批量去背景</span></button>` : ''}
         <span class="smart-selection-toolbar-separator" aria-hidden="true"></span>
         <button type="button" data-smart-selection-action="download" title="下载"><i data-lucide="download"></i><span>下载</span></button>` : ''}
@@ -18209,6 +18346,7 @@ function runSmartNodeToolbarAction(nodeId, action, anchorElement=null){
         return;
     }
     if(action === 'ai-layers'){ window.openSmartImageLayers(nodeId, index); return; }
+    if(action === 'product-retouch'){ void openProductRetouch(nodeId, index); return; }
     if(action === 'vectorize'){ window.openSmartImageVectorizer(nodeId, index, anchorElement); return; }
     if(action === 'local-repair'){ startLocalRepairCrop(nodeId,index); return; }
     const modeMap = {crop:'crop', outpaint:'outpaint', mask:'mask', erase:'mask', 'protection-mask':'protection-mask', ocr:'ocr', brush:'brush', 'smart-edit':'smart-edit', grid:'grid'};
@@ -18475,7 +18613,7 @@ function smartNodeRunFeedback(node){
     return {phase:'idle', label:'', value:'', startedAt, finishedAt};
 }
 function smartNodeRunBorderHtml(node){
-    if(isLocalFusionNode(node))return '';
+    if(isLocalFusionNode(node)||isProductRetouchNode(node))return '';
     return `<svg class="node-run-border" aria-hidden="true" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
         <rect class="node-run-outline" x="3" y="3" rx="16" pathLength="100"></rect>
         <rect class="node-run-flow" x="3" y="3" rx="16" pathLength="100"></rect>
@@ -18563,12 +18701,20 @@ function render(options={}){
     const existingNodeEls = new Map();
     const comfyNodeScrollTops = new Map();
     const batchScrollTops = new Map();
+    const promptScrollStates = new Map();
     world.querySelectorAll('.image-node').forEach(el => {
         if(el.dataset.id) existingNodeEls.set(el.dataset.id, el);
         const scroller = el.querySelector('.comfy-node-fields');
         if(scroller && el.dataset.id) comfyNodeScrollTops.set(el.dataset.id, scroller.scrollTop);
         const batchScroller = el.querySelector('.batch-overview-grid');
         if(batchScroller && el.dataset.id) batchScrollTops.set(el.dataset.id, batchScroller.scrollTop);
+        if(el.classList.contains('prompt-smart-node')){
+            promptScrollStates.set(el.dataset.id, [...el.querySelectorAll('textarea.prompt-node-control')].map(control => ({
+                selector:control.classList.contains('prompt-node-text') ? '.prompt-node-text'
+                    : control.classList.contains('prompt-llm-instruction') ? '.prompt-llm-instruction' : '.prompt-llm-system',
+                scrollTop:control.scrollTop, scrollLeft:control.scrollLeft
+            })));
+        }
     });
     const nodeHtmlEntries = renderNodes
         .filter(node => node.id !== SMART_LOG_PREVIEW_NODE_ID)
@@ -18612,6 +18758,7 @@ function render(options={}){
         const isFidelity = isProductFidelityNode(node);
         const isFusion = isLocalFusionNode(node);
         const isAiRender = isSmartAiRenderNode(node);
+        const isReplica = isSmartReplicaNode(node);
         const isVideo = isSmartVideoNode(node);
         const isPaint = !isFidelity && !isVideo && (node.type === SMART_PAINT_NODE_TYPE || isComfyWorkflow || isAiRender);
         const detailScreenIndex = Number(node.batchDetailScreenIndex) > 0 ? Math.round(Number(node.batchDetailScreenIndex)) : 0;
@@ -18622,9 +18769,9 @@ function render(options={}){
         const isJimengPending = Boolean(node.jimengPending && node.jimengPending.submitId && imgs.length === 0);
         const isFailed = Boolean(node.runError && imgs.length === 0);
         const isQueued = Boolean(node.queued && imgs.length === 0 && !node.pending && !isJimengPending);
-        const isEmpty = isFidelity || isDrawingBoard || isTable || isTimeline || (isImageNode && !isAiRender && imgs.length === 0 && !node.pending && !isQueued && !isJimengPending && !isFailed);
+        const isEmpty = isFidelity || isDrawingBoard || isTable || isTimeline || (isImageNode && !isAiRender && !isReplica && imgs.length === 0 && !node.pending && !isQueued && !isJimengPending && !isFailed);
         const isHistory = isHistoryGroupNode(node);
-        const isGroup = isImageNode && !isDrawingBoard && !isAiRender && imgs.length > 1;
+        const isGroup = isImageNode && !isDrawingBoard && !isAiRender && !isReplica && imgs.length > 1;
         const isPending = ((node.pending || isQueued || isJimengPending) && imgs.length === 0);
         const body = nodeBodyHtml(node, layout);
         const collabLock = collabLocks.get(String(node.id || ''));
@@ -18632,21 +18779,24 @@ function render(options={}){
         // 非空节点使用悬浮删除按钮；标题栏按钮只给空上传节点，避免产生重复图标。
         const deleteBtn = isGroup || !isEmpty ? '' : `<button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button>`;
         const hint = isTextStack ? '' : isFidelity ? '' : isVideo ? (isFailed ? '生成失败 · 可修改参数后重新运行' : isPending ? escapeHtml(tr('smart.hintPending')) : '连接提示词或图片、视频、音频参考后生成') : isAiRender ? (isFailed ? '生成失败 · 可修改参数后重试' : isPending ? escapeHtml(tr('smart.hintPending')) : '连接白模、风格或产品参考图后开始渲染') : isTable ? '可接收文本或表格数据' : isTimeline ? '连接图片、视频和音频后导出成片' : isComfyWorkflow ? (isFailed ? '运行失败 · 可检查依赖或重新运行' : isPending ? escapeHtml(tr('smart.hintPending')) : '选中节点编辑参数，连接素材后运行') : isDrawingBoard ? escapeHtml(tr('smart.drawingBoardHint')) : isLoop ? '' : isSmartGroup ? '双击添加 · 拖入归组' : isCamera ? '连接参考图像 → 下游绘画节点' : isCompare ? escapeHtml(smartCompareText('smart.compareNodeConnectHint', '连接两张图片后开始对比')) : isColor ? '连接待修复图片和参考图' : isFailed ? '生成失败 · 可修改参数后重新运行' : isPending ? escapeHtml(tr('smart.hintPending')) : isPaint && !imgs.length ? (isProductFidelityNode(node) ? '连接产品参考图，设置蒙版与细节保护' : escapeHtml(tr('smart.createPaintNodeSub'))) : isUpload && !imgs.length ? escapeHtml(tr('smart.uploadHint')) : (imgs.length > 1 ? escapeHtml(tr('smart.hintMulti')) : imgs.length ? escapeHtml(tr('smart.hintSingle')) : escapeHtml(tr('smart.hintEmpty')));
-        const html = `<div class="image-node ${isTextStack ? 'collapsed-text-stack-node' : ''} ${isFidelity ? 'product-fidelity-smart-node' : ''} ${isVideo ? 'video-smart-node' : ''} ${isAiRender ? 'ai-render-smart-node' : ''} ${isComfyWorkflow ? 'comfy-workflow-smart-node' : ''} ${isDrawingBoard ? 'drawing-board-node' : ''} ${isTable ? 'smart-table-node' : ''} ${isTimeline ? 'smart-timeline-node' : ''} ${isEmpty ? 'empty-node' : ''} ${isUpload ? 'upload-node' : ''} ${isPaint ? 'painting-node' : ''} ${isDetailPaint ? 'smart-detail-paint-node' : ''} ${isDetailStitch ? 'smart-detail-stitch-node' : ''} ${isFailed ? 'node-failed' : ''} ${isGroup ? 'group-node' : ''} ${node.collapsed && isImageNode ? 'collapsed-stack-node' : ''} ${node.collapsed && isPrompt ? 'collapsed-prompt-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isAgent ? 'agent-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isCompare ? 'smart-compare-node' : ''} ${isColor ? 'color-smart-node' : ''} ${isSmartGroup ? 'smart-group-node' : ''} ${isCompactMember ? 'smart-group-member-node' : ''} ${collabLockedByOther ? 'collab-locked-by-other' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''}" data-id="${escapeHtml(node.id)}" style="left:${node.x || 0}px;top:${node.y || 0}px;${collabLockedByOther ? `--member-color:${escapeAttr(collabSafeColor(collabLock.member.color, collabLock.member.id))};` : ''}${node.collapsed && isImageNode ? 'background:transparent!important;border-color:transparent!important;box-shadow:none!important;backdrop-filter:none!important;' : ''}width:${layout.width}px;height:${layout.height}px">
+        const html = `<div class="image-node ${isTextStack ? 'collapsed-text-stack-node' : ''} ${isFidelity ? 'product-fidelity-smart-node' : ''} ${isVideo ? 'video-smart-node' : ''} ${isAiRender ? 'ai-render-smart-node' : ''} ${isReplica ? 'replica-smart-node' : ''} ${isComfyWorkflow ? 'comfy-workflow-smart-node' : ''} ${isDrawingBoard ? 'drawing-board-node' : ''} ${isTable ? 'smart-table-node' : ''} ${isTimeline ? 'smart-timeline-node' : ''} ${isEmpty ? 'empty-node' : ''} ${isUpload ? 'upload-node' : ''} ${isPaint ? 'painting-node' : ''} ${isDetailPaint ? 'smart-detail-paint-node' : ''} ${isDetailStitch ? 'smart-detail-stitch-node' : ''} ${isFailed ? 'node-failed' : ''} ${isGroup ? 'group-node' : ''} ${node.collapsed && isImageNode ? 'collapsed-stack-node' : ''} ${node.collapsed && isPrompt ? 'collapsed-prompt-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isAgent ? 'agent-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isCompare ? 'smart-compare-node' : ''} ${isColor ? 'color-smart-node' : ''} ${isSmartGroup ? 'smart-group-node' : ''} ${isCompactMember ? 'smart-group-member-node' : ''} ${collabLockedByOther ? 'collab-locked-by-other' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''}" data-id="${escapeHtml(node.id)}" style="left:${node.x || 0}px;top:${node.y || 0}px;${collabLockedByOther ? `--member-color:${escapeAttr(collabSafeColor(collabLock.member.color, collabLock.member.id))};` : ''}${node.collapsed && isImageNode ? 'background:transparent!important;border-color:transparent!important;box-shadow:none!important;backdrop-filter:none!important;' : ''}width:${layout.width}px;height:${layout.height}px">
             ${isDetailPaint ? `<div class="smart-detail-screen-marker" aria-label="${escapeAttr(`第 ${detailScreenIndex} 屏${detailScreenTitle ? `：${detailScreenTitle}` : ''}`)}"><strong>第 ${detailScreenIndex} 屏</strong>${detailScreenTitle ? `<span>${escapeHtml(detailScreenTitle)}</span>` : ''}</div>` : ''}
             ${isDetailStitch ? `<div class="smart-detail-stitch-marker ${detailStitchStale ? 'is-stale' : ''}"><strong>${escapeHtml(tr('smart.detailStitchTitle'))}</strong>${node.detailStitchActualRatio && node.detailStitchActualRatio !== '9:16' ? `<span>${escapeHtml(trf('smart.detailStitchSourceRatio', {ratio:node.detailStitchActualRatio}))}</span>` : ''}${detailStitchStale ? `<span>${escapeHtml(tr('smart.detailStitchNeedsUpdate'))}</span>` : ''}</div>` : ''}
             ${smartNodeRunBorderHtml(node)}
-            <div class="node-head"><div class="node-title">${isFusion ? '智能局部融合' : isProductFidelityNode(node) ? '产品保护' : title}</div><div class="node-actions">${deleteBtn}</div></div>
+            <div class="node-head"><div class="node-title">${isReplica ? '<i data-lucide="copy"></i>一键复刻' : isProductRetouchNode(node) ? '产品精修' : isFusion ? '智能局部融合' : isProductFidelityNode(node) ? '产品保护' : title}</div><div class="node-actions">${deleteBtn}</div></div>
             ${collabNodePresenceMarkup(node.id)}
             ${!isEmpty && !isGroup ? `<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>` : ''}
             ${smartNodeToolbarHtml(node)}${smartGroupToolbarHtml(node)}
             <div class="node-body">${body}</div>
+            ${typeof productRetouchReviewHtml === 'function' ? productRetouchReviewHtml(node) : ''}
             ${isCompactMember && (isPrompt || isLoop) ? '<div class="smart-group-member-grab" title="拖动移出分组"></div>' : ''}
             <div class="node-hint">${hint}</div>
-             ${(isFidelity || isAiRender || isCompare || isColor || isDrawingBoard || isAgent || isComfyWorkflow || isTable || isTimeline || imgs.length || node.pending || isQueued || isJimengPending || isFailed || isPrompt || isLoop || isSmartGroup) ? '<div class="node-resize-handle" data-resize="1"></div>' : ''}
-             ${(isTextStack || isDrawingBoard || isGroup || isSmartGroup) ? '' : isAiRender ? '<div class="node-port port-in ai-render-input-port" data-port="in" data-input-slot="white" title="连接白模" aria-label="白模"></div><div class="node-port port-in ai-render-input-port" data-port="in" data-input-slot="style" title="连接风格参考" aria-label="风格"></div><div class="node-port port-in ai-render-input-port" data-port="in" data-input-slot="product" title="连接产品参考" aria-label="产品"></div>' : isColor ? '<div class="node-port port-in color-input-port" data-port="in" data-input-slot="target" title="连接待修复图片"><span class="color-input-label">待修复</span></div><div class="node-port port-in color-input-port" data-port="in" data-input-slot="reference" title="连接参考图片"><span class="color-input-label">参考</span></div>' : smartLoopIsPaired(node) ? '<div class="node-port port-in batch-image-input-port" data-port="in" data-input-slot="product" title="连接产品图，保持产品外观" aria-label="连接产品图"></div>' : '<div class="node-port port-in" data-port="in" title="连接输入"></div>'}
+             ${(!isReplica && (isProductRetouchNode(node) || isFidelity || isAiRender || isCompare || isColor || isDrawingBoard || isAgent || isComfyWorkflow || isTable || isTimeline || imgs.length || node.pending || isQueued || isJimengPending || isFailed || isPrompt || isLoop || isSmartGroup)) ? '<div class="node-resize-handle" data-resize="1"></div>' : ''}
+             ${(isTextStack || isDrawingBoard || isGroup || isSmartGroup) ? '' : isReplica ? window.SmartCanvasReplica.ports() : isAiRender ? '<div class="node-port port-in ai-render-input-port" data-port="in" data-input-slot="white" title="连接白模" aria-label="白模"></div><div class="node-port port-in ai-render-input-port" data-port="in" data-input-slot="style" title="连接风格参考" aria-label="风格"></div><div class="node-port port-in ai-render-input-port" data-port="in" data-input-slot="product" title="连接产品参考" aria-label="产品"></div>' : isColor ? '<div class="node-port port-in color-input-port" data-port="in" data-input-slot="target" title="连接待修复图片"><span class="color-input-label">待修复</span></div><div class="node-port port-in color-input-port" data-port="in" data-input-slot="reference" title="连接参考图片"><span class="color-input-label">参考</span></div>' : smartLoopIsPaired(node) ? '<div class="node-port port-in batch-image-input-port" data-port="in" data-input-slot="product" title="连接产品图，保持产品外观" aria-label="连接产品图"></div>' : '<div class="node-port port-in" data-port="in" title="连接输入"></div>'}
             ${smartLoopIsPaired(node) ? '<div class="node-port port-in batch-image-input-port" data-port="in" data-input-slot="reference" title="连接参考图，只借风格与配色" aria-label="连接参考图"></div><div class="node-port port-in batch-text-input-port" data-port="in" data-input-slot="text" title="连接提示词或文本" aria-label="连接提示词或文本"></div>' : ''}
-            ${!isCompare ? '<div class="node-port port-out" data-port="out" title="按住加号拖动连接"></div>' : ''}
+            ${window.SmartCanvasSku?.is(node) ? '<div class="node-port port-in batch-image-input-port" data-port="in" data-input-slot="template" title="连接统一 SKU 模板，替换为本款产品" aria-label="连接统一 SKU 模板"></div>' : ''}
+            ${window.SmartCanvasSku?.is(node) ? '<div class="node-port port-in batch-image-input-port" data-port="in" data-input-slot="gift" title="连接赠品图片或图片组，不单独建立 SKU" aria-label="连接赠品图"></div>' : ''}
+            ${!isCompare ? `<div class="node-port port-out" data-port="out" title="按住加号拖动连接" ${isReplica ? `style="top:${window.SmartCanvasReplica.portOffset('')-1}px"` : ''}></div>` : ''}
         </div>`;
         return {node, html};
     });
@@ -18654,6 +18804,13 @@ function render(options={}){
         const existing = existingNodeEls.get(entry.node.id);
         const previous = smartRenderedNodeMarkup.get(entry.node.id);
         if(dirtyNodeIds && existing?.isConnected && !dirtyNodeIds.has(String(entry.node.id))) return false;
+        // 保留正在输入的提示词 DOM，直到焦点离开节点，避免打断选区和中文输入法。
+        if(existing?.isConnected && existing === activeNodeEl && entry.node.type === 'smart-prompt'
+            && previous?.node === entry.node && previous.html !== entry.html
+            && document.activeElement?.matches('textarea.prompt-node-control, .prompt-find-input')){
+            existing.dataset.promptRenderDeferred = '1';
+            return false;
+        }
         return !existing?.isConnected || previous?.node !== entry.node || previous.html !== entry.html;
     });
     const tpl = document.createElement('template');
@@ -18675,7 +18832,7 @@ function render(options={}){
         if(isSmartCameraNode(entry.node)) fresh.classList.add('camera-smart-node');
         // 保留节点外壳，避免图片节点在状态同步、图片尺寸测量或任务轮询时
         // 先消失再重新插入。仅重建其内部内容，并把已解码的媒体元素移回去。
-        // 正在节点内部输入时跳过复用，避免替换控件打断输入法/选区。
+        // 活动提示词控件的刷新已在上方延后。
         if(existing?.isConnected && existing !== activeNodeEl){
             const isDraggedExisting = Boolean(
                 dragState
@@ -18685,6 +18842,7 @@ function render(options={}){
             if(smartNodeHasLiveMedia(entry.node)) transplantSmartMediaElements(existing, fresh);
             existing.className = fresh.className;
             existing.style.cssText = fresh.style.cssText;
+            delete existing.dataset.promptRenderDeferred;
             if(isDraggedExisting) existing.style.willChange = dragWillChange;
             existing.replaceChildren(...fresh.childNodes);
             nextNodeEls.set(entry.node.id, existing);
@@ -18694,8 +18852,14 @@ function render(options={}){
             changedNodeEls.push(fresh);
         }
     });
-    smartRenderedNodeMarkup.clear();
-    nodeHtmlEntries.forEach(entry => smartRenderedNodeMarkup.set(entry.node.id, {node:entry.node, html:entry.html}));
+    for(const id of smartRenderedNodeMarkup.keys()){
+        if(!nextNodeEls.has(id)) smartRenderedNodeMarkup.delete(id);
+    }
+    nodeHtmlEntries.forEach(entry => {
+        if(nextNodeEls.get(entry.node.id)?.dataset.promptRenderDeferred !== '1'){
+            smartRenderedNodeMarkup.set(entry.node.id, {node:entry.node, html:entry.html});
+        }
+    });
     const nextNodeSet = new Set(nextNodeEls.values());
     [...world.childNodes].forEach(child => {
         if(child === existingConnectionEl || nextNodeSet.has(child)) return;
@@ -18734,6 +18898,10 @@ function render(options={}){
         if(scroller) scroller.scrollTop = scrollTop;
     });
     batchScrollTops.forEach((scrollTop, id) => { const scroller = nextNodeEls.get(id)?.querySelector('.batch-overview-grid'); if(scroller) scroller.scrollTop = scrollTop; });
+    promptScrollStates.forEach((states, id) => states.forEach(state => {
+        const control = nextNodeEls.get(id)?.querySelector(state.selector);
+        if(control){ control.scrollTop = state.scrollTop; control.scrollLeft = state.scrollLeft; }
+    }));
     restoreMediaPlaybackStates(mediaStates);
     smartSelectionUiNodeIds = new Set(selectedNodeIds());
     smartSelectionUiImage = {...selectedImage};
@@ -19462,7 +19630,7 @@ function bindSmartBatchSelectMenus(el){
         if(select.dataset.batchMenuBound) return;
         select.dataset.batchMenuBound = '1';
         const open = () => {
-            if(select.disabled) return;
+            if(select.matches(':disabled')) return;
             const wasOpen = smartBatchSelectMenuState?.select === select;
             closeAllSmartPopovers();
             if(wasOpen) return;
@@ -19568,6 +19736,15 @@ function bindSmartBatchSelectMenus(el){
 }
 function bindLoopNodeControls(el, node){
     bindSmartBatchSelectMenus(el);
+    window.SmartCanvasSku?.bind(el, node);
+    const refs = smartLoopPreviewImages(node);
+    el.querySelectorAll('.batch-asset-track').forEach(track => {
+        const items = refs.filter(ref => smartBatchRole(node, ref) === track.closest('[data-batch-input-slot]').dataset.batchInputSlot);
+        track.querySelectorAll('[data-input-preview-url]').forEach(thumb => {
+            const item = items.find(ref => inputRefKey(ref) === thumb.dataset.inputRefKey);
+            bindImageReferenceThumb(thumb, node, item, items, items.length > 1, {allItems:refs, list:track});
+        });
+    });
     el.querySelectorAll('[data-node-input-remove]').forEach(button => {
         button.addEventListener('mousedown', event => { event.preventDefault(); event.stopPropagation(); }, true);
         button.addEventListener('click', event => {
@@ -19575,10 +19752,8 @@ function bindLoopNodeControls(el, node){
             event.stopPropagation();
             const key = button.dataset.nodeInputRemove;
             if(!key) return;
-            pushUndo();
-            node.blockedInputRefs = [...blockedInputRefKeys(node), key].filter((value, index, values) => values.indexOf(value) === index);
-            render();
-            scheduleSave();
+            if(!collabCanMutateCanvas() || !collabCanEditNode(node.id)) return;
+            removePromptNodeInputReference(node.id, key);
         });
     });
     el.querySelectorAll('.loop-smart-control, .batch-compact-card summary').forEach(control => {
@@ -19717,28 +19892,6 @@ function bindLoopNodeControls(el, node){
             scheduleSave();
         };
     });
-    el.querySelectorAll('[data-loop-prompt-separator]').forEach(input => {
-        input.oninput = e => {
-            e.stopPropagation();
-            node.batchSplitSeparator = String(input.value || '');
-            updatePairedLoopSummary?.();
-            scheduleSave();
-        };
-        input.onchange = e => {
-            e.stopPropagation();
-            node.batchSplitSeparator = String(input.value || '');
-            fitSmartLoopNode(node);
-            scheduleSave();
-            render();
-        };
-    });
-    const sourceSelect = el.querySelector('[data-loop-detail-source]');
-    if(sourceSelect) sourceSelect.onchange = e => {
-        e.stopPropagation();
-        node.batchSourceNodeId = String(sourceSelect.value || '');
-        scheduleSave();
-        render();
-    };
     const sourceText = el.querySelector('[data-loop-detail-text]');
     if(sourceText) {
         if(Number.isFinite(node.batchSourceTextHeight) && node.batchSourceTextHeight >= 100) sourceText.style.height = `${node.batchSourceTextHeight}px`;
@@ -19763,11 +19916,6 @@ function bindLoopNodeControls(el, node){
             scheduleSave();
         };
     }
-    const manualSplit = el.querySelector('.loop-detail-manual');
-    if(manualSplit) manualSplit.ontoggle = () => {
-        node.batchManualSplitOpen = manualSplit.open;
-        scheduleSave();
-    };
     const guideSelect = el.querySelector('[data-loop-detail-guide-source]');
     if(guideSelect) guideSelect.onchange = e => {
         e.stopPropagation();
@@ -19846,14 +19994,15 @@ function bindLoopNodeControls(el, node){
     overview?.querySelector('[data-batch-delete-overview]')?.addEventListener('click', e => {
         e.preventDefault(); e.stopPropagation(); deleteSmartBatchOverview(node);
     });
-    overview?.querySelector('header')?.addEventListener('mousedown', e => {
+    overview?.querySelectorAll('header, .sku-overview > footer, .sku-overview > .batch-overview-grid').forEach(surface => surface.addEventListener('mousedown', e => {
         if(e.button !== 0 || e.target.closest('button') || !collabCanMutateCanvas()) return;
+        if(surface.classList.contains('batch-overview-grid') && (e.target !== surface || e.offsetX >= surface.clientWidth || e.offsetY >= surface.clientHeight)) return;
         e.preventDefault(); e.stopPropagation(); pushUndo();
         const offset = {...smartBatchOverviewOffset(node)}, startX = e.clientX, startY = e.clientY;
         const move = event => { node.batchOverviewOffset = {x:offset.x + (event.clientX - startX) / viewport.scale,y:offset.y + (event.clientY - startY) / viewport.scale}; overview.style.left = `${node.batchOverviewOffset.x}px`; overview.style.top = `${node.batchOverviewOffset.y}px`; syncSmartBatchOverviewGeometry(overview.parentElement); };
         const up = () => { window.removeEventListener('mousemove',move); window.removeEventListener('mouseup',up); scheduleSave(); render(); };
         window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
-    });
+    }));
     overview?.querySelector('[data-batch-overview-resize]')?.addEventListener('mousedown', e => {
         if(e.button !== 0 || !collabCanMutateCanvas()) return;
         e.preventDefault(); e.stopPropagation(); pushUndo();
@@ -19883,6 +20032,13 @@ function bindLoopNodeControls(el, node){
     overview?.addEventListener('wheel', e => e.stopPropagation(), {passive:true});
     el.querySelectorAll('[data-loop-result-edit], [data-loop-result-preview]').forEach(button => { button.onclick = e => {
         e.preventDefault(); e.stopPropagation();
+        const resultSelector = '[data-loop-result-preview][data-ref-image-index]';
+        if(overview?.contains(button) && button.matches(resultSelector)){
+            const results = [...overview.querySelectorAll(resultSelector)];
+            const seq = results.map(result => ({nodeId:result.dataset.refNodeId, index:Number(result.dataset.refImageIndex)}));
+            openPreviewSequence(seq, results.indexOf(button));
+            return;
+        }
         const index = Number(button.dataset.loopResultEdit ?? button.dataset.loopResultPreview);
         ensureSmartLoopDetailPaintNodes(node, smartLoopPairedPromptValues(node).length);
         const target = smartLoopDetailPaintNodes(node).find(item => Number(item.batchDetailScreenIndex) === index + 1);
@@ -19954,15 +20110,20 @@ function bindLoopNodeControls(el, node){
             if(input.dataset.loopCommerce === 'platform'){
                 const hint = el.querySelector('[data-batch-platform-hint]');
                 if(hint) hint.textContent = smartBatchCommercePlatform(node).hint;
+                el.querySelectorAll('[data-loop-commerce="copy"] option').forEach(option => {
+                    option.textContent = smartBatchCommerceCopyLabel(input.value, option.value);
+                });
                 fitSmartLoopNode(node);
             }
             if(SMART_BATCH_COMMERCE_PREFERENCE_KEYS.includes(input.dataset.loopCommerce)) rememberRecentSmartBatchSettings(node);
             scheduleSave();
         };
         input.addEventListener(input.tagName === 'SELECT' ? 'change' : 'input', update);
-        input.addEventListener('change', () => { ensureSmartLoopDetailPaintNodes(node, smartLoopAiSplitPrompts(node).length, {createMissing:false}); if(input.dataset.loopCommerce === 'mode') updatePairedLoopSummary(); });
+        input.addEventListener('change', () => {
+            if(input.dataset.loopCommerce === 'mode') { fitSmartLoopNode(node); scheduleSave(); render(); return; }
+            if(!window.SmartCanvasSku?.is(node)) ensureSmartLoopDetailPaintNodes(node, smartLoopAiSplitPrompts(node).length, {createMissing:false});
+        });
     });
-    el.querySelectorAll('[data-loop-commerce-role]').forEach(input => { input.onchange = e => { e.stopPropagation(); pushUndo(); node.batchCommerceRoles = {...(node.batchCommerceRoles || {}), [input.dataset.loopCommerceRole]:input.value}; scheduleSave(); render(); }; });
     el.querySelector('[data-batch-product-protection]')?.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); openSmartBatchProductFidelity(node); });
     el.querySelectorAll('[data-batch-add-image]').forEach(button => { button.onclick = e => {
         e.preventDefault(); e.stopPropagation();
@@ -20041,29 +20202,6 @@ function bindLoopNodeControls(el, node){
             e.preventDefault();
             e.stopPropagation();
             cancelSmartBatchPromptRun(node);
-        };
-    });
-    el.querySelectorAll('[data-loop-prompt-split]').forEach(btn => {
-        btn.onclick = e => {
-            e.preventDefault();
-            e.stopPropagation();
-            const separator = String(node.batchSplitSeparator || el.querySelector('[data-loop-prompt-separator]')?.value || '');
-            syncPromptFieldsFromDom();
-            const source = smartLoopDetailSourceText(node) || smartLoopPromptFieldValues(node).join('\n\n');
-            const values = splitSmartLoopPromptLines(source, separator);
-            if(!values.length){
-                toast(tr('smart.loopPairedSplitEmpty'));
-                return;
-            }
-            setSmartLoopPromptFieldValues(node, values);
-            node.aiSplitPrompts = values.map((prompt, index) => ({title:`第 ${index + 1} 屏`,prompt}));
-            node.aiSplitSourceText = smartLoopDetailSourceText(node);
-            node.aiSplitGuideInput = smartLoopDetailGuideInput(node);
-            ensureSmartLoopDetailPaintNodes(node, values.length);
-            node.batchSplitSeparator = separator;
-            fitSmartLoopNode(node);
-            scheduleSave();
-            render();
         };
     });
     el.querySelectorAll('[data-loop-prompt-delete]').forEach(btn => {
@@ -20769,11 +20907,11 @@ function bindSmartCompareNodeControls(el, node){
     let changed = false;
     let dragRect = null;
     let dragOffset = 0;
-    let lastAriaPosition = Number(stage.getAttribute('aria-valuenow')) || null;
+    let lastAriaPosition = Number(stage.getAttribute('aria-valuenow'));
     const applyPosition = (clientX, rect, offset = 0) => {
         if(!rect?.width) return;
         const raw = ((clientX - offset - rect.left) / rect.width) * 100;
-        const position = Math.max(5, Math.min(95, Math.round(raw * 10) / 10));
+        const position = clampSmartComparePosition(raw);
         if(Number(node.comparePosition) !== position) changed = true;
         node.comparePosition = position;
         stage.style.setProperty('--compare-position', `${position}%`);
@@ -20806,7 +20944,7 @@ function bindSmartCompareNodeControls(el, node){
         dragging = true;
         changed = false;
         dragRect = stage.getBoundingClientRect();
-        const currentPosition = Math.max(5, Math.min(95, Number(node.comparePosition) || 50));
+        const currentPosition = node.comparePosition;
         const grabbedHandle = event.target?.closest?.('[data-compare-handle]');
         // 从滑块圆点的边缘开始拖动时，保持鼠标与圆点的相对位置，避免按下瞬间跳动。
         dragOffset = grabbedHandle
@@ -20836,7 +20974,7 @@ function bindSmartCompareNodeControls(el, node){
         event.stopPropagation();
         const delta = event.shiftKey ? 10 : 5;
         const direction = event.key === 'ArrowLeft' ? -1 : 1;
-        const next = Math.max(5, Math.min(95, (Number(node.comparePosition) || 50) + direction * delta));
+        const next = clampSmartComparePosition(node.comparePosition + direction * delta);
         if(next === Number(node.comparePosition)) return;
         pushUndo();
         node.comparePosition = next;
@@ -21268,10 +21406,14 @@ function bindNodeEvents(nodeEls=world.querySelectorAll('.image-node')){
         const id = el.dataset.id;
         const nodeForControls = nodes.find(n => n.id === id);
         if(isProductFidelityNode(nodeForControls) && typeof bindProductFidelityNode === 'function') bindProductFidelityNode(el, nodeForControls);
+        if(isProductRetouchNode(nodeForControls)&&typeof bindProductRetouchNode==='function'){
+            el.classList.add('product-retouch-smart-node');bindProductRetouchNode(el,nodeForControls);
+        }
         if(isLocalFusionNode(nodeForControls) && typeof bindLocalFusionNode === 'function'){
             el.classList.add('local-fusion-smart-node');
             bindLocalFusionNode(el,nodeForControls);
         }
+        if(isSmartReplicaNode(nodeForControls)) window.SmartCanvasReplica.bind(el, nodeForControls);
         if(isSmartAiRenderNode(nodeForControls)) bindSmartAiRenderNodeControls(el, nodeForControls);
         if(el.dataset.collabEventsBound !== '1'){
             el.dataset.collabEventsBound = '1';
@@ -21283,7 +21425,13 @@ function bindNodeEvents(nodeEls=world.querySelectorAll('.image-node')){
             el.addEventListener('focusout', event => {
                 if(event.target?.matches?.('input,textarea,select,[contenteditable="true"]')){
                     setTimeout(() => {
-                        if(!el.contains(document.activeElement)) collabReleaseLocks([id]);
+                        if(!el.contains(document.activeElement)){
+                            collabReleaseLocks([id]);
+                            if(el.isConnected && el.dataset.promptRenderDeferred === '1'){
+                                delete el.dataset.promptRenderDeferred;
+                                render({nodeIds:[id]});
+                            }
+                        }
                     }, 0);
                 }
             });
@@ -21388,6 +21536,13 @@ function bindNodeEvents(nodeEls=world.querySelectorAll('.image-node')){
         if(nodeForControls?.type === 'smart-loop') bindLoopNodeControls(el, nodeForControls);
         if(nodeForControls?.type === SMART_COMPARE_NODE_TYPE) bindSmartCompareNodeControls(el, nodeForControls);
         if(isSmartComfyWorkflowNode(nodeForControls)) bindComfyWorkflowNodeControls(el, nodeForControls);
+        const runStatus = el.querySelector('.run-time-pill');
+        if(runStatus){
+            const stopNodeEvent = event => event.stopPropagation();
+            runStatus.onmousedown = stopNodeEvent;
+            runStatus.onclick = stopNodeEvent;
+            runStatus.ondblclick = stopNodeEvent;
+        }
         if(nodeForControls?.type === 'smart-group') {
             el.ondblclick = e => {
                 e.preventDefault();
@@ -21459,6 +21614,7 @@ function bindNodeEvents(nodeEls=world.querySelectorAll('.image-node')){
             }, true);
         });
         el.querySelectorAll('[data-input-preview-url]').forEach(thumb => {
+            if(thumb.closest('.batch-asset-track')) return;
             const item = nodeRefItems.find(ref => inputRefKey(ref) === thumb.dataset.inputRefKey) || {url:thumb.dataset.inputPreviewUrl};
             bindImageReferenceThumb(thumb, nodeForControls, item, nodeRefItems, nodeRefItems.length > 1);
         });
@@ -21795,7 +21951,7 @@ function bindNodeEvents(nodeEls=world.querySelectorAll('.image-node')){
                     if(!node.images?.[imgIndex]) return;
                 } else if((node.images || []).length <= 1) return;
                 e.preventDefault(); e.stopPropagation();
-                thumbDragState = {nodeId:id, imgIndex, startX:e.clientX, startY:e.clientY, copy:!!e.altKey, detached:false};
+                thumbDragState = {nodeId:id, imgIndex, startX:e.clientX, startY:e.clientY, copy:!!e.altKey, detached:false, element:item, grid:item.closest('.thumb-grid')};
                 capturePendingUndo();
             });
         });
@@ -21946,6 +22102,8 @@ function dragConnectTargetFor(sourceNode, point=lastMouseWorld){
 }
 function canAutoConnectDraggedNode(sourceNode, targetNode){
     if(!sourceNode || !targetNode || sourceNode.id === targetNode.id) return false;
+    if(isSmartReplicaNode(targetNode)) return window.SmartCanvasDataVideo.canConnect(sourceNode, targetNode);
+    if(isProductRetouchNode(sourceNode)||isProductRetouchNode(targetNode))return Boolean(window.SmartCanvasDataVideo?.canConnect(sourceNode,targetNode));
     if(isLocalFusionNode(targetNode)) return outputImagesForNode(sourceNode).some(img=>mediaKindForItem(img)==='image');
     if(isLocalFusionNode(sourceNode)) return Boolean(window.SmartCanvasDataVideo?.canConnect(sourceNode,targetNode));
     if(isHistoryGroupNode(sourceNode) || isHistoryGroupNode(targetNode)) return false;
@@ -22126,7 +22284,7 @@ function disconnectConnections(spec){
     canvas.connections = canvas.connections.filter((_, i) => !set.has(i));
     removed.forEach(conn => {
         const toNode = nodes.find(n => n.id === conn.to);
-        if(toNode && Array.isArray(toNode.inputNodeIds)){
+        if(toNode && Array.isArray(toNode.inputNodeIds) && (!isSmartReplicaNode(toNode) || !canvas.connections.some(c => c.from === conn.from && c.to === conn.to && (c.kind || 'flow') === 'input'))){
             toNode.inputNodeIds = toNode.inputNodeIds.filter(id => id !== conn.from);
         }
         if(toNode && ['input','flow'].includes(conn.kind || 'flow')) clearDetachedRunInputRefs(toNode);
@@ -22409,7 +22567,7 @@ function finishConnectionErase(){
     rememberSmartConnectionDeletions(removed);
     removed.forEach(conn => {
         const toNode = nodes.find(n => n.id === conn.to);
-        if(toNode && Array.isArray(toNode.inputNodeIds)){
+        if(toNode && Array.isArray(toNode.inputNodeIds) && (!isSmartReplicaNode(toNode) || !canvas.connections.some(c => c.from === conn.from && c.to === conn.to && (c.kind || 'flow') === 'input'))){
             toNode.inputNodeIds = toNode.inputNodeIds.filter(id => id !== conn.from);
         }
         if(toNode && ['input','flow'].includes(conn.kind || 'flow')) clearDetachedRunInputRefs(toNode);
@@ -25074,13 +25232,8 @@ function resetCropBox(){
     renderCropBox();
 }
 function updatePreviewNavButtons(){
-    let count;
-    if(previewNavState.groupId && Array.isArray(previewNavState.seq)){
-        count = previewNavState.seq.length;
-    } else {
-        const node = nodes.find(n => n.id === previewNavState.nodeId);
-        count = Math.max(0, (node?.images || []).filter(img => img?.url).length);
-    }
+    const node = nodes.find(n => n.id === previewNavState.nodeId);
+    const count = previewNavState.seq?.length ?? (node?.images || []).filter(img => img?.url).length;
     previewNavState.count = count;
     const show = imageEditModal.classList.contains('open') && imageEditMode === 'preview' && !previewCompareNodeId && count > 1;
     document.getElementById('previewPrevBtn')?.classList.toggle('visible', show);
@@ -25089,19 +25242,11 @@ function updatePreviewNavButtons(){
 function navigatePreviewImage(delta){
     closePreviewImageContextMenu();
     if(!imageEditModal.classList.contains('open') || imageEditMode !== 'preview') return;
-    // 分组预览：跨成员节点按整组序列左右切换（openImageEditor 会重置 previewNavState，故切换后重新挂回分组上下文）。
-    if(previewNavState.groupId && Array.isArray(previewNavState.seq) && previewNavState.seq.length > 1){
-        const groupId = previewNavState.groupId;
-        const seq = previewNavState.seq;
-        const pos = (Number(previewNavState.seqPos || 0) + Number(delta || 0) + seq.length) % seq.length;
-        const ref = seq[pos];
-        openImageEditor(ref.nodeId, ref.index);
-        if(imageEditModal.classList.contains('open')){
-            previewNavState.groupId = groupId;
-            previewNavState.seq = seq;
-            previewNavState.seqPos = pos;
-            // openImageEditor 重置了 previewNavState，需在恢复分组上下文后重算导航/下载全部按钮。
-            setImageEditMode('preview');
+    const {seq, seqPos, groupId} = previewNavState;
+    if(seq){
+        if(seq.length > 1){
+            const pos = (seqPos + delta + seq.length) % seq.length;
+            openPreviewSequence(seq, pos, groupId);
         }
         return;
     }
@@ -25176,13 +25321,14 @@ function openGroupImagePreview(group, startNodeId, startIndex=0){
     const refs = smartGroupImageRefs(group);
     if(refs.length <= 1){ openImagePreview(startNodeId, startIndex); return; }
     const seq = refs.map(r => ({nodeId:r.nodeId, index:r.index}));
-    let pos = seq.findIndex(s => s.nodeId === startNodeId && Number(s.index) === Number(startIndex));
-    if(pos < 0) pos = 0;
-    openImagePreview(seq[pos].nodeId, seq[pos].index);
-    if(!imageEditModal.classList.contains('open')) return;
-    previewNavState.groupId = group.id;
-    previewNavState.seq = seq;
-    previewNavState.seqPos = pos;
+    const pos = seq.findIndex(s => s.nodeId === startNodeId && Number(s.index) === Number(startIndex));
+    openPreviewSequence(seq, Math.max(0, pos), group.id);
+}
+function openPreviewSequence(seq, pos, groupId=''){
+    const {nodeId, index} = seq[pos];
+    openImageEditor(nodeId, index);
+    if(!imageEditModal.classList.contains('open') || previewNavState.nodeId !== nodeId || previewNavState.index !== index) return;
+    Object.assign(previewNavState, {groupId, seq, seqPos:pos});
     // 恢复分组上下文后重算导航/下载全部按钮（openImageEditor 已把 previewNavState 重置成单节点态）。
     setImageEditMode('preview');
 }
@@ -26461,6 +26607,7 @@ function updateComposer(){
     }
     composerUpdateSeq++;
     const node = selectedNode();
+    composer.inert = isProductFidelityNode(node);
     syncRunButtonState(node);
     if(smartCascadeSilentSelection && !activeComposerSubject){
         composer.classList.remove('open');
@@ -26471,7 +26618,7 @@ function updateComposer(){
     }
     // 折叠节点是上传素材的视觉容器，不是新的生图节点；选中或折叠完成后
     // 不应在牌堆下方打开提示词/模型 Composer。
-    if(selectedNodeIds().length > 1 || isSmartUploadNode(node) || node?.collapsed){
+    if(selectedNodeIds().length > 1 || isProductRetouchNode(node) || isSmartUploadNode(node) || node?.collapsed){
         savePromptDraftForCurrent();
         composer.classList.remove('open');
         if(cascadeRunBtn) cascadeRunBtn.style.display = 'none';
@@ -26852,13 +26999,18 @@ function showPaintInputRefHover(thumb, item){
     image.src = url;
     if(image.complete && image.naturalWidth) image.onload();
 }
-function bindImageReferenceThumb(el, node, item, items, canReorder){
+function bindImageReferenceThumb(el, node, item, items, canReorder, options={}){
     const isNodeThumb = el.classList.contains('smart-node-input-thumb');
-    const selector = isNodeThumb ? '.smart-node-input-thumb' : '.input-thumb';
+    const isBatch = Boolean(options.list);
+    const sortable = isBatch ? el.closest('.batch-asset-item') : el;
+    const selector = isBatch ? '.batch-asset-item' : isNodeThumb ? '.smart-node-input-thumb' : '.input-thumb';
     const removeSelector = '.input-thumb-remove,.smart-node-input-remove';
-    const stableOrder = (node.inputRefOrder || []).some(key => String(key).startsWith('ref|'));
-    const orderKeys = new Map(items.map(ref => [inputRefKey(ref), stableOrder ? `ref|${referenceMaterialKey(ref)}` : inputRefKey(ref)]));
-    const keyForThumb = thumb => orderKeys.get(thumb.dataset.inputRefKey || inputRefKey(items[Number(thumb.dataset.thumbIndex)])) || '';
+    const stableOrder = isBatch || (node.inputRefOrder || []).some(key => String(key).startsWith('ref|'));
+    const orderKeys = new Map((options.allItems || items).map(ref => [inputRefKey(ref), stableOrder ? `ref|${referenceMaterialKey(ref)}` : inputRefKey(ref)]));
+    const keyForThumb = thumb => {
+        const target = isBatch ? thumb.querySelector('.smart-node-input-thumb') : thumb;
+        return orderKeys.get(target.dataset.inputRefKey || inputRefKey(items[Number(target.dataset.thumbIndex)])) || '';
+    };
     el.draggable = false;
     el.dataset.inputReorderable = canReorder ? '1' : '0';
     el.addEventListener('mousedown', event => {
@@ -26885,8 +27037,9 @@ function bindImageReferenceThumb(el, node, item, items, canReorder){
         event.preventDefault();
         event.stopPropagation();
         paintInputRefDragCancel?.();
-        const list = el.parentElement;
+        const list = options.list || el.parentElement;
         const originalOrder = [...list.querySelectorAll(selector)];
+        const trailing = originalOrder.at(-1)?.nextElementSibling || null;
         const originalScrollLeft = list.scrollLeft;
         const startRect = el.getBoundingClientRect();
         const screenScale = startRect.width / el.offsetWidth || 1;
@@ -26896,6 +27049,7 @@ function bindImageReferenceThumb(el, node, item, items, canReorder){
         let dragging = false;
         let ghost = null;
         let ghostX = 0;
+        let ghostY = 0;
         const move = moveEvent => {
             if(moveEvent.pointerId !== pointerId) return;
             if(!el.isConnected || (moveEvent.pointerType === 'mouse' && !moveEvent.buttons)) return finish(moveEvent, false);
@@ -26923,20 +27077,26 @@ function bindImageReferenceThumb(el, node, item, items, canReorder){
             moveEvent.stopPropagation();
             const bounds = list.getBoundingClientRect();
             ghostX = Math.max(bounds.left - startRect.left, Math.min(bounds.right - startRect.right, dx));
-            ghost.style.transform = `translate3d(${ghostX}px, 0, 0)`;
+            ghostY = isBatch ? Math.max(bounds.top - startRect.top, Math.min(bounds.bottom - startRect.bottom, dy)) : 0;
+            ghost.style.transform = `translate3d(${ghostX}px, ${ghostY}px, 0)`;
             if(moveEvent.clientY < bounds.top || moveEvent.clientY > bounds.bottom) return;
             if(moveEvent.clientX < bounds.left + 28) list.scrollLeft -= 12;
             else if(moveEvent.clientX > bounds.right - 28) list.scrollLeft += 12;
-            const others = [...list.querySelectorAll(selector)].filter(thumb => thumb !== el);
-            const before = others.find(thumb => moveEvent.clientX < thumb.getBoundingClientRect().left + thumb.getBoundingClientRect().width / 2);
-            if(before === el.nextElementSibling || (!before && !el.nextElementSibling)) return;
-            const previous = new Map(others.map(thumb => [thumb, thumb.getBoundingClientRect().left]));
+            const others = [...list.querySelectorAll(selector)].filter(thumb => thumb !== sortable);
+            const before = others.find(thumb => {
+                const rect = thumb.getBoundingClientRect();
+                return (!isBatch || moveEvent.clientY <= rect.bottom) && (isBatch && moveEvent.clientY < rect.top || moveEvent.clientX < rect.left + rect.width / 2);
+            }) || trailing;
+            if(before === sortable.nextElementSibling || (!before && !sortable.nextElementSibling)) return;
+            const previous = new Map(others.map(thumb => [thumb, thumb.getBoundingClientRect()]));
             others.forEach(thumb => thumb.getAnimations().forEach(animation => animation.cancel()));
-            list.insertBefore(el, before || null);
+            list.insertBefore(sortable, before);
             others.forEach(thumb => {
-                const offset = (previous.get(thumb) - thumb.getBoundingClientRect().left) / screenScale;
-                if(Math.abs(offset) > 1){
-                    thumb.animate([{transform:`translateX(${offset}px)`}, {transform:'translateX(0)'}], {duration:190, easing:'cubic-bezier(.2,.8,.2,1)'});
+                const rect = thumb.getBoundingClientRect();
+                const offsetX = (previous.get(thumb).left - rect.left) / screenScale;
+                const offsetY = (previous.get(thumb).top - rect.top) / screenScale;
+                if(Math.hypot(offsetX, offsetY) > 1){
+                    thumb.animate([{transform:`translate(${offsetX}px, ${offsetY}px)`}, {transform:'translate(0, 0)'}], {duration:190, easing:'cubic-bezier(.2,.8,.2,1)'});
                 }
             });
         };
@@ -26968,14 +27128,17 @@ function bindImageReferenceThumb(el, node, item, items, canReorder){
             const bounds = list.getBoundingClientRect();
             if(!commit || !endEvent || endEvent.clientX < bounds.left || endEvent.clientX > bounds.right || endEvent.clientY < bounds.top || endEvent.clientY > bounds.bottom){
                 originalOrder.forEach(thumb => thumb.getAnimations().forEach(animation => animation.cancel()));
-                originalOrder.forEach(thumb => list.appendChild(thumb));
+                originalOrder.forEach(thumb => list.insertBefore(thumb, trailing));
                 list.scrollLeft = originalScrollLeft;
                 el.classList.remove('paint-ref-drag-source');
                 ghost?.remove();
                 return;
             }
-            const nextOrder = [...list.querySelectorAll(selector)].map(keyForThumb).filter(Boolean);
-            const currentOrder = inputRefOrderForItems(node, items);
+            const rowOrder = [...list.querySelectorAll(selector)].map(keyForThumb).filter(Boolean);
+            const currentOrder = isBatch ? options.allItems.map(ref => orderKeys.get(inputRefKey(ref))) : inputRefOrderForItems(node, items);
+            const rowKeys = new Set(rowOrder);
+            let rowIndex = 0;
+            const nextOrder = isBatch ? currentOrder.map(key => rowKeys.has(key) ? rowOrder[rowIndex++] : key) : rowOrder;
             const changed = !sameOrderedIds(currentOrder, nextOrder);
             if(changed){
                 referenceMutationUndo(node.id);
@@ -26986,11 +27149,12 @@ function bindImageReferenceThumb(el, node, item, items, canReorder){
             let targetRect = el.getBoundingClientRect();
             if(changed) render();
             const settledList = isNodeThumb
-                ? [...world.querySelectorAll('.image-node')].find(element => element.dataset.id === node.id)?.querySelector('.smart-node-input-thumbs')
+                ? [...world.querySelectorAll('.image-node')].find(element => element.dataset.id === node.id)?.querySelector(isBatch ? `[data-batch-input-slot="${list.closest('[data-batch-input-slot]').dataset.batchInputSlot}"] .batch-asset-track` : '.smart-node-input-thumbs')
                 : inputThumbsRow;
-            const settledThumb = changed
+            const settledItem = changed
                 ? [...(settledList?.querySelectorAll(selector) || [])].find(thumb => keyForThumb(thumb) === orderKeys.get(inputRefKey(item)))
-                : el;
+                : sortable;
+            const settledThumb = isBatch ? settledItem?.querySelector('.smart-node-input-thumb') : settledItem;
             if(settledThumb) targetRect = settledThumb.getBoundingClientRect();
             settledThumb?.classList.add('paint-ref-drag-source');
             let finishTimer = 0;
@@ -27003,7 +27167,7 @@ function bindImageReferenceThumb(el, node, item, items, canReorder){
             if(ghost?.animate){
                 finishTimer = setTimeout(finishVisual, 220);
                 ghost.animate([
-                    {transform:`translate3d(${ghostX}px, 0, 0)`},
+                    {transform:`translate3d(${ghostX}px, ${ghostY}px, 0)`},
                     {transform:`translate3d(${targetRect.left - startRect.left}px, ${targetRect.top - startRect.top}px, 0)`}
                 ], {duration:160, easing:'cubic-bezier(.2,.8,.2,1)'}).finished.then(finishVisual, finishVisual);
             } else finishVisual();
@@ -27330,6 +27494,15 @@ function smartImageNameFromUrl(url){
     }
 }
 function smartImageDropPayload(dataTransfer){
+    const assetRaw = readSmartDropData(dataTransfer, 'application/x-smart-asset');
+    if(assetRaw){
+        try {
+            const asset = JSON.parse(assetRaw);
+            if(asset?.url && (asset.kind || assetMediaKind(asset)) === 'image'){
+                return {type:'asset', image:assetNodeImageFromItem(asset)};
+            }
+        } catch(_) {}
+    }
     // History drags also carry a compressed image for external applications.
     // On this canvas, use the history record's original URL before the browser
     // exposes that compressed copy as a File.
@@ -27361,6 +27534,7 @@ async function resolveSmartImageDropPayload(dataTransfer){
 }
 function hasSmartImageDropData(dataTransfer){
     if(!dataTransfer) return false;
+    if(hasSmartAssetDrag(dataTransfer)) return true;
     if(smartImageFilesFromDataTransfer(dataTransfer).length) return true;
     const types = smartDropDataTypes(dataTransfer);
     if(types.some(type => SMART_IMAGE_DROP_TYPE_HINT_RE.test(type.toLowerCase()))) return true;
@@ -27673,6 +27847,10 @@ async function importSmartLocalImages(paths){
 async function handleSmartImageDropPayload(payload, targetId='', opts={}){
     try {
         if(payload.type === 'files') await handleFiles(payload.files, targetId, opts);
+        else if(payload.type === 'asset'){
+            if(!opts.skipUndo) pushUndo();
+            appendImagesToSmartNode([payload.image], targetId, opts);
+        }
         else if(payload.type === 'localPaths') {
             if(!opts.skipUndo) pushUndo();
             appendImagesToSmartNode(await importSmartLocalImages(payload.localPaths), targetId, opts);
@@ -27942,6 +28120,10 @@ function connectInputNode(fromId, toId, inputSlot=''){
     const from = nodes.find(n => n.id === fromId);
     const to = nodes.find(n => n.id === toId);
     if(!from || !to || from.id === to.id) return false;
+    if((isProductRetouchNode(from)||isProductRetouchNode(to))&&window.SmartCanvasDataVideo?.canConnect&&!window.SmartCanvasDataVideo.canConnect(from,to)){
+        toast('产品精修节点只接受图片输入并输出图片');return false;
+    }
+    if(window.SmartCanvasSku?.busy(to)){toast('请先结束当前 SKU 批次再修改连线');return false;}
     if(typeof validateProductFidelityConnection === 'function' && !validateProductFidelityConnection(from, to)) return false;
     if((isProductFidelityNode(to) || isSmartTableNode(to) || isSmartTimelineNode(to) || to.type === 'smart-prompt' || to.type === 'smart-agent' || isSmartPaintNode(to) || isSmartVideoNode(to)) && window.SmartCanvasDataVideo?.canConnect && !window.SmartCanvasDataVideo.canConnect(from, to)){
         const targetLabel = isSmartTableNode(to) ? '多维表格' : isSmartTimelineNode(to) ? '视频时间线' : (to.type === 'smart-prompt' || to.type === 'smart-agent') ? 'LLM' : isSmartVideoNode(to) ? '视频' : '绘画';
@@ -27988,6 +28170,11 @@ function connectInputNode(fromId, toId, inputSlot=''){
             && normalizeSmartColorInputSlot(conn.input_slot || conn.inputSlot) === colorInputSlot
         ));
     }
+    let replicaInputSlot = '';
+    if(isSmartReplicaNode(to)){
+        replicaInputSlot = window.SmartCanvasReplica.connectionSlot(from, to, inputSlot);
+        if(!replicaInputSlot) return false;
+    }
     let aiInputSlot = '';
     if(isSmartAiRenderNode(to)){
         aiInputSlot = normalizeSmartNodeInputSlot(to, inputSlot);
@@ -28012,10 +28199,10 @@ function connectInputNode(fromId, toId, inputSlot=''){
     if(to.type === 'smart-loop'){
         const groupImages = isSmartGroupNode(from) ? imagesForNode(from).filter(img => img?.url) : [];
         const groupPrompts = isSmartGroupNode(from) ? promptTextItemsForNode(from).filter(Boolean) : [];
-        const looksImage = isSmartImageNode(from) || isProductFidelityNode(from) || isSmartCameraNode(from) || groupImages.length > 0 || (from.type === 'smart-loop' && from.imageInput);
+        const looksImage = isSmartImageNode(from) || isProductRetouchNode(from) || isProductFidelityNode(from) || isSmartCameraNode(from) || groupImages.length > 0 || (from.type === 'smart-loop' && from.imageInput);
         const looksPrompt = from.type === 'smart-prompt' || from.type === 'smart-agent' || isSmartCameraNode(from) || groupPrompts.length > 0 || (from.type === 'smart-loop' && from.showPrompt);
         if(smartLoopIsPaired(to)){
-            if(['product','reference'].includes(inputSlot) && !looksImage){
+            if(['product','reference','template','gift'].includes(inputSlot) && !looksImage){
                 toast('请连接图片节点');
                 return false;
             }
@@ -28030,20 +28217,30 @@ function connectInputNode(fromId, toId, inputSlot=''){
         const canImage = Boolean(to.imageInput) && looksImage;
         const canPrompt = Boolean(to.showPrompt) && looksPrompt;
         if(smartLoopIsPaired(to)){
-            const imageSlot = inputSlot === 'product' || inputSlot === 'reference' ? inputSlot : '';
-            if(imageSlot || (canImage && !canPrompt)){
-                loopInputSlot = imageSlot || 'product';
-                // 同一来源的图片共用用途；重新接入另一素材口时移动原连线。
-                const previous = (canvas.connections || []).filter(conn => conn.from === from.id && conn.to === to.id && (conn.kind || 'flow') === 'input' && (conn.input_slot || conn.inputSlot || '') !== loopInputSlot);
+            if(inputSlot === 'template' && window.SmartCanvasSku?.is(to)){
+                const images = outputImagesForNode(from).filter(image => image?.url && mediaKindForItem(image) === 'image');
+                if(images.length !== 1){toast('请连接只包含一张图片的节点作为统一 SKU 模板');return false;}
+                const previous = (canvas.connections || []).filter(conn => conn.to === to.id && (conn.kind || 'flow') === 'input' && (conn.input_slot || conn.inputSlot) === 'template' && conn.from !== from.id);
                 rememberSmartConnectionDeletions(previous);
                 canvas.connections = (canvas.connections || []).filter(conn => !previous.includes(conn));
-                const roles = {...(to.batchCommerceRoles || {})};
-                if(imageSlot) outputImagesForNode(from).forEach(ref => delete roles[inputRefKey(ref)]);
-                to.batchCommerceRoles = roles;
-            } else if(canPrompt){
-                loopInputSlot = 'text';
-                if(from.id !== to.batchGuideNodeId) to.batchSourceNodeId = from.id;
-                (canvas.connections || []).filter(conn => conn.from === from.id && conn.to === to.id && conn.kind === 'input').forEach(conn => { conn.input_slot = 'text'; });
+                previous.forEach(conn => {if(!(canvas.connections || []).some(c => c.from === conn.from && c.to === to.id))to.inputNodeIds=(to.inputNodeIds || []).filter(id => id !== conn.from);});
+                loopInputSlot = 'template';
+            } else {
+                const imageSlot = inputSlot === 'product' || inputSlot === 'reference' || (inputSlot === 'gift' && window.SmartCanvasSku?.is(to)) ? inputSlot : '';
+                if(imageSlot || (canImage && !canPrompt)){
+                    loopInputSlot = imageSlot || 'product';
+                    // 同一来源的图片共用用途；重新接入另一素材口时移动原连线。
+                    const previous = (canvas.connections || []).filter(conn => conn.from === from.id && conn.to === to.id && (conn.kind || 'flow') === 'input' && (conn.input_slot || conn.inputSlot || '') !== loopInputSlot && (conn.input_slot || conn.inputSlot) !== 'template');
+                    rememberSmartConnectionDeletions(previous);
+                    canvas.connections = (canvas.connections || []).filter(conn => !previous.includes(conn));
+                    const roles = {...(to.batchCommerceRoles || {})};
+                    if(imageSlot) outputImagesForNode(from).forEach(ref => delete roles[inputRefKey(ref)]);
+                    to.batchCommerceRoles = roles;
+                } else if(canPrompt){
+                    loopInputSlot = 'text';
+                    if(from.id !== to.batchGuideNodeId) to.batchSourceNodeId = from.id;
+                    (canvas.connections || []).filter(conn => conn.from === from.id && conn.to === to.id && conn.kind === 'input').forEach(conn => { conn.input_slot = 'text'; });
+                }
             }
         }
         if(!canImage && !canPrompt) return false;
@@ -28056,7 +28253,8 @@ function connectInputNode(fromId, toId, inputSlot=''){
         if(blocked.size) to.blockedInputRefs = [...blocked];
         else delete to.blockedInputRefs;
     }
-    addConnection(from.id, to.id, 'input', aiInputSlot || colorInputSlot || loopInputSlot);
+    addConnection(from.id, to.id, 'input', replicaInputSlot || aiInputSlot || colorInputSlot || loopInputSlot);
+    if(loopInputSlot === 'gift') window.SmartCanvasSku?.reclassifyGifts(to, outputImagesForNode(from));
     if(isSmartColorNode(to) || isSmartAiRenderNode(to)){
         to.inputNodeIds = Array.from(new Set((canvas.connections || [])
             .filter(conn => conn.to === to.id && (conn.kind || 'flow') === 'input')
@@ -28064,6 +28262,7 @@ function connectInputNode(fromId, toId, inputSlot=''){
     } else {
         to.inputNodeIds = Array.from(new Set([...(to.inputNodeIds || []), from.id]));
     }
+    if(loopInputSlot === 'product') window.SmartCanvasSku?.connectedProducts(to, outputImagesForNode(from));
     return true;
 }
 // Agent、计划模式与手动拖线共享的正式任务范围。画布连接是关系的唯一来源；
@@ -28934,6 +29133,26 @@ function isInputRefBlocked(node, img){
     const blocked = blockedInputRefKeys(node);
     return blocked.has(inputRefKey(img)) || blocked.has(`ref|${referenceMaterialKey(img)}`);
 }
+function pruneBlockedSmartBatchConnections(node){
+    if(!smartLoopIsPaired(node) || !Array.isArray(node.blockedInputRefs) || !node.blockedInputRefs.length
+        || !canvas?.connections || !collabCanMutateCanvas() || !collabCanEditNode(node.id)) return;
+    const blocked=new Set(node.blockedInputRefs);
+    const removed=canvas.connections.filter(conn=>{
+        if(conn.to!==node.id || !['input','flow'].includes(conn.kind||'flow') || (conn.input_slot||conn.inputSlot)==='text')return false;
+        const source=nodes.find(item=>item.id===conn.from);
+        if(!source)return false;
+        const images=outputImagesForNode(source).filter(ref=>ref?.url&&mediaKindForItem(ref)==='image');
+        return images.length>0&&images.every(ref=>blocked.has(inputRefKey(ref))||blocked.has(`ref|${referenceMaterialKey(ref)}`));
+    });
+    if(!removed.length)return;
+    rememberSmartConnectionDeletions(removed);
+    const deleted=new Set(removed);
+    canvas.connections=canvas.connections.filter(conn=>!deleted.has(conn));
+    const sourceIds=new Set(removed.map(conn=>conn.from));
+    if(Array.isArray(node.inputNodeIds))node.inputNodeIds=node.inputNodeIds.filter(id=>!sourceIds.has(id)||canvas.connections.some(conn=>conn.from===id&&conn.to===node.id));
+    clearDetachedRunInputRefs(node);
+    scheduleSave();
+}
 function activeInputImagesFor(node, consume=false, ctx=smartLoopContext){
     return inputImagesFor(node, consume, ctx).filter(img => img?.url && !isInputRefBlocked(node, img));
 }
@@ -28956,8 +29175,9 @@ function toggleInputRefBlocked(node, img){
 function removePromptNodeInputReference(nodeId, key, sourceNodeId=''){
     const node = nodes.find(item => item.id === nodeId);
     if(!node || !key) return;
+    const batch = smartLoopIsPaired(node);
     const pickerRef = nodeReferencePickerImages(node).find(item => inputRefKey(item) === key);
-    if(pickerRef?.sourceImageId || window.SmartCanvasReferencePicker?.owns(nodeId)){
+    if(!batch && (pickerRef?.sourceImageId || window.SmartCanvasReferencePicker?.owns(nodeId))){
         const ref = pickerRef;
         if(ref){
             referenceMutationUndo(nodeId);
@@ -28969,10 +29189,11 @@ function removePromptNodeInputReference(nodeId, key, sourceNodeId=''){
     }
     const manualRefs = Array.isArray(node.manualInputRefs) ? node.manualInputRefs.slice() : [];
     const manualIndex = manualRefs.findIndex(ref => inputRefKey(ref) === key);
-    const visibleRef = visibleReferenceImagesFor(node).find(ref => inputRefKey(ref) === key);
+    const visibleRef = (batch ? smartLoopPreviewImages(node) : visibleReferenceImagesFor(node)).find(ref => inputRefKey(ref) === key);
     const hintedSourceId = sourceNodeId || visibleRef?.nodeId || '';
     const incomingConnections = (canvas?.connections || []).filter(conn => (
         conn.to === node.id && ['input', 'flow'].includes(conn.kind || 'flow')
+        && (!batch || (conn.input_slot || conn.inputSlot) !== 'text')
     ));
     // 分组节点输出的图片会保留子节点 nodeId，所以缩略图上的 nodeId 不一定就是连线 from。
     // 优先直连匹配，再按引用 key / URL 反查真正的上游连线来源。
@@ -28983,30 +29204,39 @@ function removePromptNodeInputReference(nodeId, key, sourceNodeId=''){
         });
     const sourceId = sourceConnection?.from || '';
     const removableConnection = Boolean(sourceId && sourceId !== node.id);
+    const remainingSourceImages = batch && sourceId
+        ? outputImagesForNode(nodes.find(item => item.id === sourceId)).filter(ref => ref?.url
+            && mediaKindForItem(ref) === 'image' && inputRefKey(ref) !== key && !isInputRefBlocked(node, ref))
+        : [];
     pushUndo();
     if(manualIndex >= 0){
         manualRefs.splice(manualIndex, 1);
         if(manualRefs.length) node.manualInputRefs = manualRefs;
         else delete node.manualInputRefs;
+    } else if(removableConnection && remainingSourceImages.length){
+        node.blockedInputRefs = [...new Set([...blockedInputRefKeys(node), key])];
     } else if(removableConnection){
-        // 缩略图来自画布连线时，叉掉引用必须真正断开来源节点；只写 blockedInputRefs
-        // 会留下可见连线，并使用户之后重新连接时仍被旧的隐藏状态拦住。
+        // 批量节点移除同一来源的最后一张图片后断线，单图编辑器直接移除来源。
         const removedConnections = (canvas.connections || []).filter(conn => (
             conn.from === sourceId
             && conn.to === node.id
             && ['input', 'flow'].includes(conn.kind || 'flow')
+            && (!batch || (conn.input_slot || conn.inputSlot) !== 'text')
         ));
         rememberSmartConnectionDeletions(removedConnections);
         canvas.connections = (canvas.connections || []).filter(conn => !(
             conn.from === sourceId
             && conn.to === node.id
             && ['input', 'flow'].includes(conn.kind || 'flow')
+            && (!batch || (conn.input_slot || conn.inputSlot) !== 'text')
         ));
-        if(Array.isArray(node.inputNodeIds)){
+        const sourceStillConnected = (canvas.connections || []).some(conn => conn.from === sourceId && conn.to === node.id);
+        if(Array.isArray(node.inputNodeIds) && !sourceStillConnected){
             node.inputNodeIds = node.inputNodeIds.filter(id => id !== sourceId);
         }
         const blocked = blockedInputRefKeys(node);
-        blocked.delete(key);
+        if(batch && sourceStillConnected) blocked.add(key);
+        else blocked.delete(key);
         if(blocked.size) node.blockedInputRefs = [...blocked];
         else delete node.blockedInputRefs;
         clearDetachedRunInputRefs(node);
@@ -29841,7 +30071,7 @@ function nextOutputPositionForSource(sourceNode, pendingBox, options={}){
         : Math.round(sourceRect.y || 0);
     const outputs = outgoingConnectionsFor(sourceNode, ['input','flow'])
         .map(conn => nodes.find(n => n.id === conn.to))
-        .filter(n => isSmartImageNode(n) && (!isSmartUploadNode(n) || n.runSettings?.engine === 'comfy'))
+        .filter(n => isSmartImageNode(n) && (!isSmartUploadNode(n) || n.runSettings?.engine === 'comfy' || n.retouchOwnerId === sourceNode.id))
         .map(n => nodeRect(n))
         .filter(rect => Math.abs((rect.x || 0) - x) < Math.max(320, (pendingBox?.w || 260) + 120))
         .sort((a, b) => (a.y || 0) - (b.y || 0));
@@ -29882,9 +30112,10 @@ function existingComfyWorkflowOutputNode(sourceNode){
 function createPendingOutputFromSource(sourceNode, expectedCount, meta, options={}){
     const pendingBox = pendingBoxSize(expectedCount, {sourceNode, refs:options.refs || meta?.promptRefs || []});
     const pos = nextOutputPositionForSource(sourceNode, pendingBox, options);
+    const isUploadOutput = isProductRetouchNode(sourceNode) || isSmartComfyWorkflowNode(sourceNode) || meta?.settings?.engine === 'comfy';
     const output = {
         id:uid('smart'),
-        type:isSmartComfyWorkflowNode(sourceNode) || meta?.settings?.engine === 'comfy' ? SMART_UPLOAD_NODE_TYPE : 'smart-image',
+        type:isUploadOutput ? SMART_UPLOAD_NODE_TYPE : 'smart-image',
         x:pos.x,
         y:pos.y,
         title:'Image',
@@ -31624,6 +31855,7 @@ async function runSmartLoopDetailBatch(loop, targets){
 function runSmartCascadeFromLoop(loopId){
     const loop = nodes.find(n => n.id === loopId && n.type === 'smart-loop');
     if(!loop){ toast('没有找到循环节点'); return; }
+    if(window.SmartCanvasSku?.is(loop)) { void window.SmartCanvasSku.run(loop); return; }
     const pairedCheck = validateSmartLoopPairedRun(loop);
     if(!pairedCheck.ok){
         toast(pairedCheck.message);
@@ -31653,6 +31885,7 @@ function smartDependencyInputs(node){
 }
 function smartDependencyExecutable(node){
     if(!node || isHistoryGroupNode(node)) return false;
+    if(isProductRetouchNode(node))return true;
     if(node.type === 'smart-agent') return true;
     if(node.type === 'smart-prompt') return node.llmEnabled === true;
     if(isSmartComfyWorkflowNode(node)) return true;
@@ -31679,6 +31912,7 @@ function validateSmartDependencyGraph(target){
     return graph;
 }
 function smartDependencySignature(node){
+    if(isProductRetouchNode(node))return JSON.stringify({config:node.retouchConfig,selection:node.retouchSelection,inputs:productRetouchInputItems(node).map(i=>({url:i.url,region:i.region}))});
     let request;
     if(node.type === 'smart-agent'){
         const provider = node.agentProvider || resolveAgentProviderId();
@@ -31787,13 +32021,15 @@ function cancelAgentNode(nodeId){
     }
 }
 async function executeSmartDependencyNode(node, signal){
+    if(isProductRetouchNode(node))return runProductRetouchNodeDirect(node,signal);
     if(node.type === 'smart-agent') return runAgentNodeDirect(node.id, signal);
     if(node.type === 'smart-prompt') return runPromptLLMNodeDirect(node.id, signal);
     return runGenerationDirect('default', null, '', node, smartSettingsForNode(node));
 }
-async function runSmartNodeWithDependencies(target, executeTarget){
+async function runSmartNodeWithDependencies(target, executeTarget, {concurrentTarget=false}={}){
     if(!target) return {ok:false, error:'请选择要运行的节点'};
-    if(smartDependencyRuns.has(target.id)) return smartDependencyRuns.get(target.id).promise;
+    const targetKey = concurrentTarget && smartDependencyRuns.has(target.id) ? `retouch-submit:${target.id}` : target.id;
+    if(smartDependencyRuns.has(targetKey)) return smartDependencyRuns.get(targetKey).promise;
     const canvasId = canvas?.id;
     let graph;
     const currentNode = node => {
@@ -31802,7 +32038,8 @@ async function runSmartNodeWithDependencies(target, executeTarget){
         return current;
     };
     const visit = (source, force=false) => {
-        const active = smartDependencyRuns.get(source.id);
+        const runKey = force ? targetKey : source.id;
+        const active = smartDependencyRuns.get(runKey);
         if(active){
             active.owners?.add(target.id);
             return active.promise;
@@ -31872,11 +32109,11 @@ async function runSmartNodeWithDependencies(target, executeTarget){
                 scheduleSave();
                 return {ok:false, error:message};
             } finally {
-                if(smartDependencyRuns.get(source.id) === state) smartDependencyRuns.delete(source.id);
+                if(smartDependencyRuns.get(runKey) === state) smartDependencyRuns.delete(runKey);
                 if(canvas?.id === canvasId){ render(); syncRunButtonState(); }
             }
         });
-        smartDependencyRuns.set(source.id, state);
+        smartDependencyRuns.set(runKey, state);
         render();
         syncRunButtonState();
         return state.promise;
@@ -31895,6 +32132,8 @@ async function runSmartNodeWithDependencies(target, executeTarget){
 }
 async function runGeneration(referenceMode='default', referenceOverride=null, promptOverride=''){
     const node = selectedNode();
+    if(isSmartReplicaNode(node)) return window.SmartCanvasReplica.run(node);
+    if(isProductRetouchNode(node))return runProductRetouchNode(node);
     if(!node || smartNodeInFlight(node)) return;
     savePromptDraftForCurrent();
     const runSettings = cloneSmartSettings(settings);
@@ -32787,6 +33026,7 @@ async function runApiGeneration(prompt, refs, runSettings=settings){
     // 1:1 或相邻比例。其它协议仍会收到精确 size。
     const aspectRatio = outpaintSourceCanvas ? 'source' : aspectRatioForRun(runSettings);
     const payload = {prompt:requestPrompt, provider_id:runSettings.provider_id, model:runSettings.model, history_source:'canvas', project_id:currentSmartProjectId(), size:sizeForRun(runSettings), aspect_ratio:aspectRatio, n:1, reference_images:imageRefsOnly(refs)};
+    if(runSettings.productRetouch) payload.product_retouch=cloneSmartSettings(runSettings.productRetouch);
     if(['1k','2k','4k'].includes(runSettings.resolution) && !outpaintSourceCanvas){
         payload.resolution = runSettings.resolution;
     }
@@ -33315,6 +33555,8 @@ async function recoverUnparsedImageNow(nodeId, recoveryId){
         const source = data.image_items?.length ? data.image_items : (data.images || []);
         if(node.runSettings?.productFidelity?.enabled && !data.product_fidelity) throw new Error('恢复图片尚未完成产品保护处理，请保留恢复编号并重新打开该任务');
         if(data.product_fidelity) acceptProductFidelityResult(node, data.product_fidelity);
+        if(node.runSettings?.productRetouch && !data.product_retouch)throw new Error('精修结果尚未完成质量检查，请稍后重新查询');
+        if(data.product_retouch)acceptProductRetouchResult(node,data.product_retouch);
         const additions = resultMediaUrls(source).map((item, index) => {
             const url = typeof item === 'string' ? item : item?.url || '';
             return stripImageGenerationMeta(copyMediaSizeFields(item, {
@@ -33359,6 +33601,8 @@ async function querySmartImageTaskNow(nodeId, localTaskId){
         const data = await fetchImageTaskQuery(providerIdForSmartTask(node, task), recoverTaskId, 'canvas');
         if(data.status === 'succeeded' && node.runSettings?.productFidelity?.enabled && !data.product_fidelity) throw new Error('恢复图片缺少产品保护检查，已停止将未保护图片写入节点');
         if(data.product_fidelity) acceptProductFidelityResult(node, data.product_fidelity);
+        if(data.status === 'succeeded' && node.runSettings?.productRetouch && !data.product_retouch)throw new Error('精修结果尚未完成质量检查，请稍后重新查询');
+        if(data.product_retouch)acceptProductRetouchResult(node,data.product_retouch);
         if(data.status === 'succeeded'){
             const taskImages = resultMediaUrls(data.image_items?.length ? data.image_items : (data.images?.length ? data.images : data));
             if(!taskImages.length){
@@ -33634,7 +33878,9 @@ async function resumeSmartPendingNode(node, logContext={}){
                 : await pollSmartCanvasTask(task.taskId,{onTaskUpdate:updateTask});
             if(!currentTask(task.taskId)) return;
             const taskImages = resultMediaUrls(result?.image_items?.length ? result.image_items : (result?.images?.length ? result.images : result));
+            if(node.runSettings?.productRetouch && !result?.product_retouch)throw new Error('精修结果缺少质量检查，请保留任务编号后重新查询');
             if(result?.product_fidelity) acceptProductFidelityResult(node, result.product_fidelity);
+            if(result?.product_retouch && typeof acceptProductRetouchResult === 'function') acceptProductRetouchResult(node, result.product_retouch);
             if(!currentTask(task.taskId)) return;
             const taskStartedAt = Number(task.started_at || task.created_at || 0);
             const taskFinishedAt = Number(task.finished_at || task.updated_at || 0);
@@ -33732,6 +33978,7 @@ async function resumeSmartPendingNode(node, logContext={}){
     }
 }
 function resumeSmartPendingTasks(){
+    if(typeof recoverProductRetouchSubmissions === 'function')void recoverProductRetouchSubmissions();
     nodes.filter(node => smartPendingTasks(node).length).forEach(node => {
         // 恢复路径已经把错误留在节点；避免未处理的 Promise 拒绝打断页面。
         resumeSmartPendingNode(node).catch(error => console.warn('[Smart Canvas] 恢复任务失败', error));
@@ -34123,8 +34370,10 @@ function createNodeFromMenu(type){
     else if(type === 'paint') created = createPaintNodeAt(p);
     else if(type === 'video') created = createVideoNodeAt(p);
     else if(type === 'ai-render') created = createAiRenderNodeAt(p);
+    else if(type === SMART_REPLICA_NODE_TYPE) created = window.SmartCanvasReplica.create(p);
     else if(type === 'product-fidelity') created = createProductFidelityNodeAt(p);
     else if(type === 'local-fusion') created = createLocalFusionNodeAt(p);
+    else if(type === 'product-retouch') created = createProductRetouchNodeAt(p);
     else if(type === 'drawing-board') created = createDrawingBoardNodeAt(p);
     else if(type === 'comfyui') created = createComfyWorkflowNodeFromCatalog(p);
     else if(type === 'upload' || type === 'image') created = createImageNodeAt(p);
@@ -34377,6 +34626,42 @@ canvasZoomRange?.addEventListener('input', event => {
     setCanvasZoom(Number(event.target.value));
 });
 canvasZoomRange?.addEventListener('change', () => scheduleSave());
+function clearGroupThumbSort(state){
+    state?.ghost?.remove();
+    state?.element?.classList.remove('paint-ref-drag-source');
+    state?.grid?.querySelectorAll('.drop-before,.drop-after').forEach(item => item.classList.remove('drop-before','drop-after'));
+    document.body.classList.remove('smart-input-thumb-drag');
+}
+function updateGroupThumbSort(state, event){
+    const grid = state.grid;
+    if(state.copy || !grid?.isConnected) return false;
+    const bounds = grid.getBoundingClientRect();
+    if(event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) return false;
+    if(!state.ghost){
+        clearImageClickTimer();
+        const rect = state.element.getBoundingClientRect();
+        state.ghost = state.element.cloneNode(true);
+        state.ghost.querySelectorAll('button').forEach(button => button.remove());
+        state.ghost.classList.add('paint-ref-drag-ghost');
+        Object.assign(state.ghost.style, {left:`${rect.left}px`,top:`${rect.top}px`,width:`${rect.width}px`,height:`${rect.height}px`});
+        document.body.appendChild(state.ghost);
+        state.element.classList.add('paint-ref-drag-source');
+        document.body.classList.add('smart-input-thumb-drag');
+    }
+    state.ghost.style.transform = `translate(${event.clientX - state.startX}px, ${event.clientY - state.startY}px)`;
+    grid.querySelectorAll('.drop-before,.drop-after').forEach(item => item.classList.remove('drop-before','drop-after'));
+    if(event.clientY < bounds.top + 28) grid.scrollTop -= 12;
+    else if(event.clientY > bounds.bottom - 28) grid.scrollTop += 12;
+    const targets = [...grid.querySelectorAll('.thumb-item')].filter(item => !item.dataset.refNodeId || item.dataset.refNodeId === state.nodeId);
+    const target = targets.reduce((best, item) => {
+        const rect = item.getBoundingClientRect();
+        const distance = Math.hypot(event.clientX - (rect.left + rect.width / 2), event.clientY - (rect.top + rect.height / 2));
+        return !best || distance < best.distance ? {item,distance} : best;
+    }, null)?.item;
+    state.sortIndex = target ? Number(target.dataset.imageIndex) : state.imgIndex;
+    if(target && state.sortIndex !== state.imgIndex) target.classList.add(state.sortIndex < state.imgIndex ? 'drop-before' : 'drop-after');
+    return true;
+}
 window.onmousemove = e => {
     // 如果按下事件被浏览器的中键自动滚动或系统手势吞掉，仍可在第一次拖动
     // 事件中恢复擦除状态；buttons 位掩码：右键=2，中键=4。
@@ -34533,8 +34818,8 @@ window.onmousemove = e => {
         if(!node) return;
         const dx = (e.clientX - resizeState.startX) / viewport.scale;
         const dy = (e.clientY - resizeState.startY) / viewport.scale;
-        const minW = isProductFidelityNode(node) ? 760 : node.type === 'smart-agent' ? 360 : node.type === 'smart-prompt' ? 260 : node.type === 'smart-loop' ? 252 : node.type === SMART_COMFY_WORKFLOW_NODE_TYPE ? 340 : node.type === 'smart-group' ? SMART_GROUP_MIN_WIDTH : isSmartColorNode(node) ? 320 : isSmartTableNode(node) ? 380 : isSmartTimelineNode(node) ? 420 : 48;
-        const minH = isProductFidelityNode(node) ? 560 : node.type === 'smart-agent' ? 360 : node.type === 'smart-prompt' ? resizeState.promptMinH : node.type === 'smart-loop' ? 132 : node.type === SMART_COMFY_WORKFLOW_NODE_TYPE ? 320 : node.type === 'smart-group' ? SMART_GROUP_MIN_HEIGHT : isSmartColorNode(node) ? 360 : isSmartTableNode(node) ? 280 : isSmartTimelineNode(node) ? 360 : 48;
+        const minW = isProductRetouchNode(node) ? 380 : isProductFidelityNode(node) ? 760 : node.type === 'smart-agent' ? 360 : node.type === 'smart-prompt' ? 260 : node.type === 'smart-loop' ? 252 : node.type === SMART_COMFY_WORKFLOW_NODE_TYPE ? 340 : node.type === 'smart-group' ? SMART_GROUP_MIN_WIDTH : isSmartColorNode(node) ? 320 : isSmartTableNode(node) ? 380 : isSmartTimelineNode(node) ? 420 : 48;
+        const minH = isProductRetouchNode(node) ? 520 : isProductFidelityNode(node) ? 560 : node.type === 'smart-agent' ? 360 : node.type === 'smart-prompt' ? resizeState.promptMinH : node.type === 'smart-loop' ? 132 : node.type === SMART_COMFY_WORKFLOW_NODE_TYPE ? 320 : node.type === 'smart-group' ? SMART_GROUP_MIN_HEIGHT : isSmartColorNode(node) ? 360 : isSmartTableNode(node) ? 280 : isSmartTimelineNode(node) ? 360 : 48;
         if(isSmartDrawingBoardNode(node) && resizeState.drawingLayout && window.SmartDrawingBoard?.resizeNode){
             const widthDelta = Math.abs(dx / resizeState.startW) >= Math.abs(dy / resizeState.startH)
                 ? dx : dy * resizeState.startW / resizeState.startH;
@@ -34639,6 +34924,8 @@ window.onmousemove = e => {
         const dy = e.clientY - thumbDragState.startY;
         const source = nodes.find(n => n.id === thumbDragState.nodeId);
         if(!thumbDragState.detached && Math.abs(dx) + Math.abs(dy) > 6){
+            if(updateGroupThumbSort(thumbDragState, e)) return;
+            clearGroupThumbSort(thumbDragState);
             const canDetachThumb = source && (isSmartGroupNode(source) ? (source.images || []).length >= 1 : (source.images || []).length > 1);
             if(canDetachThumb){
                 const sourceImage = source.images[thumbDragState.imgIndex];
@@ -34807,8 +35094,21 @@ window.onmouseup = e => {
         scheduleSave();
     }
     if(thumbDragState){
-        if(!thumbDragState.detached) discardPendingUndo();
+        const state = thumbDragState;
+        const source = nodes.find(node => node.id === state.nodeId);
+        const changed = state.ghost && updateGroupThumbSort(state, e) && source?.images?.[state.imgIndex] && Number.isInteger(state.sortIndex) && state.sortIndex !== state.imgIndex;
+        if(changed){
+            const [image] = source.images.splice(state.imgIndex, 1);
+            source.images.splice(state.sortIndex, 0, image);
+            selectedImage = {nodeId:source.id, index:state.sortIndex};
+            clearImageClickTimer();
+            suppressImageClickUntil = Date.now() + 260;
+            suppressNodeClickUntil = Date.now() + 260;
+            commitPendingUndo();
+        } else if(!state.detached) discardPendingUndo();
+        clearGroupThumbSort(state);
         thumbDragState = null;
+        if(changed){ render(); scheduleSave(); }
     }
     if(panState) {
         // In Electron/trackpad event sequences mousemove can be coalesced or
@@ -35066,6 +35366,8 @@ window.addEventListener('paste', e => {
 });
 nodeClipboard = readStoredNodeClipboard();
 function handleCanvasRemoveKey(e){
+    if(e.key === 'Escape') closeSmartCanvasShortcuts();
+    if(isSmartCanvasRefreshShortcut(e)){ refreshSmartCanvasPage(e); return; }
     if(document.querySelector('.lf-dialog[open]'))return;
     if(!isCanvasRemoveKey(e)) return;
     // 图片编辑器打开时 Delete/Backspace 属于编辑器，不能删掉被遮挡画布上正在编辑的节点，
@@ -35081,9 +35383,18 @@ function handleCanvasRemoveKey(e){
 }
 window.addEventListener('keydown', handleCanvasRemoveKey, true);
 window.addEventListener('keydown', e => {
+    if(e.key === 'Escape' && thumbDragState){
+        clearGroupThumbSort(thumbDragState);
+        thumbDragState = null;
+        discardPendingUndo();
+        suppressImageClickUntil = Date.now() + 260;
+        e.preventDefault();
+        return;
+    }
     if(e.key === 'Control' || e.key === 'Meta') connectionEraseModifierHeld = true;
     const key = String(e.key || '').toLowerCase();
     if(key === 'r' && !isEditableTarget(e.target)) isRKeyDown = true;
+    if(isSmartCanvasRefreshShortcut(e)){ refreshSmartCanvasPage(e); return; }
     if(imageEditModal.classList.contains('open')){
         if(e.key === 'Escape'){
             closeImageEditor();
@@ -35151,6 +35462,11 @@ window.addEventListener('keyup', e => {
     if(String(e.key || '').toLowerCase() === 'r') isRKeyDown = false;
 });
 window.addEventListener('blur', () => {
+    if(thumbDragState){
+        clearGroupThumbSort(thumbDragState);
+        thumbDragState = null;
+        discardPendingUndo();
+    }
     connectionEraseModifierHeld = false;
     isRKeyDown = false;
     if(connectionEraseState) endConnectionErase({commit:true});
@@ -36053,6 +36369,12 @@ previewImageContextMenu?.addEventListener('mousedown', event => event.stopPropag
 previewImageContextMenu?.addEventListener('click', event => {
     if(event.target.closest('#previewImageContextCopy')) copyPreviewImageFromContextMenu(event);
     if(event.target.closest('#previewImageContextBackgroundRemove')) removeBackgroundFromPreviewContextMenu(event);
+    if(event.target.closest('#previewImageContextRetouch')){
+        closePreviewImageContextMenu();
+        const nodeId=previewNavState.nodeId,index=previewNavState.index;
+        closeImageEditor();
+        void openProductRetouch(nodeId,index);
+    }
 });
 document.addEventListener('pointerdown', event => {
     if(!previewImageContextMenu || previewImageContextMenu.hidden || previewImageContextMenu.contains(event.target)) return;
@@ -36329,6 +36651,7 @@ window.onload = async () => {
     if(sharedCanvasMode && !shareReady) return;
     connectAssetLibrarySyncSocket();
     await loadCanvas();
+    smartCanvasReady = true;
     if(!sharedCanvasMode){
         void loadConfig().then(() => {
             resumeSmartPendingTasks();

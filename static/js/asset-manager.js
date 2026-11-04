@@ -116,6 +116,7 @@ let storageFileClipboards = {upload:null, generated:null};
 let storageFileFolderDrag = null;
 let storageFileCardDrag = null;
 let lightboxPanState = null;
+let lightboxReturnFocus = null;
 let canvasAssetsData = {categories:[], projects:[], canvases:[], items:[]};
 let activeCanvasAssetProjectId = '';
 let activeCanvasAssetCanvasId = '';
@@ -694,6 +695,41 @@ function uploadAssetProjectTree(){
     const projects = uploadAssetsState.projects || [];
     return [{id:'', name:'全部上传', count:uploadAssetsState.allTotal}, ...projects.map(item => ({...item, count:Number(item.count || 0)})), {id:'__unassigned__', name:'未归属项目', count:uploadAssetsState.unassigned_count}];
 }
+const assetNavExpanded = new Map();
+function renderAssetNavBranch(key, label, row, children, defaultExpanded=true){
+    if(!children) return row;
+    const expanded = assetNavExpanded.get(key) ?? defaultExpanded;
+    const childrenId = `asset-nav-${encodeURIComponent(key)}`;
+    const action = `${expanded ? '收起' : '展开'}${label}`;
+    const doubleClick = key === 'upload:media' || key === 'upload:projects';
+    return `<div class="tree-branch asset-nav-branch" data-nav-branch="${escapeAttr(key)}">
+        <div class="asset-nav-branch-head"><button class="asset-nav-toggle" type="button" data-nav-toggle="${escapeAttr(key)}" data-nav-label="${escapeAttr(label)}" ${doubleClick ? 'data-nav-double-click' : ''} aria-expanded="${expanded}" aria-controls="${escapeAttr(childrenId)}" aria-label="${escapeAttr(action)}" title="${escapeAttr(doubleClick ? `双击${action}` : action)}"><i data-lucide="chevron-down"></i></button>${row}</div>
+        <div class="tree-children asset-nav-children" id="${escapeAttr(childrenId)}" ${expanded ? '' : 'hidden'}>${children}</div>
+    </div>`;
+}
+function setAssetNavExpanded(button, expanded){
+    assetNavExpanded.set(button.dataset.navToggle, expanded);
+    button.setAttribute('aria-expanded', String(expanded));
+    const label = `${expanded ? '收起' : '展开'}${button.dataset.navLabel}`;
+    button.setAttribute('aria-label', label);
+    button.title = button.hasAttribute('data-nav-double-click') ? `双击${label}` : label;
+    document.getElementById(button.getAttribute('aria-controls')).hidden = !expanded;
+}
+function renderMaterialMediaTree(kind, channels, activeType){
+    const attr = kind === 'upload' ? 'upload' : 'localup';
+    const rows = channels.map(([type,label,icon,count]) => `<button class="tree-row ${type === 'all' ? 'tree-parent' : 'tree-child'} ${activeType === type ? 'active' : ''}" type="button" data-${attr}-type="${type}"><span class="tree-row-icon"><i data-lucide="${icon}"></i></span><span class="tree-row-name">${label}</span><span class="tree-row-count">${count || 0}</span></button>`);
+    return renderAssetNavBranch(`${kind}:media`, channels[0][1], rows[0], rows.slice(1).join(''));
+}
+function renderMaterialProjectTree(kind, projects, canvases, projectId, canvasId){
+    const attr = kind === 'upload' ? 'upload' : 'localup';
+    const rows = projects.map(project => {
+        const row = `<button class="tree-row tree-parent ${projectId === project.id && !canvasId ? 'active' : ''}" type="button" data-${attr}-project="${escapeAttr(project.id)}"><span class="tree-row-icon"><i data-lucide="${project.id ? 'folder' : 'images'}"></i></span><span class="tree-row-name">${escapeHtml(project.name)}</span><span class="tree-row-count">${project.count || 0}</span></button>`;
+        if(!project.id) return row;
+        const children = canvases.filter(canvas => canvas.project === project.id).map(canvas => `<button class="tree-row tree-child ${projectId === project.id && canvasId === canvas.id ? 'active' : ''}" type="button" data-${attr}-canvas="${escapeAttr(canvas.id)}" data-material-project="${escapeAttr(project.id)}"><span class="tree-elbow"></span><span class="tree-row-icon"><i data-lucide="layers"></i></span><span class="tree-row-name">${escapeHtml(canvas.title || '未命名画布')}</span><span class="tree-row-count">${canvas.count || 0}</span></button>`).join('');
+        return renderAssetNavBranch(`${kind}:project:${project.id}`, project.name, row, children, projectId === project.id);
+    });
+    return renderAssetNavBranch(`${kind}:projects`, projects[0].name, rows[0], rows.slice(1).join(''));
+}
 function storageFileState(kind){ return kind === 'upload' ? uploadAssetsState : generatedAssetsState; }
 function storageFileSelectedItems(kind){
     const state = storageFileState(kind);
@@ -735,12 +771,19 @@ function renderStorageFileCaption(item){
 }
 function renderStorageFileFolders(kind){
     const state = storageFileState(kind);
+    const folders = state.folders || [];
+    const paths = new Set(folders.map(folder => folder.path));
+    const renderFolder = folder => {
+        const row = `<button class="tree-row tree-child ${state.folder === folder.path ? 'active' : ''}" type="button" data-space-folder="${escapeAttr(folder.path)}" draggable="true" title="拖动素材到此文件夹可移动；拖动文件夹可调整同级顺序"><span class="tree-row-icon"><i data-lucide="folder"></i></span><span class="tree-row-name">${escapeHtml(folder.name)}</span><span class="tree-row-count">${folder.count || 0}</span></button>`;
+        const children = folders.filter(child => storageFolderParentPath(child.path) === folder.path).map(renderFolder).join('');
+        return renderAssetNavBranch(`${kind}:folder:${folder.path}`, folder.name, row, children);
+    };
+    const folderRows = folders.filter(folder => !paths.has(storageFolderParentPath(folder.path))).map(renderFolder).join('');
     return `<div class="storage-folder-section"><div class="generated-projects-toggle"><span>按文件夹</span><div class="panel-actions compact-actions">
         <button class="asset-icon-btn" type="button" data-space-folder-new="${kind}" title="新建文件夹"><i data-lucide="folder-plus"></i></button>
         <button class="asset-icon-btn" type="button" data-space-folder-rename="${kind}" title="重命名当前文件夹" ${state.folder ? '' : 'disabled'}><i data-lucide="pencil"></i></button>
         <button class="asset-icon-btn danger" type="button" data-space-folder-delete="${kind}" title="将当前文件夹移入回收站" ${state.folder ? '' : 'disabled'}><i data-lucide="trash-2"></i></button></div></div>
-        <button class="tree-row tree-parent ${!state.folder && kind === 'generated' ? 'active' : ''}" type="button" data-space-folder=""><span class="tree-row-icon"><i data-lucide="folder-open"></i></span><span class="tree-row-name">全部文件夹</span></button>
-        ${(state.folders || []).map(folder => `<button class="tree-row tree-child ${state.folder === folder.path ? 'active' : ''}" type="button" data-space-folder="${escapeAttr(folder.path)}" draggable="true" title="拖动素材到此文件夹可移动；拖动文件夹可调整同级顺序" style="padding-left:${Math.min(50, 14 + folder.path.split('/').length * 12)}px"><span class="tree-row-icon"><i data-lucide="folder"></i></span><span class="tree-row-name">${escapeHtml(folder.name)}</span><span class="tree-row-count">${folder.count || 0}</span></button>`).join('')}</div>`;
+        ${renderAssetNavBranch(`${kind}:folders`, '全部文件夹', `<button class="tree-row tree-parent ${!state.folder && kind === 'generated' ? 'active' : ''}" type="button" data-space-folder=""><span class="tree-row-icon"><i data-lucide="folder-open"></i></span><span class="tree-row-name">全部文件夹</span></button>`, folderRows)}</div>`;
 }
 function renderStorageFileCard(kind, item){
     const state = storageFileState(kind), upload = kind === 'upload';
@@ -764,8 +807,6 @@ function renderStorageFileDetail(kind, item){
         <div class="panel-actions"><button class="asset-icon-btn" type="button" data-space-file-rename="${escapeAttr(item.id)}" title="重命名"><i data-lucide="pencil"></i></button>
         <button class="asset-icon-btn" type="button" data-space-file-move-one="${escapeAttr(item.id)}" title="移动到文件夹"><i data-lucide="folder-input"></i></button>
         <button class="asset-icon-btn" type="button" data-space-file-download-one="${escapeAttr(item.id)}" title="下载"><i data-lucide="download"></i></button>
-        <button class="asset-icon-btn" type="button" data-space-file-copy-link="${escapeAttr(item.id)}" title="复制链接"><i data-lucide="link"></i></button>
-        ${assetKind(item) === 'image' ? `<button class="asset-icon-btn" type="button" data-space-file-background-one="${escapeAttr(item.id)}" title="去背景"><i data-lucide="eraser"></i></button>` : ''}
         <button class="asset-icon-btn danger" type="button" data-space-file-delete-one="${escapeAttr(item.id)}" title="移入回收站"><i data-lucide="trash-2"></i></button></div></div>
         <div class="detail-scroll"><div class="detail-media">${assetKind(item) === 'audio' ? `<audio controls preload="metadata" src="${escapeAttr(item.url)}"></audio>` : `<button class="detail-media-frame detail-media-zoomable" type="button" data-space-file-preview="${escapeAttr(item.id)}" title="点击放大预览">${assetThumb(item)}</button>`}</div>
         <div class="detail-body"><input class="detail-name-input" data-space-file-inline-name="${escapeAttr(item.id)}" type="text" value="${escapeAttr(item.name || '')}" title="直接修改名称">
@@ -788,9 +829,9 @@ function renderUploadManager(){
             <button class="tree-row tree-parent ${uploadAssetsState.favoritesOnly ? 'active' : ''}" type="button" data-upload-fav-filter><span class="tree-row-icon"><i data-lucide="star"></i></span><span class="tree-row-name">我的收藏</span><span class="tree-row-count">${favoriteFileCount('upload')}</span></button>
             <button class="tree-row tree-parent" type="button" data-upload-library-view><span class="tree-row-icon"><i data-lucide="library"></i></span><span class="tree-row-name">图片资产库</span></button>
             <div class="generated-projects-toggle"><span>按类型</span></div>
-            ${[['all','全部上传','images',uploadAssetsState.allTotal],['image','图片','image',uploadAssetsState.mediaCounts.image],['video','视频','video',uploadAssetsState.mediaCounts.video],['audio','音频','file-audio',uploadAssetsState.mediaCounts.audio]].map(([type,label,icon,count]) => `<button class="tree-row ${type === 'all' ? 'tree-parent' : 'tree-child'} ${uploadAssetsState.mediaType === type ? 'active' : ''}" type="button" data-upload-type="${type}"><span class="tree-row-icon"><i data-lucide="${icon}"></i></span><span class="tree-row-name">${label}</span><span class="tree-row-count">${count || 0}</span></button>`).join('')}
+            ${renderMaterialMediaTree('upload', [['all','全部上传','images',uploadAssetsState.allTotal],['image','图片','image',uploadAssetsState.mediaCounts.image],['video','视频','video',uploadAssetsState.mediaCounts.video],['audio','音频','file-audio',uploadAssetsState.mediaCounts.audio]], uploadAssetsState.mediaType)}
             <div class="generated-projects-toggle"><span>按项目</span></div>
-            ${tree.map(item => `<button class="tree-row tree-parent ${uploadAssetsState.projectId === item.id && !uploadAssetsState.canvasId ? 'active' : ''}" type="button" data-upload-project="${escapeAttr(item.id)}"><span class="tree-row-icon"><i data-lucide="${item.id ? 'folder' : 'images'}"></i></span><span class="tree-row-name">${escapeHtml(item.name)}</span><span class="tree-row-count">${item.count || 0}</span></button>${item.id && uploadAssetsState.projectId === item.id ? (uploadAssetsState.canvases || []).filter(canvas => canvas.project === item.id).map(canvas => `<button class="tree-row tree-child ${uploadAssetsState.canvasId === canvas.id ? 'active' : ''}" type="button" data-upload-canvas="${escapeAttr(canvas.id)}"><span class="tree-elbow"></span><span class="tree-row-icon"><i data-lucide="layers"></i></span><span class="tree-row-name">${escapeHtml(canvas.title || '未命名画布')}</span><span class="tree-row-count">${canvas.count || 0}</span></button>`).join('') : ''}`).join('')}
+            ${renderMaterialProjectTree('upload', tree, uploadAssetsState.canvases || [], uploadAssetsState.projectId, uploadAssetsState.canvasId)}
             ${renderStorageFileFolders('upload')}${renderImageSpaceCollections()}</div><div class="nav-hint">素材归属来自画布引用或上传时的选择。</div></div></aside>
         <section class="asset-panel asset-content ${uploadAssetsState.manageMode ? 'manage-on' : ''}"><div class="content-toolbar"><div class="content-heading"><strong>${escapeHtml(uploadAssetsState.favoritesOnly ? '我的收藏 · 上传素材' : uploadAssetsState.folder || project)}</strong><span>资产管理 / 上传素材 · 共 ${uploadAssetsState.total} 个文件</span></div>
             <div class="asset-tools"><label class="asset-search-wrap"><i data-lucide="search"></i><input id="assetSearch" class="asset-search" type="search" value="${escapeAttr(uploadAssetsState.query)}" placeholder="搜索文件名或目录"></label>
@@ -974,12 +1015,7 @@ function renderGeneratedNavigation(){
                 <span class="tree-row-name">我的收藏</span>
                 <span class="tree-row-count">${favoriteFileCount('generated')}</span>
             </button>
-            <div class="tree-branch expanded">
-                <button class="tree-row tree-parent ${!projectView && !generatedFavoritesOnly && !generatedAssetsState.folder && mediaType === 'all' ? 'active' : ''}" type="button" data-generated-type="all"><span class="tree-row-icon"><i data-lucide="images"></i></span><span class="tree-row-name">全部生成</span><span class="tree-row-count">${allTotal}</span></button>
-                <div class="tree-children generated-media-channels">
-                    ${mediaChannels.map(channel => `<button class="tree-row tree-child ${!projectView && !generatedFavoritesOnly && !generatedAssetsState.folder && mediaType === channel.type ? 'active' : ''}" type="button" data-generated-type="${channel.type}"><span class="tree-elbow"></span><span class="tree-row-icon"><i data-lucide="${channel.icon}"></i></span><span class="tree-row-name">${channel.label}</span><span class="tree-row-count">${channel.count}</span></button>`).join('')}
-                </div>
-            </div>
+            ${renderAssetNavBranch('generated:media', '全部生成', `<button class="tree-row tree-parent ${!projectView && !generatedFavoritesOnly && !generatedAssetsState.folder && mediaType === 'all' ? 'active' : ''}" type="button" data-generated-type="all"><span class="tree-row-icon"><i data-lucide="images"></i></span><span class="tree-row-name">全部生成</span><span class="tree-row-count">${allTotal}</span></button>`, `${mediaChannels.map(channel => `<button class="tree-row tree-child ${!projectView && !generatedFavoritesOnly && !generatedAssetsState.folder && mediaType === channel.type ? 'active' : ''}" type="button" data-generated-type="${channel.type}"><span class="tree-elbow"></span><span class="tree-row-icon"><i data-lucide="${channel.icon}"></i></span><span class="tree-row-name">${channel.label}</span><span class="tree-row-count">${channel.count}</span></button>`).join('')}`)}
             <div class="generated-projects ${generatedProjectsCollapsed ? 'is-collapsed' : ''}">
                 <button class="generated-projects-toggle" type="button" data-generated-projects-toggle aria-expanded="${generatedProjectsCollapsed ? 'false' : 'true'}" title="${generatedProjectsCollapsed ? '展开项目列表' : '收起项目列表'}">
                     <span>按项目</span><i data-lucide="chevron-down"></i>
@@ -2350,14 +2386,11 @@ function renderCanvasAssetTreeBranch(project){
     const canvases = canvasAssetsForProject(project.id);
     const activeParent = project.id === activeCanvasAssetProjectId && !activeCanvasAssetCanvasId;
     const containsActive = project.id === activeCanvasAssetProjectId && !!activeCanvasAssetCanvasId;
-    return `<div class="tree-branch ${project.id === activeCanvasAssetProjectId ? 'expanded' : ''}">
-        <button class="tree-row tree-parent ${activeParent ? 'active' : ''} ${containsActive ? 'contains-active' : ''}" type="button" data-canvas-asset-project="${escapeAttr(project.id)}">
+    return renderAssetNavBranch(`generated:project:${project.id}`, project.name || '未命名项目', `<button class="tree-row tree-parent ${activeParent ? 'active' : ''} ${containsActive ? 'contains-active' : ''}" type="button" data-canvas-asset-project="${escapeAttr(project.id)}">
             <span class="tree-row-icon"><i data-lucide="folder"></i></span>
             <span class="tree-row-name" title="${escapeAttr(project.name || '未命名项目')}">${escapeHtml(project.name || '未命名项目')}</span>
             <span class="tree-row-count">${Number(project.count || 0)}</span>
-        </button>
-        <div class="tree-children">
-            ${canvases.length ? canvases.map(canvas => {
+        </button>`, `${canvases.length ? canvases.map(canvas => {
                 const active = canvas.id === activeCanvasAssetCanvasId && project.id === activeCanvasAssetProjectId;
                 const count = canvasAssetCountForCanvas(canvas.id);
                 return `<button class="tree-row tree-child ${active ? 'active' : ''}" type="button" data-canvas-asset-canvas="${escapeAttr(canvas.id)}" data-canvas-asset-canvas-project="${escapeAttr(project.id)}">
@@ -2366,9 +2399,7 @@ function renderCanvasAssetTreeBranch(project){
                     <span class="tree-row-name" title="${escapeAttr(canvas.title || '未命名画布')}">${escapeHtml(canvas.title || '未命名画布')}</span>
                     <span class="tree-row-count">${count}</span>
                 </button>`;
-            }).join('') : '<div class="tree-empty">暂无画布</div>'}
-        </div>
-    </div>`;
+            }).join('') : '<div class="tree-empty">暂无画布</div>'}`);
 }
 function renderCanvasAssetGroup(group){
     if(!group?.title) return (group?.items || []).map(item => renderCanvasAssetCard(item)).join('');
@@ -2586,15 +2617,12 @@ function renderLocalUploadFolderBranch(folder, depth=0){
     const path = folder.path || '';
     const active = !localUploadProjectId && !activeLocalUploadClassFilter && path === activeLocalUploadFolder;
     const contains = !active && (folder.children || []).some(child => localUploadFolderContainsActive(child));
-    return `<div class="tree-branch">
-        <button class="tree-row ${depth ? 'tree-child' : 'tree-parent'} ${active ? 'active' : ''} ${contains ? 'contains-active' : ''}" type="button" data-localup-folder="${escapeAttr(path)}" ${path ? 'draggable="true" title="拖动可调整同级文件夹顺序"' : ''}>
+    return renderAssetNavBranch(`local:folder:${path}`, folder.name || '文件夹', `<button class="tree-row ${depth ? 'tree-child' : 'tree-parent'} ${active ? 'active' : ''} ${contains ? 'contains-active' : ''}" type="button" data-localup-folder="${escapeAttr(path)}" ${path ? 'draggable="true" title="拖动可调整同级文件夹顺序"' : ''}>
             ${depth ? '<span class="tree-elbow"></span>' : ''}
             <span class="tree-row-icon"><i data-lucide="${active ? 'folder-open' : (depth ? 'folder' : 'upload-cloud')}"></i></span>
             <span class="tree-row-name">${escapeHtml(folder.name || '文件夹')}</span>
             <span class="tree-row-count">${Number(folder.count || 0)}</span>
-        </button>
-        ${(folder.children || []).length ? `<div class="tree-children">${folder.children.map(child => renderLocalUploadFolderBranch(child, depth + 1)).join('')}</div>` : ''}
-    </div>`;
+        </button>`, (folder.children || []).map(child => renderLocalUploadFolderBranch(child, depth + 1)).join(''));
 }
 function localUploadFolderContainsActive(folder){
     if(!folder) return false;
@@ -2696,9 +2724,9 @@ function renderLocalManager(){
                         <span class="tree-row-count">${favoriteFileCount('local')}</span>
                     </button>
                     <div class="generated-projects-toggle"><span>按类型</span></div>
-                    ${[['all','全部本地素材','images',total],['image','图片','image',localAssets.filter(item => assetKind(item) === 'image').length],['video','视频','video',localAssets.filter(item => assetKind(item) === 'video').length],['audio','音频','file-audio',localAssets.filter(item => assetKind(item) === 'audio').length]].map(([type,label,icon,count]) => `<button class="tree-row ${type === 'all' ? 'tree-parent' : 'tree-child'} ${localUploadMediaType === type ? 'active' : ''}" type="button" data-localup-type="${type}"><span class="tree-row-icon"><i data-lucide="${icon}"></i></span><span class="tree-row-name">${label}</span><span class="tree-row-count">${count}</span></button>`).join('')}
+                    ${renderMaterialMediaTree('local', [['all','全部本地素材','images',total],['image','图片','image',localAssets.filter(item => assetKind(item) === 'image').length],['video','视频','video',localAssets.filter(item => assetKind(item) === 'video').length],['audio','音频','file-audio',localAssets.filter(item => assetKind(item) === 'audio').length]], localUploadMediaType)}
                     <div class="generated-projects-toggle"><span>按项目</span></div>
-                    ${[{id:'',name:'全部本地素材',count:total},...projectScope.projects,{id:'__unassigned__',name:'未归属项目',count:projectScope.unassignedCount}].map(project => `<button class="tree-row tree-parent ${localUploadProjectId === project.id && !localUploadCanvasId ? 'active' : ''}" type="button" data-localup-project="${escapeAttr(project.id)}"><span class="tree-row-icon"><i data-lucide="${project.id ? 'folder' : 'images'}"></i></span><span class="tree-row-name">${escapeHtml(project.name)}</span><span class="tree-row-count">${project.count || 0}</span></button>${project.id && project.id !== '__unassigned__' && localUploadProjectId === project.id ? projectScope.canvases.filter(canvas => canvas.project === project.id).map(canvas => `<button class="tree-row tree-child ${localUploadCanvasId === canvas.id ? 'active' : ''}" type="button" data-localup-canvas="${escapeAttr(canvas.id)}"><span class="tree-elbow"></span><span class="tree-row-icon"><i data-lucide="layers"></i></span><span class="tree-row-name">${escapeHtml(canvas.title || '未命名画布')}</span><span class="tree-row-count">${canvas.count || 0}</span></button>`).join('') : ''}`).join('')}
+                    ${renderMaterialProjectTree('local', [{id:'',name:'全部本地素材',count:total},...projectScope.projects,{id:'__unassigned__',name:'未归属项目',count:projectScope.unassignedCount}], projectScope.canvases, localUploadProjectId, localUploadCanvasId)}
                     ${renderLocalUploadFolderBranch(localUploadTree || {path:'', name:'全部上传', count:total, children:[]})}
                     ${renderLocalUploadSmartClassTree()}
                     ${renderImageSpaceCollections()}
@@ -5103,10 +5131,12 @@ async function deleteWorkflowItem(id){
     if(!item) return;
     if(pendingDeleteAssetId !== id){
         pendingDeleteAssetId = id;
+        pendingTreeDelete = '';
         render();
         setStatus('再次点击确认将工作流移入回收站');
         return;
     }
+    setStatus('正在将工作流移入回收站…');
     const data = await apiJson(`/api/asset-library/items/${encodeURIComponent(id)}`, {method:'DELETE'});
     assetLibrary = data.library || assetLibrary;
     selectedWorkflowIds.delete(id);
@@ -5118,6 +5148,7 @@ async function deleteWorkflowItem(id){
 async function deleteSelectedWorkflows(){
     const ids = [...selectedWorkflowIds];
     if(!ids.length) return;
+    setStatus('正在将工作流移入回收站…');
     const data = await apiJson('/api/asset-library/items/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({library_id:activeWorkflowLibraryId, ids})});
     assetLibrary = data.library || assetLibrary;
     selectedWorkflowIds.clear();
@@ -5557,10 +5588,6 @@ async function handleStorageFileClick(event){
     if(preview){ showDetailPreview(kind, preview.dataset.spaceFilePreview || ''); return true; }
     const oneDownload = action('[data-space-file-download-one]');
     if(oneDownload){ const item = state.items.find(entry => entry.id === oneDownload.dataset.spaceFileDownloadOne); if(item) await downloadStorageFileItems([item]); return true; }
-    const copyLink = action('[data-space-file-copy-link]');
-    if(copyLink){ const item = state.items.find(entry => entry.id === copyLink.dataset.spaceFileCopyLink); const ok = await copyTextToClipboard(item?.url || ''); setStatus(ok ? '已复制素材链接' : '复制失败'); return true; }
-    const backgroundOne = action('[data-space-file-background-one]');
-    if(backgroundOne){ const item = state.items.find(entry => entry.id === backgroundOne.dataset.spaceFileBackgroundOne); if(item) await backgroundStorageFileItems([item]); return true; }
     const rename = action('[data-space-file-rename]');
     if(rename){ const input = root.querySelector('[data-space-file-inline-name]'); input?.focus(); input?.select(); return true; }
     const moveOne = action('[data-space-file-move-one]');
@@ -5600,6 +5627,23 @@ async function handleStorageFileClick(event){
 }
 async function handleClick(event){
     const target = event.target;
+    const navToggle = target.closest?.('[data-nav-toggle]');
+    const navRow = target.closest?.('.asset-nav-branch-head > .tree-row');
+    const branchToggle = navToggle || navRow?.previousElementSibling;
+    if(branchToggle?.hasAttribute('data-nav-double-click')){
+        // A filter click rebuilds the row, so the browser may omit its dblclick event.
+        if(event.detail === 2 || (navToggle && event.detail === 0)){
+            setAssetNavExpanded(branchToggle, branchToggle.getAttribute('aria-expanded') !== 'true');
+            return;
+        }
+        if(navToggle) return;
+    } else if(navToggle){
+        event.preventDefault();
+        setAssetNavExpanded(navToggle, navToggle.getAttribute('aria-expanded') !== 'true');
+        return;
+    } else if(navRow){
+        setAssetNavExpanded(branchToggle, true);
+    }
     if(activeTab === 'generated' && target.closest?.('[data-space-collection]')) clearCanvasAssetScope();
     if(await handleImageSpaceClick(target)) return;
     if(await handleStorageFileClick(event)) return;
@@ -5936,7 +5980,7 @@ async function handleClick(event){
         const uploadProject = target.closest?.('[data-upload-project]');
         if(uploadProject){ uploadAssetsState.view = 'disk'; uploadAssetsState.projectId = uploadProject.dataset.uploadProject || ''; uploadAssetsState.canvasId = ''; uploadAssetsState.selectedId = ''; loadUploadAssets().catch(err => setStatus(err.message || '读取项目素材失败')); return; }
         const uploadCanvas = target.closest?.('[data-upload-canvas]');
-        if(uploadCanvas){ uploadAssetsState.view = 'disk'; uploadAssetsState.canvasId = uploadCanvas.dataset.uploadCanvas || ''; uploadAssetsState.selectedId = ''; loadUploadAssets().catch(err => setStatus(err.message || '读取画布素材失败')); return; }
+        if(uploadCanvas){ uploadAssetsState.view = 'disk'; uploadAssetsState.projectId = uploadCanvas.dataset.materialProject || uploadAssetsState.projectId; uploadAssetsState.canvasId = uploadCanvas.dataset.uploadCanvas || ''; uploadAssetsState.selectedId = ''; loadUploadAssets().catch(err => setStatus(err.message || '读取画布素材失败')); return; }
         const uploadPreview = target.closest?.('[data-upload-preview]');
         if(uploadPreview){ showDetailPreview('upload', uploadPreview.dataset.uploadPreview || ''); return; }
         const uploadDownload = target.closest?.('[data-upload-download]');
@@ -5976,7 +6020,11 @@ async function handleClick(event){
     }
     const localUpCanvas = target.closest?.('[data-localup-canvas]');
     if(localUpCanvas){
+        localUploadProjectId = localUpCanvas.dataset.materialProject || localUploadProjectId;
         localUploadCanvasId = localUpCanvas.dataset.localupCanvas || '';
+        activeLocalUploadFolder = '';
+        activeLocalUploadClassFilter = '';
+        imageSpaceState.collectionId = '';
         selectedLocalUploadId = '';
         selectedLocalUploadIds.clear();
         render();
@@ -6520,26 +6568,91 @@ function showDetailPreview(source, id){
     }
     const url = source === 'local' ? localObjectUrl(item) : item.url;
     if(!url) return;
-    document.querySelector('.asset-lightbox')?.remove();
+    closeDetailPreview();
+    lightboxReturnFocus = document.activeElement;
     const overlay = document.createElement('div');
     overlay.className = 'asset-lightbox';
     overlay.dataset.scale = '1';
     overlay.dataset.x = '0';
     overlay.dataset.y = '0';
     overlay.innerHTML = `
-        <div class="asset-lightbox-inner" role="dialog" aria-modal="true" aria-label="${kind === 'video' ? '视频预览' : '图片预览'}">
+        <div class="asset-lightbox-inner" role="dialog" aria-modal="true" aria-label="${kind === 'video' ? '视频预览' : '图片预览'}" tabindex="-1">
             ${kind === 'video'
                 ? `<video class="asset-lightbox-video" src="${escapeAttr(url)}" controls autoplay playsinline preload="metadata"></video>`
-                : `<img class="asset-lightbox-image" src="${escapeAttr(url)}" alt="${escapeAttr(item.name || 'preview')}" draggable="false">`}
+                : `<img class="asset-lightbox-image" src="${escapeAttr(url)}" alt="${escapeAttr(item.name || 'preview')}" draggable="false">
+                   <div class="asset-lightbox-actions">
+                       <button class="asset-btn" type="button" data-lightbox-copy title="复制图片 (Ctrl+C / ⌘C)"><i data-lucide="copy"></i><span>复制图片</span></button>
+                       <span class="asset-status asset-lightbox-status" role="status"></span>
+                   </div>
+                   <div class="asset-context-menu" role="group" aria-label="图片操作" hidden>
+                       <button type="button"><i data-lucide="copy"></i><span>复制图片</span></button>
+                   </div>`}
         </div>
     `;
     document.body.appendChild(overlay);
     document.body.classList.add('asset-lightbox-open');
+    if(kind === 'image'){
+        bindLightboxCopy(overlay, url);
+        refreshIcons();
+    }
+    overlay.querySelector('.asset-lightbox-inner').focus({preventScroll:true});
+}
+function bindLightboxCopy(overlay, url){
+    const button = overlay.querySelector('[data-lightbox-copy]');
+    const status = overlay.querySelector('.asset-lightbox-status');
+    const menu = overlay.querySelector('.asset-context-menu');
+    const menuButton = menu.querySelector('button');
+    let copying = false;
+    button.addEventListener('click', async () => {
+        if(copying) return;
+        copying = true;
+        status.textContent = '正在复制图片…';
+        try{
+            const source = new URL(url, location.href);
+            const copyUrl = source.origin === location.origin
+                ? url
+                : window.XiaomeiCanvasEditorCore.proxyMediaUrl(source.href, '', {inline:true});
+            await window.StudioImageClipboard.writeImage(copyUrl);
+            status.textContent = '图片已复制，可直接粘贴';
+        }catch(error){
+            console.warn('[asset-preview] copy image failed', error);
+            status.textContent = '复制失败，请重试或关闭预览后下载图片';
+        }finally{
+            copying = false;
+        }
+    });
+    menuButton.addEventListener('click', () => {
+        menu.hidden = true;
+        button.focus({preventScroll:true});
+        button.click();
+    });
+    overlay.addEventListener('contextmenu', event => {
+        if(!event.target.closest('.asset-lightbox-image')) return;
+        event.preventDefault();
+        menu.hidden = false;
+        const bounds = menu.getBoundingClientRect();
+        const zoom = Number(getComputedStyle(document.body).zoom) || 1;
+        const margin = 8;
+        menu.style.left = `${Math.max(margin, Math.min(event.clientX, window.innerWidth - bounds.width - margin)) / zoom}px`;
+        menu.style.top = `${Math.max(margin, Math.min(event.clientY, window.innerHeight - bounds.height - margin)) / zoom}px`;
+        menuButton.focus({preventScroll:true});
+    });
+    overlay.addEventListener('pointerdown', event => {
+        if(!menu.contains(event.target)) menu.hidden = true;
+    });
+    overlay.addEventListener('keydown', event => {
+        if(event.key !== 'Escape' || menu.hidden) return;
+        event.stopPropagation();
+        menu.hidden = true;
+        button.focus({preventScroll:true});
+    });
 }
 function closeDetailPreview(){
     document.querySelector('.asset-lightbox')?.remove();
     document.body.classList.remove('asset-lightbox-open');
     lightboxPanState = null;
+    lightboxReturnFocus?.focus({preventScroll:true});
+    lightboxReturnFocus = null;
 }
 function applyLightboxTransform(overlay){
     const image = overlay?.querySelector?.('.asset-lightbox-image');
@@ -6574,6 +6687,7 @@ function zoomDetailPreview(event){
     applyLightboxTransform(overlay);
 }
 function beginLightboxPan(event){
+    if(event.button !== 0) return;
     const image = event.target.closest?.('.asset-lightbox-image');
     const overlay = event.target.closest?.('.asset-lightbox');
     if(!image || !overlay) return;
@@ -6779,11 +6893,13 @@ async function deleteWorkflowCategory(){
     const key = `workflow-cat:${libraryId}:${cat.id}`;
     if(pendingTreeDelete !== key){
         pendingTreeDelete = key;
+        pendingDeleteAssetId = '';
         workflowTreeEdit = null;
         render();
         setStatus('再次点击确认删除工作流分组');
         return;
     }
+    setStatus('正在删除工作流分组…');
     const data = await apiJson(`/api/asset-library/categories/${encodeURIComponent(cat.id)}?library_id=${encodeURIComponent(libraryId)}`, {method:'DELETE'});
     assetLibrary = data.library || assetLibrary;
     activeWorkflowCategoryId = '';
@@ -7329,16 +7445,27 @@ document.addEventListener('click', event => {
         handleClick(event).catch(err => setStatus(err.message || '操作失败'));
         return;
     }
-    if(event.target.closest?.('.asset-lightbox') && !event.target.closest?.('.asset-lightbox-image,.asset-lightbox-video')) closeDetailPreview();
+    if(event.target.closest?.('.asset-lightbox') && !event.target.closest?.('.asset-lightbox-image,.asset-lightbox-video,.asset-lightbox-actions,.asset-context-menu')) closeDetailPreview();
 });
 document.addEventListener('keydown', event => {
+    const lightbox = document.querySelector('.asset-lightbox');
+    if(lightbox && event.key === 'Escape'){
+        event.stopPropagation();
+        closeDetailPreview();
+        return;
+    }
+    const previewCopy = lightbox?.querySelector('[data-lightbox-copy]');
+    if(previewCopy && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'c'){
+        event.preventDefault();
+        if(!event.repeat) previewCopy.click();
+        return;
+    }
     const storageRootTarget = event.target?.closest?.('[data-storage-browse="root"]');
     if(storageRootTarget && (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar')){
         event.preventDefault();
         browseStorageFolder('root').catch(err => setStatus(err.message || '选择资产管理根目录失败'));
         return;
     }
-    if(event.key === 'Escape') closeDetailPreview();
     if(event.target?.id === 'assetTreeEditInput'){
         if(event.key === 'Enter'){ event.preventDefault(); saveAssetTreeEdit().catch(err => setStatus(err.message || '保存失败')); }
         if(event.key === 'Escape'){ event.preventDefault(); assetTreeEdit = null; render(); }
