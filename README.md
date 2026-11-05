@@ -188,8 +188,6 @@ https://github.com/hero8152/Infinite-Canvas/blob/main/LICENSE
 - 改进设置与管理功能
 - 完善文档与发布版本
 
-如果你有功能建议或发现 Bug，欢迎通过 [GitHub Issues](https://github.com/jkjk-8614/xiaomei/issues) 反馈。
-
 ---
 
 ## 问题反馈
