@@ -7,6 +7,8 @@
         "common.cancel": { zh: "取消", en: "Cancel" },
         "common.confirm": { zh: "确定", en: "Confirm" },
         "common.save": { zh: "保存", en: "Save" },
+        "common.canvasRefresh": { zh: "刷新画布", en: "Refresh canvas" },
+        "common.canvasRefreshSaveFailed": { zh: "画布保存失败，编辑仍保留在当前页面。请再次按刷新快捷键重试。", en: "Canvas save failed. Your edits are still on this page. Use the refresh shortcut again to retry." },
         "common.delete": { zh: "删除", en: "Delete" },
         "common.edit": { zh: "编辑", en: "Edit" },
         "common.run": { zh: "运行", en: "Run" },

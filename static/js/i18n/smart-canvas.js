@@ -455,6 +455,7 @@
         "smart.pasteUploadIncomplete": { zh: "有粘贴图片未完成上传，已从画布移除，请重新粘贴", en: "A pasted image did not finish uploading and was removed from the canvas. Please paste it again." },
         "smart.toastApiSettingsFail": { zh: "API 设置加载失败", en: "Failed to load API settings" },
         "smart.toastCanvasFail": { zh: "智能画布加载失败", en: "Failed to load smart canvas" },
+        "smart.refreshUploadPending": { zh: "图片正在上传。上传完成后，请再次按刷新快捷键。", en: "Images are uploading. Use the refresh shortcut again once the upload finishes." },
         "smart.errNoApiModel": { zh: "请先选择可用的 API 生图模型", en: "Please select an available API image model" },
         "smart.errNoVideoModel": { zh: "请先选择视频模型", en: "Please select a video model" },
         "smart.errNoOutImages": { zh: "没有返回图片", en: "No images returned" },

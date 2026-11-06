@@ -1,8 +1,4 @@
-/* ===== 智能局部融合节点 =====
-   信息架构：① 素材 → ② 融合区域 → ③ 融合设置 → 结果预览 → 高级设置，
-   底部操作条常驻（sticky），主按钮位置固定。
-   配色沿用 AI 渲染节点的暗色约定：选项/卡片用中性层，实心强调色只给主按钮，
-   强调色淡染只用于步骤号、开关、选中标签，保证「主操作 > 已选 > 未选」三级层次。 */
+/* ===== 智能局部融合与双图细节修复 ===== */
 .image-node.local-fusion-smart-node{
     --lf-accent:var(--studio-skin-accent, var(--strong, #0e7490));
     --lf-radius:14px;
@@ -40,33 +36,33 @@
     flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;
     scrollbar-gutter:stable;scrollbar-width:thin;
     scrollbar-color:color-mix(in srgb,var(--lf-ink-2) 40%, transparent) transparent;
-    padding:11px 12px 12px;display:flex;flex-direction:column;gap:11px;
+    padding:12px;display:flex;flex-direction:column;gap:12px;
 }
+.lf-scroll>*{flex:none}
 .lf-scroll::-webkit-scrollbar{width:9px}
 .lf-scroll::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--lf-ink-2) 34%, transparent);border:3px solid transparent;border-radius:9px;background-clip:padding-box}
 .lf-scroll::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--lf-ink-2) 56%, transparent);background-clip:padding-box}
 
 /* ---------- 分区 ---------- */
 .lf-section{display:flex;flex-direction:column;gap:8px;min-width:0}
-.lf-section+.lf-section{padding-top:10px;border-top:1px solid var(--lf-edge)}
-.lf-section-head{display:flex;align-items:center;gap:7px;min-height:18px}
-.lf-step{display:inline-grid;place-items:center;width:17px;height:17px;flex:none;border-radius:5px;border:1px solid var(--lf-accent-line);background:var(--lf-accent-tint);color:var(--lf-accent);font-size:var(--fs-2xs);font-weight:700;line-height:1}
-.lf-section-head strong{font-size:var(--fs-md);font-weight:600;color:var(--lf-ink);letter-spacing:.01em}
-.lf-section-head em{margin-left:auto;font-style:normal;font-size:var(--fs-2xs);color:var(--lf-ink-3);white-space:nowrap}
+.lf-section+.lf-section{padding-top:12px;border-top:1px solid var(--lf-edge)}
+.lf-section-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:20px}
+.lf-section-head strong{font-size:var(--fs-base);font-weight:600}
+.lf-section-head>span{font-size:var(--fs-md);color:var(--lf-ink-2)}
 
 /* ---------- 素材 ---------- */
-.lf-assets{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:0}
-.lf-asset{margin:0;min-width:0}
-.lf-asset-frame{position:relative;height:86px;border-radius:9px;overflow:hidden;border:1px solid var(--lf-edge);background:var(--lf-well)}
+.lf-assets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.lf-asset{display:grid;gap:4px;margin:0;min-width:0}
+.lf-asset figcaption{display:flex;align-items:center;justify-content:space-between;gap:4px;min-height:22px}
+.lf-asset figcaption strong{font-size:var(--fs-base);font-weight:600}
+.lf-asset-state{color:var(--lf-ink-2);font-size:var(--fs-md)}
+.lf-asset-state.is-selected{padding:0 6px;border-radius:6px;background:var(--lf-accent-tint);color:var(--lf-ink)}
+.lf-asset-frame{height:96px;border-radius:8px;overflow:hidden;border:1px solid var(--lf-edge);background:var(--lf-well)}
 .lf-asset-frame img{display:block;width:100%;height:100%;object-fit:contain}
-.lf-asset-badge{position:absolute;left:6px;bottom:6px;max-width:calc(100% - 12px);padding:2px 6px;border-radius:5px;background:rgba(0,0,0,.62);color:#fff;font-size:var(--fs-2xs);line-height:1.4;backdrop-filter:blur(4px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.lf-asset.is-empty .lf-asset-frame{border-style:dashed;border-color:color-mix(in srgb,var(--lf-ink-2) 40%, transparent);background:transparent}
-.lf-asset.is-empty .lf-asset-badge{display:none}
-.lf-asset-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;height:100%;padding:0 8px;text-align:center;color:var(--lf-ink-2)}
-.lf-asset-empty i{width:17px;height:17px;color:var(--lf-ink-3)}
-.lf-asset-empty b{font-size:var(--fs-sm);font-weight:600;color:var(--lf-ink-2)}
-.lf-asset-empty small{font-size:var(--fs-2xs);color:var(--lf-ink-3);line-height:1.35}
-.lf-source-row{display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);color:var(--lf-ink-2);min-width:0}
+.lf-asset.is-empty .lf-asset-frame{border-style:dashed;border-color:color-mix(in srgb,var(--lf-ink-2) 40%, transparent)}
+.lf-asset-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;height:100%;color:var(--lf-ink-2)}
+.lf-asset-empty svg{width:20px;height:20px}
+.lf-source-row{display:flex;align-items:center;gap:8px;font-size:var(--fs-md);color:var(--lf-ink-2);min-width:0}
 .lf-source-row>span{flex:none;white-space:nowrap}
 .lf-source-row select{flex:1;min-width:0}
 
@@ -76,7 +72,8 @@
     border:1px solid var(--lf-edge);border-radius:7px;background:var(--lf-chip);color:var(--lf-ink);
     font:inherit;font-size:var(--fs-md);line-height:26px;
 }
-.local-fusion-body select{padding-right:4px;cursor:pointer}
+.local-fusion-body :is(select,input[type=number]){height:32px;border-radius:8px}
+.local-fusion-body select{padding-right:4px;cursor:pointer;text-overflow:ellipsis}
 .local-fusion-body input[type=number]{-moz-appearance:textfield}
 .local-fusion-body select:hover,.local-fusion-body input[type=number]:hover{border-color:color-mix(in srgb,var(--lf-ink-2) 45%, transparent)}
 .local-fusion-body select:focus-visible,.local-fusion-body input:focus-visible,.lf-dialog select:focus-visible,.lf-dialog input:focus-visible{outline:2px solid var(--lf-accent-line);outline-offset:1px;border-color:var(--lf-accent-line)}
@@ -85,28 +82,27 @@
 /* 字段行：左标题+说明，右控件 */
 .lf-field{display:flex;align-items:center;gap:10px;min-width:0;font-size:var(--fs-md);color:var(--lf-ink)}
 .lf-field>span:first-child{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1;color:var(--lf-ink-2)}
-.lf-field small{font-size:var(--fs-2xs);color:var(--lf-ink-3);line-height:1.35}
+.lf-field small{font-size:var(--fs-md);color:var(--lf-ink-2);line-height:1.35}
 .lf-field :is(select,input){color:var(--lf-ink)}
 .lf-field>select{flex:0 1 172px}
 .lf-field-ctl{display:flex;align-items:center;gap:4px;flex:none}
 .lf-field-ctl input{width:56px;text-align:right;font-variant-numeric:tabular-nums}
-.lf-field-ctl em{font-style:normal;font-size:var(--fs-2xs);color:var(--lf-ink-3)}
-.lf-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;align-items:end}
+.lf-field-ctl em{font-style:normal;font-size:var(--fs-md);color:var(--lf-ink-2)}
+.lf-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;align-items:end}
 .lf-field-stack{flex-direction:column;align-items:stretch;gap:4px}
 .lf-field-stack>select{flex:none;width:100%}
 .lf-field-stack .lf-field-ctl{justify-content:flex-start}
 
 /* 开关 */
 .lf-switch{position:relative;display:flex;align-items:center;gap:9px;cursor:pointer;min-width:0}
-.lf-switch input{position:absolute;left:0;top:0;width:34px;height:18px;margin:0;opacity:0;cursor:pointer;z-index:1}
+.lf-switch input{position:absolute;left:0;top:50%;transform:translateY(-50%);width:34px;height:18px;margin:0;opacity:0;cursor:pointer;z-index:1}
 .lf-switch-track{position:relative;flex:none;width:34px;height:18px;border-radius:9px;background:color-mix(in srgb,var(--lf-ink-2) 34%, transparent);transition:background .16s ease}
 .lf-switch-track::after{content:'';position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.28);transition:transform .16s ease}
 .lf-switch input:checked+.lf-switch-track{background:var(--lf-accent)}
 .lf-switch input:checked+.lf-switch-track::after{transform:translateX(16px)}
 .lf-switch input:focus-visible+.lf-switch-track{outline:2px solid var(--lf-accent-line);outline-offset:2px}
 .lf-switch input:disabled+.lf-switch-track{opacity:.45}
-.lf-switch-text{display:flex;flex-direction:column;gap:1px;min-width:0;font-size:var(--fs-md);color:var(--lf-ink)}
-.lf-switch-text small{font-size:var(--fs-2xs);color:var(--lf-ink-3);line-height:1.35}
+.lf-switch-text{font-size:var(--fs-md);color:var(--lf-ink)}
 
 /* 勾选 */
 .lf-check{display:flex;align-items:center;gap:5px;min-width:0;font-size:var(--fs-md);color:var(--lf-ink);cursor:pointer;white-space:nowrap}
@@ -132,22 +128,15 @@
 .lf-patch-body{display:flex;flex-direction:column;gap:8px;padding:2px 7px 9px;border-top:1px solid var(--lf-edge);margin-top:1px}
 .lf-patch-body[hidden]{display:none}
 .lf-patch-body-head{display:flex;align-items:center;gap:6px;margin:6px 0 0;font-size:var(--fs-sm);color:var(--lf-ink-2)}
-.lf-tag{margin-left:auto;padding:1px 6px;border-radius:999px;border:1px solid var(--lf-edge);font-style:normal;font-size:var(--fs-2xs);color:var(--lf-ink-3);white-space:nowrap}
+.lf-tag{margin-left:auto;padding:1px 6px;border-radius:999px;border:1px solid var(--lf-edge);font-style:normal;font-size:var(--fs-md);color:var(--lf-ink-2);white-space:nowrap}
 .lf-tag.is-on{border-color:var(--lf-accent-line);background:var(--lf-accent-tint);color:var(--lf-accent)}
 .lf-numbers{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px}
 .lf-numbers label{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:var(--fs-sm);color:var(--lf-ink-2)}
 .lf-numbers input{width:72px;text-align:right;font-variant-numeric:tabular-nums}
 .lf-patch-actions{display:flex;flex-wrap:wrap;gap:6px}
 
-/* ---------- 空状态 ---------- */
-/* 没有任何素材时，用一块居中的说明替代成排的空控件，直接讲清楚先做什么。 */
-.lf-empty{margin:0;flex:1 1 auto;min-height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:26px 20px;text-align:center;border:1px dashed color-mix(in srgb,var(--lf-ink-2) 38%, transparent);border-radius:12px;background:color-mix(in srgb,var(--lf-well) 55%, transparent)}
-.lf-empty i{width:22px;height:22px;color:var(--lf-ink-3)}
-.lf-empty strong{font-size:var(--fs-md);font-weight:600;color:var(--lf-ink)}
-.lf-empty p{margin:0;max-width:272px;font-size:var(--fs-sm);line-height:1.6;color:var(--lf-ink-2)}
-
 /* ---------- 说明文字 ---------- */
-.lf-note{margin:0;font-size:var(--fs-2xs);line-height:1.5;color:var(--lf-ink-3)}
+.lf-note{margin:0;font-size:var(--fs-md);line-height:1.5;color:var(--lf-ink-2)}
 
 /* ---------- 结果预览 ---------- */
 .lf-result{display:grid;grid-template-columns:96px 1fr;gap:10px;align-items:center;padding:8px;border:1px solid var(--lf-edge);border-radius:10px;background:var(--lf-well)}
@@ -158,7 +147,7 @@
 .lf-result-thumb i{width:11px;height:11px}
 .lf-result-info{display:flex;flex-direction:column;gap:4px;min-width:0}
 .lf-result-info strong{font-size:var(--fs-md);font-weight:600;color:var(--lf-ink)}
-.lf-result-info small{font-size:var(--fs-2xs);color:var(--lf-ink-3);line-height:1.4}
+.lf-result-info small{font-size:var(--fs-md);color:var(--lf-ink-2);line-height:1.4}
 
 /* ---------- 按钮 ---------- */
 .local-fusion-body button,.lf-dialog button{
@@ -168,6 +157,7 @@
     cursor:pointer;transition:background .14s ease,border-color .14s ease,transform .08s ease;
 }
 .local-fusion-body button i,.lf-dialog button i{width:12px;height:12px;flex:none}
+.local-fusion-body button{min-height:32px;border-radius:8px}
 .local-fusion-body button:hover:not(:disabled),.lf-dialog button:hover:not(:disabled){background:var(--lf-chip-hover);border-color:color-mix(in srgb,var(--lf-ink-2) 45%, transparent)}
 .local-fusion-body button:active:not(:disabled),.lf-dialog button:active:not(:disabled){transform:scale(.985)}
 .local-fusion-body button:focus-visible,.lf-dialog button:focus-visible{outline:2px solid var(--lf-accent-line);outline-offset:2px}
@@ -179,27 +169,27 @@
     padding:9px 12px 12px;background:var(--card);
     border-top:1px solid var(--lf-edge);border-radius:0 0 var(--lf-radius) var(--lf-radius);
 }
-/* 内容超出时给一道渐隐，提示"下面还有参数"，而不是让文字硬生生被切断。 */
-.lf-footer::before{content:'';position:absolute;left:0;right:0;bottom:100%;height:14px;background:linear-gradient(to top,var(--card),transparent);pointer-events:none}
-.lf-state{display:flex;align-items:center;gap:6px;margin:0;font-size:var(--fs-sm);line-height:1.4;color:var(--lf-ink-2);min-width:0}
-.lf-state i{width:13px;height:13px;flex:none}
+.lf-state{display:flex;align-items:flex-start;gap:6px;margin:0;font-size:var(--fs-md);line-height:1.5;color:var(--lf-ink-2);min-width:0}
+.lf-state svg{width:14px;height:14px;margin-top:2px;flex:none}
 .lf-state span{min-width:0;overflow-wrap:anywhere}
 .lf-state.is-ok{color:color-mix(in srgb,#16a34a 62%, var(--lf-ink))}
 .lf-state.is-warn{color:color-mix(in srgb,#d97706 66%, var(--lf-ink))}
 .lf-state.is-error{color:color-mix(in srgb,#dc2626 66%, var(--lf-ink))}
-.lf-state button{margin-left:auto;min-height:24px;padding:0 8px;font-size:var(--fs-sm);flex:none}
-.lf-run-btn{width:100%;min-height:34px;border-color:transparent!important;background:var(--lf-primary)!important;color:var(--lf-primary-ink)!important;font-weight:600}
+.local-fusion-body .lf-run-btn{flex:1;min-height:34px;border-color:transparent!important;background:var(--lf-primary)!important;color:var(--lf-primary-ink)!important;font-weight:600}
 .lf-run-btn:hover:not(:disabled){filter:brightness(1.08)}
-.lf-run-btn i{width:14px;height:14px}
+.local-fusion-body .lf-run-btn:disabled{background:var(--lf-well)!important;color:var(--lf-ink-2)!important;border-color:var(--lf-edge)!important;opacity:1!important}
 
 /* ---------- 高级设置 ---------- */
-.lf-advanced{border-top:1px solid var(--lf-edge);padding-top:9px;display:flex;flex-direction:column;gap:8px}
-.lf-advanced>summary{display:flex;align-items:center;gap:6px;list-style:none;cursor:pointer;font-size:var(--fs-sm);color:var(--lf-ink-2)}
+.lf-advanced{border-top:1px solid var(--lf-edge);padding-top:4px}
+.lf-advanced>summary{display:flex;align-items:center;gap:8px;min-height:32px;list-style:none;cursor:pointer;font-size:var(--fs-md);color:var(--lf-ink-2)}
+.lf-advanced[open]>*+*{margin-top:8px}
 .lf-advanced>summary::-webkit-details-marker{display:none}
 .lf-advanced>summary::before{content:'';width:0;height:0;border-left:4px solid currentColor;border-top:3.5px solid transparent;border-bottom:3.5px solid transparent;transition:transform .14s ease;opacity:.7}
 .lf-advanced[open]>summary::before{transform:rotate(90deg)}
 .lf-advanced>summary:hover{color:var(--lf-ink)}
-.lf-advanced:not([open]){padding-bottom:2px}
+.lf-fusion-settings>summary strong{color:var(--lf-ink);font-size:var(--fs-base);font-weight:600}
+.lf-fusion-settings>summary span{margin-left:auto;font-variant-numeric:tabular-nums}
+.local-fusion-body:not(.dr-body) .lf-asset-frame{height:88px}
 
 /* ---------- 暗色 ---------- */
 :is(.theme-dark,.studio-theme-dark) .local-fusion-smart-node{
@@ -219,7 +209,6 @@
 :is(.theme-dark,.studio-theme-dark) .local-fusion-smart-node select:hover{border-color:#6a6a6a}
 :is(.theme-dark,.studio-theme-dark) .local-fusion-smart-node .lf-patch{background:#1e1e1e;border-color:#3a3a3a}
 :is(.theme-dark,.studio-theme-dark) .local-fusion-smart-node .lf-result{background:#1e1e1e;border-color:#3a3a3a}
-:is(.theme-dark,.studio-theme-dark) .local-fusion-smart-node .lf-step{border-color:color-mix(in srgb,var(--lf-accent) 52%, #2e2e2e)}
 :is(.theme-dark,.studio-theme-dark) .local-fusion-smart-node .lf-tag.is-on{border-color:color-mix(in srgb,var(--lf-accent) 58%, #2e2e2e)}
 :is(.theme-dark,.studio-theme-dark) .local-fusion-smart-node .lf-state.is-ok{color:#6ecf94}
 :is(.theme-dark,.studio-theme-dark) .local-fusion-smart-node .lf-state.is-warn{color:#e0aa5c}
@@ -233,6 +222,38 @@
 .lf-dialog header button{width:28px;min-height:28px;padding:0;border-radius:7px}
 .lf-dialog-content{overflow:auto;max-height:calc(90vh - 90px)}
 .lf-dialog p{line-height:1.65;font-size:var(--fs-base)}
+.dr-actions{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.dr-mode{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;padding:3px;border:1px solid var(--lf-edge);border-radius:8px;background:var(--lf-well)}
+.local-fusion-body .dr-mode button{border-color:transparent;background:transparent;color:var(--lf-ink-2);border-radius:6px}
+.local-fusion-body .dr-mode button[aria-pressed=true]{background:var(--card);border-color:var(--lf-edge);color:var(--lf-ink);font-weight:600;cursor:default;transform:none}
+.dr-input{display:grid;gap:8px;min-width:0}
+.dr-model .dr-actions select{flex:1}
+.dr-model [data-dr-model-refresh]{width:32px;padding:0;flex:none}
+.dr-model [data-dr-model-refresh] svg,.dr-actions [data-dr-edit] svg{width:16px;height:16px}
+.local-fusion-body .dr-actions [data-dr-edit]:not(:disabled){background:var(--lf-accent-tint);border-color:var(--lf-accent-line)}
+.local-fusion-body .dr-actions [data-dr-edit]:hover:not(:disabled){border-color:var(--lf-accent)}
+.dr-dialog{--lf-edge:var(--line);--lf-chip:var(--soft);--lf-chip-hover:var(--panel);--lf-ink:var(--text);--lf-accent-line:var(--line);--dr-accent:var(--studio-skin-accent,var(--strong));width:min(1200px,96vw);font-family:inherit}
+.dr-dialog .lf-dialog-content{display:flex;flex-direction:column;gap:12px;max-height:calc(90vh - 90px);overflow:hidden}
+.dr-dialog .dr-help{flex:none;margin:0;color:var(--muted);font-size:var(--fs-base)}
+.dr-panes{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-auto-rows:max-content;gap:16px;min-height:0;max-height:calc(90vh - 220px);overflow:auto}
+.dr-pane{display:flex;flex-direction:column;gap:8px;min-width:0}
+.dr-pane h3{margin:0;font-size:var(--fs-base);font-weight:600}
+.dr-pane canvas{display:block;width:100%;height:clamp(180px,43vh,480px);box-sizing:border-box;border:0;box-shadow:inset 0 0 0 1px var(--line);border-radius:9px;background:var(--soft);touch-action:none;cursor:crosshair}
+.dr-pane canvas:focus-visible{outline:2px solid var(--dr-accent);outline-offset:2px}
+.dr-tools{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.dr-tools [role=group]{display:flex;gap:4px;margin-right:auto}
+.dr-tools output{min-width:42px;color:var(--muted);font-size:var(--fs-sm);font-variant-numeric:tabular-nums}
+.dr-dialog button{min-height:32px;font-size:var(--fs-base);border-color:var(--line)}
+.dr-dialog button:disabled{opacity:.45;cursor:not-allowed}
+.dr-tools button.active{background:color-mix(in srgb,var(--dr-accent) 14%,var(--card));border-color:var(--dr-accent);color:var(--text)}
+.dr-brush{display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);color:var(--muted)}
+.dr-brush input{min-width:40px;flex:1;accent-color:var(--dr-accent)}
+.dr-editor-footer{flex:none;display:flex;align-items:center;justify-content:flex-end;gap:8px;border-top:1px solid var(--line);padding-top:12px;background:var(--card)}
+.dr-editor-footer p{flex:1;margin:0;color:var(--muted)}
+.dr-dialog{animation:dr-enter 150ms ease-out}
+@keyframes dr-enter{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:700px){.dr-panes{grid-template-columns:1fr}.dr-pane canvas{height:240px}.dr-editor-footer{flex-wrap:wrap}.dr-editor-footer p{flex-basis:100%}}
+@media(prefers-reduced-motion:reduce){.dr-dialog{animation:none}}
 .lf-dialog .lf-numbers{margin:10px 0}
 .lf-dialog .lf-numbers input{width:96px;height:30px}
 .lf-preview-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}

@@ -23,6 +23,8 @@ const criticalPackagedPaths = [
   'static/js/smart-canvas-sku.js', 'static/css/smart-canvas-sku.css',
   'static/js/smart-product-retouch.js', 'static/css/smart-product-retouch.css',
   'static/js/smart-canvas-replica.js', 'static/css/smart-canvas-replica.css',
+  'svg_media.py', 'static/js/smart-detail-repair.js', 'static/photocraft/canvas-bridge.js',
+  'static/photocraft/index.html', 'static/photocraft/app/parts.txt',
   'static/inspiration.html', 'static/js/inspiration.js',
   'inspiration_library.py', 'project_agent_store.py',
   'multi_agent_api.py', 'multi_agent_runtime.py', 'multi_agent_store.py',

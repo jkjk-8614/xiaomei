@@ -140,6 +140,72 @@ def write_json(path, data):
         temp.unlink(missing_ok=True)
 
 
+def owned_workflow_name(item):
+    """Return the app-owned mirror name, or '' when the app owns no mirror.
+
+    An app owns ``custom/app_<id>.json`` only.  Manifests written by older
+    builds may still point at a library workflow the user imported; those are
+    user files and must never be rewritten as a derived copy.
+    """
+    identity = str((item or {}).get('id') or '')
+    if not re.fullmatch(r'[a-f0-9]{32}', identity):
+        return ''
+    name = str((item or {}).get('workflow') or '')
+    return name if name == f'{CUSTOM_WORKFLOW_FOLDER}/app_{identity}.json' else ''
+
+
+def is_app_mirror_workflow(name):
+    """True for ``custom/app_<id>.json`` mirrors owned by an application.
+
+    Mirrors are derived from ``comfy_apps/<id>/app.json``.  Listing them as
+    standalone library workflows made the same graph appear twice (once as an
+    app card, once as a workflow), so every workflow listing skips them.
+    """
+    return bool(re.search(r'(?:^|/)app_[0-9a-f]{32}\.json$',
+                          str(name or '').replace('\\', '/')))
+
+
+# Imports used to copy titles verbatim, so the list mixed duplicate-import
+# markers, trailing punctuation and inconsistent brand casing.  One helper
+# normalises both new imports and existing manifests.
+TITLE_BRAND_CASING = (
+    ('seedvr2', 'SeedVR2'), ('dlss5', 'DLSS5'), ('z-image', 'Z-Image'),
+    ('zimage', 'Z-Image'), ('hypir', 'HYPIR'), ('i2i', 'I2I'), ('ttp', 'TTP'),
+    ('zit', 'ZIT'),
+)
+TITLE_DUPLICATE_SUFFIX_RE = re.compile(r'\s*[（(]\s*\d+\s*[)）]\s*$')
+TITLE_TRAILING_SEPARATOR_RE = re.compile(r'[\s，,、。.；;：:·+\-/|]+$')
+TITLE_MAX_LENGTH = 60
+
+
+def canonical_title(value, fallback='未命名应用'):
+    """Normalise a workflow title so the list reads consistently.
+
+    Handles the shapes produced by repeated imports and by ComfyUI group
+    apps: ``名字(1)``, ``名字 · 说明，``, ``细节增强+…+``.  Meaning is kept;
+    only duplicate markers, dangling separators, spacing and brand casing are
+    touched, and the result is capped so a card title stays on one line.
+    """
+    text = str(value or '').replace('\u3000', ' ')
+    text = re.sub(r'\s+', ' ', text).strip()
+    # Imports append markers in either order ("名字(1) · 说明" / "名字 · 说明(1)"),
+    # so peel separators and duplicate markers until neither changes.
+    for _ in range(3):
+        cleaned = TITLE_TRAILING_SEPARATOR_RE.sub('', text).strip()
+        cleaned = TITLE_DUPLICATE_SUFFIX_RE.sub('', cleaned).strip()
+        if cleaned == text:
+            break
+        text = cleaned
+    for source, replacement in TITLE_BRAND_CASING:
+        text = re.sub(r'(?<![A-Za-z0-9])' + re.escape(source) + r'(?![A-Za-z0-9])',
+                      replacement, text, flags=re.IGNORECASE)
+    text = re.sub(r'\s+', ' ', text)
+    text = TITLE_TRAILING_SEPARATOR_RE.sub('', text).strip()
+    if len(text) > TITLE_MAX_LENGTH:
+        text = text[:TITLE_MAX_LENGTH - 1].rstrip(' ，,、+·-') + '…'
+    return text or fallback
+
+
 def workflow_groups(source, include_preset_groups=False):
     """Locate UI groups containing executable nodes, including bypassed groups."""
     if not isinstance(source, dict) or not isinstance(source.get('nodes'), list):
@@ -1187,15 +1253,31 @@ class AppLibrary:
         if not path.exists():
             raise HTTPException(404, '应用不存在')
         item = json.loads(path.read_text(encoding='utf-8'))
-        workflow_path = Path(self.host.workflow_path_from_name(item['workflow']))
-        if item.get('api') and workflow_path.exists():
-            item['api'] = json.loads(workflow_path.read_text(encoding='utf-8'))
-        config_path = Path(self.host.workflow_config_path(item['workflow']))
-        if item.get('api') and config_path.exists():
-            config = json.loads(config_path.read_text(encoding='utf-8'))
-            item['fields'] = config.get('fields', item.get('fields', []))
-            item['title'] = config.get('title') or item['title']
-            item['values'] = config.get('values') if isinstance(config.get('values'), dict) else {}
+        # ``app.json`` owns the graph, the title and the form fields.  The
+        # mirror files next to the workflow are derived copies, so they are
+        # only consulted as a fallback for manifests that predate the mirrors.
+        # Letting the config win (the previous behaviour) meant a stale
+        # ``.config.json`` could silently drop fields the manifest still had.
+        workflow_name = item.get('workflow') or ''
+        config = {}
+        config_path = None
+        if workflow_name:
+            try:
+                config_path = Path(self.host.workflow_config_path(workflow_name))
+            except (HTTPException, OSError, TypeError, ValueError):
+                config_path = None
+        if config_path is not None and config_path.exists():
+            try:
+                loaded = json.loads(config_path.read_text(encoding='utf-8'))
+            except (OSError, ValueError, TypeError):
+                loaded = None
+            if isinstance(loaded, dict):
+                config = loaded
+        if not item.get('fields') and isinstance(config.get('fields'), list):
+            item['fields'] = config['fields']
+        if not item.get('title') and config.get('title'):
+            item['title'] = config['title']
+        item['values'] = config.get('values') if isinstance(config.get('values'), dict) else {}
         preset = dlss5_preset_field(item)
         if preset:
             fields = item.setdefault('fields', [])
@@ -1209,7 +1291,154 @@ class AppLibrary:
         return self._decorate(item)
 
     def save(self, item):
+        """Persist the manifest and refresh its derived mirror files.
+
+        ``app.json`` is the single source of truth: UI graph (``source``),
+        executable graph (``api``), title and form fields all live there.
+        ``workflows/custom/app_<id>.json`` and its ``.config.json`` are
+        mirrors kept for the ComfyUI side and for older builds.  They used to
+        be written only by ``compile()``, so imported apps and group apps got
+        a manifest with no mirror at all; now every save keeps the three
+        files in step and there is only one place to edit.
+        """
         write_json(self.path(item['id']), item)
+        name = owned_workflow_name(item)
+        if not name:
+            return item
+        if isinstance(item.get('api'), dict) and item['api']:
+            try:
+                write_json(Path(self.host.workflow_path_from_name(name)), item['api'])
+            except (HTTPException, OSError, TypeError, ValueError):
+                pass
+        if item.get('title') or item.get('fields'):
+            try:
+                self.write_workflow_config(item)
+            except (HTTPException, OSError, TypeError, ValueError):
+                pass
+        return item
+
+    def repair_storage(self, normalize_titles=True, archive_duplicates=True):
+        """Bring every app back to the manifest + mirror layout.
+
+        Runs once at startup and on demand from ``POST /maintenance``.  It
+        never changes a graph: a missing mirror is generated from the
+        manifest, a stale mirror is rewritten after keeping a ``.bak`` copy,
+        titles are canonicalised in both files, and group-child caches that
+        only repeat their parent's executable graph are moved to the local
+        recycle area (``comfy_apps_deleted``), where they stay recoverable.
+        """
+        actions = []
+        if not self.root.exists():
+            return {'actions': actions}
+        with self.lock:
+            for manifest in sorted(self.root.glob('*/app.json')):
+                identity = manifest.parent.name
+                try:
+                    item = json.loads(manifest.read_text(encoding='utf-8'))
+                except (OSError, ValueError, TypeError):
+                    continue
+                if not isinstance(item, dict) or item.get('id') != identity:
+                    continue
+                dirty = False
+                # ``title_locked`` marks a name the user typed themselves; the
+                # automatic normalisation must not overwrite it on every start.
+                if normalize_titles and not item.get('title_locked'):
+                    title = canonical_title(item.get('title'))
+                    if title != item.get('title'):
+                        actions.append({'app_id': identity, 'action': 'title',
+                                        'from': item.get('title'), 'to': title})
+                        item['title'] = title
+                        dirty = True
+                name = owned_workflow_name(item)
+                if name:
+                    actions.extend(self._repair_mirrors(item, name))
+                if dirty:
+                    write_json(manifest, item)
+            if archive_duplicates:
+                actions.extend(self._archive_group_duplicates())
+        return {'actions': actions}
+
+    def _repair_mirrors(self, item, name):
+        """Create or refresh the derived files for one app."""
+        actions = []
+        try:
+            api_path = Path(self.host.workflow_path_from_name(name))
+            config_path = Path(self.host.workflow_config_path(name))
+        except (HTTPException, OSError, TypeError, ValueError):
+            return actions
+        api = item.get('api')
+        if isinstance(api, dict) and api:
+            current = None
+            if api_path.exists():
+                try:
+                    current = json.loads(api_path.read_text(encoding='utf-8'))
+                except (OSError, ValueError, TypeError):
+                    current = None
+            if current != api:
+                if api_path.exists():
+                    self._keep_backup(api_path)
+                write_json(api_path, api)
+                actions.append({'app_id': item['id'],
+                                'action': 'sync_workflow' if current is not None else 'create_workflow'})
+        config = self._workflow_config(name)
+        if not item.get('fields') and isinstance(config.get('fields'), list) and config['fields']:
+            # Manifest written before fields moved in: adopt the config values
+            # instead of overwriting the only copy with an empty list.
+            item['fields'] = config['fields']
+            write_json(self.path(item['id']), item)
+            actions.append({'app_id': item['id'], 'action': 'adopt_fields'})
+        if config.get('title') != item.get('title') or config.get('fields') != item.get('fields'):
+            values = config.get('values') if isinstance(config.get('values'), dict) else {}
+            if config_path.exists():
+                self._keep_backup(config_path)
+            write_json(config_path, {'title': item.get('title'), 'fields': item.get('fields') or [],
+                                     'mini_cards': config.get('mini_cards') or {}, 'values': values})
+            actions.append({'app_id': item['id'], 'action': 'sync_config'})
+        return actions
+
+    @staticmethod
+    def _keep_backup(path):
+        """Keep the previous mirror next to it; ``.bak`` is not a workflow."""
+        try:
+            shutil.copy2(path, Path(path).with_name(Path(path).name + '.bak'))
+        except OSError:
+            pass
+
+    def _archive_group_duplicates(self):
+        """Archive group-child apps whose graph only repeats their parent.
+
+        ``enable_group`` caches one child app per group.  When the group spans
+        the whole graph the child's executable graph is identical to the
+        parent's, so its card is noise: the child is recreated on demand and
+        the archive keeps the files recoverable.
+        """
+        archived = []
+        manifests = {}
+        for path in self.root.glob('*/app.json'):
+            try:
+                item = json.loads(path.read_text(encoding='utf-8'))
+            except (OSError, ValueError, TypeError):
+                continue
+            if isinstance(item, dict) and item.get('id'):
+                manifests[item['id']] = item
+        active = {task.get('app_id') for task in self._active_app_tasks()}
+        for identity, item in manifests.items():
+            parent_id = item.get('group_parent')
+            if not parent_id or parent_id not in manifests or identity in active:
+                continue
+            parent = manifests[parent_id]
+            if not isinstance(item.get('api'), dict) or not item['api']:
+                continue
+            if item['api'] != parent.get('api'):
+                continue
+            try:
+                archive_root, _ = self._archive_app(item)
+            except OSError:
+                continue
+            archived.append({'app_id': identity, 'action': 'archive_duplicate',
+                             'title': item.get('title'), 'parent': parent_id,
+                             'archive': archive_root.name})
+        return archived
 
     def replacement_requirement(self, item, dependency, category):
         with self.host.CANVAS_TASK_LOCK:
@@ -1468,6 +1697,11 @@ class AppLibrary:
                 name = path.relative_to(root).as_posix()
             except ValueError:
                 continue
+            # ``custom/app_<id>.json`` is a mirror of an app manifest; the app
+            # itself is already a catalog entry, so listing the mirror would
+            # show the same graph twice.
+            if is_app_mirror_workflow(name):
+                continue
             if callable(is_builtin) and is_builtin(name):
                 continue
             names.append(name)
@@ -1707,7 +1941,7 @@ class AppLibrary:
             existing.pop('original_api', None)
             self.save(existing)
             return self.read(identity)
-        item = {'id': identity, 'title': parent['title'] + ' · ' + group['title'],
+        item = {'id': identity, 'title': canonical_title(parent['title'] + ' · ' + group['title'], group['title']),
                 'description': group['title'], 'source': source, 'api': None, 'fields': [],
                 'workflow': f'{CUSTOM_WORKFLOW_FOLDER}/app_{identity}.json',
                 'uploads': [], 'created_at': time.time(), 'group_parent': parent_id,
@@ -2808,6 +3042,20 @@ def install_comfy_apps(app, host):
     service = AppLibrary(host)
     router = APIRouter(prefix='/api/comfy-apps')
 
+    # One startup pass brings older installs onto the manifest + mirror
+    # layout.  It only rewrites derived files (keeping a ``.bak``) and never
+    # archives anything, so a failure here must never keep the server from
+    # booting; duplicate cleanup stays an explicit maintenance action.
+    try:
+        service.repair_storage(archive_duplicates=False)
+    except (OSError, ValueError, TypeError, HTTPException):
+        pass
+
+    @router.post('/maintenance')
+    def maintenance(archive_duplicates: bool = True):
+        """Re-run the storage repair, optionally cleaning duplicate caches."""
+        return service.repair_storage(archive_duplicates=archive_duplicates)
+
     @router.get('')
     def listing():
         return {'apps': [service.read(p.parent.name) for p in service.root.glob('*/app.json')]}
@@ -2997,7 +3245,7 @@ def install_comfy_apps(app, host):
             initial = inspect_workflow(graph, {})
             identity = uuid.uuid4().hex
             purpose = initial.get('purpose') or {}
-            item = {'id': identity, 'title': str(payload.get('name') or '未命名应用')[:120],
+            item = {'id': identity, 'title': canonical_title(payload.get('name'), '未命名应用')[:120],
                     'description': '本地工作流应用', 'source': graph, 'api': None, 'fields': [],
                     'workflow': 'custom/app_' + identity + '.json', 'uploads': [], 'created_at': time.time(),
                     'purpose': purpose}
@@ -3347,7 +3595,11 @@ def install_comfy_apps(app, host):
                 title = str(payload['title']).strip()
                 if not title or len(title) > 120:
                     raise HTTPException(400, '应用名称需为 1–120 个字')
-                item['title'] = title
+                # An explicit rename is the user's decision: keep the exact
+                # spelling (case included) and stop ``repair_storage`` from
+                # "normalising" it back on the next start.
+                item['title'] = title[:120]
+                item['title_locked'] = True
             if 'fields' in payload:
                 original = {f['id']: f for f in item['fields']}
                 incoming = payload['fields']

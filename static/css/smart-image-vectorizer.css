@@ -5,7 +5,17 @@
 .smart-vector-head p { margin:6px 0 16px; color:var(--muted); }
 .smart-vector-head button { display:grid; place-items:center; width:30px; height:30px; border-radius:8px; background:var(--soft); color:var(--text); }
 .smart-vector-head svg { width:18px; height:18px; }
+.smart-vector-mode { display:flex; gap:4px; width:fit-content; margin-bottom:12px; padding:4px; border-radius:8px; background:var(--soft); }
+.smart-vector-mode label { position:relative; }
+.smart-vector-mode input { position:absolute; inset:0; width:100%; height:100%; margin:0; opacity:0; cursor:pointer; }
+.smart-vector-mode span { display:grid; place-items:center; min-height:32px; padding:0 12px; border:1px solid transparent; border-radius:6px; color:var(--muted); }
+.smart-vector-mode input:checked + span { border-color:var(--colorBrandStroke1,var(--line)); background:var(--colorBrandBackground2,var(--card)); color:var(--text); }
+.smart-vector-mode input:enabled:hover + span { color:var(--text); border-color:var(--colorBrandStroke1,var(--line)); }
+.smart-vector-mode input:focus-visible + span { outline:2px solid var(--strong); outline-offset:2px; }
+.smart-vector-mode input:disabled { cursor:not-allowed; }
 .smart-vector-controls { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.smart-vector-api-controls { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.smart-vector-controls[hidden] { display:none; }
 .smart-vector-controls label { display:grid; gap:6px; color:var(--muted); }
 .smart-vector-controls select { width:100%; height:36px; padding:0 10px; border:1px solid var(--line); border-radius:8px; background:var(--soft); color:var(--text); }
 .smart-vector-previews { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin:18px 0 12px; }

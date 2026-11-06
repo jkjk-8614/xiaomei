@@ -319,6 +319,7 @@ function __wbg_get_imports() {
             arg0.clear(arg1 >>> 0);
         },
         __wbg_click_d990e70c576b7c54: function(arg0) {
+            if (window.XiaomeiPhotoCraft?.capturePng(arg0)) return;
             arg0.click();
         },
         __wbg_clientWaitSync_73122aa040ce343d: function(arg0, arg1, arg2, arg3) {
@@ -923,7 +924,11 @@ function __wbg_get_imports() {
             return ret;
         }, arguments); },
         __wbg_getItem_4c80b7663197c7ff: function() { return handleError(function (arg0, arg1, arg2, arg3) {
-            const ret = arg1.getItem(getStringFromWasm0(arg2, arg3));
+            const key = getStringFromWasm0(arg2, arg3);
+            let ret = arg1.getItem(key);
+            if (key === 'photocraft.preferences' && window.XiaomeiPhotoCraft) {
+                try { ret = window.XiaomeiPhotoCraft.updateShortcut(ret, true); } catch {}
+            }
             var ptr1 = isLikeNone(ret) ? 0 : passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             var len1 = WASM_VECTOR_LEN;
             getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
@@ -2039,7 +2044,12 @@ function __wbg_get_imports() {
             return ret;
         }, arguments); },
         __wbg_setItem_c5fb0966b484ecd3: function() { return handleError(function (arg0, arg1, arg2, arg3, arg4) {
-            arg0.setItem(getStringFromWasm0(arg1, arg2), getStringFromWasm0(arg3, arg4));
+            const key = getStringFromWasm0(arg1, arg2);
+            let value = getStringFromWasm0(arg3, arg4);
+            if (key === 'photocraft.preferences' && window.XiaomeiPhotoCraft) {
+                try { value = window.XiaomeiPhotoCraft.updateShortcut(value, false); } catch {}
+            }
+            arg0.setItem(key, value);
         }, arguments); },
         __wbg_setPipeline_b6f981027e02cd16: function(arg0, arg1) {
             arg0.setPipeline(arg1);

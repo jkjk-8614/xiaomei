@@ -170,7 +170,7 @@
         const locked=busy(node),running=active.has(node.id),pending=s.rows.reduce((total,row)=>total+pendingCopies(node,row),0),finished=s.rows.filter(row=>done(node,row)).length;
         const settings=smartLoopBatchImageSettings(node),failed=s.rows.some(row=>row.error);
         const status=running?(active.get(node.id)?.controller?'分析中':'生成中'):s.error||failed?'处理失败':finished===s.rows.length&&finished?'已全部完成':`${s.rows.length} 款 SKU`;
-        const aiProvider=resolveAgentProviderId(node.batchAiProvider||''),aiModel=resolveAgentModel(node.batchAiModel||'',aiProvider);
+        const {provider:aiProvider,model:aiModel}=smartLoopBatchChatSettings(node);
         const runLabel=running?(active.get(node.id)?.controller?'停止分析':'停止生成'):s.job||s.queue?(s.queue?.analysisOnly?'继续分析':'继续上次生成'):!s.rows.length?'请先添加产品图':!sampleCurrent(node)?'制作首款样板':!sampleConfirmed(node)?'确认样板，固定整组布局':!pending?'重新生成全部':`批量生成 · ${pending} 张`;
         return `<div class="loop-paired-card loop-detail-card batch-compact-card sku-card">
             <header class="batch-head sku-header"><div class="batch-head-main"><span class="batch-head-icon"><i data-lucide="layers"></i></span><div class="batch-head-text"><strong>批量生图</strong><span class="batch-head-sub">${s.rows.length} 款 SKU · ${refs(node).length} 张素材 · ${escapeHtml(settings.model||'未选模型')}</span></div></div><div class="batch-head-side"><span class="batch-status ${running?'is-run':s.error||failed?'is-err':finished===s.rows.length&&finished?'is-done':''}"><i></i>${status}</span>${s.rows.length?'<button class="batch-head-link" type="button" data-batch-locate title="定位结果总览">结果总览<i data-lucide="arrow-up-right"></i></button>':''}</div></header>
@@ -332,7 +332,8 @@
             items.push({rowId:row.id,name:row.name,copyIndex:0,signature:key,analysisInput:input,productKey:inputKey,
                 analysis:!(analysisOnly&&rowId)&&analysisCurrent(node,row)?clone(row.analysis):null});
         }
-        const provider=resolveAgentProviderId(node.batchAiProvider||''),model=resolveAgentModel(node.batchAiModel||'',provider);
+        const {provider,model}=smartLoopBatchChatSettings(node);
+        if(!smartConfigReady || !agentChatProviders().some(item=>item.id===provider && (item.chat_models||[]).includes(model)))throw new Error('请先在文本模型中选择可用的平台和模型');
         return {workflow:WORKFLOW,analysisOnly,forceAnalysis:Boolean(analysisOnly&&rowId),analysisSelection:{provider,model},templateUrl:s.template.url,
             templateAnalysis:s.templateAnalysis?.inputKey===templateKey(s.template.url)?clone(s.templateAnalysis):null,settings,items,cursor:0,startedAt:Date.now()};
     }

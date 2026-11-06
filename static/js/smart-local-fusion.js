@@ -1,10 +1,15 @@
 /* Local repair provenance travels with images; paid generation stays in paint nodes. */
 const localFusionSessions = new Map();
+const LOCAL_FUSION_NODE_HEIGHT = 512;
+function localFusionNodeHeight(node){
+    const height=Number(node.h);
+    return !height||height===600||height===660?LOCAL_FUSION_NODE_HEIGHT:Math.max(440,height);
+}
 function localFusionDefaults(){return {colorMatch:true,feather:12,blend:'alpha',overlap:'reject',versions:{},excluded:[],patches:{},patchOpen:{}};}
 function localFusionConfig(node){return node.fusionConfig ||= localFusionDefaults();}
 function createLocalFusionNodeAt(point){
     const node=createNode(point.x-210,point.y-240,[],{nodeType:'smart-local-fusion',title:'智能局部融合',skipRender:true});
-    if(node){node.w=420;node.h=600;localFusionConfig(node);render();scheduleSave();}
+    if(node){node.w=420;node.h=LOCAL_FUSION_NODE_HEIGHT;localFusionConfig(node);render();scheduleSave();}
     return node;
 }
 function localRepairRegionFromRefs(refs){
@@ -53,15 +58,13 @@ function localFusionState(node){
     return {source,inputs,patches,regions};
 }
 function localFusionPayload(node){
+    if(node.detailRepair?.enabled)return detailRepairFusionPayload(node);
     const c=localFusionConfig(node),state=localFusionState(node);
     return {sourceUrl:state.source.url,colorMatch:c.colorMatch,feather:c.feather,blend:c.blend,overlap:c.overlap,
         patches:state.patches.filter(p=>p.enabled).map(p=>({url:p.selected.url,region:p.region||null,...p.options,
             manualRegion:undefined,regionId:undefined}))};
 }
-function localFusionSignature(node){return JSON.stringify(localFusionPayload(node));}
-/* 节点信息架构：① 素材 → ② 融合区域 → ③ 融合设置 → 结果预览 → 高级设置。
-   底部操作条常驻（sticky），主按钮位置固定，避免「改完参数还要往上翻找按钮」。
-   文案一律用用户语言：不出现「关联裁剪 / 特征定位 / 泊松」这类实现术语当主标签。 */
+function localFusionSignature(node){return node.detailRepair?.enabled?detailRepairSignature(node):JSON.stringify(localFusionPayload(node));}
 function localFusionTone(message){
     const text=String(message||'');
     if(!text)return 'is-idle';
@@ -74,10 +77,13 @@ function localFusionToneIcon(tone,busy){
     if(busy)return 'loader-circle';
     return tone==='is-error'?'circle-alert':tone==='is-ok'?'circle-check':tone==='is-warn'?'triangle-alert':'info';
 }
-function localFusionAssetHtml(url,label,emptyText,hint){
-    return '<figure class="lf-asset'+(url?'':' is-empty')+'"><div class="lf-asset-frame">'+(url
-        ?'<img src="'+escapeAttr(url)+'" alt="'+escapeAttr(label)+'">'
-        :'<span class="lf-asset-empty"><i data-lucide="image-plus"></i><b>'+escapeHtml(emptyText)+'</b><small>'+escapeHtml(hint)+'</small></span>')+'<span class="lf-asset-badge">'+escapeHtml(label)+'</span></div></figure>';
+function localFusionAssetHtml(image,label,selection=''){
+    const url=image?.url;
+    return '<figure class="lf-asset'+(url?'':' is-empty')+'"><figcaption><strong>'+escapeHtml(label)+'</strong>'
+        +(selection?'<span class="lf-asset-state'+(selection==='已选区'?' is-selected':'')+'">'+escapeHtml(selection)+'</span>':'')
+        +'</figcaption><div class="lf-asset-frame">'+(url
+        ?'<img src="'+escapeAttr(url)+'" alt="'+escapeAttr(image.name||label)+'">'
+        :'<span class="lf-asset-empty"><i data-lucide="image-plus" aria-hidden="true"></i>待连接</span>')+'</div></figure>';
 }
 function localFusionPatchHtml(node,p,i,busy,state){
     const c=localFusionConfig(node),open=Boolean(c.patchOpen&&c.patchOpen[p.key]);
@@ -102,6 +108,7 @@ function localFusionPatchHtml(node,p,i,busy,state){
         +'</div></article>';
 }
 function localFusionNodeBodyHtml(node){
+    if(node.detailRepair?.enabled)return detailRepairNodeBodyHtml(node);
     const c=localFusionConfig(node),state=localFusionState(node),session=localFusionSessions.get(node.id);
     const busy=Boolean(session)||Boolean(node.fusionJobId),fresh=node.fusionPreview&&node.fusionPreviewSignature===localFusionSignature(node);
     const patches=state.patches||[],enabled=patches.filter(p=>p.enabled),located=patches.filter(p=>p.region).length;
@@ -112,37 +119,40 @@ function localFusionNodeBodyHtml(node){
     const autoOption='<option value="" '+(c.sourceUrl?'':'selected')+'>'+(hasSource?'自动 · '+escapeHtml(sourceName):'自动选择裁剪原图')+'</option>';
     const sourceOptions=originals.map(img=>'<option value="'+escapeAttr(img.url)+'" '+(img.url===c.sourceUrl?'selected':'')+'>'+escapeHtml(img.name||'图片')+'</option>').join('');
     const patchPreview=(enabled[0]&&enabled[0].selected)||(patches[0]&&patches[0].selected)||null;
-    const statusText=message||(busy?'正在融合…':!hasSource?'连接原图后可开始融合':!patches.length?'连接局部修改图后会列出区域':!enabled.length?'勾选至少一个区域':'可以开始融合');
-    const assetsSection='<section class="lf-section"><header class="lf-section-head"><span class="lf-step">1</span><strong>素材</strong><em>'+(hasSource&&patches.length?'已就绪':(hasSource?'待连接局部图':'待连接'))+'</em></header>'
-        +'<div class="lf-assets">'+localFusionAssetHtml(state.source.url,'原图','连接原图','拖到左侧输入口')+localFusionAssetHtml(patchPreview&&patchPreview.url||'','局部修改','连接局部图','AI 修改后的结果')+'</div>'
-        +'<label class="lf-source-row"><span>原图来源</span><select data-lf-source '+(busy?'disabled':'')+'>'+autoOption+sourceOptions+'</select></label>'
-        +'</section>';
-    // 完全没素材时给一块可读的空态说明，而不是让用户对着一排空控件猜顺序。
-    const emptyStateHtml='<div class="lf-empty"><i data-lucide="image-plus"></i><strong>连接原图开始</strong><p>在原图上用「局部修复」裁出要改的区域，AI 改完连回本节点；融合完成后会在右侧输出完整图片。</p></div>';
-    return '<div class="local-fusion-body'+(!hasSource?' is-empty':'')+'" data-lf-root><div class="lf-scroll">'
-        +(!hasSource?emptyStateHtml:assetsSection)
+    const statusText=busy?(message||'正在融合…')
+        :!hasSource?'将原图和局部修改图连到左侧输入口'
+        :!patches.length?'将 AI 修改后的局部图连到左侧输入口'
+        :!enabled.length?'勾选至少一个要融合的区域'
+        :message||'可以开始融合';
+    return '<div class="local-fusion-body" data-lf-root><div class="lf-scroll">'+detailRepairModeSwitch(node)
+        +'<section class="lf-section" aria-label="素材"><div class="lf-assets">'
+        +localFusionAssetHtml(state.source,'原图')+localFusionAssetHtml(patchPreview,'局部修改图')
+        +'</div>'+(hasSource?'<label class="lf-source-row"><span>原图来源</span><select data-lf-source title="'+escapeAttr(sourceName)+'" '+(busy?'disabled':'')+'>'+autoOption+sourceOptions+'</select></label>'
+            :'<p class="lf-note">在原图上用「局部修复」裁出副本，交给 AI 修改后再连回来。</p>')
+        +'</section>'
         +(patches.length
-            ?'<section class="lf-section"><header class="lf-section-head"><span class="lf-step">2</span><strong>融合区域</strong><em>'+patches.length+' 个 · 启用 '+enabled.length+'</em></header>'
+            ?'<section class="lf-section"><header class="lf-section-head"><strong>融合区域</strong><span>已启用 '+enabled.length+' / '+patches.length+'</span></header>'
                 +'<div class="lf-patches">'+patches.map((p,i)=>localFusionPatchHtml(node,p,i,busy,state)).join('')+'</div>'
                 +((located<patches.length)?'<p class="lf-note">'+(patches.length-located)+' 个区域没有裁剪坐标，将按画面特征自动定位</p>':'')+'</section>'
-            :(hasSource?'<p class="lf-note">把 AI 修改后的局部图连回本节点，这里会列出可融合的区域。</p>':''))
-        +(hasSource?'<section class="lf-section"><header class="lf-section-head"><span class="lf-step">3</span><strong>融合设置</strong><em>改完需重新融合</em></header>'
-            +'<label class="lf-switch"><input type="checkbox" data-lf-color '+(c.colorMatch?'checked':'')+(busy?' disabled':'')+'><span class="lf-switch-track" aria-hidden="true"></span><span class="lf-switch-text">颜色匹配<small>让局部图色调贴合原图</small></span></label>'
+            :'')
+        +(hasSource?'<details class="lf-advanced lf-fusion-settings" '+(c.advancedOpen?'open':'')+'><summary><strong>融合设置</strong><span>'+escapeHtml(c.feather)+' px · '+(c.blend==='poisson'?'泊松':'羽化')+'</span></summary>'
+            +'<label class="lf-switch" title="让局部图色调贴合原图"><input type="checkbox" data-lf-color '+(c.colorMatch?'checked':'')+(busy?' disabled':'')+'><span class="lf-switch-track" aria-hidden="true"></span><span class="lf-switch-text">颜色匹配</span></label>'
             +'<div class="lf-fields">'
-            +'<label class="lf-field lf-field-stack"><span>边缘过渡<small>越大接缝越柔和</small></span><span class="lf-field-ctl"><input type="number" min="0" max="128" data-lf-config="feather" value="'+escapeAttr(c.feather)+'"><em>px</em></span></label>'
-            +'<label class="lf-field lf-field-stack"><span>融合方式<small>羽化保留文字细节</small></span><select data-lf-config="blend">'+[['alpha','羽化 · 保留细节'],['poisson','泊松 · 融合背景纹理']].map(([v,l])=>'<option value="'+v+'" '+(c.blend===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'
-            +'</div></section>':'')
+            +'<label class="lf-field lf-field-stack" title="数值越大，接缝过渡越柔和"><span>边缘过渡</span><span class="lf-field-ctl"><input type="number" min="0" max="128" data-lf-config="feather" value="'+escapeAttr(c.feather)+'"><em>px</em></span></label>'
+            +'<label class="lf-field lf-field-stack"><span>融合方式</span><select data-lf-config="blend">'+[['alpha','羽化 · 保留细节'],['poisson','泊松 · 融合背景纹理']].map(([v,l])=>'<option value="'+v+'" '+(c.blend===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'
+            +'</div>'
+            +(patches.length?'<label class="lf-field"><span>区域重叠时</span><select data-lf-config="overlap">'+[['reject','停止并提示'],['ordered','按列表顺序叠加']].map(([v,l])=>'<option value="'+v+'" '+(c.overlap===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>':'')
+            +'<p class="lf-note">泊松融合可能改变文字和 Logo 的颜色。手动填写坐标后请先看预览。</p></details>':'')
         +(node.fusionPreview?'<section class="lf-result">'
             +'<button type="button" class="lf-result-thumb" data-lf-preview aria-label="放大检查融合结果"><img src="'+escapeAttr(node.fusionPreview.url)+'" alt="融合结果预览"><span><i data-lucide="maximize-2"></i></span></button>'
             +'<div class="lf-result-info"><strong>融合预览</strong><small>'+(fresh?'请检查接缝、文字与产品结构':'输入已变化，请重新融合')+'</small><button type="button" data-lf-output '+(!fresh||busy?'disabled':'')+'>查看完整图片</button></div></section>':'')
-        +(patches.length?'<details class="lf-advanced" '+(c.advancedOpen?'open':'')+'><summary>高级设置</summary>'
-            +'<label class="lf-field"><span>区域重叠时<small>多个区域压在同一处</small></span><select data-lf-config="overlap">'+[['reject','停止并提示'],['ordered','按列表顺序叠加']].map(([v,l])=>'<option value="'+v+'" '+(c.overlap===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'
-            +'<p class="lf-note">泊松融合会轻微改变颜色，不适合文字和 Logo。手动填写坐标后请先看预览。</p></details>':'')
-        +'</div><div class="lf-footer"><p class="lf-state '+tone+'" role="status"><i data-lucide="'+localFusionToneIcon(tone,busy)+'"></i><span>'+escapeHtml(statusText)+'</span>'+(busy?'<button type="button" data-lf-cancel>取消</button>':'')+'</p>'
-        +'<button type="button" class="lf-run-btn" data-lf-run '+(canRun?'':'disabled')+'><i data-lucide="'+(busy?'loader-circle':'combine')+'"></i><span>'+(busy?'正在融合':'开始融合')+'</span></button></div>'
+        +'</div><div class="lf-footer"><p class="lf-state '+(statusText===message?tone:'is-idle')+'" role="status"><i data-lucide="'+localFusionToneIcon(statusText===message?tone:'is-idle',busy)+'" aria-hidden="true"></i><span>'+escapeHtml(statusText)+'</span></p>'
+        +'<div class="dr-actions"><button type="button" class="lf-run-btn" data-lf-run '+(canRun?'':'disabled')+'>'+(busy?'正在融合…':'开始融合')+'</button>'
+        +(busy?'<button type="button" data-lf-cancel>取消融合</button>':'')+'</div></div>'
         +'</div>';
 }
 function bindLocalFusionNode(el,node){
+    if(node.detailRepair?.enabled){bindDetailRepairNode(el,node);return;}
     const root=el.querySelector('[data-lf-root]');if(!root)return;
     // Keep controls from starting node drag / canvas shortcuts.
     root.addEventListener('pointerdown',e=>e.stopPropagation());root.addEventListener('mousedown',e=>e.stopPropagation());
@@ -150,6 +160,7 @@ function bindLocalFusionNode(el,node){
     // 每次改参数都会整体重绘 body，记下滚动位置，避免「调一个值就跳回顶部」。
     const mutate=fn=>{if(localFusionSessions.has(node.id)||!collabCanMutateCanvas()||!collabCanEditNode(node.id))return;const top=(root.querySelector('.lf-scroll')||root).scrollTop;pushUndo();fn();delete node.fusionStatus;node.fusionMessage='设置已更新，重新融合后生效';render();scheduleSave();const next=document.querySelector('[data-id="'+CSS.escape(node.id)+'"] .lf-scroll');if(next)next.scrollTop=top;};
     const state=()=>localFusionState(node),c=localFusionConfig(node);
+    root.querySelector('[data-dr-mode]')?.addEventListener('click',()=>setDetailRepairMode(node,true));
     // 区域「位置与蒙版」展开状态跟着节点存，重绘后不收起。
     root.querySelectorAll('[data-lf-patch-toggle]').forEach(button=>button.onclick=()=>{
         const index=Number(button.dataset.lfPatchToggle),body=button.closest('.lf-patch').querySelector('.lf-patch-body');
@@ -185,7 +196,7 @@ async function runLocalFusionNode(node){
     localFusionSessions.set(node.id,{starting:true,canvasToken});
     node.fusionStatus='queued';node.fusionMessage='正在提交本地融合';render();
     try{
-        const job=await localFusionFetch('/api/local-fusion/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:signature});
+        const job=await localFusionFetch('/api/local-fusion/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(localFusionPayload(node))});
         if(canvas.id!==canvasToken||!nodes.includes(node)||localFusionSessions.get(node.id)?.cancelled){await fetch('/api/local-fusion/jobs/'+job.id,{method:'DELETE'});return;}
         node.fusionJobId=job.id;node.fusionJobSignature=signature;localFusionSessions.delete(node.id);scheduleSave();
         await pollLocalFusionNode(node,job.id,signature);
@@ -202,6 +213,7 @@ async function pollLocalFusionNode(node,id,signature){
             if(canvas.id!==session.canvasToken||!nodes.includes(node))return;
             node.fusionStatus=job.status;node.fusionMessage=job.message;
             if(job.status==='completed'){
+                if(node.detailRepair?.enabled&&node.detailRepair.run)node.detailRepair.run.terminal=true;
                 pushUndo();node.fusionPreview=job.result;node.fusionPreviewSignature=signature;
                 node.fusionPreviewSource=JSON.parse(signature).sourceUrl;
                 node.fusionMessage=job.result.report.warnings.join('；')||'融合预览完成 · 原图尺寸不变，修改范围外像素一致';
@@ -230,7 +242,11 @@ function localFusionOutput(node){
         pushUndo();
         output=createNode(node.x+nodeRect(node).width+64,node.y,[{url:result.url,name:result.name,kind:'image',natural_w:result.width,natural_h:result.height,width:result.width,height:result.height,
             fusionRecord:{sourceUrl:node.fusionPreviewSource,request:JSON.parse(node.fusionPreviewSignature),report:result.report,maskUrl:result.maskUrl}}],{skipUndo:true,skipRender:true,skipSave:true});
-        if(!output)return;output.title='局部修复结果';
+        if(!output)return;output.title=node.detailRepair?.enabled?'细节修复结果':'局部修复结果';
+        if(node.detailRepair?.enabled){
+            const region=detailRepairInputs(node).scene?.localRepair;
+            if(region)output.images[0].localRepair=cloneSmartSettings(region);
+        }
         addConnection(node.id,output.id,'flow');
         node.fusionOutputs||=[];node.fusionOutputs.push({nodeId:output.id,url:result.url,createdAt:Date.now()});
     }

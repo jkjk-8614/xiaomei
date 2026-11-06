@@ -352,7 +352,8 @@ backToManagerBtn?.addEventListener('click', () => {
     window.location.href = canvasListUrlForProject(canvas?.project || requestedCanvasListProject() || rememberedCanvasListProject());
 });
 let localCanvasDirty = false;
-let savingCanvasNow = false;
+let savingCanvasNow = null;
+let canvasRefreshPending = false;
 let saveCanvasAgain = false;
 let applyingRemoteCanvas = false;
 let remoteSyncTimer = null;
@@ -1443,10 +1444,13 @@ async function saveCanvas(){
         saveCanvasAgain = true;
         return;
     }
-    sanitizeConnections();
-    savingCanvasNow = true;
     saveCanvasAgain = false;
+    savingCanvasNow = Promise.resolve().then(performCanvasSave);
+    return savingCanvasNow;
+}
+async function performCanvasSave(){
     try {
+        sanitizeConnections();
         const res = await fetch(`/api/canvases/${canvas.id}`, {
             method:'PUT',
             headers:{'Content-Type':'application/json'},
@@ -1485,15 +1489,19 @@ async function saveCanvas(){
         if(currentCanvasTime) currentCanvasTime.textContent = formatCanvasTime(canvas.updated_at);
         setStatus('Saved');
         loadCanvasList(false);
+        return true;
     } catch(e) {
         setStatus('Save failed');
         console.error(e);
     } finally {
-        savingCanvasNow = false;
+        savingCanvasNow = null;
         if(saveCanvasAgain && canvas && !applyingRemoteCanvas){
             saveCanvasAgain = false;
             localCanvasDirty = true;
-            setTimeout(saveCanvas, 0);
+            saveTimer = setTimeout(() => {
+                saveTimer = null;
+                void saveCanvas();
+            }, 0);
         }
     }
 }
@@ -14300,8 +14308,6 @@ window.addEventListener('paste', e => {
 });
 window.addEventListener('keydown', e => {
     if(!canvas) return;
-    // Ctrl/Cmd + 5：刷新画布（先等当前保存落盘，再整页重载）。
-    if(isCanvasRefreshShortcut(e)){ refreshCanvasPage(e); return; }
     const key = String(e.key || '').toLowerCase();
     if(key === 'r' && !isEditableTarget(e.target)) isRKeyDown = true;
     if(e.key === 'Shift' && !e.altKey && !isEditableTarget(document.activeElement)) setKnifeMode(true);
@@ -14367,27 +14373,28 @@ window.addEventListener('keyup', e => {
     if(String(e.key || '').toLowerCase() === 'r') isRKeyDown = false;
     if(e.key === 'Shift') setKnifeMode(false);
 });
-// Ctrl/Cmd + 5：刷新画布。先把当前改动存好，再整页重载。
-function isCanvasRefreshShortcut(e){
-    if(e.isComposing) return false;
-    if(!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return false;
-    return (e.code || '') === 'Digit5' || (e.code || '') === 'Numpad5' || String(e.key || '') === '5';
+async function refreshCanvasPage(e){
+    if(e.isComposing || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+    if(e.code !== 'Digit5' && e.code !== 'Numpad5' && e.key !== '5') return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if(e.repeat || canvasRefreshPending) return;
+    canvasRefreshPending = true;
+    try {
+        while(savingCanvasNow || localCanvasDirty){
+            clearTimeout(saveTimer);
+            saveTimer = null;
+            if(!await (savingCanvasNow || saveCanvas())){
+                showErrorModal(tr('common.canvasRefreshSaveFailed'), tr('common.canvasRefresh'));
+                return;
+            }
+        }
+        location.reload();
+    } finally {
+        canvasRefreshPending = false;
+    }
 }
-function refreshCanvasPage(e){
-    e.preventDefault?.();
-    e.stopPropagation?.();
-    e.stopImmediatePropagation?.();
-    try { window.onbeforeunload = null; } catch(_) {}
-    const reload = () => { location.reload(); };
-    if(!canvas || applyingRemoteCanvas){ reload(); return; }
-    clearTimeout(saveTimer);
-    // saveCanvas 自身会把进行中的再次保存排到后面（saveCanvasAgain），这里只等它返回。
-    // 超过 1.2 秒还没返回（画布很大或网络慢）就不再阻塞刷新，服务端已有上一版快照。
-    let reloading = false;
-    const reloadOnce = () => { if(reloading) return; reloading = true; reload(); };
-    Promise.race([saveCanvas().catch(() => {}), new Promise(done => setTimeout(done, 1200))])
-        .then(reloadOnce, reloadOnce);
-}
+window.addEventListener('keydown', refreshCanvasPage, true);
 window.addEventListener('blur', () => { isRKeyDown = false; setKnifeMode(false); });
 window.addEventListener('blur', () => {
     if(selectDrag){

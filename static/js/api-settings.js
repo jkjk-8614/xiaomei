@@ -1,5 +1,10 @@
 let providers = [];
 let selectedId = '';
+let providerDraftVersion = 0;
+let providerSavedVersion = 0;
+let providerSavePromise = null;
+let providerSaveError = '';
+let providerSaveFocus = null;
 const providerList = document.getElementById('providerList');
 const editorTitle = document.getElementById('editorTitle');
 const statusEl = document.getElementById('status');
@@ -275,6 +280,56 @@ function trf(key, vars={}){
     return text;
 }
 function setStatus(text){ statusEl.textContent = text || ''; }
+function hasKeyProfileDraft(){
+    if(!keyProfileCreateNew && !keyProfileEditing) return false;
+    const active = keyProfileRecords(provider()).find(profile => profile.active || profile.id === provider()?.active_key_profile_id);
+    const originalName = keyProfileCreateNew ? '' : keyProfileDisplayName(active, 0);
+    return Boolean(keyInput?.value.trim() || (keyProfileNameInput?.value.trim() || '') !== originalName);
+}
+function hasUnsavedProviderChanges(){
+    return providerDraftVersion !== providerSavedVersion || hasKeyProfileDraft();
+}
+function confirmDiscardKeyProfileDraft(){
+    if(!hasKeyProfileDraft()) return true;
+    if(!confirm(tr('api.confirmDiscardAccountDraft'))) return false;
+    if(keyInput) keyInput.value = '';
+    if(keyProfileNameInput) keyProfileNameInput.value = '';
+    return true;
+}
+function renderProviderSaveState(){
+    const label = document.getElementById('providerSaveState');
+    const retry = document.getElementById('retryProviderSave');
+    if(!label) return;
+    const state = providerSavePromise ? 'saving' : providerSaveError ? 'failed' : hasUnsavedProviderChanges() ? 'unsaved' : 'saved';
+    label.dataset.state = state;
+    label.textContent = tr(`api.saveState.${state}`);
+    label.title = providerSaveError;
+    if(retry) retry.hidden = state !== 'failed';
+}
+function markProviderDirty(){
+    providerDraftVersion += 1;
+    providerSaveError = '';
+    renderProviderSaveState();
+}
+function confirmLeaveApiSettings(){
+    if(providerSavePromise){ setStatus(tr('api.waitForSave')); return false; }
+    return !hasUnsavedProviderChanges() || confirm(tr('api.confirmLeaveUnsaved'));
+}
+window.confirmLeaveApiSettings = confirmLeaveApiSettings;
+window.addEventListener('beforeunload', event => {
+    if(!hasUnsavedProviderChanges() && !providerSavePromise) return;
+    event.preventDefault();
+    event.returnValue = '';
+});
+function setProviderSaveBusy(busy){
+    if(busy) providerSaveFocus = document.activeElement;
+    for(const element of [settingsContent, recommendContent, document.querySelector('.layout > .sidebar')]){
+        if(element) element.inert = busy;
+    }
+    settingsContent?.setAttribute('aria-busy', String(busy));
+    if(!busy && providerSaveFocus?.isConnected && document.activeElement === document.body) providerSaveFocus.focus();
+    if(!busy) providerSaveFocus = null;
+}
 function externalBrowserApi(){
     try {
         return window.electronAPI || window.parent?.electronAPI || window.top?.electronAPI || null;
@@ -757,7 +812,7 @@ function syncEditor(){
     item.rh_apps = normalizeRhEntries(item.rh_apps || [], 'app');
     item.rh_workflows = normalizeRhEntries(item.rh_workflows || [], 'workflow');
     const key = keyInput.value.trim();
-    if(key) item.api_key = key;
+    if(key && !(providerSupportsKeyProfiles(item) && Array.isArray(item.key_profiles))) item.api_key = key;
     if(item.id === 'runninghub'){
         const freeKey = rhFreeKeyInput?.value.trim() || '';
         const walletKey = rhWalletKeyInput?.value.trim() || '';
@@ -2335,6 +2390,7 @@ function renderRhEntryList(target, list, kind){
     `).join('');
 }
 function openRecommendApi(){
+    syncEditor();
     recommendInlineOpen = true;
     syncRecommendView();
     renderRecommendApi();
@@ -2357,6 +2413,101 @@ function syncRecommendView(){
     if(recommendSub) recommendSub.textContent = tr('api.recommendPanelSub');
     document.body.classList.toggle('show-recommend-mode', recommendInlineOpen);
 }
+(function bindWebSearchSettings(){
+    const dialog = document.getElementById('webSearchDialog');
+    const open = document.getElementById('openWebSearch');
+    const close = document.getElementById('closeWebSearch');
+    const form = document.getElementById('webSearchForm');
+    const provider = document.getElementById('webSearchProvider');
+    const activeLabel = document.getElementById('webSearchActiveProvider');
+    const keyLink = document.getElementById('webSearchKeyLink');
+    const input = document.getElementById('webSearchKey');
+    const state = document.getElementById('webSearchState');
+    const notice = document.getElementById('webSearchNotice');
+    const save = document.getElementById('saveWebSearch');
+    const test = document.getElementById('testWebSearch');
+    const clear = document.getElementById('clearWebSearch');
+    let busy = false;
+    let settings = null;
+    const name = value => Array.from(provider.options).find(option => option.value === value)?.textContent;
+
+    function syncControls(){
+        const hasKey = settings?.has_keys[provider.value] === true;
+        const draft = input.value.trim();
+        const canActivate = hasKey && settings.provider !== provider.value;
+        close.disabled = busy;
+        provider.disabled = input.disabled = clear.disabled = busy || !settings;
+        input.placeholder = hasKey ? '••••••••' : '';
+        save.disabled = busy || !settings || (!draft && !canActivate);
+        save.dataset.i18n = canActivate && !draft ? 'api.webSearchActivate' : 'api.save';
+        save.textContent = tr(save.dataset.i18n);
+        test.disabled = busy || !settings || (!hasKey && !draft);
+        clear.hidden = !hasKey;
+        keyLink.href = provider.selectedOptions[0].dataset.keyUrl;
+        activeLabel.textContent = settings ? trf('api.webSearchActiveProvider',{name:name(settings.provider)}) : '';
+        state.dataset.i18n = settings ? (hasKey ? 'api.keyProfileSavedStatus' : 'api.keyProfileMissingStatus') : '';
+        state.textContent = state.dataset.i18n ? tr(state.dataset.i18n) : '';
+    }
+    async function update(method, testing=false){
+        if(busy) return;
+        busy = true;
+        notice.textContent = tr('api.keyProfileWorking');
+        notice.classList.remove('recommendation-error');
+        syncControls();
+        try {
+            const path = '/api/search-settings' + (method === 'GET' ? '' : '/' + provider.value + (testing ? '/test' : ''));
+            const response = await fetch(path, {
+                method,cache:'no-store',
+                ...(method === 'PUT' || testing ? {
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({api_key:input.value.trim()})
+                } : {})
+            });
+            const result = await response.json().catch(() => ({}));
+            if(!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : '');
+            if(testing){
+                if(result.ok !== true) throw new Error();
+                notice.textContent = trf('api.webSearchConnected',{name:name(provider.value)});
+            } else {
+                if(!result.has_keys || !name(result.provider)) throw new Error();
+                settings = result;
+                if(method === 'GET') provider.value = settings.provider;
+                input.value = '';
+                notice.textContent = method === 'PUT' ? tr('api.saved') : '';
+            }
+        } catch(error) {
+            notice.classList.add('recommendation-error');
+            notice.textContent = error.message || tr('api.webSearchRequestFailed');
+        } finally {
+            busy = false;
+            syncControls();
+            if(method === 'GET' && dialog.open) (settings ? provider : close).focus();
+        }
+    }
+    open.addEventListener('click', () => {
+        settings = null;
+        dialog.showModal();
+        void update('GET');
+    });
+    dialog.addEventListener('cancel', event => { if(busy) event.preventDefault(); });
+    dialog.addEventListener('close', () => { input.value = ''; });
+    provider.addEventListener('change', () => {
+        input.value = '';
+        notice.textContent = '';
+        syncControls();
+        input.focus();
+    });
+    window.addEventListener('studio-lang-change', () => { if(dialog.open) syncControls(); });
+    input.addEventListener('input', syncControls);
+    form.addEventListener('submit', event => {
+        event.preventDefault();
+        if(!save.disabled) void update('PUT');
+    });
+    test.addEventListener('click', () => { void update('POST',true); });
+    clear.addEventListener('click', () => {
+        if(window.confirm(trf('api.webSearchConfirmRemove',{name:name(provider.value)}))) void update('DELETE');
+    });
+})();
 let recommendFilter = 'all';
 const RECOMMEND_FILTERS = ['all', 'pending', 'ready'];
 // 筛选会把未配置的行整段重画，正在输入的 Key 先记在这里，切回来不会丢。
@@ -2836,6 +2987,7 @@ function handleProviderDrop(event, targetId){
     const adjustedTargetIndex = providers.findIndex(item => item.id === targetId);
     providers.splice(adjustedTargetIndex, 0, moved);
     renderProviderList();
+    markProviderDirty();
     saveProviders();
 }
 function handleProviderDragEnd(){
@@ -3990,11 +4142,13 @@ function prepareEditKeyProfile(){
     keyProfileNameInput?.select();
 }
 function cancelKeyProfileEdit(){
+    syncEditor();
     keyProfileCreateNew = false;
     keyProfileEditing = false;
     if(keyInput) keyInput.value = '';
     if(keyProfileNameInput) keyProfileNameInput.value = '';
     renderEditor();
+    renderProviderSaveState();
 }
 function cancelNewKeyProfile(){
     cancelKeyProfileEdit();
@@ -4016,6 +4170,7 @@ async function activateKeyProfile(profileId){
         return;
     }
     const target = keyProfileRecords(item).find(profile => String(profile.id) === targetId);
+    syncEditor();
     keyProfileActionBusy = true;
     renderKeyProfiles(item);
     try {
@@ -4469,6 +4624,7 @@ async function fetchModels(){
 // 每个模型只归一类（根据用户已配置 或 关键字猜测）；勾选 = 纳入该分类
 let pickerState = { category: {}, selected: {} };
 let pickerVisibleIds = [];
+let modelPickerReturnFocus = null;
 function openModelPicker(){
     const item = provider();
     if(!item || !hasCurrentFetchedModelState(item)){
@@ -4495,13 +4651,38 @@ function openModelPicker(){
     });
     // 默认 tab 切回「全部」
     document.querySelectorAll('.picker-cat-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === 'all'));
-    document.getElementById('modelPickerOverlay').style.display = 'flex';
+    const dialog = document.getElementById('modelPickerOverlay');
+    modelPickerReturnFocus = document.activeElement === document.body ? document.getElementById('fetchModelsBtn') : document.activeElement;
     const sourceNote = document.getElementById('pickerSourceNote');
     if(sourceNote){ sourceNote.textContent = lastFetchedSourceNote; sourceNote.hidden = !lastFetchedSourceNote; }
     renderModelPicker();
+    if(!dialog.open) dialog.showModal();
+    document.getElementById('pickerFilter').focus();
 }
-function closeModelPicker(){ document.getElementById('modelPickerOverlay').style.display = 'none'; }
+function closeModelPicker(){ document.getElementById('modelPickerOverlay').close(); }
+document.getElementById('modelPickerOverlay').addEventListener('close', () => {
+    const target = modelPickerReturnFocus;
+    modelPickerReturnFocus = null;
+    const restore = () => { if(target?.isConnected && !target.disabled) target.focus(); };
+    if(providerSavePromise) providerSavePromise.finally(restore);
+    else restore();
+});
+document.getElementById('modelPickerOverlay').addEventListener('click', event => {
+    if(event.target !== event.currentTarget) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if(event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) closeModelPicker();
+});
+document.getElementById('modelPickerOverlay').addEventListener('keydown', event => {
+    if(event.key !== 'Tab') return;
+    const controls = [...event.currentTarget.querySelectorAll('button, input, select, textarea, [tabindex]')]
+        .filter(node => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length);
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if(event.shiftKey && document.activeElement === first){ event.preventDefault(); last?.focus(); }
+    else if(!event.shiftKey && document.activeElement === last){ event.preventDefault(); first?.focus(); }
+});
 function renderModelPicker(){
+    const focusedIndex = document.activeElement?.dataset.pickerIndex;
     const item = provider();
     const filter = (document.getElementById('pickerFilter')?.value || '').toLowerCase();
     const currentTab = document.querySelector('.picker-cat-tab.active')?.dataset.cat || 'all';
@@ -4534,19 +4715,18 @@ function renderModelPicker(){
         const label = modelDisplayName(id, item);
         const badge = providerModelBadge(id, label, item);
         return `
-            <div class="picker-row ${checked?'has-sel':''}" onclick="togglePickerRowByIndex(${index})">
-                <div class="picker-checkbox ${checked?'checked':''}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                </div>
-                <div class="picker-model-badge">${escapeHtml(badge)}</div>
-                <div class="picker-model-name" title="${escapeAttr(id)}">
-                    <div class="picker-model-label">${escapeHtml(label || id)}</div>
-                    ${label && label !== id ? `<div class="picker-model-id">${escapeHtml(id)}</div>` : ''}
-                </div>
-            </div>
+            <label class="picker-row ${checked?'has-sel':''}">
+                <input class="picker-checkbox" type="checkbox" data-picker-index="${index}" aria-label="${escapeAttr(label && label !== id ? `${label} (${id})` : id)}" ${checked ? 'checked' : ''} onchange="togglePickerRowByIndex(${index})">
+                <span class="picker-model-badge" aria-hidden="true">${escapeHtml(badge)}</span>
+                <span class="picker-model-name" title="${escapeAttr(id)}">
+                    <span class="picker-model-label">${escapeHtml(label || id)}</span>
+                    ${label && label !== id ? `<span class="picker-model-id">${escapeHtml(id)}</span>` : ''}
+                </span>
+            </label>
         `;
     }).join('');
     document.getElementById('pickerList').innerHTML = html || `<div style="padding:32px;text-align:center;color:var(--faint);font-size:12px">无匹配</div>`;
+    if(focusedIndex !== undefined) document.querySelector(`#pickerList input[data-picker-index="${Number(focusedIndex)}"]`)?.focus({preventScroll:true});
     // 底部汇总
     const sumImage = document.getElementById('sumImage');
     const sumChat = document.getElementById('sumChat');
@@ -4620,6 +4800,7 @@ async function applyModelPicker(){
     });
     item.model_protocols = nextProtocols;
     renderModels('image'); renderModels('chat'); renderModels('video');
+    markProviderDirty();
     closeModelPicker();
     setStatus(`正在同步 · 生图 ${image.length} / LLM ${chat.length} / 视频 ${video.length}`);
     const ok = await saveProviders();
@@ -4670,6 +4851,7 @@ async function saveKeyOnly(){
             keyProfileNameInput?.focus();
             return;
         }
+        syncEditor();
         keyProfileActionBusy = true;
         renderKeyProfiles(item);
         try {
@@ -4687,6 +4869,7 @@ async function saveKeyOnly(){
             if(keyProfileNameInput) keyProfileNameInput.value = '';
             const saved = keyProfileRecords(item).find(profile => String(profile.id) === String(item.active_key_profile_id));
             renderEditor();
+            renderProviderSaveState();
             setStatus(trf(createNew ? 'api.keyProfileCreated' : 'api.keyProfileUpdated', {name:keyProfileDisplayName(saved, 0)}));
             broadcastStudioApiChange('providers-changed');
         } catch(error) {
@@ -4711,6 +4894,7 @@ async function clearKeyOnly(){
         if(!profileId || !target) return;
         if(!confirm(tr('api.confirmDeleteKeyProfile') || '确认删除当前 Key 记录？')) return;
         if(keyProfileActionBusy) return;
+        syncEditor();
         keyProfileActionBusy = true;
         renderKeyProfiles(item);
         try {
@@ -4790,6 +4974,7 @@ function renderModels(kind){
 }
 function selectProvider(id){
     if(isProviderTemporarilyHidden(providers.find(item => item.id === id))) return;
+    if(!confirmDiscardKeyProfileDraft()) return;
     if(id !== selectedId) clearFetchedModelState();
     keyProfileCreateNew = false;
     keyProfileEditing = false;
@@ -4801,8 +4986,10 @@ function selectProvider(id){
     syncEditor();
     selectedId = id;
     renderEditor();
+    renderProviderSaveState();
 }
 function addProvider(){
+    if(!confirmDiscardKeyProfileDraft()) return;
     keyProfileCreateNew = false;
     keyProfileEditing = false;
     keyProfileActionBusy = false;
@@ -4814,8 +5001,10 @@ function addProvider(){
     providers.push({id, _idDraft:true, name:'API', base_url:'', protocol:'openai', image_request_mode:'openai', image_edit_route:'general', image_generation_endpoint:'', image_edit_endpoint:'', enabled:true, primary:false, image_models:[], chat_models:[], video_models:[], has_key:false, key_preview:''});
     selectedId = id;
     renderEditor();
+    markProviderDirty();
 }
 async function addCliProvider(kind){
+    if(!confirmDiscardKeyProfileDraft()) return;
     const preset = CLI_PROVIDER_PRESETS[kind];
     if(!preset) return;
     keyProfileCreateNew = false;
@@ -4863,6 +5052,7 @@ async function addCliProvider(kind){
     renderProviderList();
     renderEditor();
     if(protocolInput) protocolInput.value = preset.protocol;
+    markProviderDirty();
     const ok = await saveProviders();
     if(ok){
         selectedId = item.id;
@@ -4877,9 +5067,12 @@ function deleteProvider(){
     if(!item) return;
     if(isFixedProvider(item)){ alert(tr('api.defaultNoDelete') || '默认平台不能删除'); return; }
     if(providers.length <= 1){ alert(tr('api.keepOne')); return; }
+    if(!confirm(trf('api.confirmDeleteProvider', {name:item.name || item.id}))) return;
+    syncEditor();
     providers = providers.filter(p => p.id !== item.id);
     selectedId = providers[0]?.id || '';
     renderEditor();
+    markProviderDirty();
     saveProviders();
 }
 async function saveRhKeyOnly(kind){
@@ -4935,6 +5128,7 @@ function addModel(kind){
     item.model_selection_managed = true;
     item[key] = [...(item[key] || []), ''];
     renderModels(kind);
+    markProviderDirty();
 }
 let modelListAutoSaveTimer = null;
 function scheduleModelListAutoSave(delay = 500){
@@ -4977,6 +5171,7 @@ function updateModel(kind, index, value){
         }
     }
     scheduleModelListAutoSave();
+    markProviderDirty();
 }
 function updateModelProtocol(kind, index, value){
     const item = provider();
@@ -4990,6 +5185,7 @@ function updateModelProtocol(kind, index, value){
     } else {
         delete item.model_protocols[name];
     }
+    markProviderDirty();
 }
 function removeModel(kind, index){
     const item = provider();
@@ -5005,6 +5201,7 @@ function removeModel(kind, index){
         delete item.model_names[removed];
     }
     renderModels(kind);
+    markProviderDirty();
     scheduleModelListAutoSave(120);
 }
 async function loadProviders(){
@@ -5017,12 +5214,29 @@ async function loadProviders(){
         refreshCliSidebarStatuses();
         openRecommendApi();
         setStatus('');
+        providerSavedVersion = providerDraftVersion;
+        renderProviderSaveState();
     } catch(err) {
         setStatus(tr('api.loadFailed'));
     }
 }
-async function saveProviders(){
+function saveProviders(){
+    if(providerSavePromise) return providerSavePromise;
+    providerDraftVersion += 1;
+    clearTimeout(modelListAutoSaveTimer);
+    setProviderSaveBusy(true);
+    providerSaveError = '';
+    providerSavePromise = Promise.resolve().then(performProviderSave).finally(() => {
+        providerSavePromise = null;
+        setProviderSaveBusy(false);
+        renderProviderSaveState();
+    });
+    renderProviderSaveState();
+    return providerSavePromise;
+}
+async function performProviderSave(){
     syncEditor();
+    const submittedVersion = providerDraftVersion;
     providers.forEach(item => {
         const oldId = item.id;
         item.id = normalizeId(newProviderId(item));
@@ -5069,6 +5283,7 @@ async function saveProviders(){
     });
     if(new Set(providers.map(item => item.id)).size !== providers.length){
         alert(tr('api.duplicateId'));
+        providerSaveError = tr('api.duplicateId');
         return false;
     }
     setStatus(tr('api.saving'));
@@ -5123,13 +5338,15 @@ async function saveProviders(){
             delete item._clearVolcengineSecretKey;
         });
         selectedId = providers.find(item => item.id === selectedId || (item.legacy_ids || []).includes(selectedId))?.id || providers[0]?.id || '';
+        providerSavedVersion = submittedVersion;
         renderEditor();
         setStatus(tr('api.saved'));
         // 广播变更，画布等其他 iframe 立即重新拉取最新平台/模型列表
         broadcastStudioApiChange('providers-changed');
         return true;
     } catch(err) {
-        setStatus(err.message || tr('api.saveFailed'));
+        providerSaveError = err.message || tr('api.saveFailed');
+        setStatus(trf('api.saveFailedRetry', {reason:providerSaveError}));
         return false;
     }
 }
@@ -5163,6 +5380,7 @@ recommendApiOverlay?.addEventListener('mousedown', event => {
     if(event.target === recommendApiOverlay) closeRecommendApi();
 });
 window.addEventListener('studio-lang-change', () => {
+    syncEditor();
     syncRecommendView();
     if(recommendInlineOpen) renderRecommendApi();
     else renderEditor();
@@ -5171,12 +5389,31 @@ window.onload = () => {
     // 必须把当前主题传进去：无参调用会被当成 light，摘掉 studio-theme-dark/theme-dark。
     if(window.StudioTheme) window.StudioTheme.apply(window.StudioTheme.get());
     if(window.StudioI18n) window.StudioI18n.apply();
+    const updateTypeScale = detail => {
+        const scale = Math.max(0.58, Number(detail?.scale) || 1);
+        document.documentElement.style.setProperty('--api-type-factor', detail?.mode === 'auto' ? String(Math.max(1, 1 / scale)) : '1');
+    };
+    window.addEventListener('studio-ui-scale-change', event => updateTypeScale(event.detail));
+    const scaleMode = window.StudioScale?.getMode() || 'auto';
+    updateTypeScale({mode:scaleMode, scale:parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--studio-ui-scale')) || 1});
+    const trackProviderEdit = event => {
+        const input = event.target;
+        if(input === keyProfileNameInput || (input === keyInput && Array.isArray(provider()?.key_profiles))){
+            renderProviderSaveState();
+            return;
+        }
+        if(input.closest('.model-row') || input.id === 'pickerFilter') return;
+        if(input.matches('input, select, textarea') && !input.closest('#comfyuiConfigBlock')) markProviderDirty();
+    };
+    settingsContent?.addEventListener('input', trackProviderEdit);
+    settingsContent?.addEventListener('change', trackProviderEdit);
     syncRecommendView();
     loadProviders();
     // 平台名输入时实时预览生成的 ID
     if(nameInput) nameInput.addEventListener('input', updateIdPreview);
     if(protocolInput) protocolInput.addEventListener('change', () => {
         clearFetchedModelState();
+        syncEditor();
         updateProtocolFromInput();
     });
     if(baseInput) baseInput.addEventListener('input', () => {

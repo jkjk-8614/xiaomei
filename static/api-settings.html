@@ -11,18 +11,18 @@
             } catch(e) {}
         })();
     </script>
-    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.11.04.1784161005"></script>
-    <script src="/static/vendor/js/lucide.js?v=2026.11.04.1784161005"></script>
-    <script src="/static/vendor/js/qrcode-generator-2.0.4.js?v=2026.11.04.499162500"></script>
-    <script src="/static/vendor/js/qrcode-generator-utf8-2.0.4.js?v=2026.11.04.499162500"></script>
-    <script src="/static/js/theme.js?v=2026.11.04.1791335865"></script>
-    <script src="/static/js/i18n.js?v=2026.11.04.1793778755"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.11.04.1792900345">
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.11.04.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.11.04.1792843621">
-    <link rel="stylesheet" href="/static/css/api-settings.css?v=2026.11.04.1793586015">
-    <link rel="stylesheet" href="/static/css/api-recommendations.css?v=2026.11.04.1793356450">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.11.04.1790178173"></script>
+    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.11.06.1784161005"></script>
+    <script src="/static/vendor/js/lucide.js?v=2026.11.06.1784161005"></script>
+    <script src="/static/vendor/js/qrcode-generator-2.0.4.js?v=2026.11.06.499162500"></script>
+    <script src="/static/vendor/js/qrcode-generator-utf8-2.0.4.js?v=2026.11.06.499162500"></script>
+    <script src="/static/js/theme.js?v=2026.11.06.1791335865"></script>
+    <script src="/static/js/i18n.js?v=2026.11.06.1793877008&web-search=1"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.11.06.1792900345">
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.11.06.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.11.06.1792843621">
+    <link rel="stylesheet" href="/static/css/api-settings.css?v=2026.11.06.1793877221">
+    <link rel="stylesheet" href="/static/css/api-recommendations.css?v=2026.11.06.1793842274&web-search=1">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.11.06.1790178173"></script>
 </head>
 <body>
     <div class="page">
@@ -32,7 +32,11 @@
                     <div class="title" data-i18n="api.title">API 设置</div>
                     <div class="sub" data-i18n="api.subtitle">管理平台地址、模型列表和 Key。Key 写入后端 env，页面不会回显完整内容。</div>
                 </div>
-                <div id="status" class="status"></div>
+                <div class="page-status">
+                    <span id="providerSaveState" role="status" aria-live="polite" aria-atomic="true"></span>
+                    <button id="retryProviderSave" class="ghost-btn" type="button" onclick="saveProviders()" data-i18n="api.retrySave" hidden>重试保存</button>
+                    <div id="status" class="status" role="status" aria-live="polite" aria-atomic="true"></div>
+                </div>
             </header>
 
             <div class="layout">
@@ -41,6 +45,7 @@
                     <div id="providerList" class="provider-list"></div>
                     <button class="add-btn" type="button" onclick="addProvider()"><i data-lucide="plus" class="w-4 h-4"></i><span data-i18n="api.addProvider">新增平台</span></button>
                     <button class="api-link-btn" type="button" onclick="openRecommendApi()"><i data-lucide="sparkles" class="w-4 h-4"></i><span data-i18n="api.recommendApi">推荐API</span></button>
+                    <button id="openWebSearch" class="cli-quick-btn" type="button" aria-haspopup="dialog"><i data-lucide="search" class="w-3.5 h-3.5" aria-hidden="true"></i><span data-i18n="api.webSearch">联网搜索</span><i data-lucide="chevron-right" class="cli-quick-chevron" aria-hidden="true"></i></button>
                     <div class="cli-quick-group">
                         <div class="side-section-title">CLI 设置</div>
                         <div class="cli-quick-list">
@@ -369,6 +374,45 @@
         </div>
     </div>
 
+    <dialog id="webSearchDialog" class="picker-modal recommendation-editor" aria-labelledby="webSearchTitle" aria-describedby="webSearchDesc">
+        <div class="picker-head">
+            <div>
+                <div id="webSearchTitle" class="picker-title" data-i18n="api.webSearch">联网搜索</div>
+                <div id="webSearchDesc" class="picker-count" data-i18n="api.webSearchDesc">为一键复刻的「智能适配」查找商品资料。</div>
+            </div>
+            <form method="dialog">
+                <button id="closeWebSearch" class="ghost-btn" type="submit" aria-label="关闭" data-i18n-aria-label="api.cancel"><i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i></button>
+            </form>
+        </div>
+        <form id="webSearchForm">
+            <fieldset class="recommendation-fields">
+                <label class="field full">
+                    <span class="label" data-i18n="api.webSearchProvider">搜索服务</span>
+                    <div class="field-frame"><select id="webSearchProvider" autofocus>
+                        <option value="tavily" data-key-url="https://app.tavily.com/">Tavily</option>
+                        <option value="brave" data-key-url="https://api-dashboard.search.brave.com/documentation/quickstart">Brave Search</option>
+                    </select></div>
+                    <span class="hint" id="webSearchActiveProvider"></span>
+                </label>
+                <label class="field full">
+                    <span class="label" data-i18n="api.key">API Key</span>
+                    <div class="field-frame"><input id="webSearchKey" type="password" maxlength="256" autocomplete="new-password" spellcheck="false"></div>
+                    <span class="hint" data-i18n="api.webSearchKeyHint">密钥保存在当前电脑，保存后仅显示配置状态。</span>
+                </label>
+                <div class="web-search-meta full">
+                    <span id="webSearchState" role="status"></span>
+                    <a id="webSearchKeyLink" href="https://app.tavily.com/" target="_blank" rel="noopener noreferrer" data-i18n="api.webSearchGetKey">获取密钥</a>
+                </div>
+                <p id="webSearchNotice" class="full" role="status"></p>
+                <div class="recommendation-footer full">
+                    <button id="clearWebSearch" class="action-btn danger-btn" type="button" data-i18n="api.webSearchRemove" hidden>移除密钥</button>
+                    <button id="testWebSearch" class="action-btn" type="button" data-i18n="api.webSearchTest">测试连接</button>
+                    <button id="saveWebSearch" class="action-btn save-btn" type="submit" data-i18n="api.save">保存</button>
+                </div>
+            </fieldset>
+        </form>
+    </dialog>
+
     <!-- 模型选择浮层 -->
     <div id="recommendApiOverlay" class="picker-overlay">
         <div class="picker-modal">
@@ -406,18 +450,17 @@
         </div>
     </div>
 
-    <div id="modelPickerOverlay" class="picker-overlay">
-        <div class="picker-modal">
+    <dialog id="modelPickerOverlay" class="picker-modal" aria-labelledby="modelPickerTitle" aria-describedby="pickerCount">
             <div class="picker-head">
                 <div>
-                    <div class="picker-title">从上游拉取的模型清单</div>
+                    <div id="modelPickerTitle" class="picker-title">从上游拉取的模型清单</div>
                     <div id="pickerCount" class="picker-count">—</div>
                     <div id="pickerSourceNote" class="picker-count" hidden></div>
                 </div>
-                <div class="picker-close" onclick="closeModelPicker()"><i data-lucide="x" class="w-4 h-4"></i></div>
+                <button class="picker-close" type="button" onclick="closeModelPicker()" aria-label="关闭模型选择" data-i18n-aria-label="api.closeModelPicker"><i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i></button>
             </div>
             <div class="picker-toolbar">
-                <input id="pickerFilter" class="picker-search" type="text" placeholder="按名称搜索模型…" oninput="renderModelPicker()">
+                <input id="pickerFilter" class="picker-search" type="text" placeholder="按名称搜索模型…" aria-label="搜索模型" data-i18n-aria-label="api.searchModels" oninput="renderModelPicker()">
                 <div class="picker-cat-tabs">
                     <button class="picker-cat-tab active" data-cat="all" onclick="selectPickerCat('all')">全部 <span class="cat-count">0</span></button>
                     <button class="picker-cat-tab" data-cat="image" onclick="selectPickerCat('image')">生图 <span class="cat-count">0</span></button>
@@ -438,8 +481,7 @@
                 <button class="action-btn" type="button" onclick="closeModelPicker()">取消</button>
                 <button class="action-btn save-btn" type="button" onclick="applyModelPicker()">应用到模型列表</button>
             </div>
-        </div>
-    </div>
+    </dialog>
 
     <div id="jimengHelpOverlay" class="picker-overlay">
         <div class="picker-modal jimeng-help-modal">
@@ -523,7 +565,7 @@
         </div>
     </div>
 
-    <script src="/static/js/api-settings.js?v=2026.11.04.1793777869"></script>
-    <script src="/static/js/api-recommendations.js?v=2026.11.04.1793356500"></script>
+    <script src="/static/js/api-settings.js?v=2026.11.06.1793877323&web-search=2"></script>
+    <script src="/static/js/api-recommendations.js?v=2026.11.06.1793356500"></script>
 </body>
 </html>

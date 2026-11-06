@@ -708,6 +708,8 @@ body.smart-llm-instr-resize .prompt-node-llm select { pointer-events:none !impor
 
 /* ── 结果总览 ────────────────────────────────────────────────────────── */
 .batch-overview-link { position:absolute; left:0; top:0; width:1px; height:1px; overflow:visible; pointer-events:none; color:var(--strong); }
+.batch-result-group { position:absolute; inset:0; pointer-events:none; }
+.batch-result-group > .loop-batch-overview { pointer-events:auto; }
 .batch-overview-link path { stroke:currentColor; stroke-width:1.9; }
 .batch-overview-link circle { fill:var(--card); stroke:currentColor; stroke-width:1.25; }
 .loop-batch-overview { --ov-radius:14px; --ov-line:color-mix(in srgb, var(--line) 88%, var(--text) 5%); --ov-card:var(--card); --ov-media:color-mix(in srgb, var(--soft) 80%, var(--card)); --ov-accent:var(--studio-skin-accent, var(--strong, #0e7490)); --ov-ok:#0f8a5f; --ov-warn:#b45309; --ov-err:#dc2626; position:absolute; top:-38px; left:calc(100% + 66px); display:flex; flex-direction:column; width:730px; min-width:360px; min-height:280px; max-height:740px; box-sizing:border-box; border:1px solid var(--ov-line); border-radius:var(--ov-radius); background:var(--panel); color:var(--text); box-shadow:0 18px 48px rgba(15,23,42,.12), 0 2px 6px rgba(15,23,42,.05); overflow:hidden; cursor:default; backdrop-filter:blur(18px); }

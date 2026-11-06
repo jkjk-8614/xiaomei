@@ -33,6 +33,37 @@
     color:var(--muted);
 }
 .replica-smart-node > .node-hint {display:none}
+.image-node.replica-smart-node > .node-resize-handle {
+    right:-12px;
+    bottom:-12px;
+    width:28px;
+    height:28px;
+    border:0;
+    background:transparent;
+    box-shadow:none;
+    color:var(--muted);
+}
+.replica-smart-node > .node-resize-handle::before,
+.replica-smart-node > .node-resize-handle::after {
+    content:"";
+    position:absolute;
+    right:15px;
+    bottom:18px;
+    width:11px;
+    height:1.5px;
+    border:0;
+    border-radius:1px;
+    background:currentColor;
+    transform:rotate(-45deg);
+    pointer-events:none;
+}
+.replica-smart-node > .node-resize-handle::after {
+    bottom:15px;
+    width:6px;
+}
+.image-node.replica-smart-node > .node-resize-handle:hover {
+    color:var(--strong);
+}
 .replica-smart-node > .floating-node-actions {top:10px;right:10px}
 .replica-smart-node > .floating-node-actions .mini-x {
     width:24px;
@@ -85,7 +116,7 @@
 }
 .replica-panel button:hover:not(:disabled) {background:var(--soft);border-color:var(--muted)}
 .replica-panel button:disabled {opacity:.55;cursor:default}
-.replica-panel :is(button,summary,select,input,textarea,.replica-scroll):focus-visible {
+.replica-panel :is(button,summary,select,input,textarea,.replica-scroll,.replica-thumbs):focus-visible {
     outline:2px solid var(--strong);
     outline-offset:-2px;
 }
@@ -93,41 +124,47 @@
 .replica-panel label {display:grid;gap:4px;min-width:0}
 .replica-panel :is(select,input,textarea) {width:100%;min-width:0}
 .replica-panel textarea {resize:vertical;min-height:52px}
+.replica-facts-head {display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px}
+.replica-panel .replica-switch-control {display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer}
+.replica-panel .replica-switch-control .video-audio-switch {display:block;width:40px;min-height:22px;height:22px;padding:3px;border:0;border-radius:12px;background:var(--line)}
+.replica-panel .replica-switch-control .video-audio-switch[aria-checked="true"] {background:var(--strong)}
 .replica-inputs {display:grid;gap:8px;flex:none}
 .replica-input {
-    display:flex;
-    align-items:center;
-    gap:8px;
-    height:52px;
-    padding:0 6px 0 10px;
+    display:grid;
+    min-width:0;
+    gap:6px;
+    padding:8px;
     border:1px solid var(--line);
     border-radius:9px;
     background:var(--soft);
 }
+.replica-input-head {display:flex;align-items:center;gap:6px;min-height:32px}
 .replica-input-title {
     display:flex;
     align-items:center;
     gap:8px;
-    flex:0 0 114px;
+    flex:1;
+    min-width:0;
     line-height:1.25;
 }
 .replica-slot-icon {display:grid;place-items:center;width:28px;height:28px;border-radius:7px;background:var(--card);color:var(--muted)}
 .replica-input-title strong {font-weight:650}
-.replica-input-title small {display:block;margin-top:2px;font-variant-numeric:tabular-nums}
+.replica-input-title small {font-variant-numeric:tabular-nums}
 .replica-input-title small,.replica-muted,.replica-panel summary small,.replica-jobs small {color:var(--muted);font-size:12px}
-.replica-input > button {width:34px;height:34px;padding:0;flex:none;color:var(--muted)}
-.replica-input > .replica-upload-empty {
-    flex:1;
-    height:36px;
-    justify-content:space-between;
-    padding-inline:10px;
-    border-style:dashed;
-    color:var(--muted);
-    font-size:12px;
+.replica-input-head > button {width:32px;height:32px;padding:0;flex:none;color:var(--muted)}
+.replica-input-head > .replica-upload-empty {width:auto;padding-inline:8px;border-style:dashed;font-size:12px}
+.replica-input-head > button:hover:not(:disabled) {color:var(--strong);border-color:var(--strong);background:var(--card)}
+.replica-thumbs {
+    display:grid;
+    grid-template-columns:repeat(var(--replica-thumb-columns),42px);
+    grid-auto-rows:42px;
+    gap:6px;
+    height:var(--replica-thumb-height);
+    overflow:auto;
+    overscroll-behavior:contain;
+    scrollbar-width:thin;
 }
-.replica-input > .replica-upload-empty:hover:not(:disabled) {color:var(--strong);border-color:var(--strong);background:var(--card)}
-.replica-thumbs {display:flex;align-items:center;flex:1;min-width:0;height:100%;gap:5px;overflow-x:auto;scrollbar-width:thin}
-.replica-thumb {position:relative;flex:0 0 42px;height:42px}
+.replica-thumb {position:relative}
 .replica-thumb > button {display:block;position:relative;width:42px;height:42px;padding:2px;opacity:.58}
 .replica-thumb.is-selected > button {border-color:var(--strong);opacity:1}
 .replica-thumb img {display:block;width:100%;height:100%;object-fit:contain;border-radius:5px;pointer-events:none}
@@ -136,8 +173,8 @@
 .replica-thumb:is(:hover,:focus-within) .replica-thumb-actions {opacity:1;pointer-events:auto}
 .replica-thumb-actions button {flex:1;min-height:17px;padding:0;border-radius:4px}
 .replica-thumb-actions button svg {width:11px;height:11px}
-.replica-modes {border:0;padding:0;margin:0;min-width:0;flex:none}
-.replica-modes legend {padding:0;margin-bottom:4px;color:var(--muted);font-size:12px}
+.replica-modes {display:grid;gap:4px;min-width:0;flex:none}
+.replica-modes-label {color:var(--muted);font-size:12px}
 .replica-segments {
     display:grid;
     grid-template-columns:repeat(3,minmax(0,1fr));
@@ -147,6 +184,17 @@
     border-radius:9px;
     background:var(--soft);
 }
+.replica-keep-options {
+    display:grid;
+    min-height:36px;
+    margin-top:4px;
+    padding-inline:8px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    background:var(--soft);
+}
+.replica-keep-options .video-audio-switch {margin-inline-start:auto}
+.replica-keep-options svg {color:var(--muted)}
 .replica-segments button {border-color:transparent;background:transparent;color:var(--muted);font-weight:500}
 .replica-segments button:hover:not(:disabled) {border-color:transparent;color:var(--text)}
 .replica-segments button[aria-pressed="true"] {
@@ -159,6 +207,15 @@
 .replica-panel .replica-disclosure {padding-inline:8px;background:transparent;border-color:transparent;color:var(--muted);font-size:12px;white-space:nowrap}
 .replica-panel .replica-disclosure:is(:hover,[aria-expanded="true"]) {border-color:var(--line);background:var(--soft);color:var(--text)}
 .replica-disclosure span {font-variant-numeric:tabular-nums}
+.replica-extra {
+    display:flex;
+    flex-direction:column;
+    flex:1;
+    min-height:0;
+    border:1px solid var(--line);
+    border-radius:9px;
+    background:var(--soft);
+}
 .replica-scroll {
     position:relative;
     flex:1;
@@ -166,21 +223,27 @@
     overflow:auto;
     overscroll-behavior:contain;
     scrollbar-width:thin;
-    padding:8px 10px;
-    border:1px solid var(--line);
-    border-radius:9px;
-    background:var(--soft);
+    padding:8px;
 }
-.replica-scroll > section + section {margin-top:10px}
-.replica-panel details summary {cursor:pointer;padding:7px 0;overflow-wrap:anywhere}
+.replica-editor {
+    container-type:inline-size;
+    overflow:hidden;
+    background:var(--card-solid,var(--card));
+}
+.replica-editor .replica-scroll {padding:0}
+.replica-editor .replica-jobs {padding:8px 12px;border-bottom:1px solid var(--line)}
 .replica-fields {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.replica-generation-fields {grid-template-columns:minmax(0,1fr) minmax(0,2fr) minmax(80px,1fr)}
+.replica-generation-fields {
+    --replica-setting-height:46px;
+    grid-template-columns:102px minmax(0,1fr) 92px 92px;
+    align-items:end;
+}
 .replica-generation-fields label {position:relative;color:var(--muted);font-size:12px}
 .replica-generation-fields label::after {
     content:"";
     position:absolute;
-    right:10px;
-    bottom:14px;
+    right:8px;
+    bottom:calc((var(--replica-setting-height) - 5px)/2);
     width:5px;
     height:5px;
     border-right:1px solid var(--muted);
@@ -190,21 +253,161 @@
 }
 .replica-panel .replica-generation-fields select {
     appearance:none;
-    padding-inline:8px 22px;
+    height:var(--replica-setting-height);
+    padding-inline:7px 18px;
     color:var(--text);
     font-size:13px;
     text-overflow:ellipsis;
 }
 .replica-generation-fields select:not(:disabled) {cursor:pointer}
 .replica-generation-fields select:hover:not(:disabled) {border-color:var(--muted)}
-.replica-ocr-toolbar {display:flex;justify-content:space-between;align-items:center;gap:8px}
-.replica-ocr-toolbar + .replica-fields {margin-top:8px}
-.replica-template {margin-top:8px;padding:0 8px 4px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
-.replica-inline,.replica-rule {display:flex;align-items:end;gap:6px;margin:4px 0}
-.replica-rule label {flex:1}
-.replica-regions {position:relative;margin:8px 0;max-width:320px}
-.replica-regions img {display:block;width:100%;height:auto}
-.replica-regions span {position:absolute;border:1px solid var(--strong);background:color-mix(in srgb,var(--strong) 18%,transparent)}
+.replica-copy-tools {
+    flex:none;
+    display:grid;
+    gap:8px;
+    padding:8px 12px;
+    background:var(--soft);
+    border-bottom:1px solid var(--line);
+}
+.replica-ocr-toolbar {display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 8px}
+.replica-ocr-toolbar [aria-expanded="true"] svg {transform:rotate(180deg)}
+.replica-copy-tools p {margin:0}
+.replica-templates > p {margin:12px}
+.replica-template + .replica-template {border-top:1px solid var(--line)}
+.replica-template summary {
+    display:grid;
+    grid-template-columns:16px auto minmax(0,1fr) auto;
+    align-items:center;
+    min-height:36px;
+    gap:6px;
+    padding:6px 12px;
+    cursor:pointer;
+}
+.replica-template summary::-webkit-details-marker {display:none}
+.replica-template summary strong {font-weight:600;white-space:nowrap}
+.replica-template summary :is(svg,small) {color:var(--muted)}
+.replica-template summary small {white-space:nowrap;font-variant-numeric:tabular-nums}
+.replica-template-name {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.replica-template summary:hover,
+.replica-template[open] summary {background:var(--soft)}
+.replica-template[open] summary svg {transform:rotate(90deg)}
+.replica-template-body {display:grid;gap:8px;padding:8px 12px 12px}
+.replica-template-body > p {margin:0}
+.replica-rule {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr)) 32px;
+    align-items:start;
+    gap:8px;
+}
+.replica-rule + .replica-rule {padding-top:8px;border-top:1px solid var(--line)}
+.replica-rule label {color:var(--muted);font-size:12px}
+.replica-rule textarea {min-height:36px;padding:7px 8px;color:var(--text);font-size:13px}
+.replica-rule textarea[data-replica-rule-field="text"] {background:var(--soft)}
+@supports (field-sizing:content) {
+    .replica-rule textarea {field-sizing:content;resize:none}
+}
+.replica-rule button {
+    margin-top:21px;
+    padding:0;
+    background:transparent;
+    border-color:transparent;
+    color:var(--muted);
+}
+.replica-rule button:hover:not(:disabled) {color:var(--danger,#bd3c3c)}
+.replica-template-tools {display:flex;align-items:center;flex-wrap:wrap;gap:4px}
+.replica-template-tools button {
+    border-color:transparent;
+    background:transparent;
+    color:var(--muted);
+    padding-inline:8px;
+    font-weight:500;
+}
+.replica-template-tools button:hover:not(:disabled) {
+    border-color:transparent;
+    background:var(--soft);
+    color:var(--text);
+}
+.replica-template-tools svg {width:14px;height:14px}
+.replica-template-tools [data-replica-action="add-rule"] {
+    margin-inline-start:auto;
+    background:color-mix(in srgb,var(--strong) 9%,var(--card));
+    color:var(--strong-foreground,var(--strong));
+}
+.replica-template-tools [data-replica-action="add-rule"]:hover:not(:disabled) {
+    background:color-mix(in srgb,var(--strong) 16%,var(--card));
+    color:var(--strong-foreground,var(--strong));
+}
+.replica-preview {
+    --replica-preview-height:min(900px,calc(100dvh - 32px));
+    width:min(1120px,calc(100% - 32px));
+    height:var(--replica-preview-height);
+    max-width:none;
+    max-height:none;
+    margin:auto;
+    padding:0;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:var(--card-solid,var(--card));
+    color:var(--text);
+    overflow:hidden;
+}
+.replica-preview[open] {display:grid;grid-template-rows:56px minmax(0,1fr)}
+.replica-preview::backdrop {background:rgb(15 23 42 / .55)}
+.replica-preview-head {
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:0 12px;
+    border-bottom:1px solid var(--line);
+}
+.replica-preview-head h2 {
+    flex:1;
+    min-width:0;
+    margin:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    font-size:15px;
+    font-weight:600;
+}
+.replica-preview button {
+    min-height:36px;
+    padding:0 12px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    background:var(--card-solid,var(--card));
+    color:inherit;
+    font-size:13px;
+    white-space:nowrap;
+    cursor:pointer;
+}
+.replica-preview button[aria-pressed="true"] {border-color:var(--strong);color:var(--strong)}
+.replica-preview button:hover:not(:disabled) {background:var(--soft)}
+.replica-preview button:disabled {opacity:.55;cursor:default}
+.replica-preview :is(button,.replica-preview-scroll):focus-visible {outline:2px solid var(--strong);outline-offset:-2px}
+.replica-preview-scroll {
+    display:flex;
+    min-height:0;
+    padding:12px;
+    overflow:auto;
+    overscroll-behavior:contain;
+    background:var(--soft);
+}
+.replica-regions {position:relative;flex:none;max-width:100%;margin:auto}
+.replica-regions img {display:block;max-width:100%;max-height:calc(var(--replica-preview-height) - 84px);width:auto;height:auto}
+.replica-preview.is-original :is(.replica-regions,.replica-regions img) {max-width:none;max-height:none}
+.replica-regions span {
+    position:absolute;
+    border:1px solid var(--strong);
+    box-shadow:0 0 0 1px rgb(255 255 255 / .7);
+    background:color-mix(in srgb,var(--strong) 12%,transparent);
+}
+.replica-preview-error {margin:auto;font-size:14px}
+@container (max-width:340px) {
+    .replica-rule {grid-template-columns:minmax(0,1fr) 32px}
+    .replica-rule label {grid-column:1}
+    .replica-rule button {grid-column:2;grid-row:1}
+}
 .replica-jobs ul {list-style:none;margin:0;padding:0}
 .replica-jobs li {display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
 .replica-jobs li:first-child {padding-top:0}

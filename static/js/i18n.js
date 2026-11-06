@@ -1,5 +1,5 @@
 (function(){
-  const VERSION = '2026.11.04.batch-settings.1';
+  const VERSION = '2026.11.05.settings-hardening.1';
     const scripts = [
         '/static/js/i18n-core.js',
         '/static/js/i18n/common.js',

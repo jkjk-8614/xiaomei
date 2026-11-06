@@ -25,6 +25,14 @@
 .recommendation-error { margin:0; color:#d14343; font-size:12px; overflow-wrap:anywhere; }
 .recommendation-error:empty { display:none; }
 .recommendation-footer { display:flex; justify-content:flex-end; gap:10px; }
+#webSearchDialog { margin:auto; padding:0; color:var(--text); }
+#webSearchDialog:not([open]) { display:none; }
+#webSearchDialog::backdrop { background:rgba(15,23,42,.45); }
+#webSearchDialog .recommendation-footer { flex-wrap:wrap; }
+.web-search-meta { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; color:var(--muted); font-size:12px; }
+.web-search-meta a { color:var(--text); text-decoration:underline; }
+#webSearchNotice { margin:0; font-size:12px; overflow-wrap:anywhere; }
+#webSearchNotice:empty { display:none; }
 #recommendationEditor .field-frame,
 #recommendationEditor .field-frame input,
 #recommendationEditor .field-frame select,

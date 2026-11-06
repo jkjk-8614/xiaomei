@@ -219,6 +219,17 @@ class ManagedRuntime:
         response.raise_for_status()
         return response.json()
 
+    def _server_args(self, python, core, paths):
+        args = [str(python), str(core), '--base-directory', str(self.root),
+                '--extra-model-paths-config', str(paths), '--listen', '127.0.0.1',
+                '--port', '8190', '--output-directory', str(self.output), '--disable-auto-launch']
+        if os.name == 'nt' and (self.root / 'custom_nodes/ComfyUI-DLSS5/nodes.py').is_file():
+            cli_args = core.parent / 'comfy/cli_args.py'
+            # DLSS5's depth model can abort during CUDA allocation with DynamicVRAM on Windows.
+            if cli_args.is_file() and '--disable-dynamic-vram' in cli_args.read_text(encoding='utf-8'):
+                args.append('--disable-dynamic-vram')
+        return args
+
     def start_existing(self):
         """Start the already-prepared isolated ComfyUI without reinstalling anything.
 
@@ -288,10 +299,7 @@ class ManagedRuntime:
             server_log.parent.mkdir(parents=True, exist_ok=True)
             with server_log.open('a', encoding='utf-8') as output:
                 self.process = subprocess.Popen(
-                    [str(python), str(core), '--base-directory', str(self.root),
-                     '--extra-model-paths-config', str(paths), '--listen', '127.0.0.1',
-                     '--port', '8190', '--output-directory', str(self.output),
-                     '--disable-auto-launch', *self._startup_node_args()],
+                    [*self._server_args(python, core, paths), *self._startup_node_args()],
                     stdout=output, stderr=subprocess.STDOUT, env=env,
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
 
@@ -692,9 +700,7 @@ class ManagedRuntime:
                 pass
             env = {**os.environ, 'PYTHONUTF8': '1', 'PYTHONIOENCODING': 'utf-8', 'HF_HUB_OFFLINE': '1', 'TRANSFORMERS_OFFLINE': '1', 'TORCH_HOME': str(self.root / 'torch')}
             with (self.root / 'server.log').open('a', encoding='utf-8') as output:
-                self.process = subprocess.Popen([str(python), str(core), '--base-directory', str(self.root),
-                    '--extra-model-paths-config', str(paths), '--listen', '127.0.0.1', '--port', '8190',
-                    '--output-directory', str(self.output), '--disable-auto-launch'],
+                self.process = subprocess.Popen(self._server_args(python, core, paths),
                     stdout=output, stderr=subprocess.STDOUT, env=env,
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
             for _ in range(180):
