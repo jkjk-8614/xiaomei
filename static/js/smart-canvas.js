@@ -9637,6 +9637,7 @@ function assetLibraries(){
     return Array.isArray(assetLibrary.libraries) && assetLibrary.libraries.length ? assetLibrary.libraries : [{id:'default', name:'默认资产库', categories:assetLibrary.categories || []}];
 }
 function localAssetFolderCategories(){
+    if(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive()) return XiaomeiShellKernel.folderRows(localAssetLibrary.tree, localAssetLibrary.items);
     const result = [];
     const walk = node => {
         if(!node) return;
@@ -10720,6 +10721,7 @@ function assetCategoryForMention(){
         || cats[0];
 }
 function assetMediaKind(item){
+    if(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive()) return XiaomeiShellKernel.mediaKind(item);
     if(!item) return 'image';
     if(item.kind === 'workflow' || item.type === 'workflow') return 'workflow';
     if(item.kind === 'video' || item.type === 'video') return 'video';
@@ -11170,7 +11172,7 @@ async function addUrlToAssetLibrary(url, name=''){
     if(assetLibraryIsLocal()) return addUrlToLocalAssetLibrary(url, name);
     const cat = activeAssetCategory();
     if(!cat){ toast(tr('smart.assetNoFolder')); return; }
-    const data = await fetch('/api/asset-library/items', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({library_id:activeAssetLibraryId, category_id:cat.id, url, name})}).then(async r => {
+    const data = await fetch('/api/asset-library/items', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive() ? XiaomeiShellKernel.assetBatch('save', {libraryId:activeAssetLibraryId, categoryId:cat.id, url, name}) : {library_id:activeAssetLibraryId, category_id:cat.id, url, name})}).then(async r => {
         if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || tr('smart.assetAddFail'));
         return r.json();
     });
@@ -11210,7 +11212,7 @@ async function addUrlItemsToLocalAssetLibrary(items=[]){
     const data = await fetch('/api/local-assets/import-urls', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({folder:localAssetFolderPath(), items:list.map(item => ({url:item.url, name:item.name || smartImageNameFromUrl(item.url)}))})
+        body:JSON.stringify(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive() ? XiaomeiShellKernel.assetBatch('import', {folder:localAssetFolderPath(), items:list.map(item => ({url:item.url, name:item.name || smartImageNameFromUrl(item.url)}))}) : {folder:localAssetFolderPath(), items:list.map(item => ({url:item.url, name:item.name || smartImageNameFromUrl(item.url)}))})
     }).then(async r => {
         if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || tr('smart.assetAddFail'));
         return r.json();

@@ -1,5 +1,6 @@
 /* Shared image-space filters, saved queries and manual classification editor. */
 function imageSpaceMatches(item, filters){
+    if(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive()) return XiaomeiShellKernel.matches(item, filters);
     const c = item.classification || {}, categories = c.categories || {}, tags = c.tags || [];
     const ext = String(item.url || item.name || '').split('?')[0].split('.').pop().toLowerCase();
     const kind = ['image','video','audio','text'].includes(item.kind) ? item.kind : (/^(mp4|webm|mov|m4v|avi|mkv|flv)$/.test(ext) ? 'video' : /^(mp3|wav|flac|ogg|m4a|aac)$/.test(ext) ? 'audio' : 'image');

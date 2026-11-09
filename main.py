@@ -226,6 +226,7 @@ LOCAL_SESSION_COOKIE = "xiaomei_session"
 LOCAL_SESSION_TOKEN = secrets.token_urlsafe(32)
 LOCAL_API_BOOTSTRAP_PATH = "/api/app-info"
 LOCAL_SESSION_HEADER = "x-xiaomei-session"
+import asset_kernel
 import dispatch_kernel
 
 app.add_middleware(
@@ -237,6 +238,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(dispatch_kernel.DispatchSwitchMiddleware)
+app.add_middleware(asset_kernel.AssetSwitchMiddleware)
 
 # --- WebSocket 状态管理器 ---
 COLLAB_MEMBER_MAX_NAME = 32
@@ -14041,6 +14043,11 @@ def output_path_for(filename, category="output"):
     return os.path.join(folder, filename)
 
 def storage_kind_dir(kind):
+    if asset_kernel.selected():
+        bucket = asset_kernel.storage_bucket(kind)
+        if bucket.get("error"):
+            raise HTTPException(status_code=int(bucket.get("status") or 404), detail=bucket["error"])
+        kind = bucket["bucket"]
     kind = str(kind or "").strip().lower()
     if kind == "upload":
         return os.path.abspath(OUTPUT_INPUT_DIR)
@@ -14066,6 +14073,19 @@ def storage_kind_roots(kind):
     return roots
 
 def storage_file_path(kind, rel):
+    if asset_kernel.selected():
+        bucket = asset_kernel.storage_bucket(kind)
+        if bucket.get("error"):
+            raise HTTPException(status_code=int(bucket.get("status") or 404), detail=bucket["error"])
+        checked = asset_kernel.relative_path(rel)
+        if checked.get("error") or not checked.get("rel"):
+            raise HTTPException(status_code=400, detail="非法文件路径")
+        for root in storage_kind_roots(bucket["bucket"]):
+            held = asset_kernel.contained(root, checked["rel"])
+            if held.get("error") or not os.path.exists(held.get("path") or ""):
+                continue
+            return held["path"]
+        return None
     rel_path = str(rel or "").replace("\\", "/").lstrip("/")
     rel_path = os.path.normpath(rel_path).replace("\\", "/")
     if not rel_path or rel_path == "." or rel_path == ".." or rel_path.startswith("../") or os.path.isabs(rel_path):
@@ -23658,6 +23678,8 @@ def default_asset_library():
     }
 
 def normalize_asset_library(lib):
+    if asset_kernel.selected():
+        return asset_kernel.normalize_catalog(lib, now_ms())
     if not isinstance(lib, dict):
         lib = default_asset_library()
     legacy_categories = lib.get("categories") if isinstance(lib.get("categories"), list) else None
@@ -23844,6 +23866,8 @@ def sort_asset_library_items(lib):
             items.sort(key=created_at_key, reverse=True)
 
 def asset_library_media_kind(path: str, content_type: str = "") -> str:
+    if asset_kernel.selected():
+        return asset_kernel.media_kind(path, content_type)
     ext = os.path.splitext(path or "")[1].lower()
     ct = (content_type or "").lower()
     if ext in {".json", ".zip"}:
@@ -23855,6 +23879,8 @@ def asset_library_media_kind(path: str, content_type: str = "") -> str:
     return "image"
 
 def asset_library_safe_extension(path: str, kind: str) -> str:
+    if asset_kernel.selected():
+        return asset_kernel.safe_extension(path, kind)
     ext = os.path.splitext(path or "")[1].lower()
     allowed = {
         "image": {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"},
@@ -26297,6 +26323,8 @@ def normalize_asset_classification(raw):
 
 
 def _normalize_asset_classification_fields(raw):
+    if asset_kernel.selected():
+        return asset_kernel.clean_labels(raw, now_ms(), ASSET_CLASSIFICATION_DIMENSION_NAMES)
     if not isinstance(raw, dict):
         raw = {}
     categories = raw.get("categories") if isinstance(raw.get("categories"), dict) else {}
@@ -27039,6 +27067,8 @@ def find_prompt_library(data, library_id=""):
     return next((item for item in libraries if item.get("id") == library_id), None) or (libraries[0] if libraries else None)
 
 def sanitize_asset_name(name, fallback="asset"):
+    if asset_kernel.selected():
+        return asset_kernel.display_name(name, fallback)
     name = re.sub(r'[\\/:*?"<>|]+', "_", str(name or fallback)).strip()
     return name[:120] or fallback
 
@@ -34655,6 +34685,11 @@ def _local_upload_display_name(filename):
     return m.group(1) if m else base
 
 def _local_upload_rel_path(value):
+    if asset_kernel.selected():
+        checked = asset_kernel.relative_path(value)
+        if checked.get("error"):
+            raise HTTPException(status_code=400, detail=checked["error"])
+        return checked["rel"]
     text = str(value or "").replace("\\", "/").strip().lstrip("/")
     if not text:
         return ""
@@ -34666,6 +34701,11 @@ def _local_upload_rel_path(value):
     return norm
 
 def _local_upload_abs(rel):
+    if asset_kernel.selected():
+        held = asset_kernel.contained(LOCAL_UPLOAD_DIR, rel)
+        if held.get("error"):
+            raise HTTPException(status_code=400, detail=held["error"])
+        return held["rel"], held["path"]
     rel_path = _local_upload_rel_path(rel)
     path = os.path.abspath(os.path.join(LOCAL_UPLOAD_DIR, rel_path))
     root = os.path.abspath(LOCAL_UPLOAD_DIR)
@@ -34688,6 +34728,11 @@ def _local_upload_safe_folder(path_value):
     return rel, path
 
 def _local_upload_safe_folder_name(name):
+    if asset_kernel.selected():
+        named = asset_kernel.folder_label(name)
+        if named.get("error"):
+            raise HTTPException(status_code=int(named.get("status") or 400), detail=named["error"])
+        return named["name"]
     cleaned = sanitize_asset_name(os.path.basename(str(name or "").strip()), "")
     cleaned = re.sub(r"[\\/]+", "_", cleaned).strip(" ._")
     if not cleaned:
@@ -34695,6 +34740,11 @@ def _local_upload_safe_folder_name(name):
     return cleaned[:60]
 
 def _local_upload_safe_file_stem(name):
+    if asset_kernel.selected():
+        named = asset_kernel.file_stem(name)
+        if named.get("error"):
+            raise HTTPException(status_code=int(named.get("status") or 400), detail=named["error"])
+        return named["name"]
     raw = os.path.splitext(os.path.basename(str(name or "").strip()))[0]
     cleaned = sanitize_asset_name(raw, "")
     cleaned = re.sub(r"[\\/]+", "_", cleaned).strip(" ._")
@@ -35003,9 +35053,12 @@ async def upload_local_assets(files: List[UploadFile] = File(...), folder: str =
         kind, ext = _local_upload_kind_ext(file.filename, file.content_type)
         if kind is None:
             continue
-        base = os.path.splitext(os.path.basename(file.filename or "file"))[0]
-        base = re.sub(r"[^0-9A-Za-z一-鿿._-]+", "_", base).strip("_") or "file"
-        base = base[:60]
+        if asset_kernel.selected():
+            base = asset_kernel.upload_stem(file.filename, "file")
+        else:
+            base = os.path.splitext(os.path.basename(file.filename or "file"))[0]
+            base = re.sub(r"[^0-9A-Za-z一-鿿._-]+", "_", base).strip("_") or "file"
+            base = base[:60]
         filename = f"up_{uuid.uuid4().hex[:12]}_{base}{ext}"
         rel_name = f"{folder_rel}/{filename}".lstrip("/")
         path = os.path.join(folder_abs, filename)
@@ -35105,11 +35158,13 @@ async def import_local_assets_from_urls(payload: LocalAssetUrlImportRequest):
                 else:
                     base = os.path.splitext(os.path.basename(urllib.parse.unquote(name_path)))[0]
                 base = base or ("web-video" if kind == "video" else "web-image")
-                base = re.sub(r"[^0-9A-Za-z一-鿿._-]+", "_", base).strip("_") or ("web-video" if kind == "video" else "web-image")
-                base = base[:60]
-                # 兜底：若 base 末尾已是同一扩展名，去掉一层再拼，杜绝重复后缀
-                if ext and base.lower().endswith(ext.lower()):
-                    base = base[:-len(ext)].rstrip(".") or ("web-video" if kind == "video" else "web-image")
+                if asset_kernel.selected():
+                    base = asset_kernel.upload_stem(base, "web-video" if kind == "video" else "web-image", ext, already_stem=True)
+                else:
+                    base = re.sub(r"[^0-9A-Za-z一-鿿._-]+", "_", base).strip("_") or ("web-video" if kind == "video" else "web-image")
+                    base = base[:60]
+                    if ext and base.lower().endswith(ext.lower()):
+                        base = base[:-len(ext)].rstrip(".") or ("web-video" if kind == "video" else "web-image")
                 filename = f"up_{uuid.uuid4().hex[:12]}_{base}{ext}"
                 rel_name = f"{folder_rel}/{filename}".lstrip("/")
                 path = os.path.join(folder_abs, filename)
@@ -35162,7 +35217,11 @@ async def reorder_local_asset_folders(payload: LocalAssetFolderOrderRequest, req
         if entry.is_dir() and not entry.name.startswith(".") and not entry.name.startswith("._")
     }
     paths = [_local_upload_safe_folder(path)[0] for path in payload.paths]
-    if len(paths) != len(actual) or set(paths) != actual:
+    if asset_kernel.selected():
+        ordered = asset_kernel.same_members(paths, actual)
+    else:
+        ordered = len(paths) == len(actual) and set(paths) == actual
+    if not ordered:
         raise HTTPException(status_code=409, detail="文件夹列表已变化，请刷新后重试")
     orders = _local_upload_folder_orders()
     orders[parent_rel] = [path.rsplit("/", 1)[-1] for path in paths]
@@ -48418,6 +48477,12 @@ async def delete_prompt_library_category(category_id: str):
 @app.post("/api/asset-library/libraries")
 async def create_asset_library(payload: AssetLibraryRequest):
     lib = load_asset_library()
+    if asset_kernel.selected():
+        library = asset_kernel.spawn_library(payload.name, f"lib_{uuid.uuid4().hex[:12]}", f"cat_{uuid.uuid4().hex[:12]}", f"wf_{uuid.uuid4().hex[:12]}")
+        lib.setdefault("libraries", []).append(library)
+        lib["active_library_id"] = library["id"]
+        save_asset_library(lib)
+        return {"library": lib, "asset_library": library}
     library = {"id": f"lib_{uuid.uuid4().hex[:12]}", "name": sanitize_asset_name(payload.name, "资产库"), "type": "asset", "categories": []}
     library["categories"].append({"id": f"cat_{uuid.uuid4().hex[:12]}", "name": "默认分组", "type": "image", "items": []})
     library["categories"].append({"id": f"wf_{uuid.uuid4().hex[:12]}", "name": "工作流", "type": "workflow", "items": []})
@@ -48429,6 +48494,12 @@ async def create_asset_library(payload: AssetLibraryRequest):
 @app.patch("/api/asset-library/libraries/{library_id}")
 async def rename_asset_library(library_id: str, payload: AssetLibraryRenameRequest):
     lib = load_asset_library()
+    if asset_kernel.selected():
+        outcome = asset_kernel.rename_library(lib, library_id, payload.name)
+        if outcome.get("error"):
+            raise HTTPException(status_code=int(outcome.get("status") or 400), detail=outcome["error"])
+        save_asset_library(lib)
+        return {"library": lib, "asset_library": outcome["library"]}
     library = find_asset_library(lib, library_id)
     if not library or library.get("id") != library_id:
         raise HTTPException(status_code=404, detail="资产库不存在")
@@ -48439,6 +48510,12 @@ async def rename_asset_library(library_id: str, payload: AssetLibraryRenameReque
 @app.delete("/api/asset-library/libraries/{library_id}")
 async def delete_asset_library(library_id: str):
     lib = load_asset_library()
+    if asset_kernel.selected():
+        outcome = asset_kernel.drop_library(lib, library_id)
+        if outcome.get("error"):
+            raise HTTPException(status_code=int(outcome.get("status") or 400), detail=outcome["error"])
+        save_asset_library(lib)
+        return {"library": lib}
     libraries = lib.get("libraries") or []
     if len(libraries) <= 1:
         raise HTTPException(status_code=400, detail="至少保留一个资产库")
@@ -48453,6 +48530,23 @@ async def delete_asset_library(library_id: str):
 @app.post("/api/asset-library/categories")
 async def create_asset_library_category(payload: AssetLibraryCategoryRequest):
     lib = load_asset_library()
+    if asset_kernel.selected():
+        library = asset_kernel.pick_library(lib, payload.library_id)
+        if not library:
+            raise HTTPException(status_code=404, detail="资产库不存在")
+        cat_type = "workflow" if str(payload.type or "").lower() == "workflow" else "image"
+        folder = ""
+        if cat_type == "image":
+            folder = unique_asset_category_dir(library, payload.name)
+            try:
+                os.makedirs(os.path.join(ASSET_LIBRARY_DIR, folder), exist_ok=True)
+            except Exception as exc:
+                print(f"创建分组文件夹失败: {exc}")
+        category = asset_kernel.spawn_category(payload.name, f"cat_{uuid.uuid4().hex[:12]}", cat_type, folder)
+        library.setdefault("categories", []).append(category)
+        lib["active_library_id"] = library.get("id") or lib.get("active_library_id")
+        save_asset_library(lib)
+        return {"library": lib, "category": category}
     library = find_asset_library(lib, payload.library_id)
     if not library:
         raise HTTPException(status_code=404, detail="资产库不存在")
@@ -48473,6 +48567,12 @@ async def create_asset_library_category(payload: AssetLibraryCategoryRequest):
 @app.patch("/api/asset-library/categories/{category_id}")
 async def rename_asset_library_category(category_id: str, payload: AssetLibraryRenameRequest):
     lib = load_asset_library()
+    if asset_kernel.selected():
+        outcome = asset_kernel.rename_category(lib, category_id, payload.library_id, payload.name)
+        if outcome.get("error"):
+            raise HTTPException(status_code=int(outcome.get("status") or 400), detail=outcome["error"])
+        save_asset_library(lib)
+        return {"library": lib, "category": outcome["category"]}
     _, cat = find_asset_category_with_library(lib, category_id, payload.library_id)
     if not cat:
         raise HTTPException(status_code=404, detail="分类不存在")
@@ -48483,6 +48583,36 @@ async def rename_asset_library_category(category_id: str, payload: AssetLibraryR
 @app.delete("/api/asset-library/categories/{category_id}")
 async def delete_asset_library_category(category_id: str, library_id: str = ""):
     lib = load_asset_library()
+    if asset_kernel.selected():
+        plan = asset_kernel.removal_plan(lib, category_id, library_id)
+        if plan.get("error"):
+            raise HTTPException(status_code=int(plan.get("status") or 400), detail=plan["error"])
+        library, cat, items = plan["library"], plan["category"], plan["items"]
+        for item in items:
+            record = _asset_library_item_registry_record(item)
+            asset_registry_require_unreferenced(str(record.get("id") or ""))
+        trashed_asset_ids = []
+        try:
+            for item in items:
+                trashed_asset_ids.append(_trash_asset_library_item(library, cat, item, reason="asset_category_delete"))
+            folder = str(cat.get("dir") or "").strip("/").strip()
+            if folder:
+                try:
+                    target = os.path.join(ASSET_LIBRARY_DIR, folder)
+                    if os.path.isdir(target) and os.path.abspath(target).startswith(os.path.abspath(ASSET_LIBRARY_DIR) + os.sep):
+                        os.rmdir(target)
+                except Exception as exc:
+                    print(f"保留非空素材分组目录: {exc}")
+            asset_kernel.drop_category(lib, library, category_id)
+            save_asset_library(lib)
+        except Exception:
+            for asset_id in reversed(trashed_asset_ids):
+                try:
+                    _asset_registry_restore_media(asset_id)
+                except Exception:
+                    pass
+            raise
+        return {"library": lib, "trashed_asset_ids": trashed_asset_ids}
     library, cat = find_asset_category_with_library(lib, category_id, library_id)
     if not cat:
         raise HTTPException(status_code=404, detail="分类不存在")
@@ -48731,6 +48861,12 @@ async def caption_image_with_provider(abs_path, prompt, provider_id, model, ms_m
 @app.patch("/api/asset-library/items/{item_id}")
 async def rename_asset_library_item(item_id: str, payload: AssetLibraryRenameRequest):
     lib = load_asset_library()
+    if asset_kernel.selected():
+        outcome = asset_kernel.rename_item(lib, item_id, payload.name)
+        if outcome.get("error"):
+            raise HTTPException(status_code=int(outcome.get("status") or 400), detail=outcome["error"])
+        save_asset_library(lib)
+        return {"library": lib, "item": outcome["item"]}
     for library in lib.get("libraries", []):
         for cat in library.get("categories", []):
             for item in cat.get("items", []):
@@ -48743,6 +48879,12 @@ async def rename_asset_library_item(item_id: str, payload: AssetLibraryRenameReq
 @app.patch("/api/asset-library/items/{item_id}/favorite")
 async def set_asset_library_item_favorite(item_id: str, payload: FavoriteFlagRequest):
     lib = load_asset_library()
+    if asset_kernel.selected():
+        outcome = asset_kernel.mark_favorite(lib, item_id, payload.favorite)
+        if outcome.get("error"):
+            raise HTTPException(status_code=int(outcome.get("status") or 400), detail=outcome["error"])
+        save_asset_library(lib)
+        return {"library": lib, "item": outcome["item"]}
     for library in lib.get("libraries", []):
         for cat in library.get("categories", []):
             for item in cat.get("items", []):
@@ -49408,6 +49550,27 @@ async def check_asset_library_avatar(item_id: str, payload: AssetAvatarRegisterR
 @app.delete("/api/asset-library/items/{item_id}")
 async def delete_asset_library_item(item_id: str):
     lib = load_asset_library()
+    if asset_kernel.selected():
+        matches = asset_kernel.locate_items(lib, [item_id])
+        if not matches:
+            raise HTTPException(status_code=404, detail="资产不存在")
+        for _library, _cat, item in matches:
+            record = _asset_library_item_registry_record(item)
+            asset_registry_require_unreferenced(str(record.get("id") or ""))
+        trashed_asset_ids = []
+        try:
+            for library, cat, item in matches:
+                trashed_asset_ids.append(_trash_asset_library_item(library, cat, item, reason="asset_library_delete"))
+            asset_kernel.detach_objects(lib, [item for _library, _cat, item in matches])
+            save_asset_library(lib)
+        except Exception:
+            for asset_id in reversed(trashed_asset_ids):
+                try:
+                    _asset_registry_restore_media(asset_id)
+                except Exception:
+                    pass
+            raise
+        return {"library": lib, "trashed_asset_ids": trashed_asset_ids}
     matches = []
     for library in lib.get("libraries", []):
         for cat in library.get("categories", []):
@@ -49444,6 +49607,53 @@ async def batch_delete_asset_library_items(payload: AssetLibraryBatchDeleteReque
     if empty_category_id and not payload.library_id:
         raise HTTPException(status_code=400, detail="请指定要移除空分组的资产库")
     lib = load_asset_library()
+    if asset_kernel.selected():
+        matches = asset_kernel.locate_items(lib, ids, payload.library_id, empty_category_id)
+        records = []
+        preserved_asset_ids = []
+        reference_scan_cache = {}
+        for _library, _cat, item in matches:
+            record = _asset_library_item_registry_record(item)
+            asset_id = str(record.get("id") or "")
+            records.append((item, asset_id))
+            if payload.preserve_referenced and asset_registry_reference_summary(asset_id, reference_scan_cache)["total"]:
+                preserved_asset_ids.append(asset_id)
+            else:
+                asset_registry_require_unreferenced(asset_id, reference_scan_cache)
+        trashed_asset_ids = []
+        removed_category_id = ""
+        try:
+            preserved = set(preserved_asset_ids)
+            for library, cat, item in matches:
+                asset_id = next((candidate_id for candidate_item, candidate_id in records if candidate_item is item), "")
+                if asset_id in preserved:
+                    continue
+                try:
+                    trashed_asset_ids.append(_trash_asset_library_item(
+                        library, cat, item, reason="asset_library_batch_delete", reference_scan_cache=reference_scan_cache,
+                    ))
+                except HTTPException as exc:
+                    if not payload.preserve_referenced or exc.status_code != 409:
+                        raise
+                    preserved_asset_ids.append(asset_id)
+                    preserved.add(asset_id)
+            asset_kernel.detach_objects(lib, [item for _library, _cat, item in matches])
+            removed_category_id = asset_kernel.drop_empty_image_group(lib, payload.library_id, empty_category_id)
+            save_asset_library(lib)
+        except Exception:
+            for asset_id in reversed(trashed_asset_ids):
+                try:
+                    _asset_registry_restore_media(asset_id)
+                except Exception:
+                    pass
+            raise
+        return {
+            "library": lib,
+            "removed": len(matches),
+            "trashed_asset_ids": trashed_asset_ids,
+            "preserved_referenced": len(preserved_asset_ids),
+            "removed_category_id": removed_category_id,
+        }
     matches = []
     for library in lib.get("libraries", []):
         if payload.library_id and library.get("id") != payload.library_id:
@@ -49520,6 +49730,15 @@ async def batch_delete_asset_library_items(payload: AssetLibraryBatchDeleteReque
 @app.post("/api/asset-library/items/move")
 async def batch_move_asset_library_items(payload: AssetLibraryBatchMoveRequest):
     ids = {str(item) for item in (payload.ids or []) if str(item)}
+    if asset_kernel.selected():
+        if not ids:
+            raise HTTPException(status_code=400, detail="没有选择资产")
+        lib = load_asset_library()
+        outcome = asset_kernel.move_items(lib, ids, payload.library_id, payload.target_library_id, payload.target_category_id)
+        if outcome.get("error"):
+            raise HTTPException(status_code=int(outcome.get("status") or 400), detail=outcome["error"])
+        save_asset_library(lib)
+        return {"library": lib, "moved": outcome["moved"]}
     if not ids:
         raise HTTPException(status_code=400, detail="没有选择资产")
     lib = load_asset_library()
@@ -49569,12 +49788,18 @@ async def batch_crop_asset_library_items(payload: AssetLibraryBatchCropRequest):
         with Image.open(src) as img:
             img = img.convert("RGBA")
             w, h = img.size
-            side = min(w, h)
-            if side <= 0:
+            if asset_kernel.selected():
+                box = asset_kernel.center_box(w, h)
+            else:
+                side = min(w, h)
+                if side <= 0:
+                    return None
+                left = max(0, (w - side) // 2)
+                top = max(0, (h - side) // 2)
+                box = (left, top, left + side, top + side)
+            if not box:
                 return None
-            left = max(0, (w - side) // 2)
-            top = max(0, (h - side) // 2)
-            cropped = img.crop((left, top, left + side, top + side))
+            cropped = img.crop(box)
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
             tmp_path = tmp.name
             tmp.close()
