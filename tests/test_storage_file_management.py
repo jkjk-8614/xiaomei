@@ -15,6 +15,7 @@ from typing import Any, Dict, List
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.testclient import TestClient
 
+import asset_kernel
 from image_space import replace_ai
 
 
@@ -80,6 +81,7 @@ class StorageFileManagementTests(unittest.TestCase):
 
         namespace = {
             "app": app, "os": os, "shutil": shutil, "uuid": uuid, "urllib": urllib,
+            "asset_kernel": asset_kernel,
             "json": json, "asyncio": asyncio, "DATA_DIR": str(root),
             "Any": Any, "Dict": Dict, "List": List, "Request": Request,
             "File": File, "Form": Form, "UploadFile": UploadFile,

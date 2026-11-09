@@ -317,78 +317,45 @@ function smartCascadePathForCtx(ctx=null){
 }
 function capturePendingUndo(){ pendingUndoSnapshot = snapshotForUndo(); }
 function commitPendingUndo(){
-    if(window.XiaomeiHistoryKernel?.isActive()){
-        if(!pendingUndoSnapshot) return;
-        XiaomeiHistoryKernel.push(undoStack, redoStack, pendingUndoSnapshot, UNDO_LIMIT, true);
-        pendingUndoSnapshot = null;
-        return;
-    }
-    if(pendingUndoSnapshot){
-        redoStack.length = 0;
-        undoStack.push(pendingUndoSnapshot);
-        if(undoStack.length > UNDO_LIMIT) undoStack.shift();
-        pendingUndoSnapshot = null;
-    }
+    if(!pendingUndoSnapshot) return;
+    XiaomeiHistoryKernel.push(undoStack, redoStack, pendingUndoSnapshot, UNDO_LIMIT, true);
+    pendingUndoSnapshot = null;
+    return;
+
 }
 function discardPendingUndo(){ pendingUndoSnapshot = null; }
 function snapshotForUndo(){
-    if(window.XiaomeiHistoryKernel?.isActive()){
-        return {
-            nodes:XiaomeiHistoryKernel.cloneData(nodes),
-            connections:XiaomeiHistoryKernel.cloneData(canvas?.connections || []),
-            selectedId,
-            selectedIds:selectedIds.slice(),
-            selectedImage:{...selectedImage},
-            composerReferences:window.CanvasAgentReferenceBridge?.snapshot()
-        };
-    }
     return {
-        nodes: JSON.parse(JSON.stringify(nodes)),
-        connections: JSON.parse(JSON.stringify(canvas?.connections || [])),
+        nodes:XiaomeiHistoryKernel.cloneData(nodes),
+        connections:XiaomeiHistoryKernel.cloneData(canvas?.connections || []),
         selectedId,
-        selectedIds: selectedIds.slice(),
-        selectedImage: {...selectedImage},
+        selectedIds:selectedIds.slice(),
+        selectedImage:{...selectedImage},
         composerReferences:window.CanvasAgentReferenceBridge?.snapshot()
     };
+
 }
 function pushUndo(){
-    if(window.XiaomeiHistoryKernel?.isActive()){
-        if(undoSuppressed || !canvas) return;
-        XiaomeiHistoryKernel.push(undoStack, redoStack, snapshotForUndo(), UNDO_LIMIT, true);
-        return;
-    }
-    if(undoSuppressed) return;
-    if(!canvas) return;
-    redoStack.length = 0;
-    undoStack.push(snapshotForUndo());
-    if(undoStack.length > UNDO_LIMIT) undoStack.shift();
+    if(undoSuppressed || !canvas) return;
+    XiaomeiHistoryKernel.push(undoStack, redoStack, snapshotForUndo(), UNDO_LIMIT, true);
+    return;
+
 }
 function performUndo(){
-    if(window.XiaomeiHistoryKernel?.isActive()){
-        const snap = XiaomeiHistoryKernel.undo(undoStack, redoStack, snapshotForUndo());
-        if(!snap){ toast(tr('smart.toastNoUndo')); return; }
-        restoreSmartUndoSnapshot(snap);
-        toast(tr('smart.toastUndone'));
-        return;
-    }
-    if(!undoStack.length){ toast(tr('smart.toastNoUndo')); return; }
-    redoStack.push(snapshotForUndo());
-    const snap = undoStack.pop();
+    const snap = XiaomeiHistoryKernel.undo(undoStack, redoStack, snapshotForUndo());
+    if(!snap){ toast(tr('smart.toastNoUndo')); return; }
     restoreSmartUndoSnapshot(snap);
     toast(tr('smart.toastUndone'));
+    return;
+
 }
 function performRedo(){
-    if(window.XiaomeiHistoryKernel?.isActive()){
-        const snap = XiaomeiHistoryKernel.redo(undoStack, redoStack, snapshotForUndo());
-        if(!snap){ toast('没有可重做的操作'); return; }
-        restoreSmartUndoSnapshot(snap);
-        toast('已重做');
-        return;
-    }
-    if(!redoStack.length){ toast('没有可重做的操作'); return; }
-    undoStack.push(snapshotForUndo());
-    restoreSmartUndoSnapshot(redoStack.pop());
+    const snap = XiaomeiHistoryKernel.redo(undoStack, redoStack, snapshotForUndo());
+    if(!snap){ toast('没有可重做的操作'); return; }
+    restoreSmartUndoSnapshot(snap);
     toast('已重做');
+    return;
+
 }
 function restoreSmartUndoSnapshot(snap){
     undoSuppressed = true;
@@ -2795,39 +2762,23 @@ function safeScale(value){
     return Number.isFinite(n) && n > 0 ? n : 1;
 }
 function xmNodeOriginStyle(node){
-    if(window.XiaomeiViewportKernel?.isActive()) return XiaomeiViewportKernel.nodeOriginStyle(node);
-    return `left:${node.x || 0}px;top:${node.y || 0}px`;
+    return XiaomeiViewportKernel.nodeOriginStyle(node);
 }
 function setCanvasZoom(nextScale, {save=false} = {}){
     if(!shell) return;
-    if(window.XiaomeiViewportKernel?.isActive()){
-        const min = Number(canvasZoomRange?.min) || 0.06;
-        const max = Number(canvasZoomRange?.max) || 2;
-        const step = Number(canvasZoomRange?.step) || 0.05;
-        const scale = XiaomeiViewportKernel.steppedZoom(nextScale, min, max, step);
-        if(scale == null) return;
-        if(Math.abs(scale - XiaomeiViewportKernel.positiveScale(viewport.scale, 1)) < 0.0001) return;
-        cancelViewportWheelAnimation();
-        XiaomeiViewportKernel.zoomAboutCenter(viewport, {width:shell.clientWidth, height:shell.clientHeight}, scale);
-        applyViewport();
-        scheduleCanvasViewportRender();
-        if(save) scheduleSave();
-        return;
-    }
     const min = Number(canvasZoomRange?.min) || 0.06;
     const max = Number(canvasZoomRange?.max) || 2;
     const step = Number(canvasZoomRange?.step) || 0.05;
-    const rounded = Math.round(Number(nextScale) / step) * step;
-    const scale = Math.min(max, Math.max(min, Number(rounded.toFixed(2))));
-    if(!Number.isFinite(scale) || Math.abs(scale - safeScale(viewport.scale)) < 0.0001) return;
+    const scale = XiaomeiViewportKernel.steppedZoom(nextScale, min, max, step);
+    if(scale == null) return;
+    if(Math.abs(scale - XiaomeiViewportKernel.positiveScale(viewport.scale, 1)) < 0.0001) return;
     cancelViewportWheelAnimation();
-    const center = viewportCenter();
-    viewport.scale = scale;
-    viewport.x = shell.clientWidth / 2 - center.x * scale;
-    viewport.y = shell.clientHeight / 2 - center.y * scale;
+    XiaomeiViewportKernel.zoomAboutCenter(viewport, {width:shell.clientWidth, height:shell.clientHeight}, scale);
     applyViewport();
     scheduleCanvasViewportRender();
     if(save) scheduleSave();
+    return;
+
 }
 function adjustCanvasZoom(direction){
     const step = Number(canvasZoomRange?.step) || 0.05;
@@ -3517,17 +3468,10 @@ function smartGroupLayoutSize(node){
 function smartGroupMembers(node){
     if(!isSmartGroupNode(node)) return [];
     const ids = Array.isArray(node.items) ? node.items : [];
-    if(window.XiaomeiNodeKernel?.isActive()){
-        return XiaomeiNodeKernel.directMembers(node.id, ids, id => nodes.find(n => n.id === id), member => isSmartGroupNode(member))
-            .map(id => nodes.find(n => n.id === id))
-            .filter(Boolean);
-    }
-    const seen = new Set([node.id]);
-    return ids.map(id => nodes.find(n => n.id === id)).filter(member => {
-        if(!member || seen.has(member.id) || isSmartGroupNode(member)) return false;
-        seen.add(member.id);
-        return true;
-    });
+    return XiaomeiNodeKernel.directMembers(node.id, ids, id => nodes.find(n => n.id === id), member => isSmartGroupNode(member))
+        .map(id => nodes.find(n => n.id === id))
+        .filter(Boolean);
+
 }
 function smartGroupCompactMembers(node){
     return smartGroupMembers(node).filter(member => member?.type === 'smart-prompt' || member?.type === 'smart-loop');
@@ -3587,15 +3531,7 @@ function smartConnectionIdentity(connection, fromId=connection?.from, toId=conne
     ].join('\u0000');
 }
 function uniqueSmartConnections(connections=[]){
-    if(window.XiaomeiNodeKernel?.isActive()) return XiaomeiNodeKernel.uniqueEdges(connections, smartConnectionIdentity);
-    const seen = new Set();
-    return (connections || []).filter(connection => {
-        if(!connection?.from || !connection?.to || connection.from === connection.to) return false;
-        const key = smartConnectionIdentity(connection);
-        if(seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
+    return XiaomeiNodeKernel.uniqueEdges(connections, smartConnectionIdentity);
 }
 const SMART_CONNECTION_TOMBSTONE_KEY_PREFIX = 'xiaomei_canvas_deleted_connections_v1:';
 function smartConnectionTombstoneStorageKey(){
@@ -5035,14 +4971,10 @@ function smartArrangeAtomicIds(ids){
 function translateSmartNodeWithMembers(node, dx, dy, seen=new Set()){
     if(!node || seen.has(node.id)) return;
     seen.add(node.id);
-    if(window.XiaomeiNodeKernel?.isActive()){
-        const next = XiaomeiNodeKernel.shiftPoint(node.x, node.y, dx, dy, true);
-        node.x = next.x;
-        node.y = next.y;
-    } else {
-    node.x = Math.round((Number(node.x) || 0) + dx);
-    node.y = Math.round((Number(node.y) || 0) + dy);
-    }
+    const next = XiaomeiNodeKernel.shiftPoint(node.x, node.y, dx, dy, true);
+    node.x = next.x;
+    node.y = next.y;
+
     if(isSmartGroupNode(node)){
         smartGroupMembers(node).forEach(member => translateSmartNodeWithMembers(member, dx, dy, seen));
     }
@@ -5053,69 +4985,22 @@ function moveSmartNodeAtom(node, x, y){
     translateSmartNodeWithMembers(node, dx, dy);
 }
 function arrangeSmartIdsByConnections(ids){
-    if(window.XiaomeiNodeKernel?.isActive()){
-        const idSet = new Set(smartArrangeAtomicIds(ids));
-        const selectedNodes = [...idSet].map(id => nodes.find(n => n.id === id)).filter(Boolean);
-        if(selectedNodes.length < 2) return false;
-        const items = selectedNodes.map(node => {
-            const visual = smartBatchVisualRect(node);
-            const rect = nodeRect(node);
-            return {id:node.id, x:visual.x, y:visual.y, w:rect.width, h:rect.height, sortY:rect.y};
-        });
-        const placed = XiaomeiNodeKernel.columnLayout(items, canvas?.connections || [], {minRow:110, rowGap:56, minCol:180, colGap:180});
-        if(!placed) return false;
-        placed.forEach(spot => {
-            const node = nodes.find(n => n.id === spot.id);
-            if(node) moveSmartNodeAtom(node, spot.x, spot.y);
-        });
-        return true;
-    }
     const idSet = new Set(smartArrangeAtomicIds(ids));
     const selectedNodes = [...idSet].map(id => nodes.find(n => n.id === id)).filter(Boolean);
     if(selectedNodes.length < 2) return false;
-    const rects = selectedNodes.map(node => ({node, rect:smartBatchVisualRect(node)}));
-    const startX = Math.min(...rects.map(item => item.rect.x));
-    const startY = Math.min(...rects.map(item => item.rect.y));
-    const internal = (canvas?.connections || []).filter(c => idSet.has(c.from) && idSet.has(c.to));
-    const depth = new Map(selectedNodes.map(node => [node.id, 0]));
-    if(internal.length){
-        const indegree = new Map(selectedNodes.map(node => [node.id, 0]));
-        internal.forEach(c => indegree.set(c.to, (indegree.get(c.to) || 0) + 1));
-        const roots = [...indegree.entries()].filter(([, n]) => n === 0).map(([id]) => id);
-        const queue = roots.length ? roots.slice() : [selectedNodes[0].id];
-        const seen = new Set(queue);
-        while(queue.length){
-            const id = queue.shift();
-            internal.filter(c => c.from === id).forEach(c => {
-                depth.set(c.to, Math.max(depth.get(c.to) || 0, (depth.get(id) || 0) + 1));
-                if(!seen.has(c.to)){
-                    seen.add(c.to);
-                    queue.push(c.to);
-                }
-            });
-        }
-    }
-    const groups = new Map();
-    selectedNodes.forEach(node => {
-        const d = depth.get(node.id) || 0;
-        if(!groups.has(d)) groups.set(d, []);
-        groups.get(d).push(node);
+    const items = selectedNodes.map(node => {
+        const visual = smartBatchVisualRect(node);
+        const rect = nodeRect(node);
+        return {id:node.id, x:visual.x, y:visual.y, w:rect.width, h:rect.height, sortY:rect.y};
     });
-    const sortedDepths = [...groups.keys()].sort((a, b) => a - b);
-    let x = startX;
-    sortedDepths.forEach(d => {
-        const col = groups.get(d).slice().sort((a, b) => nodeRect(a).y - nodeRect(b).y || String(a.id).localeCompare(String(b.id)));
-        let y = startY;
-        let maxW = 0;
-        col.forEach(node => {
-            const rect = nodeRect(node);
-            moveSmartNodeAtom(node, x, y);
-            y += Math.max(110, rect.height) + 56;
-            maxW = Math.max(maxW, Math.max(180, rect.width));
-        });
-        x += maxW + 180;
+    const placed = XiaomeiNodeKernel.columnLayout(items, canvas?.connections || [], {minRow:110, rowGap:56, minCol:180, colGap:180});
+    if(!placed) return false;
+    placed.forEach(spot => {
+        const node = nodes.find(n => n.id === spot.id);
+        if(node) moveSmartNodeAtom(node, spot.x, spot.y);
     });
     return true;
+
 }
 function arrangeSelectedSmartNodes(){
     if(!canvas) return;
@@ -5232,8 +5117,7 @@ function applyViewport(options={}){
     // 保持节点布局尺寸不变，缩放和平移共用一个矩阵，避免逐帧布局取整。
     invalidateClientToWorldMapper();
     const scale = safeScale(viewport.scale);
-    if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.paintWorldLayer(world, viewport, 'translate');
-    else world.style.transform = `translate(${viewport.x}px, ${viewport.y}px) scale(${scale})`;
+    XiaomeiViewportKernel.paintWorldLayer(world, viewport, 'translate');
     syncCanvasToolbarScale(scale);
     syncSmartNodeSettingsPanel();
     if(canvasZoomRange && document.activeElement !== canvasZoomRange) canvasZoomRange.value = String(Math.round(scale * 100) / 100);
@@ -5394,34 +5278,13 @@ function scheduleViewportApply(save=false){
     });
 }
 function queueViewportWheel(event){
-    if(window.XiaomeiViewportKernel?.isActive()){
-        const rect = shell.getBoundingClientRect();
-        const step = XiaomeiViewportKernel.smartWheelStep(viewportWheelTarget || viewport, {left:rect.left, top:rect.top}, event.clientX, event.clientY, event.deltaY, event.deltaMode, shell.clientHeight);
-        if(!step) return;
-        viewportWheelTarget = step;
-        scheduleViewportApply(true);
-        return;
-    }
-    const mode = Number(event?.deltaMode || 0);
-    const deltaY = Number(event?.deltaY || 0) * (mode === 1 ? 16 : mode === 2 ? shell.clientHeight : 1);
-    if(!Number.isFinite(deltaY) || deltaY === 0) return;
     const rect = shell.getBoundingClientRect();
-    const sx = event.clientX - rect.left;
-    const sy = event.clientY - rect.top;
-    if(!Number.isFinite(sx) || !Number.isFinite(sy)) return;
-    const base = viewportWheelTarget || viewport;
-    const before = {
-        x:(sx - base.x) / base.scale,
-        y:(sy - base.y) / base.scale
-    };
-    const factor = 1 + Math.max(-0.15, Math.min(0.15, -deltaY * 0.002));
-    const scale = safeScale(base.scale * factor);
-    viewportWheelTarget = {
-        scale,
-        x:sx - before.x * scale,
-        y:sy - before.y * scale
-    };
+    const step = XiaomeiViewportKernel.smartWheelStep(viewportWheelTarget || viewport, {left:rect.left, top:rect.top}, event.clientX, event.clientY, event.deltaY, event.deltaMode, shell.clientHeight);
+    if(!step) return;
+    viewportWheelTarget = step;
     scheduleViewportApply(true);
+    return;
+
 }
 function beginViewportInteraction(){
     if(!viewportInteractionActive){
@@ -5453,7 +5316,7 @@ function beginViewportInteraction(){
     viewportInteractionEndTimer = window.setTimeout(finishViewportInteraction, VIEWPORT_INTERACTION_IDLE_MS);
 }
 function invalidateClientToWorldMapper(){
-    if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.invalidateMapper();
+    XiaomeiViewportKernel.invalidateMapper();
     clientToWorldMapperCache = null;
     if(clientToWorldMapperCacheRaf){
         cancelAnimationFrame(clientToWorldMapperCacheRaf);
@@ -5524,17 +5387,15 @@ function createClientToWorldMapper(){
     return cacheClientToWorldMapper(mapper);
 }
 function clientToWorldPoint(clientX, clientY){
-    if(window.XiaomeiViewportKernel?.isActive()){
-        return XiaomeiViewportKernel.smartPointerToWorld({
-            svg:world.querySelector('svg.connection-layer'),
-            world,
-            shell,
-            camera:viewport,
-            clientX,
-            clientY
-        });
-    }
-    return createClientToWorldMapper()(clientX, clientY);
+    return XiaomeiViewportKernel.smartPointerToWorld({
+        svg:world.querySelector('svg.connection-layer'),
+        world,
+        shell,
+        camera:viewport,
+        clientX,
+        clientY
+    });
+
 }
 function nodePortWorldPoint(nodeOrId, port='out', clientToWorld=null, inputSlot=''){
     const node = typeof nodeOrId === 'string' ? nodes.find(item => item.id === nodeOrId) : nodeOrId;
@@ -5615,183 +5476,75 @@ function viewportCenter(){
     };
 }
 function renderMinimap(){
-    if(window.XiaomeiViewportKernel?.isActive()){
-        if(!minimapContent || !minimapViewport) return;
-        smartArrangeBtn?.classList.toggle('visible', selectedNodeIds().length > 0);
-        const minimapNodes = nodes.filter(n => n.id !== SMART_LOG_PREVIEW_NODE_ID && !smartBatchIsHidden(n));
-        const painted = XiaomeiViewportKernel.paintSmartMinimap({
-            content:minimapContent,
-            viewportEl:minimapViewport,
-            mapWidth:minimapContent.clientWidth || 170,
-            mapHeight:minimapContent.clientHeight || 108,
-            shellWidth:shell.clientWidth,
-            shellHeight:shell.clientHeight,
-            camera:viewport,
-            boxes:minimapNodes.map(node => {
-                const rect = smartBatchVisualRect(node);
-                return {x:rect.x, y:rect.y, w:rect.width, h:rect.height};
-            })
-        });
-        smartMinimapState = painted.state;
-        smartMinimapNodeSignatures = new Map(minimapNodes.map(node => [String(node.id), smartMinimapNodeSignature(node)]));
-        smartMinimapNodeOrder = minimapNodes.map(node => String(node.id));
-        smartMinimapLayoutDirty = false;
-        return;
-    }
     if(!minimapContent || !minimapViewport) return;
     smartArrangeBtn?.classList.toggle('visible', selectedNodeIds().length > 0);
-    const width = minimapContent.clientWidth || 170;
-    const height = minimapContent.clientHeight || 108;
-    const shellWidth = shell.clientWidth;
-    const shellHeight = shell.clientHeight;
-    const viewW = shellWidth / viewport.scale;
-    const viewH = shellHeight / viewport.scale;
-    const viewX = -viewport.x / viewport.scale;
-    const viewY = -viewport.y / viewport.scale;
-    // 完整渲染可能发生在首次初始化，此时 smartMinimapState 仍为 null；
-    // 结构变化后也必须根据当前节点重新测量，不能复用旧的小地图坐标。
     const minimapNodes = nodes.filter(n => n.id !== SMART_LOG_PREVIEW_NODE_ID && !smartBatchIsHidden(n));
-    const nodeRects = minimapNodes.map(smartBatchVisualRect);
-    const rects = [...nodeRects, {x:viewX, y:viewY, width:viewW, height:viewH}];
-    const minX = Math.min(...rects.map(r => r.x), -200);
-    const minY = Math.min(...rects.map(r => r.y), -200);
-    const maxX = Math.max(...rects.map(r => r.x + r.width), viewX + viewW + 200);
-    const maxY = Math.max(...rects.map(r => r.y + r.height), viewY + viewH + 200);
-    const scale = Math.min(width / Math.max(1, maxX - minX), height / Math.max(1, maxY - minY));
-    const offsetX = (width - (maxX - minX) * scale) / 2;
-    const offsetY = (height - (maxY - minY) * scale) / 2;
-    smartMinimapState = {minX, minY, scale, offsetX, offsetY, width, height, shellWidth, shellHeight, nodeRects};
+    const painted = XiaomeiViewportKernel.paintSmartMinimap({
+        content:minimapContent,
+        viewportEl:minimapViewport,
+        mapWidth:minimapContent.clientWidth || 170,
+        mapHeight:minimapContent.clientHeight || 108,
+        shellWidth:shell.clientWidth,
+        shellHeight:shell.clientHeight,
+        camera:viewport,
+        boxes:minimapNodes.map(node => {
+            const rect = smartBatchVisualRect(node);
+            return {x:rect.x, y:rect.y, w:rect.width, h:rect.height};
+        })
+    });
+    smartMinimapState = painted.state;
     smartMinimapNodeSignatures = new Map(minimapNodes.map(node => [String(node.id), smartMinimapNodeSignature(node)]));
     smartMinimapNodeOrder = minimapNodes.map(node => String(node.id));
     smartMinimapLayoutDirty = false;
-    const project = r => ({
-        left:offsetX + (r.x - minX) * scale,
-        top:offsetY + (r.y - minY) * scale,
-        width:Math.max(4, r.width * scale),
-        height:Math.max(4, r.height * scale)
-    });
-    // 结构渲染也可能由任务状态、图片尺寸或跨窗口同步触发。不要每次都用
-    // innerHTML 重建整个小地图，否则缩略图闪烁时右下角视口框也会跟着闪。
-    const nodeElements = [...minimapContent.querySelectorAll('.minimap-node')];
-    rects.slice(0, -1).forEach((rect, index) => {
-        const nodeEl = nodeElements[index] || document.createElement('div');
-        nodeEl.className = 'minimap-node';
-        const p = project(rect);
-        nodeEl.style.left = `${p.left}px`;
-        nodeEl.style.top = `${p.top}px`;
-        nodeEl.style.width = `${p.width}px`;
-        nodeEl.style.height = `${p.height}px`;
-        if(!nodeEl.parentElement) minimapContent.appendChild(nodeEl);
-    });
-    nodeElements.slice(rects.length - 1).forEach(nodeEl => nodeEl.remove());
-    const view = project({x:viewX, y:viewY, width:viewW, height:viewH});
-    minimapViewport.style.left = `${view.left}px`;
-    minimapViewport.style.top = `${view.top}px`;
-    minimapViewport.style.width = `${view.width}px`;
-    minimapViewport.style.height = `${view.height}px`;
-    // 初始 HTML 中视口框在节点前面，首次复用渲染后把它放回最上层，
-    // 保持视口边框不会被缩略节点盖住。
-    if(minimapViewport.parentElement === minimapContent && minimapContent.lastElementChild !== minimapViewport){
-        minimapContent.appendChild(minimapViewport);
-    }
+    return;
+
 }
 function updateMinimapViewport(options={}){
-    if(window.XiaomeiViewportKernel?.isActive()){
-        if(!minimapContent) return;
-        if(!minimapViewport?.isConnected || !smartMinimapState){
-            scheduleMinimapRender(true);
-            return;
-        }
-        const decision = XiaomeiViewportKernel.syncSmartMinimapFrame(smartMinimapState, viewport, {
-            cached:options.useCachedLayout === true,
-            width:minimapContent.clientWidth || 170,
-            height:minimapContent.clientHeight || 108,
-            shellWidth:shell.clientWidth,
-            shellHeight:shell.clientHeight
-        });
-        if(decision.relayout){
-            smartMinimapLayoutDirty = true;
-            scheduleMinimapRender(true);
-            return;
-        }
-        const box = decision.box;
-        minimapViewport.style.left = `${box.left}px`;
-        minimapViewport.style.top = `${box.top}px`;
-        minimapViewport.style.width = `${box.width}px`;
-        minimapViewport.style.height = `${box.height}px`;
-        return;
-    }
     if(!minimapContent) return;
-    // 小地图尺寸或节点结构变化时，交给完整渲染处理；正常缩放只复用上次
-    // 的坐标映射并更新视口框，避免滚轮帧触发节点测量和布局写入。
     if(!minimapViewport?.isConnected || !smartMinimapState){
         scheduleMinimapRender(true);
         return;
     }
-    const state = smartMinimapState;
-    const useCachedLayout = options.useCachedLayout === true;
-    const width = useCachedLayout ? state.width : (minimapContent.clientWidth || 170);
-    const height = useCachedLayout ? state.height : (minimapContent.clientHeight || 108);
-    const shellWidth = useCachedLayout ? (state.shellWidth || 0) : shell.clientWidth;
-    const shellHeight = useCachedLayout ? (state.shellHeight || 0) : shell.clientHeight;
-    if(!useCachedLayout && (state.width !== width || state.height !== height || state.shellWidth !== shellWidth || state.shellHeight !== shellHeight)){
+    const decision = XiaomeiViewportKernel.syncSmartMinimapFrame(smartMinimapState, viewport, {
+        cached:options.useCachedLayout === true,
+        width:minimapContent.clientWidth || 170,
+        height:minimapContent.clientHeight || 108,
+        shellWidth:shell.clientWidth,
+        shellHeight:shell.clientHeight
+    });
+    if(decision.relayout){
         smartMinimapLayoutDirty = true;
         scheduleMinimapRender(true);
         return;
     }
-    const viewW = shellWidth / viewport.scale;
-    const viewH = shellHeight / viewport.scale;
-    const viewX = -viewport.x / viewport.scale;
-    const viewY = -viewport.y / viewport.scale;
-    const project = r => ({
-        left:state.offsetX + (r.x - state.minX) * state.scale,
-        top:state.offsetY + (r.y - state.minY) * state.scale,
-        width:Math.max(4, r.width * state.scale),
-        height:Math.max(4, r.height * state.scale)
-    });
-    const view = project({x:viewX, y:viewY, width:viewW, height:viewH});
-    minimapViewport.style.left = `${view.left}px`;
-    minimapViewport.style.top = `${view.top}px`;
-    minimapViewport.style.width = `${view.width}px`;
-    minimapViewport.style.height = `${view.height}px`;
+    const box = decision.box;
+    minimapViewport.style.left = `${box.left}px`;
+    minimapViewport.style.top = `${box.top}px`;
+    minimapViewport.style.width = `${box.width}px`;
+    minimapViewport.style.height = `${box.height}px`;
+    return;
+
 }
 function minimapEventToWorld(event){
-    if(window.XiaomeiViewportKernel?.isActive()){
-        if(!smartMinimapState) renderMinimap();
-        const state = smartMinimapState;
-        if(!state) return XiaomeiViewportKernel.pointerToWorld(viewport, {left:0, top:0, width:shell.clientWidth, height:shell.clientHeight}, shell.clientWidth / 2, shell.clientHeight / 2);
-        const rect = minimapContent.getBoundingClientRect();
-        return XiaomeiViewportKernel.minimapPointerToWorld({
-            scale:state.scale,
-            offsetX:state.offsetX,
-            offsetY:state.offsetY,
-            bounds:{x:state.minX, y:state.minY}
-        }, rect, event.clientX, event.clientY, 0.0001);
-    }
     if(!smartMinimapState) renderMinimap();
     const state = smartMinimapState;
-    if(!state) return viewportCenter();
+    if(!state) return XiaomeiViewportKernel.pointerToWorld(viewport, {left:0, top:0, width:shell.clientWidth, height:shell.clientHeight}, shell.clientWidth / 2, shell.clientHeight / 2);
     const rect = minimapContent.getBoundingClientRect();
-    const mx = event.clientX - rect.left;
-    const my = event.clientY - rect.top;
-    return {
-        x:state.minX + (mx - state.offsetX) / Math.max(0.0001, state.scale),
-        y:state.minY + (my - state.offsetY) / Math.max(0.0001, state.scale)
-    };
+    return XiaomeiViewportKernel.minimapPointerToWorld({
+        scale:state.scale,
+        offsetX:state.offsetX,
+        offsetY:state.offsetY,
+        bounds:{x:state.minX, y:state.minY}
+    }, rect, event.clientX, event.clientY, 0.0001);
+
 }
 function centerViewportOnWorldPoint(point){
-    if(window.XiaomeiViewportKernel?.isActive()){
-        cancelViewportWheelAnimation();
-        XiaomeiViewportKernel.centerOn(viewport, {width:shell.clientWidth, height:shell.clientHeight}, point);
-        applyViewport();
-        scheduleSave();
-        return;
-    }
     cancelViewportWheelAnimation();
-    viewport.x = shell.clientWidth / 2 - point.x * viewport.scale;
-    viewport.y = shell.clientHeight / 2 - point.y * viewport.scale;
+    XiaomeiViewportKernel.centerOn(viewport, {width:shell.clientWidth, height:shell.clientHeight}, point);
     applyViewport();
     scheduleSave();
+    return;
+
 }
 function fitAllNodesViewport(){
     cancelViewportWheelAnimation();
@@ -5801,106 +5554,43 @@ function fitAllNodesViewport(){
 // 但节点铺得又长又散时适配会把缩放压到 6%，看起来还是一片空白，
 // 这种情况改成落在离内容中心最近的那个节点上，保证一打开就看得见真实内容。
 function focusViewportOnContent(options={}){
-    if(window.XiaomeiViewportKernel?.isActive()){
-        const apply = options.apply !== false;
-        if(!nodes.length) return false;
-        const boxes = nodes.filter(n => !smartBatchIsHidden(n)).map(node => {
-            const rect = smartBatchVisualRect(node);
-            return {x:rect.x, y:rect.y, w:rect.width, h:rect.height};
-        });
-        const placed = XiaomeiViewportKernel.focusContent(viewport, {width:shell.clientWidth, height:shell.clientHeight}, boxes, {
-            pad:160, inset:80, minZoom:0.06, maxZoom:0.82, emptyZoom:0.45, floor:0.18, focusZoom:0.45
-        });
-        if(!placed) return false;
-        if(apply){
-            applyViewport();
-            scheduleCanvasViewportRender();
-            scheduleSave();
-        }
-        return true;
-    }
     const apply = options.apply !== false;
     if(!nodes.length) return false;
-    const applyNow = () => {
-        if(!apply) return;
-        applyViewport();
-        scheduleCanvasViewportRender();
-        scheduleSave();
-    };
-    if(!fitViewportToAllNodes({apply:false})) return false;
-    if(safeScale(viewport.scale) >= 0.18){
-        applyNow();
-        return true;
-    }
-    const rects = nodes.filter(n => !smartBatchIsHidden(n)).map(smartBatchVisualRect);
-    if(!rects.length) return false;
-    const cx = (Math.min(...rects.map(r => r.x)) + Math.max(...rects.map(r => r.x + r.width))) / 2;
-    const cy = (Math.min(...rects.map(r => r.y)) + Math.max(...rects.map(r => r.y + r.height))) / 2;
-    let best = null;
-    rects.forEach(rect => {
-        const px = rect.x + rect.width / 2;
-        const py = rect.y + rect.height / 2;
-        const distance = Math.hypot(px - cx, py - cy);
-        if(!best || distance < best.distance) best = {distance, x:px, y:py};
+    const boxes = nodes.filter(n => !smartBatchIsHidden(n)).map(node => {
+        const rect = smartBatchVisualRect(node);
+        return {x:rect.x, y:rect.y, w:rect.width, h:rect.height};
     });
-    if(!best) return false;
-    viewport.scale = 0.45;
-    viewport.x = shell.clientWidth / 2 - best.x * viewport.scale;
-    viewport.y = shell.clientHeight / 2 - best.y * viewport.scale;
-    applyNow();
-    return true;
-}
-// 计算"适配全部节点"的相机位置。apply=false 时只写 viewport、不立刻应用，
-// 供打开画布时在 render 之前修正相机使用（随后统一走 applyViewport/render）。
-function fitViewportToAllNodes(options={}){
-    if(window.XiaomeiViewportKernel?.isActive()){
-        const apply = options.apply !== false;
-        const boxes = nodes.filter(n => !smartBatchIsHidden(n)).map(node => {
-            const rect = smartBatchVisualRect(node);
-            return {x:rect.x, y:rect.y, w:rect.width, h:rect.height};
-        });
-        const placed = XiaomeiViewportKernel.fitBoxes(viewport, {width:shell.clientWidth, height:shell.clientHeight}, boxes, {
-            pad:160, inset:80, minZoom:0.06, maxZoom:0.82, emptyZoom:0.45, allowEmpty:apply
-        });
-        if(!placed) return false;
-        if(apply){
-            applyViewport();
-            scheduleCanvasViewportRender();
-            scheduleSave();
-        }
-        return true;
-    }
-    const apply = options.apply !== false;
-    if(!nodes.length){
-        if(!apply) return false;
-        viewport.scale = 0.45;
-        viewport.x = shell.clientWidth / 2;
-        viewport.y = shell.clientHeight / 2;
-        applyViewport();
-        scheduleCanvasViewportRender();
-        scheduleSave();
-        return true;
-    }
-    const rects = nodes.filter(n => !smartBatchIsHidden(n)).map(smartBatchVisualRect);
-    const minX = Math.min(...rects.map(r => r.x));
-    const minY = Math.min(...rects.map(r => r.y));
-    const maxX = Math.max(...rects.map(r => r.x + r.width));
-    const maxY = Math.max(...rects.map(r => r.y + r.height));
-    const pad = 160;
-    const width = Math.max(1, maxX - minX + pad * 2);
-    const height = Math.max(1, maxY - minY + pad * 2);
-    const nextScale = Math.max(0.06, Math.min(0.82, (shell.clientWidth - 80) / width, (shell.clientHeight - 80) / height));
-    const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
-    viewport.scale = nextScale;
-    viewport.x = shell.clientWidth / 2 - cx * viewport.scale;
-    viewport.y = shell.clientHeight / 2 - cy * viewport.scale;
+    const placed = XiaomeiViewportKernel.focusContent(viewport, {width:shell.clientWidth, height:shell.clientHeight}, boxes, {
+        pad:160, inset:80, minZoom:0.06, maxZoom:0.82, emptyZoom:0.45, floor:0.18, focusZoom:0.45
+    });
+    if(!placed) return false;
     if(apply){
         applyViewport();
         scheduleCanvasViewportRender();
         scheduleSave();
     }
     return true;
+
+}
+// 计算"适配全部节点"的相机位置。apply=false 时只写 viewport、不立刻应用，
+// 供打开画布时在 render 之前修正相机使用（随后统一走 applyViewport/render）。
+function fitViewportToAllNodes(options={}){
+    const apply = options.apply !== false;
+    const boxes = nodes.filter(n => !smartBatchIsHidden(n)).map(node => {
+        const rect = smartBatchVisualRect(node);
+        return {x:rect.x, y:rect.y, w:rect.width, h:rect.height};
+    });
+    const placed = XiaomeiViewportKernel.fitBoxes(viewport, {width:shell.clientWidth, height:shell.clientHeight}, boxes, {
+        pad:160, inset:80, minZoom:0.06, maxZoom:0.82, emptyZoom:0.45, allowEmpty:apply
+    });
+    if(!placed) return false;
+    if(apply){
+        applyViewport();
+        scheduleCanvasViewportRender();
+        scheduleSave();
+    }
+    return true;
+
 }
 function enterZoomPreview(){
     if(zoomPreviewState) return;
@@ -5910,33 +5600,14 @@ function enterZoomPreview(){
     fitAllNodesViewport();
 }
 function exitZoomPreview(point=null){
-    if(window.XiaomeiViewportKernel?.isActive()){
-        if(!zoomPreviewState) return false;
-        cancelViewportWheelAnimation();
-        const prev = zoomPreviewState;
-        zoomPreviewState = null;
-        shell.classList.remove('zoom-preview');
-        viewport.scale = prev.scale;
-        if(point) XiaomeiViewportKernel.centerOn(viewport, {width:shell.clientWidth, height:shell.clientHeight}, point);
-        else {
-            viewport.x = prev.x;
-            viewport.y = prev.y;
-        }
-        applyViewport();
-        scheduleCanvasViewportRender();
-        scheduleSave();
-        return true;
-    }
     if(!zoomPreviewState) return false;
     cancelViewportWheelAnimation();
     const prev = zoomPreviewState;
     zoomPreviewState = null;
     shell.classList.remove('zoom-preview');
     viewport.scale = prev.scale;
-    if(point){
-        viewport.x = shell.clientWidth / 2 - point.x * viewport.scale;
-        viewport.y = shell.clientHeight / 2 - point.y * viewport.scale;
-    } else {
+    if(point) XiaomeiViewportKernel.centerOn(viewport, {width:shell.clientWidth, height:shell.clientHeight}, point);
+    else {
         viewport.x = prev.x;
         viewport.y = prev.y;
     }
@@ -5944,50 +5615,25 @@ function exitZoomPreview(point=null){
     scheduleCanvasViewportRender();
     scheduleSave();
     return true;
+
 }
 function exitZoomPreviewToNode(nodeId){
-    if(window.XiaomeiViewportKernel?.isActive()){
-        if(!zoomPreviewState) return false;
-        cancelViewportWheelAnimation();
-        const node = nodes.find(n => n.id === nodeId);
-        if(!node) return exitZoomPreview();
-        const prev = zoomPreviewState;
-        const rect = nodeRect(node);
-        zoomPreviewState = null;
-        shell.classList.remove('zoom-preview');
-        XiaomeiViewportKernel.frameOnNode(viewport, {width:shell.clientWidth, height:shell.clientHeight}, {x:rect.x, y:rect.y, w:rect.width, h:rect.height}, prev.scale, {
-            margin:160, maxScale:ZOOM_PREVIEW_NODE_MAX_SCALE, defaultScale:ZOOM_PREVIEW_NODE_DEFAULT_SCALE
-        });
-        applyViewport();
-        scheduleCanvasViewportRender();
-        scheduleSave();
-        return true;
-    }
     if(!zoomPreviewState) return false;
     cancelViewportWheelAnimation();
     const node = nodes.find(n => n.id === nodeId);
     if(!node) return exitZoomPreview();
     const prev = zoomPreviewState;
     const rect = nodeRect(node);
-    const cx = rect.x + rect.width / 2;
-    const cy = rect.y + rect.height / 2;
-    const fitW = Math.max(1, shell.clientWidth - 160);
-    const fitH = Math.max(1, shell.clientHeight - 160);
-    const fitScale = Math.min(
-        ZOOM_PREVIEW_NODE_MAX_SCALE,
-        fitW / Math.max(1, rect.width),
-        fitH / Math.max(1, rect.height)
-    );
-    const readableScale = Math.min(ZOOM_PREVIEW_NODE_MAX_SCALE, Math.max(ZOOM_PREVIEW_NODE_DEFAULT_SCALE, fitScale));
     zoomPreviewState = null;
     shell.classList.remove('zoom-preview');
-    viewport.scale = Math.max(safeScale(prev.scale), readableScale);
-    viewport.x = shell.clientWidth / 2 - cx * viewport.scale;
-    viewport.y = shell.clientHeight / 2 - cy * viewport.scale;
+    XiaomeiViewportKernel.frameOnNode(viewport, {width:shell.clientWidth, height:shell.clientHeight}, {x:rect.x, y:rect.y, w:rect.width, h:rect.height}, prev.scale, {
+        margin:160, maxScale:ZOOM_PREVIEW_NODE_MAX_SCALE, defaultScale:ZOOM_PREVIEW_NODE_DEFAULT_SCALE
+    });
     applyViewport();
     scheduleCanvasViewportRender();
     scheduleSave();
     return true;
+
 }
 function toggleZoomPreview(){
     if(zoomPreviewState) exitZoomPreview();
@@ -9637,23 +9283,7 @@ function assetLibraries(){
     return Array.isArray(assetLibrary.libraries) && assetLibrary.libraries.length ? assetLibrary.libraries : [{id:'default', name:'默认资产库', categories:assetLibrary.categories || []}];
 }
 function localAssetFolderCategories(){
-    if(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive()) return XiaomeiShellKernel.folderRows(localAssetLibrary.tree, localAssetLibrary.items);
-    const result = [];
-    const walk = node => {
-        if(!node) return;
-        const isRoot = (node.id || node.path || '__root__') === '__root__';
-        result.push({
-            id: node.id || (node.path ? node.path : '__root__'),
-            name: node.name || (node.path ? node.path.split('/').pop() : '全部上传'),
-            type: 'image',
-            items: (isRoot ? (localAssetLibrary.items || []) : (node.items || [])).filter(item => assetMediaKind(item) === 'image'),
-            readonly: true,
-            source: 'local',
-        });
-        (node.children || []).forEach(walk);
-    };
-    walk(localAssetLibrary.tree || {id:'__root__', name:'全部上传', items:localAssetLibrary.items || [], children:[]});
-    return result;
+    return XiaomeiShellKernel.folderRows(localAssetLibrary.tree, localAssetLibrary.items);
 }
 function assetLibraryIsLocal(){
     return activeAssetLibraryId === LOCAL_ASSET_LIBRARY_ID;
@@ -10721,17 +10351,7 @@ function assetCategoryForMention(){
         || cats[0];
 }
 function assetMediaKind(item){
-    if(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive()) return XiaomeiShellKernel.mediaKind(item);
-    if(!item) return 'image';
-    if(item.kind === 'workflow' || item.type === 'workflow') return 'workflow';
-    if(item.kind === 'video' || item.type === 'video') return 'video';
-    if(item.kind === 'audio' || item.type === 'audio') return 'audio';
-    const url = String(item.url || item.thumbnail || '').toLowerCase().split('?')[0];
-    const name = String(item.name || '').toLowerCase();
-    if(/\.(mp4|webm|mov|m4v|avi|mkv)$/.test(url) || /\.(mp4|webm|mov|m4v|avi|mkv)$/.test(name)) return 'video';
-    if(/\.(mp3|wav|m4a|aac|ogg|flac)$/.test(url) || /\.(mp3|wav|m4a|aac|ogg|flac)$/.test(name)) return 'audio';
-    if(/\.(json|zip)$/.test(url) || /\.(json|zip)$/.test(name)) return 'workflow';
-    return 'image';
+    return XiaomeiShellKernel.mediaKind(item);
 }
 function assetNodeImageFromItem(item, fallbackName='asset'){
     const image = {
@@ -11172,7 +10792,7 @@ async function addUrlToAssetLibrary(url, name=''){
     if(assetLibraryIsLocal()) return addUrlToLocalAssetLibrary(url, name);
     const cat = activeAssetCategory();
     if(!cat){ toast(tr('smart.assetNoFolder')); return; }
-    const data = await fetch('/api/asset-library/items', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive() ? XiaomeiShellKernel.assetBatch('save', {libraryId:activeAssetLibraryId, categoryId:cat.id, url, name}) : {library_id:activeAssetLibraryId, category_id:cat.id, url, name})}).then(async r => {
+    const data = await fetch('/api/asset-library/items', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(XiaomeiShellKernel.assetBatch('save', {libraryId:activeAssetLibraryId, categoryId:cat.id, url, name}))}).then(async r => {
         if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || tr('smart.assetAddFail'));
         return r.json();
     });
@@ -11212,7 +10832,7 @@ async function addUrlItemsToLocalAssetLibrary(items=[]){
     const data = await fetch('/api/local-assets/import-urls', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive() ? XiaomeiShellKernel.assetBatch('import', {folder:localAssetFolderPath(), items:list.map(item => ({url:item.url, name:item.name || smartImageNameFromUrl(item.url)}))}) : {folder:localAssetFolderPath(), items:list.map(item => ({url:item.url, name:item.name || smartImageNameFromUrl(item.url)}))})
+        body:JSON.stringify(XiaomeiShellKernel.assetBatch('import', {folder:localAssetFolderPath(), items:list.map(item => ({url:item.url, name:item.name || smartImageNameFromUrl(item.url)}))}))
     }).then(async r => {
         if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || tr('smart.assetAddFail'));
         return r.json();
@@ -11351,23 +10971,22 @@ async function loadCanvas(){
         migratedLegacySmartVideoNodes = false;
         migratedInvalidImageTaskRecoveries = false;
         sharedEditorInitialSelectionApplied = false;
-        if(window.XiaomeiDocumentKernel?.isActive()){
-            const adopted = XiaomeiDocumentKernel.adopt(canvas, {
-                profile:'smart',
-                dropNodeIds:[SMART_LOG_PREVIEW_NODE_ID],
-                fallbackTitle:tr('canvas.smartCanvas'),
-                labels:{
-                    upload:tr('smart.createImportNode'),
-                    paint:tr('smart.createPaintNode'),
-                    video:'视频',
-                    group:'Group',
-                    image:'Image'
-                }
-            });
-            canvas = adopted.document;
-            if(adopted.migrations.upload) migratedLegacySmartUploadNodes = true;
-            if(adopted.migrations.video) migratedLegacySmartVideoNodes = true;
-        }
+        const adopted = XiaomeiDocumentKernel.adopt(canvas, {
+            profile:'smart',
+            dropNodeIds:[SMART_LOG_PREVIEW_NODE_ID],
+            fallbackTitle:tr('canvas.smartCanvas'),
+            labels:{
+                upload:tr('smart.createImportNode'),
+                paint:tr('smart.createPaintNode'),
+                video:'视频',
+                group:'Group',
+                image:'Image'
+            }
+        });
+        canvas = adopted.document;
+        if(adopted.migrations.upload) migratedLegacySmartUploadNodes = true;
+        if(adopted.migrations.video) migratedLegacySmartVideoNodes = true;
+
         nodes = (Array.isArray(canvas.nodes) ? canvas.nodes : []).map(normalizeLegacySmartNode).filter(Boolean);
         nodes.forEach(node => {
             normalizeSmartCameraNode(node);
@@ -11512,9 +11131,7 @@ async function performCanvasSave(){
             base_updated_at:Number(canvas.updated_at || 0)
         };
         if(changedConnections) incrementalBody.connections = storageCanvas.connections || [];
-        if(changedViewport) incrementalBody.viewport = window.XiaomeiDocumentKernel?.isActive()
-            ? XiaomeiDocumentKernel.normalizeViewport(storageCanvas.viewport)
-            : (storageCanvas.viewport || {x:0,y:0,scale:1});
+        if(changedViewport) incrementalBody.viewport = XiaomeiDocumentKernel.normalizeViewport(storageCanvas.viewport);
         if(changedTitle) incrementalBody.title = storageCanvas.title || tr('smart.title');
         if(changedIcon) incrementalBody.icon = storageCanvas.icon || 'sparkles';
         if(changedLogs) incrementalBody.logs = storageCanvas.logs || [];
@@ -11522,8 +11139,7 @@ async function performCanvasSave(){
         const requestUrl = useIncremental
             ? `/api/canvases/${encodeURIComponent(canvasId)}/nodes`
             : `/api/canvases/${encodeURIComponent(canvasId)}`;
-        const requestBody = useIncremental ? incrementalBody : (window.XiaomeiDocumentKernel?.isActive()
-            ? XiaomeiDocumentKernel.saveBody(storageCanvas, {
+        const requestBody = useIncremental ? incrementalBody : (XiaomeiDocumentKernel.saveBody(storageCanvas, {
                 profile:'smart',
                 includeSettings:true,
                 fallbackTitle:tr('smart.title'),
@@ -11532,18 +11148,7 @@ async function performCanvasSave(){
                 baseUpdatedAt:storageCanvas.updated_at || canvas.updated_at || 0,
                 clientId:smartClientId,
                 labels:{upload:tr('smart.createImportNode'), paint:tr('smart.createPaintNode'), video:'视频'}
-            })
-            : {
-            title:storageCanvas.title || tr('smart.title'),
-            icon:storageCanvas.icon || 'sparkles',
-            nodes:storageCanvas.nodes || [],
-            connections:storageCanvas.connections || [],
-            viewport:storageCanvas.viewport || {x:0,y:0,scale:1},
-            logs:storageCanvas.logs || [],
-            settings:storageCanvas.settings,
-            base_updated_at:storageCanvas.updated_at || canvas.updated_at || 0,
-            client_id:smartClientId
-        });
+            }));
         const res = await fetch(requestUrl, {
             method:useIncremental ? 'PATCH' : 'PUT',
             headers:{'Content-Type':'application/json'},
@@ -12002,23 +11607,15 @@ function pasteNodes(options={}){
     const p = options.position || lastMouseWorld || viewportCenter();
     let dx;
     let dy;
-    if(window.XiaomeiHistoryKernel?.isActive()){
-        if(options.dragOffset){
-            dx = options.dragOffset.x;
-            dy = options.dragOffset.y;
-        } else {
-            const shift = XiaomeiHistoryKernel.centerShift(sourceNodes.map(n => ({x:Number(n.x) || 0, y:Number(n.y) || 0})), p);
-            dx = shift.x;
-            dy = shift.y;
-        }
+    if(options.dragOffset){
+        dx = options.dragOffset.x;
+        dy = options.dragOffset.y;
     } else {
-        const xs = sourceNodes.map(n => Number(n.x) || 0);
-        const ys = sourceNodes.map(n => Number(n.y) || 0);
-        const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
-        const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-        dx = options.dragOffset?.x ?? p.x - cx;
-        dy = options.dragOffset?.y ?? p.y - cy;
+        const shift = XiaomeiHistoryKernel.centerShift(sourceNodes.map(n => ({x:Number(n.x) || 0, y:Number(n.y) || 0})), p);
+        dx = shift.x;
+        dy = shift.y;
     }
+
     const idMap = new Map();
     const copies = sourceNodes.map(n => {
         const copy = cloneSmartNode(n, dx, dy);
@@ -12061,16 +11658,10 @@ function pasteNodes(options={}){
             delete copy.runError;
         }
     });
-    const newConnections = window.XiaomeiHistoryKernel?.isActive()
-        ? XiaomeiHistoryKernel.remapEdges(clipboard.connections || [], Object.fromEntries(idMap), {
+    const newConnections = XiaomeiHistoryKernel.remapEdges(clipboard.connections || [], Object.fromEntries(idMap), {
             keepUnknownFrom:Boolean(options.keepUpstream),
             allowUnknownFrom:id => upstreamIds.has(id)
-        })
-        : (clipboard.connections || []).map(conn => ({
-        ...conn,
-        from:mapInputId(conn.from),
-        to:idMap.get(conn.to)
-    })).filter(conn => conn.from && conn.to && conn.from !== conn.to);
+        });
     if(!options.dragOffset) smartAutoAvoidNewNodes(copies);
     canvas.connections = [...(canvas.connections || []), ...newConnections];
     nodes.push(...copies);
@@ -12442,17 +12033,10 @@ function connectionGeometryForItem(item, draggedNodeIds=new Set(), nodeMap=null,
     const isDraggedLine = draggedNodeIds.has(item.from)
         || draggedNodeIds.has(item.toId)
         || (item.targets || []).some(targetId => draggedNodeIds.has(targetId));
-    if(window.XiaomeiNodeKernel?.isActive()){
-        const mode = isDraggedLine ? 'straight' : (isHistory ? 'history' : 'smart');
-        const geometry = XiaomeiNodeKernel.curveBetween({x:fx, y:fy}, {x:tx, y:ty}, mode);
-        return {curve:geometry.d, tx:geometry.endX, ty:geometry.endY, mx:geometry.midX, my:geometry.midY};
-    }
-    const curve = isDraggedLine
-        ? `M${fx} ${fy} L${tx} ${ty}`
-        : isHistory
-        ? `M${fx} ${fy} C ${fx} ${fy+dy}, ${tx} ${ty-dy}, ${tx} ${ty}`
-        : `M${fx} ${fy} C ${fx+dx} ${fy}, ${tx-dx} ${ty}, ${tx} ${ty}`;
-    return {curve, tx, ty, mx:(fx + tx) / 2, my:(fy + ty) / 2};
+    const mode = isDraggedLine ? 'straight' : (isHistory ? 'history' : 'smart');
+    const geometry = XiaomeiNodeKernel.curveBetween({x:fx, y:fy}, {x:tx, y:ty}, mode);
+    return {curve:geometry.d, tx:geometry.endX, ty:geometry.endY, mx:geometry.midX, my:geometry.midY};
+
 }
 let smartConnectionGroupIndexSvg = null;
 let smartConnectionGroupsByNode = new Map();
@@ -12613,11 +12197,7 @@ function commitDraggedNodeElementPositions(state=dragState){
         const n = nodes.find(x => x.id === item.id) || state.nodeMap?.get(item.id);
         const el = interactionNodeElement(item.id, state);
         if(!n || !el) return;
-        if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.writeMeasuredOrigin(el, n.x, n.y);
-        else {
-            el.style.left = `${Number(n.x) || 0}px`;
-            el.style.top = `${Number(n.y) || 0}px`;
-        }
+        XiaomeiViewportKernel.writeMeasuredOrigin(el, n.x, n.y);
         el.style.transform = '';
         el.style.willChange = '';
         el.classList.remove('dragging');
@@ -12741,11 +12321,7 @@ function syncSmartGroupMemberElements(group){
     smartGroupCompactMembers(group).forEach(member => {
         const el = world.querySelector(`.image-node[data-id="${CSS.escape(member.id)}"]`);
         if(el){
-            if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.writeMeasuredOrigin(el, member.x || 0, member.y || 0);
-            else {
-                el.style.left = `${member.x || 0}px`;
-                el.style.top = `${member.y || 0}px`;
-            }
+            XiaomeiViewportKernel.writeMeasuredOrigin(el, member.x || 0, member.y || 0);
         }
         updateNodeElementDuringResize(member);
     });
@@ -21188,9 +20764,7 @@ function updatePortDragVisual(){
         const fx = fromPort?.x ?? (isOut ? fr.x + fr.width : fr.x);
         const fy = fromPort?.y ?? (fr.y + fr.height / 2);
         const dx = Math.max(50, Math.abs(tx - fx) * 0.45);
-        const curve = window.XiaomeiNodeKernel?.isActive()
-            ? XiaomeiNodeKernel.curveBetween({x:fx, y:fy}, {x:tx, y:ty}, 'port', sign).d
-            : `M${fx} ${fy} C ${fx + dx * sign} ${fy}, ${tx - dx * sign} ${ty}, ${tx} ${ty}`;
+        const curve = XiaomeiNodeKernel.curveBetween({x:fx, y:fy}, {x:tx, y:ty}, 'port', sign).d;
         path.setAttribute('d', curve);
         path.classList.toggle('is-snapped', Boolean(portDragState.hoverTargetId));
     });
@@ -22751,14 +22325,12 @@ function bindNodeEvents(nodeEls=world.querySelectorAll('.image-node')){
                 const group = isSmartGroupNode(item) ? item : smartGroupContainingNode(dragId);
                 if(group) groupRoots.set(group.id, group);
             });
-            dragIds = window.XiaomeiNodeKernel?.isActive()
-                ? XiaomeiNodeKernel.expandIds(dragIds, dragId => {
+            dragIds = XiaomeiNodeKernel.expandIds(dragIds, dragId => {
                     const item = nodes.find(n => n.id === dragId);
                     const group = item && (isSmartGroupNode(item) ? item : smartGroupContainingNode(dragId));
                     if(!group) return null;
                     return {groupId:group.id, memberIds:smartGroupMembers(group).map(member => member.id)};
-                })
-                : Array.from(new Set([...dragIds, ...[...groupRoots.values()].flatMap(group => [group.id, ...smartGroupMembers(group).map(member => member.id)])]));
+                });
             if(!dragIds.every(targetId => collabCanEditNode(targetId))) return;
             const moveIds = canvasViewPrefs.follow
                 ? Array.from(new Set([...dragIds, ...connectedDownstreamNodeIds(dragIds)])).filter(moveId => collabCanEditNode(moveId))
@@ -34507,72 +34079,35 @@ async function pollSmartCanvasTask(taskId, options={}){
     // 后端单次生图最长约 30 分钟（不含排队与下载），前端额度要明显更长，
     // 且排队等待并发名额的时间不计入，避免平台已成功但画布放弃了任务。
     const classifyTask = task => {
-        if(window.XiaomeiDispatchKernel?.isActive()){
-            const decision = XiaomeiDispatchKernel.pollDecision(task);
-            if(decision.state === 'succeeded') return {action:'resolve',value:task.result || {}};
-            if(decision.state === 'empty') return {action:'reject',error:new Error(decision.message)};
-            if(decision.state === 'jimeng_pending') return {
-                action:'reject',
-                error:new JimengPendingSignal({submitId:task.submit_id, kind:task.kind, queueInfo:task.queue_info, message:task.message}),
-            };
-            if(decision.state === 'cancelled'){
-                const error = new Error(decision.message || '生图已取消');
-                error.cancelledTask = true;
-                return {action:'reject', error};
-            }
-            if(decision.state === 'failed'){
-                const terminalError = new Error(decision.message || tr('smart.errRunFailed'));
-                if(decision.terminal){
-                    terminalError.terminalTask = true;
-                    terminalError.startedAt = task.started_at || task.created_at || 0;
-                    terminalError.finishedAt = task.finished_at || task.updated_at || 0;
-                    return {action:'reject', error:terminalError};
-                }
-                const recoverTaskId = decision.recoverId || extractUpstreamTaskId(task.error || '');
-                if(recoverTaskId) return {
-                    action:'reject',
-                    error:new ImageTaskRecoverSignal({taskId, recoverTaskId, providerId:task.provider_id, kind:'image', message:decision.message || tr('smart.errRunFailed')}),
-                };
-                return {action:'reject',error:new Error(decision.message || tr('smart.errRunFailed'))};
-            }
-            return null;
-        }
-        if(task?.status === 'succeeded'){
-            const result = task.result || {};
-            if(!resultMediaUrls(result).length){
-                return {action:'reject',error:new Error(task.error || task.message || '任务已完成，但没有返回可显示的图片')};
-            }
-            return {action:'resolve',value:result};
-        }
-        if(task?.status === 'jimeng_pending') return {
+        const decision = XiaomeiDispatchKernel.pollDecision(task);
+        if(decision.state === 'succeeded') return {action:'resolve',value:task.result || {}};
+        if(decision.state === 'empty') return {action:'reject',error:new Error(decision.message)};
+        if(decision.state === 'jimeng_pending') return {
             action:'reject',
             error:new JimengPendingSignal({submitId:task.submit_id, kind:task.kind, queueInfo:task.queue_info, message:task.message}),
         };
-        if(task?.status === 'cancelled'){
-            const error = new Error(task.error || '生图已取消');
+        if(decision.state === 'cancelled'){
+            const error = new Error(decision.message || '生图已取消');
             error.cancelledTask = true;
             return {action:'reject', error};
         }
-        if(task?.status === 'failed'){
-            const terminal = task?.upstream_terminal_error === true;
-            const terminalError = new Error(task.error || tr('smart.errRunFailed'));
-            // A provider has explicitly rejected this request (503/5xx, quota,
-            // validation, or policy). It is terminal for this canvas run; do
-            // not keep the placeholder in the recoverable-task spinner.
-            if(terminal){
+        if(decision.state === 'failed'){
+            const terminalError = new Error(decision.message || tr('smart.errRunFailed'));
+            if(decision.terminal){
                 terminalError.terminalTask = true;
                 terminalError.startedAt = task.started_at || task.created_at || 0;
                 terminalError.finishedAt = task.finished_at || task.updated_at || 0;
                 return {action:'reject', error:terminalError};
             }
-            const recoverTaskId = task.upstream_task_id || extractUpstreamTaskId(task.error || '');
+            const recoverTaskId = decision.recoverId || extractUpstreamTaskId(task.error || '');
             if(recoverTaskId) return {
                 action:'reject',
-                error:new ImageTaskRecoverSignal({taskId, recoverTaskId, providerId:task.provider_id, kind:'image', message:task.error || tr('smart.errRunFailed')}),
+                error:new ImageTaskRecoverSignal({taskId, recoverTaskId, providerId:task.provider_id, kind:'image', message:decision.message || tr('smart.errRunFailed')}),
             };
-            return {action:'reject',error:new Error(task.error || tr('smart.errRunFailed'))};
+            return {action:'reject',error:new Error(decision.message || tr('smart.errRunFailed'))};
         }
         return null;
+
     };
     const promise = XiaomeiImageTaskClient.pollImageTask(taskId, {
         initialDelayMs:0,
@@ -35567,11 +35102,7 @@ window.onmousemove = e => {
             didPan = true;
             dismissComposerOnPan();
         }
-        if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.dragCamera(viewport, panState.ox, panState.oy, dx, dy);
-        else {
-            viewport.x = panState.ox + dx;
-            viewport.y = panState.oy + dy;
-        }
+        XiaomeiViewportKernel.dragCamera(viewport, panState.ox, panState.oy, dx, dy);
         schedulePanViewportApply();
         return;
     }
@@ -35691,11 +35222,7 @@ window.onmousemove = e => {
                 member.scale = 1;
                 const el = world.querySelector(`.image-node[data-id="${CSS.escape(member.id)}"]`);
                 if(el){
-                    if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.writeRawOrigin(el, member.x, member.y);
-                    else {
-                        el.style.left = `${member.x}px`;
-                        el.style.top = `${member.y}px`;
-                    }
+                    XiaomeiViewportKernel.writeRawOrigin(el, member.x, member.y);
                 }
                 scheduleNodeElementResizeUpdate(member);
             });
@@ -35763,8 +35290,7 @@ window.onmousemove = e => {
                 maxBottom = Math.max(maxBottom, member.y + member.h);
                 const memberEl = world.querySelector(`.image-node[data-id="${CSS.escape(member.id)}"]`);
                 if(memberEl){
-                    if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.writeRawOrigin(memberEl, member.x, member.y);
-                    else memberEl.style.left = `${member.x}px`;
+                    XiaomeiViewportKernel.writeRawOrigin(memberEl, member.x, member.y);
                     memberEl.style.top = `${member.y}px`;
                 }
                 scheduleNodeElementResizeUpdate(member);
@@ -35869,20 +35395,14 @@ window.onmousemove = e => {
     document.body.classList.add('smart-node-drag');
     const node = nodes.find(n => n.id === dragState.id);
     if(!node) return;
-    const raw = window.XiaomeiNodeKernel?.isActive()
-        ? XiaomeiNodeKernel.worldDelta({x:e.clientX, y:e.clientY}, {x:dragState.startX, y:dragState.startY}, viewport.scale)
-        : {x:(e.clientX - dragState.startX) / viewport.scale, y:(e.clientY - dragState.startY) / viewport.scale};
+    const raw = XiaomeiNodeKernel.worldDelta({x:e.clientX, y:e.clientY}, {x:dragState.startX, y:dragState.startY}, viewport.scale);
     const rawMoveDx = raw.x;
     const rawMoveDy = raw.y;
     const moveDx = canvasViewPrefs.snap
-        ? (window.XiaomeiNodeKernel?.isActive()
-            ? XiaomeiNodeKernel.snappedDelta(dragState.ox, rawMoveDx, CANVAS_SNAP_GRID)
-            : Math.round(((Number(dragState.ox) || 0) + rawMoveDx) / CANVAS_SNAP_GRID) * CANVAS_SNAP_GRID - (Number(dragState.ox) || 0))
+        ? (XiaomeiNodeKernel.snappedDelta(dragState.ox, rawMoveDx, CANVAS_SNAP_GRID))
         : rawMoveDx;
     const moveDy = canvasViewPrefs.snap
-        ? (window.XiaomeiNodeKernel?.isActive()
-            ? XiaomeiNodeKernel.snappedDelta(dragState.oy, rawMoveDy, CANVAS_SNAP_GRID)
-            : Math.round(((Number(dragState.oy) || 0) + rawMoveDy) / CANVAS_SNAP_GRID) * CANVAS_SNAP_GRID - (Number(dragState.oy) || 0))
+        ? (XiaomeiNodeKernel.snappedDelta(dragState.oy, rawMoveDy, CANVAS_SNAP_GRID))
         : rawMoveDy;
     (dragState.moveGroup || dragState.group || [{id:dragState.id, ox:dragState.ox, oy:dragState.oy}]).forEach(item => {
         const n = nodes.find(x => x.id === item.id);
@@ -36319,46 +35839,45 @@ window.addEventListener('keydown', e => {
         // 的目标（应用裁剪会报“图片尚未加载”），用户也看不到画布上实际发生了什么。
         return;
     }
-    if(window.XiaomeiHistoryKernel?.isActive()){
-        const action = XiaomeiHistoryKernel.chord({
-            key:e.key, ctrl:e.ctrlKey, meta:e.metaKey, alt:e.altKey, shift:e.shiftKey, repeat:e.repeat
-        }, {
-            profile:'smart',
-            plainEditable:isEditableTarget(e.target),
-            commandEditable:isEditableTarget(e.target),
-            modal:false,
-            textSelected:Boolean(window.getSelection?.().toString()),
-            canPaste:Boolean(nodeClipboard?.nodes?.length)
-        });
-        if(action?.type === 'ignore' || action?.type === 'zoom-preview'){
-            e.preventDefault();
-            if(action.type === 'zoom-preview') toggleZoomPreview();
-            return;
-        }
-        if(action?.type === 'copy'){
-            e.preventDefault();
-            copySelectedNodes();
-            return;
-        }
-        if(action?.type === 'paste-deferred'){
-            const requestedAt = Date.now();
-            setTimeout(() => {
-                if(!XiaomeiHistoryKernel.pasteStillFresh(requestedAt, [lastImagePasteAt, lastNodePasteAt])) return;
-                pasteNodes();
-            }, action.delay);
-            return;
-        }
-        if(action?.type === 'undo'){ e.preventDefault(); performUndo(); return; }
-        if(action?.type === 'redo'){ e.preventDefault(); performRedo(); return; }
-        if(action?.type === 'ungroup'){
-            e.preventDefault();
-            const ids = selectedIds.length ? selectedIds.slice() : (selectedId ? [selectedId] : []);
-            const groupIds = [...new Set(ids.map(id => smartGroupContainingNode(id)?.id || id))];
-            groupIds.map(ungroupNode).some(Boolean);
-            return;
-        }
-        if(action?.type === 'group'){ e.preventDefault(); groupSelectedNodes(); return; }
+    const action = XiaomeiHistoryKernel.chord({
+        key:e.key, ctrl:e.ctrlKey, meta:e.metaKey, alt:e.altKey, shift:e.shiftKey, repeat:e.repeat
+    }, {
+        profile:'smart',
+        plainEditable:isEditableTarget(e.target),
+        commandEditable:isEditableTarget(e.target),
+        modal:false,
+        textSelected:Boolean(window.getSelection?.().toString()),
+        canPaste:Boolean(nodeClipboard?.nodes?.length)
+    });
+    if(action?.type === 'ignore' || action?.type === 'zoom-preview'){
+        e.preventDefault();
+        if(action.type === 'zoom-preview') toggleZoomPreview();
+        return;
     }
+    if(action?.type === 'copy'){
+        e.preventDefault();
+        copySelectedNodes();
+        return;
+    }
+    if(action?.type === 'paste-deferred'){
+        const requestedAt = Date.now();
+        setTimeout(() => {
+            if(!XiaomeiHistoryKernel.pasteStillFresh(requestedAt, [lastImagePasteAt, lastNodePasteAt])) return;
+            pasteNodes();
+        }, action.delay);
+        return;
+    }
+    if(action?.type === 'undo'){ e.preventDefault(); performUndo(); return; }
+    if(action?.type === 'redo'){ e.preventDefault(); performRedo(); return; }
+    if(action?.type === 'ungroup'){
+        e.preventDefault();
+        const ids = selectedIds.length ? selectedIds.slice() : (selectedId ? [selectedId] : []);
+        const groupIds = [...new Set(ids.map(id => smartGroupContainingNode(id)?.id || id))];
+        groupIds.map(ungroupNode).some(Boolean);
+        return;
+    }
+    if(action?.type === 'group'){ e.preventDefault(); groupSelectedNodes(); return; }
+
     if(!e.ctrlKey && !e.metaKey && !e.altKey && !isEditableTarget(e.target)){
         if(key === 'z'){
             if(e.repeat) return;

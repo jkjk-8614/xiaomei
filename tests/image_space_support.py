@@ -17,6 +17,7 @@ from PIL import Image
 from pydantic import BaseModel, Field
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+import asset_kernel
 from image_space import merge_classification, replace_ai, matches_filters
 
 
@@ -29,7 +30,7 @@ def build_app(directory):
         'image_space_dimensions', 'image_space_read_generated_classification', 'image_space_collections',
         'get_image_space_collections', 'create_image_space_collection', 'update_image_space_collection',
         'delete_image_space_collection', 'edit_image_space_classification', 'list_storage_files',
-        '_normalize_asset_classification_fields', 'normalize_asset_classification', '_safe_asset_tag',
+        '_normalize_asset_classification_fields', 'normalize_asset_classification',
         '_read_local_upload_classification', '_write_local_upload_classification',
         '_atomic_write_json_locked',
         'AssetLibraryClassifyRequest', 'classify_asset_library_items',
@@ -37,7 +38,7 @@ def build_app(directory):
     tree = ast.parse((ROOT / 'main.py').read_text(encoding='utf-8'))
     selected = [node for node in tree.body if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in names]
     assert len(selected) == len(names)
-    ns = dict(globals(), app=app, DATA_DIR=str(root), now_ms=lambda: int(time.time()*1000),
+    ns = dict(globals(), app=app, DATA_DIR=str(root), asset_kernel=asset_kernel, now_ms=lambda: int(time.time()*1000),
               _IMAGE_SPACE_DIMENSIONS={}, ASSET_CLASSIFICATION_DIMENSION_NAMES={'color':'色彩','materials':'材质','subject':'主体','style':'风格','use_case':'用途'},
               STORAGE_MEDIA_EXTS={'.png'}, STORAGE_VIDEO_EXTS={'.mp4'}, STORAGE_AUDIO_EXTS={'.mp3'}, Request=Any)
     library = {'libraries':[{'id':'default','name':'默认资产库','categories':[{'id':'frames','name':'相框','type':'image','items':[]}]}]}

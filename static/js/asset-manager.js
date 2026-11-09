@@ -1999,9 +1999,8 @@ function findPromptItem(id){
 function findCanvasAssetItem(id){
     return (canvasAssetsData.items || []).find(item => item.id === id) || null;
 }
-function shellBatch(kind, fields, fallback){
-    if(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive()) return XiaomeiShellKernel.assetBatch(kind, fields);
-    return fallback;
+function shellBatch(kind, fields){
+    return XiaomeiShellKernel.assetBatch(kind, fields);
 }
 function selectedAsset(){
     const items = currentAssetItems();
@@ -2020,14 +2019,7 @@ function selectedCanvasAsset(){
     return items.find(item => item.id === selectedCanvasAssetId) || items[0] || null;
 }
 function toggleSelectionSet(set, id){
-    if(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive()) return XiaomeiShellKernel.toggleMember(set, id);
-    if(!id) return false;
-    if(set.has(id)){
-        set.delete(id);
-        return false;
-    }
-    set.add(id);
-    return true;
+    return XiaomeiShellKernel.toggleMember(set, id);
 }
 function managedSelectionTarget(target){
     if(activeTab === 'assets' && assetManageMode){
@@ -4396,7 +4388,7 @@ async function uploadFiles(files){
             setStatus('上传完成，正在写入当前资产分组...');
             data = await apiJson('/api/asset-library/items/batch', {
                 method:'POST', headers:{'Content-Type':'application/json'},
-                body:JSON.stringify(shellBatch('copy', {libraryId:activeAssetLibraryId, categoryId:activeAssetCategoryId, items}, {library_id:activeAssetLibraryId, category_id:activeAssetCategoryId, items}))
+                body:JSON.stringify(shellBatch('copy', {libraryId:activeAssetLibraryId, categoryId:activeAssetCategoryId, items}))
             });
             assetLibrary = data.library || assetLibrary;
         }
@@ -4579,11 +4571,6 @@ async function importAssetCategoryToLocal(payload){
                 folder:targetFolder,
                 folderParent:parentFolder,
                 folderName:category.name || '素材分组'
-            }, {
-                items,
-                folder:targetFolder,
-                folder_parent:parentFolder,
-                folder_name:category.name || '素材分组'
             }))
         });
         targetFolder = String(data.folder || targetFolder).trim();
@@ -4638,12 +4625,7 @@ async function importAssetCategoryToLocal(payload){
                         ids:importedSourceIds,
                         preserveReferenced:true,
                         removeEmptyCategoryId:payload.categoryId || ''
-                    }, {
-                            library_id:payload.libraryId || '',
-                            ids:importedSourceIds,
-                            preserve_referenced:true,
-                            remove_empty_category_id:payload.categoryId || ''
-                        }))
+                    }))
                     });
                     assetLibrary = removedData.library || assetLibrary;
                     removed = Number(removedData.removed || 0);
@@ -5164,7 +5146,7 @@ async function deleteSelectedWorkflows(){
     const ids = [...selectedWorkflowIds];
     if(!ids.length) return;
     setStatus('正在将工作流移入回收站…');
-    const data = await apiJson('/api/asset-library/items/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(shellBatch('delete', {libraryId:activeWorkflowLibraryId, ids}, {library_id:activeWorkflowLibraryId, ids}))});
+    const data = await apiJson('/api/asset-library/items/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(shellBatch('delete', {libraryId:activeWorkflowLibraryId, ids}))});
     assetLibrary = data.library || assetLibrary;
     selectedWorkflowIds.clear();
     selectedWorkflowId = '';
@@ -5188,11 +5170,6 @@ async function moveWorkflowToCategory(itemId, targetLibraryId, targetCategoryId)
                 libraryId:activeWorkflowLibraryId,
                 targetLibraryId:targetLibraryId || activeWorkflowLibraryId,
                 targetCategoryId:targetCategoryId
-            }, {
-                ids:[itemId],
-                library_id:activeWorkflowLibraryId,
-                target_library_id:targetLibraryId || activeWorkflowLibraryId,
-                target_category_id:targetCategoryId
             }))
         });
         assetLibrary = data.library || assetLibrary;
@@ -7115,7 +7092,7 @@ async function deleteAssetItem(id){
 async function deleteSelectedAssets(){
     if(!selectedAssetIds.size) return;
     const ids = [...selectedAssetIds];
-    const data = await apiJson('/api/asset-library/items/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(shellBatch('delete', {libraryId:activeAssetLibraryId, ids}, {library_id:activeAssetLibraryId, ids}))});
+    const data = await apiJson('/api/asset-library/items/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(shellBatch('delete', {libraryId:activeAssetLibraryId, ids}))});
     assetLibrary = data.library || assetLibrary;
     if(ids.includes(selectedAssetId)) selectedAssetId = '';
     selectedAssetIds.clear();
@@ -7150,7 +7127,7 @@ async function pasteAssetClipboard(){
                 targetLibraryId:activeAssetLibraryId,
                 targetCategoryId:activeAssetCategoryId,
                 ids:assetClipboard.ids
-            }, {library_id:assetClipboard.sourceLibraryId, target_library_id:activeAssetLibraryId, target_category_id:activeAssetCategoryId, ids:assetClipboard.ids}))
+            }))
         });
         assetLibrary = data.library || assetLibrary;
         setStatus(`已移动 ${data.moved || 0} 个素材`);
@@ -7159,7 +7136,7 @@ async function pasteAssetClipboard(){
         const data = await apiJson('/api/asset-library/items/batch', {
             method:'POST',
             headers:{'Content-Type':'application/json'},
-            body:JSON.stringify(shellBatch('copy', {libraryId:activeAssetLibraryId, categoryId:activeAssetCategoryId, items}, {library_id:activeAssetLibraryId, category_id:activeAssetCategoryId, items}))
+            body:JSON.stringify(shellBatch('copy', {libraryId:activeAssetLibraryId, categoryId:activeAssetCategoryId, items}))
         });
         assetLibrary = data.library || assetLibrary;
         setStatus(`已复制 ${data.items?.length || 0} 个素材`);
@@ -7236,7 +7213,7 @@ async function moveSelectedAssets(){
             targetLibraryId:targetLibraryId,
             targetCategoryId:targetCategoryId,
             ids
-        }, {library_id:activeAssetLibraryId, target_library_id:targetLibraryId, target_category_id:targetCategoryId, ids}))
+        }))
     });
     assetLibrary = data.library || assetLibrary;
     selectedAssetIds.clear();
