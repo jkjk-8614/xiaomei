@@ -13215,10 +13215,28 @@ function connectSelectionToGenerator(kind, genId){
 
 function pushUndo(){
     if(!canvas) return;
+    if(window.XiaomeiHistoryKernel?.isActive()){
+        XiaomeiHistoryKernel.push(undoStack, null, {
+            nodes:XiaomeiHistoryKernel.cloneData(serializableCanvasNodes()),
+            connections:XiaomeiHistoryKernel.cloneData(connections)
+        }, UNDO_MAX, false);
+        return;
+    }
     undoStack.push({nodes:JSON.parse(JSON.stringify(serializableCanvasNodes())), connections:JSON.parse(JSON.stringify(connections))});
     if(undoStack.length > UNDO_MAX) undoStack.shift();
 }
 function performUndo(){
+    if(window.XiaomeiHistoryKernel?.isActive()){
+        if(!canvas) return;
+        const state = XiaomeiHistoryKernel.undo(undoStack, null);
+        if(!state) return;
+        nodes = state.nodes;
+        connections = state.connections;
+        selected.clear();
+        render();
+        scheduleSave();
+        return;
+    }
     if(!canvas || !undoStack.length) return;
     const state = undoStack.pop();
     nodes = state.nodes;
@@ -13283,10 +13301,15 @@ function copySelectedNodes(){
     if(!toCopy.length) return;
     const ids = new Set(toCopy.map(n => n.id));
     const pickedConnections = (connections || []).filter(c => ids.has(c.from) && ids.has(c.to)).map(c => ({...c}));
-    clipboard = {
-        nodes:JSON.parse(JSON.stringify(serializableCanvasNodes(toCopy))),
-        connections:JSON.parse(JSON.stringify(pickedConnections))
-    };
+    clipboard = window.XiaomeiHistoryKernel?.isActive()
+        ? {
+            nodes:XiaomeiHistoryKernel.cloneData(serializableCanvasNodes(toCopy)),
+            connections:XiaomeiHistoryKernel.cloneData(pickedConnections)
+        }
+        : {
+            nodes:JSON.parse(JSON.stringify(serializableCanvasNodes(toCopy))),
+            connections:JSON.parse(JSON.stringify(pickedConnections))
+        };
 }
 function clipboardNodeCount(){
     if(Array.isArray(clipboard)) return clipboard.length;
@@ -13299,18 +13322,32 @@ function pasteNodes(){
     const clipConnections = Array.isArray(clipboard?.connections) ? clipboard.connections : [];
     if(!clipNodes.length) return;
     pushUndo();
-    const xs = clipNodes.map(n => n.x), ys = clipNodes.map(n => n.y);
-    const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
-    const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-    const dx = lastMouseBoard.x - cx;
-    const dy = lastMouseBoard.y - cy;
+    let dx;
+    let dy;
+    if(window.XiaomeiHistoryKernel?.isActive()){
+        const shift = XiaomeiHistoryKernel.centerShift(clipNodes.map(n => ({x:n.x, y:n.y})), lastMouseBoard);
+        dx = shift.x;
+        dy = shift.y;
+    } else {
+        const xs = clipNodes.map(n => n.x), ys = clipNodes.map(n => n.y);
+        const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+        const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+        dx = lastMouseBoard.x - cx;
+        dy = lastMouseBoard.y - cy;
+    }
     const idMap = new Map();
     const copies = clipNodes.map(n => { const c = cloneNode(n, dx, dy); idMap.set(n.id, c.id); return c; });
+    const idTable = () => Object.fromEntries(idMap);
     copies.forEach(c => {
-        if((c.type === 'group' || c.type === 'promptGroup') && c.items)
-            c.items = c.items.map(id => idMap.get(id) || id);
+        if((c.type === 'group' || c.type === 'promptGroup') && c.items){
+            c.items = window.XiaomeiHistoryKernel?.isActive()
+                ? XiaomeiHistoryKernel.remapIdList(c.items, idTable(), true)
+                : c.items.map(id => idMap.get(id) || id);
+        }
     });
-    const newConnections = clipConnections
+    const newConnections = window.XiaomeiHistoryKernel?.isActive()
+        ? XiaomeiHistoryKernel.remapEdges(clipConnections, idTable(), {newId:() => uid('c')})
+        : clipConnections
         .map(c => ({...c, id:uid('c'), from:idMap.get(c.from), to:idMap.get(c.to)}))
         .filter(c => c.from && c.to);
     nodes.push(...copies);
@@ -14517,6 +14554,43 @@ window.addEventListener('paste', e => {
 });
 window.addEventListener('keydown', e => {
     if(!canvas) return;
+    if(window.XiaomeiHistoryKernel?.isActive()){
+        const tag = document.activeElement?.tagName;
+        const commandEditable = tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable;
+        const modal = Boolean(document.getElementById('imageEditModal')?.classList.contains('open')
+            || promptTemplateModal?.classList.contains('open')
+            || outputLightbox.classList.contains('open')
+            || assetManagerModal?.classList.contains('open')
+            || workflowTransferModal?.classList.contains('open')
+            || logModal?.classList.contains('open'));
+        const action = XiaomeiHistoryKernel.chord({
+            key:e.key, ctrl:e.ctrlKey, meta:e.metaKey, alt:e.altKey, shift:e.shiftKey, repeat:e.repeat
+        }, {
+            profile:'classic',
+            plainEditable:isEditableTarget(e.target),
+            commandEditable,
+            modal,
+            textSelected:Boolean(window.getSelection && window.getSelection().toString().length),
+            canPaste:clipboardNodeCount() > 0
+        });
+        if(action?.type === 'ignore' || action?.type === 'zoom-preview'){
+            e.preventDefault();
+            if(action.type === 'zoom-preview') toggleZoomPreview();
+            return;
+        }
+        if(action?.type === 'undo'){ e.preventDefault(); performUndo(); return; }
+        if(action?.type === 'copy'){ e.preventDefault(); copySelectedNodes(); return; }
+        if(action?.type === 'group'){ e.preventDefault(); groupSelectedImages(); return; }
+        if(action?.type === 'paste-deferred'){
+            const pasteRequestedAt = Date.now();
+            setTimeout(() => {
+                if(!canvas) return;
+                if(!XiaomeiHistoryKernel.pasteStillFresh(pasteRequestedAt, [lastImagePasteAt])) return;
+                pasteNodes();
+            }, action.delay);
+            return;
+        }
+    }
     const key = String(e.key || '').toLowerCase();
     if(key === 'r' && !isEditableTarget(e.target)) isRKeyDown = true;
     if(e.key === 'Shift' && !e.altKey && !isEditableTarget(document.activeElement)) setKnifeMode(true);

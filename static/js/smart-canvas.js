@@ -317,6 +317,12 @@ function smartCascadePathForCtx(ctx=null){
 }
 function capturePendingUndo(){ pendingUndoSnapshot = snapshotForUndo(); }
 function commitPendingUndo(){
+    if(window.XiaomeiHistoryKernel?.isActive()){
+        if(!pendingUndoSnapshot) return;
+        XiaomeiHistoryKernel.push(undoStack, redoStack, pendingUndoSnapshot, UNDO_LIMIT, true);
+        pendingUndoSnapshot = null;
+        return;
+    }
     if(pendingUndoSnapshot){
         redoStack.length = 0;
         undoStack.push(pendingUndoSnapshot);
@@ -326,6 +332,16 @@ function commitPendingUndo(){
 }
 function discardPendingUndo(){ pendingUndoSnapshot = null; }
 function snapshotForUndo(){
+    if(window.XiaomeiHistoryKernel?.isActive()){
+        return {
+            nodes:XiaomeiHistoryKernel.cloneData(nodes),
+            connections:XiaomeiHistoryKernel.cloneData(canvas?.connections || []),
+            selectedId,
+            selectedIds:selectedIds.slice(),
+            selectedImage:{...selectedImage},
+            composerReferences:window.CanvasAgentReferenceBridge?.snapshot()
+        };
+    }
     return {
         nodes: JSON.parse(JSON.stringify(nodes)),
         connections: JSON.parse(JSON.stringify(canvas?.connections || [])),
@@ -336,6 +352,11 @@ function snapshotForUndo(){
     };
 }
 function pushUndo(){
+    if(window.XiaomeiHistoryKernel?.isActive()){
+        if(undoSuppressed || !canvas) return;
+        XiaomeiHistoryKernel.push(undoStack, redoStack, snapshotForUndo(), UNDO_LIMIT, true);
+        return;
+    }
     if(undoSuppressed) return;
     if(!canvas) return;
     redoStack.length = 0;
@@ -343,6 +364,13 @@ function pushUndo(){
     if(undoStack.length > UNDO_LIMIT) undoStack.shift();
 }
 function performUndo(){
+    if(window.XiaomeiHistoryKernel?.isActive()){
+        const snap = XiaomeiHistoryKernel.undo(undoStack, redoStack, snapshotForUndo());
+        if(!snap){ toast(tr('smart.toastNoUndo')); return; }
+        restoreSmartUndoSnapshot(snap);
+        toast(tr('smart.toastUndone'));
+        return;
+    }
     if(!undoStack.length){ toast(tr('smart.toastNoUndo')); return; }
     redoStack.push(snapshotForUndo());
     const snap = undoStack.pop();
@@ -350,6 +378,13 @@ function performUndo(){
     toast(tr('smart.toastUndone'));
 }
 function performRedo(){
+    if(window.XiaomeiHistoryKernel?.isActive()){
+        const snap = XiaomeiHistoryKernel.redo(undoStack, redoStack, snapshotForUndo());
+        if(!snap){ toast('没有可重做的操作'); return; }
+        restoreSmartUndoSnapshot(snap);
+        toast('已重做');
+        return;
+    }
     if(!redoStack.length){ toast('没有可重做的操作'); return; }
     undoStack.push(snapshotForUndo());
     restoreSmartUndoSnapshot(redoStack.pop());
@@ -11932,13 +11967,26 @@ function pasteNodes(options={}){
     if(!options.dragOffset) lastNodePasteAt = Date.now();
     pushUndo();
     const sourceNodes = clipboard.nodes;
-    const xs = sourceNodes.map(n => Number(n.x) || 0);
-    const ys = sourceNodes.map(n => Number(n.y) || 0);
-    const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
-    const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
     const p = options.position || lastMouseWorld || viewportCenter();
-    const dx = options.dragOffset?.x ?? p.x - cx;
-    const dy = options.dragOffset?.y ?? p.y - cy;
+    let dx;
+    let dy;
+    if(window.XiaomeiHistoryKernel?.isActive()){
+        if(options.dragOffset){
+            dx = options.dragOffset.x;
+            dy = options.dragOffset.y;
+        } else {
+            const shift = XiaomeiHistoryKernel.centerShift(sourceNodes.map(n => ({x:Number(n.x) || 0, y:Number(n.y) || 0})), p);
+            dx = shift.x;
+            dy = shift.y;
+        }
+    } else {
+        const xs = sourceNodes.map(n => Number(n.x) || 0);
+        const ys = sourceNodes.map(n => Number(n.y) || 0);
+        const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+        const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+        dx = options.dragOffset?.x ?? p.x - cx;
+        dy = options.dragOffset?.y ?? p.y - cy;
+    }
     const idMap = new Map();
     const copies = sourceNodes.map(n => {
         const copy = cloneSmartNode(n, dx, dy);
@@ -11981,7 +12029,12 @@ function pasteNodes(options={}){
             delete copy.runError;
         }
     });
-    const newConnections = (clipboard.connections || []).map(conn => ({
+    const newConnections = window.XiaomeiHistoryKernel?.isActive()
+        ? XiaomeiHistoryKernel.remapEdges(clipboard.connections || [], Object.fromEntries(idMap), {
+            keepUnknownFrom:Boolean(options.keepUpstream),
+            allowUnknownFrom:id => upstreamIds.has(id)
+        })
+        : (clipboard.connections || []).map(conn => ({
         ...conn,
         from:mapInputId(conn.from),
         to:idMap.get(conn.to)
@@ -36203,6 +36256,46 @@ window.addEventListener('keydown', e => {
         // 它们会在被遮住的画布上替换或移除节点，让仍然打开的编辑器丢失 currentEditImage()
         // 的目标（应用裁剪会报“图片尚未加载”），用户也看不到画布上实际发生了什么。
         return;
+    }
+    if(window.XiaomeiHistoryKernel?.isActive()){
+        const action = XiaomeiHistoryKernel.chord({
+            key:e.key, ctrl:e.ctrlKey, meta:e.metaKey, alt:e.altKey, shift:e.shiftKey, repeat:e.repeat
+        }, {
+            profile:'smart',
+            plainEditable:isEditableTarget(e.target),
+            commandEditable:isEditableTarget(e.target),
+            modal:false,
+            textSelected:Boolean(window.getSelection?.().toString()),
+            canPaste:Boolean(nodeClipboard?.nodes?.length)
+        });
+        if(action?.type === 'ignore' || action?.type === 'zoom-preview'){
+            e.preventDefault();
+            if(action.type === 'zoom-preview') toggleZoomPreview();
+            return;
+        }
+        if(action?.type === 'copy'){
+            e.preventDefault();
+            copySelectedNodes();
+            return;
+        }
+        if(action?.type === 'paste-deferred'){
+            const requestedAt = Date.now();
+            setTimeout(() => {
+                if(!XiaomeiHistoryKernel.pasteStillFresh(requestedAt, [lastImagePasteAt, lastNodePasteAt])) return;
+                pasteNodes();
+            }, action.delay);
+            return;
+        }
+        if(action?.type === 'undo'){ e.preventDefault(); performUndo(); return; }
+        if(action?.type === 'redo'){ e.preventDefault(); performRedo(); return; }
+        if(action?.type === 'ungroup'){
+            e.preventDefault();
+            const ids = selectedIds.length ? selectedIds.slice() : (selectedId ? [selectedId] : []);
+            const groupIds = [...new Set(ids.map(id => smartGroupContainingNode(id)?.id || id))];
+            groupIds.map(ungroupNode).some(Boolean);
+            return;
+        }
+        if(action?.type === 'group'){ e.preventDefault(); groupSelectedNodes(); return; }
     }
     if(!e.ctrlKey && !e.metaKey && !e.altKey && !isEditableTarget(e.target)){
         if(key === 'z'){
