@@ -1,4 +1,5 @@
 import asyncio
+import os
 import unittest
 
 import asset_kernel
@@ -11,7 +12,8 @@ class AssetKernelTest(unittest.TestCase):
         self.assertIn("error", asset_kernel.relative_path("folder/../../secret"))
         self.assertEqual(asset_kernel.relative_path("/etc/passwd")["rel"], "etc/passwd")
         held = asset_kernel.contained("/data/local", "nested/a.png")
-        self.assertTrue(held["path"].endswith("/data/local/nested/a.png"))
+        suffix = os.path.join("data", "local", "nested", "a.png")
+        self.assertTrue(os.path.normcase(os.path.normpath(held["path"])).endswith(os.path.normcase(suffix)))
         self.assertIn("error", asset_kernel.contained("/data/local", "../secret"))
         self.assertEqual(asset_kernel.storage_bucket("generated")["bucket"], "generated")
         self.assertEqual(asset_kernel.storage_bucket("nope")["status"], 404)
