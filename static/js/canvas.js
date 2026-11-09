@@ -1136,11 +1136,13 @@ function setCreateMode(active, kind='classic'){
     refreshIcons();
 }
 function screenToWorld(clientX, clientY){
+    if(window.XiaomeiViewportKernel?.isActive()) return XiaomeiViewportKernel.pointerToWorld(viewport, XiaomeiViewportKernel.frameFromElement(board), clientX, clientY);
     const rect = board.getBoundingClientRect();
     return { x:(clientX - rect.left - viewport.x) / viewport.scale, y:(clientY - rect.top - viewport.y) / viewport.scale };
 }
 function applyViewport(options={}){
-    world.style.transform = `translate3d(${viewport.x}px, ${viewport.y}px, 0) scale(${viewport.scale})`;
+    if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.paintWorldLayer(world, viewport, 'translate3d');
+    else world.style.transform = `translate3d(${viewport.x}px, ${viewport.y}px, 0) scale(${viewport.scale})`;
     const zoomLabel = document.getElementById('canvasZoomLabel');
     if(zoomLabel) zoomLabel.textContent = `${Math.round(safeViewportScale(viewport.scale) * 100)}%`;
     if(options.scheduleMinimap !== false) scheduleMinimapRender();
@@ -1161,6 +1163,18 @@ function scheduleViewportRender(save=false){
     });
 }
 function adjustCanvasZoom(delta){
+    if(window.XiaomeiViewportKernel?.isActive()){
+        if(!board) return;
+        const rect = board.getBoundingClientRect();
+        const oldScale = XiaomeiViewportKernel.positiveScale(viewport.scale, 1);
+        const nextScale = Math.max(0.12, Math.min(2.4, oldScale + Number(delta || 0)));
+        XiaomeiViewportKernel.zoomAboutCenter(viewport, {width:rect.width, height:rect.height}, nextScale);
+        applyViewport();
+        renderLinks();
+        renderSelectionHub();
+        scheduleViewportSave();
+        return;
+    }
     if(!board) return;
     const rect = board.getBoundingClientRect();
     const oldScale = safeViewportScale(viewport.scale);
@@ -1234,6 +1248,25 @@ function scheduleLinksRender(){
     });
 }
 function renderMinimap(){
+    if(window.XiaomeiViewportKernel?.isActive()){
+        const rect = board.getBoundingClientRect();
+        const painted = XiaomeiViewportKernel.paintClassicMinimap({
+            content:minimapContent,
+            viewportEl:minimapViewport,
+            arrangeButton:canvasArrangeBtn,
+            selectedCount:selected.size,
+            frame:{width:rect.width, height:rect.height},
+            camera:viewport,
+            boxes:(nodes || []).map(n => {
+                const box = estimatedNodeRect(n);
+                return {x:box.x, y:box.y, w:box.w, h:box.h, selected:selected.has(n.id)};
+            })
+        });
+        if(!painted) return;
+        minimapState = painted.state;
+        minimapViewport = painted.viewportEl;
+        return;
+    }
     if(!minimapContent || !minimapViewport) return;
     canvasArrangeBtn?.classList.toggle('visible', selected.size > 0);
     const bounds = minimapBounds();
@@ -1254,6 +1287,12 @@ function renderMinimap(){
     updateMinimapViewport();
 }
 function updateMinimapViewport(){
+    if(window.XiaomeiViewportKernel?.isActive()){
+        if(!minimapViewport || !minimapState) return;
+        const rect = board.getBoundingClientRect();
+        XiaomeiViewportKernel.positionClassicMinimapViewport(minimapViewport, minimapState, viewport, {width:rect.width, height:rect.height});
+        return;
+    }
     if(!minimapViewport || !minimapState) return;
     const r = currentWorldViewRect();
     const {bounds, scale, ox, oy} = minimapState;
@@ -1263,6 +1302,16 @@ function updateMinimapViewport(){
     minimapViewport.style.height = `${Math.max(8, r.h * scale)}px`;
 }
 function minimapEventToWorld(e){
+    if(window.XiaomeiViewportKernel?.isActive()){
+        if(!minimapState) renderMinimap();
+        const rect = minimapContent.getBoundingClientRect();
+        return XiaomeiViewportKernel.minimapPointerToWorld({
+            scale:minimapState.scale,
+            offsetX:minimapState.ox,
+            offsetY:minimapState.oy,
+            bounds:minimapState.bounds
+        }, rect, e.clientX, e.clientY, 0);
+    }
     if(!minimapState) renderMinimap();
     const state = minimapState;
     const rect = minimapContent.getBoundingClientRect();
@@ -1271,6 +1320,14 @@ function minimapEventToWorld(e){
     return {x, y};
 }
 function centerViewportOnWorldPoint(point){
+    if(window.XiaomeiViewportKernel?.isActive()){
+        const rect = board.getBoundingClientRect();
+        XiaomeiViewportKernel.centerOn(viewport, {width:rect.width, height:rect.height}, point);
+        applyViewport();
+        renderLinks();
+        renderSelectionHub();
+        return;
+    }
     const rect = board.getBoundingClientRect();
     viewport.x = rect.width / 2 - point.x * viewport.scale;
     viewport.y = rect.height / 2 - point.y * viewport.scale;
@@ -1283,6 +1340,21 @@ function safeViewportScale(value){
     return Number.isFinite(n) && n > 0 ? n : 1;
 }
 function fitAllNodesViewport(){
+    if(window.XiaomeiViewportKernel?.isActive()){
+        const rect = board.getBoundingClientRect();
+        const boxes = nodes.map(n => {
+            const box = estimatedNodeRect(n);
+            return {x:box.x, y:box.y, w:box.w, h:box.h};
+        });
+        XiaomeiViewportKernel.fitBoxes(viewport, {width:rect.width, height:rect.height}, boxes, {
+            pad:180, inset:80, minZoom:0.06, maxZoom:0.82, emptyZoom:0.45, allowEmpty:true
+        });
+        applyViewport();
+        renderLinks();
+        renderSelectionHub();
+        scheduleViewportSave();
+        return;
+    }
     const rect = board.getBoundingClientRect();
     if(!nodes.length){
         viewport.scale = 0.45;
@@ -1323,6 +1395,26 @@ function enterZoomPreview(){
     fitAllNodesViewport();
 }
 function exitZoomPreview(point=null){
+    if(window.XiaomeiViewportKernel?.isActive()){
+        if(!zoomPreviewState) return false;
+        const prev = zoomPreviewState;
+        zoomPreviewState = null;
+        shell.classList.remove('zoom-preview');
+        document.body.classList.remove('canvas-zoom-preview');
+        viewport.scale = XiaomeiViewportKernel.positiveScale(prev.scale, 1);
+        if(point){
+            const rect = board.getBoundingClientRect();
+            XiaomeiViewportKernel.centerOn(viewport, {width:rect.width, height:rect.height}, point);
+        } else {
+            viewport.x = prev.x;
+            viewport.y = prev.y;
+        }
+        applyViewport();
+        renderLinks();
+        renderSelectionHub();
+        scheduleViewportSave();
+        return true;
+    }
     if(!zoomPreviewState) return false;
     const prev = zoomPreviewState;
     zoomPreviewState = null;
@@ -1344,6 +1436,25 @@ function exitZoomPreview(point=null){
     return true;
 }
 function exitZoomPreviewToNode(nodeId){
+    if(window.XiaomeiViewportKernel?.isActive()){
+        if(!zoomPreviewState) return false;
+        const node = nodes.find(n => n.id === nodeId);
+        if(!node) return exitZoomPreview();
+        const prev = zoomPreviewState;
+        const boardRect = board.getBoundingClientRect();
+        const rect = estimatedNodeRect(node);
+        zoomPreviewState = null;
+        shell.classList.remove('zoom-preview');
+        document.body.classList.remove('canvas-zoom-preview');
+        XiaomeiViewportKernel.frameOnNode(viewport, {width:boardRect.width, height:boardRect.height}, {x:rect.x, y:rect.y, w:rect.w, h:rect.h}, prev.scale, {
+            margin:160, maxScale:ZOOM_PREVIEW_NODE_MAX_SCALE, defaultScale:ZOOM_PREVIEW_NODE_DEFAULT_SCALE
+        });
+        applyViewport();
+        renderLinks();
+        renderSelectionHub();
+        scheduleViewportSave();
+        return true;
+    }
     if(!zoomPreviewState) return false;
     const node = nodes.find(n => n.id === nodeId);
     if(!node) return exitZoomPreview();
@@ -5626,8 +5737,11 @@ function renderNode(node){
     const size = defaultNodeSize(node.type);
     const hasFixedSize = Boolean(node.h || size.h);
     el.className = `node ${node.type}-node ${node.url ? 'has-image' : ''} ${hasFixedSize ? 'sized' : ''} ${selected.has(node.id) ? 'selected' : ''}`;
-    el.style.left = `${node.x}px`;
-    el.style.top = `${node.y}px`;
+    if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.writeRawOrigin(el, node.x, node.y);
+    else {
+        el.style.left = `${node.x}px`;
+        el.style.top = `${node.y}px`;
+    }
     el.style.width = `${node.w || size.w}px`;
     if(node.h || size.h) el.style.height = `${node.h || size.h}px`;
     el.dataset.id = node.id;
@@ -14165,8 +14279,11 @@ function startBoardPan(e, opts={}){
     document.body.classList.add('canvas-board-pan');
     window.onmousemove = e2 => {
         if(Math.hypot(e2.clientX - dragBoard.sx, e2.clientY - dragBoard.sy) > 4) dragBoard.moved = true;
-        viewport.x = dragBoard.ox + e2.clientX - dragBoard.sx;
-        viewport.y = dragBoard.oy + e2.clientY - dragBoard.sy;
+        if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.dragCamera(viewport, dragBoard.ox, dragBoard.oy, e2.clientX - dragBoard.sx, e2.clientY - dragBoard.sy);
+        else {
+            viewport.x = dragBoard.ox + e2.clientX - dragBoard.sx;
+            viewport.y = dragBoard.oy + e2.clientY - dragBoard.sy;
+        }
         applyViewport();
     };
     window.onmouseup = e2 => {
@@ -14236,6 +14353,11 @@ board.onwheel = e => {
     if(!canvas) return;
     if(isEditableTarget(e.target)) return;
     e.preventDefault();
+    if(window.XiaomeiViewportKernel?.isActive()){
+        XiaomeiViewportKernel.classicWheel(viewport, XiaomeiViewportKernel.frameFromElement(board), e.clientX, e.clientY, e.deltaY);
+        scheduleViewportRender(true);
+        return;
+    }
     const before = screenToWorld(e.clientX, e.clientY);
     viewport.scale = viewport.scale * (e.deltaY > 0 ? .92 : 1.08);
     const rect = board.getBoundingClientRect();
