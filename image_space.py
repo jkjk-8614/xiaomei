@@ -3,6 +3,8 @@ import copy
 import os
 import re
 
+import asset_kernel
+
 
 def merge_classification(raw, normalize):
     raw = raw if isinstance(raw, dict) else {}
@@ -24,6 +26,8 @@ def replace_ai(previous, new, normalize):
 
 
 def matches_filters(item, filters):
+    if asset_kernel.selected():
+        return asset_kernel.matches(item, filters)
     classification = item.get("classification") or {}
     categories = classification.get("categories") or {}
     tags = classification.get("tags") or []

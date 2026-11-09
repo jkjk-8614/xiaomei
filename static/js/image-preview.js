@@ -87,6 +87,13 @@
             const rect = container.getBoundingClientRect();
             const lx = e.clientX - rect.left;
             const ly = e.clientY - rect.top;
+            if(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive()){
+                const next = XiaomeiShellKernel.previewWheel({zoom:zoom, panX:pan.x, panY:pan.y}, {x:lx, y:ly}, e.deltaY, {min:minZoom, max:maxZoom});
+                zoom = next.zoom;
+                pan = {x:next.panX, y:next.panY};
+                apply();
+                return;
+            }
             const before = {
                 x: (lx - pan.x) / zoom,
                 y: (ly - pan.y) / zoom

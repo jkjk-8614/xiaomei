@@ -317,6 +317,12 @@ function smartCascadePathForCtx(ctx=null){
 }
 function capturePendingUndo(){ pendingUndoSnapshot = snapshotForUndo(); }
 function commitPendingUndo(){
+    if(window.XiaomeiHistoryKernel?.isActive()){
+        if(!pendingUndoSnapshot) return;
+        XiaomeiHistoryKernel.push(undoStack, redoStack, pendingUndoSnapshot, UNDO_LIMIT, true);
+        pendingUndoSnapshot = null;
+        return;
+    }
     if(pendingUndoSnapshot){
         redoStack.length = 0;
         undoStack.push(pendingUndoSnapshot);
@@ -326,6 +332,16 @@ function commitPendingUndo(){
 }
 function discardPendingUndo(){ pendingUndoSnapshot = null; }
 function snapshotForUndo(){
+    if(window.XiaomeiHistoryKernel?.isActive()){
+        return {
+            nodes:XiaomeiHistoryKernel.cloneData(nodes),
+            connections:XiaomeiHistoryKernel.cloneData(canvas?.connections || []),
+            selectedId,
+            selectedIds:selectedIds.slice(),
+            selectedImage:{...selectedImage},
+            composerReferences:window.CanvasAgentReferenceBridge?.snapshot()
+        };
+    }
     return {
         nodes: JSON.parse(JSON.stringify(nodes)),
         connections: JSON.parse(JSON.stringify(canvas?.connections || [])),
@@ -336,6 +352,11 @@ function snapshotForUndo(){
     };
 }
 function pushUndo(){
+    if(window.XiaomeiHistoryKernel?.isActive()){
+        if(undoSuppressed || !canvas) return;
+        XiaomeiHistoryKernel.push(undoStack, redoStack, snapshotForUndo(), UNDO_LIMIT, true);
+        return;
+    }
     if(undoSuppressed) return;
     if(!canvas) return;
     redoStack.length = 0;
@@ -343,6 +364,13 @@ function pushUndo(){
     if(undoStack.length > UNDO_LIMIT) undoStack.shift();
 }
 function performUndo(){
+    if(window.XiaomeiHistoryKernel?.isActive()){
+        const snap = XiaomeiHistoryKernel.undo(undoStack, redoStack, snapshotForUndo());
+        if(!snap){ toast(tr('smart.toastNoUndo')); return; }
+        restoreSmartUndoSnapshot(snap);
+        toast(tr('smart.toastUndone'));
+        return;
+    }
     if(!undoStack.length){ toast(tr('smart.toastNoUndo')); return; }
     redoStack.push(snapshotForUndo());
     const snap = undoStack.pop();
@@ -350,6 +378,13 @@ function performUndo(){
     toast(tr('smart.toastUndone'));
 }
 function performRedo(){
+    if(window.XiaomeiHistoryKernel?.isActive()){
+        const snap = XiaomeiHistoryKernel.redo(undoStack, redoStack, snapshotForUndo());
+        if(!snap){ toast('没有可重做的操作'); return; }
+        restoreSmartUndoSnapshot(snap);
+        toast('已重做');
+        return;
+    }
     if(!redoStack.length){ toast('没有可重做的操作'); return; }
     undoStack.push(snapshotForUndo());
     restoreSmartUndoSnapshot(redoStack.pop());
@@ -9602,6 +9637,7 @@ function assetLibraries(){
     return Array.isArray(assetLibrary.libraries) && assetLibrary.libraries.length ? assetLibrary.libraries : [{id:'default', name:'默认资产库', categories:assetLibrary.categories || []}];
 }
 function localAssetFolderCategories(){
+    if(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive()) return XiaomeiShellKernel.folderRows(localAssetLibrary.tree, localAssetLibrary.items);
     const result = [];
     const walk = node => {
         if(!node) return;
@@ -10685,6 +10721,7 @@ function assetCategoryForMention(){
         || cats[0];
 }
 function assetMediaKind(item){
+    if(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive()) return XiaomeiShellKernel.mediaKind(item);
     if(!item) return 'image';
     if(item.kind === 'workflow' || item.type === 'workflow') return 'workflow';
     if(item.kind === 'video' || item.type === 'video') return 'video';
@@ -11135,7 +11172,7 @@ async function addUrlToAssetLibrary(url, name=''){
     if(assetLibraryIsLocal()) return addUrlToLocalAssetLibrary(url, name);
     const cat = activeAssetCategory();
     if(!cat){ toast(tr('smart.assetNoFolder')); return; }
-    const data = await fetch('/api/asset-library/items', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({library_id:activeAssetLibraryId, category_id:cat.id, url, name})}).then(async r => {
+    const data = await fetch('/api/asset-library/items', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive() ? XiaomeiShellKernel.assetBatch('save', {libraryId:activeAssetLibraryId, categoryId:cat.id, url, name}) : {library_id:activeAssetLibraryId, category_id:cat.id, url, name})}).then(async r => {
         if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || tr('smart.assetAddFail'));
         return r.json();
     });
@@ -11175,7 +11212,7 @@ async function addUrlItemsToLocalAssetLibrary(items=[]){
     const data = await fetch('/api/local-assets/import-urls', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({folder:localAssetFolderPath(), items:list.map(item => ({url:item.url, name:item.name || smartImageNameFromUrl(item.url)}))})
+        body:JSON.stringify(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive() ? XiaomeiShellKernel.assetBatch('import', {folder:localAssetFolderPath(), items:list.map(item => ({url:item.url, name:item.name || smartImageNameFromUrl(item.url)}))}) : {folder:localAssetFolderPath(), items:list.map(item => ({url:item.url, name:item.name || smartImageNameFromUrl(item.url)}))})
     }).then(async r => {
         if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || tr('smart.assetAddFail'));
         return r.json();
@@ -11314,6 +11351,23 @@ async function loadCanvas(){
         migratedLegacySmartVideoNodes = false;
         migratedInvalidImageTaskRecoveries = false;
         sharedEditorInitialSelectionApplied = false;
+        if(window.XiaomeiDocumentKernel?.isActive()){
+            const adopted = XiaomeiDocumentKernel.adopt(canvas, {
+                profile:'smart',
+                dropNodeIds:[SMART_LOG_PREVIEW_NODE_ID],
+                fallbackTitle:tr('canvas.smartCanvas'),
+                labels:{
+                    upload:tr('smart.createImportNode'),
+                    paint:tr('smart.createPaintNode'),
+                    video:'视频',
+                    group:'Group',
+                    image:'Image'
+                }
+            });
+            canvas = adopted.document;
+            if(adopted.migrations.upload) migratedLegacySmartUploadNodes = true;
+            if(adopted.migrations.video) migratedLegacySmartVideoNodes = true;
+        }
         nodes = (Array.isArray(canvas.nodes) ? canvas.nodes : []).map(normalizeLegacySmartNode).filter(Boolean);
         nodes.forEach(node => {
             normalizeSmartCameraNode(node);
@@ -11458,7 +11512,9 @@ async function performCanvasSave(){
             base_updated_at:Number(canvas.updated_at || 0)
         };
         if(changedConnections) incrementalBody.connections = storageCanvas.connections || [];
-        if(changedViewport) incrementalBody.viewport = storageCanvas.viewport || {x:0,y:0,scale:1};
+        if(changedViewport) incrementalBody.viewport = window.XiaomeiDocumentKernel?.isActive()
+            ? XiaomeiDocumentKernel.normalizeViewport(storageCanvas.viewport)
+            : (storageCanvas.viewport || {x:0,y:0,scale:1});
         if(changedTitle) incrementalBody.title = storageCanvas.title || tr('smart.title');
         if(changedIcon) incrementalBody.icon = storageCanvas.icon || 'sparkles';
         if(changedLogs) incrementalBody.logs = storageCanvas.logs || [];
@@ -11466,7 +11522,18 @@ async function performCanvasSave(){
         const requestUrl = useIncremental
             ? `/api/canvases/${encodeURIComponent(canvasId)}/nodes`
             : `/api/canvases/${encodeURIComponent(canvasId)}`;
-        const requestBody = useIncremental ? incrementalBody : {
+        const requestBody = useIncremental ? incrementalBody : (window.XiaomeiDocumentKernel?.isActive()
+            ? XiaomeiDocumentKernel.saveBody(storageCanvas, {
+                profile:'smart',
+                includeSettings:true,
+                fallbackTitle:tr('smart.title'),
+                fallbackIcon:'sparkles',
+                dropNodeIds:[SMART_LOG_PREVIEW_NODE_ID],
+                baseUpdatedAt:storageCanvas.updated_at || canvas.updated_at || 0,
+                clientId:smartClientId,
+                labels:{upload:tr('smart.createImportNode'), paint:tr('smart.createPaintNode'), video:'视频'}
+            })
+            : {
             title:storageCanvas.title || tr('smart.title'),
             icon:storageCanvas.icon || 'sparkles',
             nodes:storageCanvas.nodes || [],
@@ -11476,7 +11543,7 @@ async function performCanvasSave(){
             settings:storageCanvas.settings,
             base_updated_at:storageCanvas.updated_at || canvas.updated_at || 0,
             client_id:smartClientId
-        };
+        });
         const res = await fetch(requestUrl, {
             method:useIncremental ? 'PATCH' : 'PUT',
             headers:{'Content-Type':'application/json'},
@@ -11932,13 +11999,26 @@ function pasteNodes(options={}){
     if(!options.dragOffset) lastNodePasteAt = Date.now();
     pushUndo();
     const sourceNodes = clipboard.nodes;
-    const xs = sourceNodes.map(n => Number(n.x) || 0);
-    const ys = sourceNodes.map(n => Number(n.y) || 0);
-    const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
-    const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
     const p = options.position || lastMouseWorld || viewportCenter();
-    const dx = options.dragOffset?.x ?? p.x - cx;
-    const dy = options.dragOffset?.y ?? p.y - cy;
+    let dx;
+    let dy;
+    if(window.XiaomeiHistoryKernel?.isActive()){
+        if(options.dragOffset){
+            dx = options.dragOffset.x;
+            dy = options.dragOffset.y;
+        } else {
+            const shift = XiaomeiHistoryKernel.centerShift(sourceNodes.map(n => ({x:Number(n.x) || 0, y:Number(n.y) || 0})), p);
+            dx = shift.x;
+            dy = shift.y;
+        }
+    } else {
+        const xs = sourceNodes.map(n => Number(n.x) || 0);
+        const ys = sourceNodes.map(n => Number(n.y) || 0);
+        const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+        const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+        dx = options.dragOffset?.x ?? p.x - cx;
+        dy = options.dragOffset?.y ?? p.y - cy;
+    }
     const idMap = new Map();
     const copies = sourceNodes.map(n => {
         const copy = cloneSmartNode(n, dx, dy);
@@ -11981,7 +12061,12 @@ function pasteNodes(options={}){
             delete copy.runError;
         }
     });
-    const newConnections = (clipboard.connections || []).map(conn => ({
+    const newConnections = window.XiaomeiHistoryKernel?.isActive()
+        ? XiaomeiHistoryKernel.remapEdges(clipboard.connections || [], Object.fromEntries(idMap), {
+            keepUnknownFrom:Boolean(options.keepUpstream),
+            allowUnknownFrom:id => upstreamIds.has(id)
+        })
+        : (clipboard.connections || []).map(conn => ({
         ...conn,
         from:mapInputId(conn.from),
         to:idMap.get(conn.to)
@@ -34422,6 +34507,36 @@ async function pollSmartCanvasTask(taskId, options={}){
     // 后端单次生图最长约 30 分钟（不含排队与下载），前端额度要明显更长，
     // 且排队等待并发名额的时间不计入，避免平台已成功但画布放弃了任务。
     const classifyTask = task => {
+        if(window.XiaomeiDispatchKernel?.isActive()){
+            const decision = XiaomeiDispatchKernel.pollDecision(task);
+            if(decision.state === 'succeeded') return {action:'resolve',value:task.result || {}};
+            if(decision.state === 'empty') return {action:'reject',error:new Error(decision.message)};
+            if(decision.state === 'jimeng_pending') return {
+                action:'reject',
+                error:new JimengPendingSignal({submitId:task.submit_id, kind:task.kind, queueInfo:task.queue_info, message:task.message}),
+            };
+            if(decision.state === 'cancelled'){
+                const error = new Error(decision.message || '生图已取消');
+                error.cancelledTask = true;
+                return {action:'reject', error};
+            }
+            if(decision.state === 'failed'){
+                const terminalError = new Error(decision.message || tr('smart.errRunFailed'));
+                if(decision.terminal){
+                    terminalError.terminalTask = true;
+                    terminalError.startedAt = task.started_at || task.created_at || 0;
+                    terminalError.finishedAt = task.finished_at || task.updated_at || 0;
+                    return {action:'reject', error:terminalError};
+                }
+                const recoverTaskId = decision.recoverId || extractUpstreamTaskId(task.error || '');
+                if(recoverTaskId) return {
+                    action:'reject',
+                    error:new ImageTaskRecoverSignal({taskId, recoverTaskId, providerId:task.provider_id, kind:'image', message:decision.message || tr('smart.errRunFailed')}),
+                };
+                return {action:'reject',error:new Error(decision.message || tr('smart.errRunFailed'))};
+            }
+            return null;
+        }
         if(task?.status === 'succeeded'){
             const result = task.result || {};
             if(!resultMediaUrls(result).length){
@@ -36203,6 +36318,46 @@ window.addEventListener('keydown', e => {
         // 它们会在被遮住的画布上替换或移除节点，让仍然打开的编辑器丢失 currentEditImage()
         // 的目标（应用裁剪会报“图片尚未加载”），用户也看不到画布上实际发生了什么。
         return;
+    }
+    if(window.XiaomeiHistoryKernel?.isActive()){
+        const action = XiaomeiHistoryKernel.chord({
+            key:e.key, ctrl:e.ctrlKey, meta:e.metaKey, alt:e.altKey, shift:e.shiftKey, repeat:e.repeat
+        }, {
+            profile:'smart',
+            plainEditable:isEditableTarget(e.target),
+            commandEditable:isEditableTarget(e.target),
+            modal:false,
+            textSelected:Boolean(window.getSelection?.().toString()),
+            canPaste:Boolean(nodeClipboard?.nodes?.length)
+        });
+        if(action?.type === 'ignore' || action?.type === 'zoom-preview'){
+            e.preventDefault();
+            if(action.type === 'zoom-preview') toggleZoomPreview();
+            return;
+        }
+        if(action?.type === 'copy'){
+            e.preventDefault();
+            copySelectedNodes();
+            return;
+        }
+        if(action?.type === 'paste-deferred'){
+            const requestedAt = Date.now();
+            setTimeout(() => {
+                if(!XiaomeiHistoryKernel.pasteStillFresh(requestedAt, [lastImagePasteAt, lastNodePasteAt])) return;
+                pasteNodes();
+            }, action.delay);
+            return;
+        }
+        if(action?.type === 'undo'){ e.preventDefault(); performUndo(); return; }
+        if(action?.type === 'redo'){ e.preventDefault(); performRedo(); return; }
+        if(action?.type === 'ungroup'){
+            e.preventDefault();
+            const ids = selectedIds.length ? selectedIds.slice() : (selectedId ? [selectedId] : []);
+            const groupIds = [...new Set(ids.map(id => smartGroupContainingNode(id)?.id || id))];
+            groupIds.map(ungroupNode).some(Boolean);
+            return;
+        }
+        if(action?.type === 'group'){ e.preventDefault(); groupSelectedNodes(); return; }
     }
     if(!e.ctrlKey && !e.metaKey && !e.altKey && !isEditableTarget(e.target)){
         if(key === 'z'){

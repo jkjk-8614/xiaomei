@@ -242,6 +242,14 @@
     }
 
     function defaultTaskDecision(task) {
+        if (global.XiaomeiDispatchKernel?.isActive()) {
+            const decision = global.XiaomeiDispatchKernel.pollDecision(task);
+            if (decision.state === 'succeeded') return { action: 'resolve', value: task };
+            if (decision.state === 'empty' || decision.state === 'failed' || decision.state === 'cancelled') {
+                return { action: 'reject', error: httpError(decision.message) };
+            }
+            return { action: 'continue' };
+        }
         const status = String(task?.status || task?.task_status || '').toLowerCase();
         if (status === 'succeeded' || status === 'success' || status === 'completed' || status === 'complete') {
             if (!taskHasMediaResult(task)) {

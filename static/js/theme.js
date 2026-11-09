@@ -16,9 +16,22 @@
     };
     const FONT_SIZES = { small:'14px', normal:'16px', large:'18px', xlarge:'20px' };
 
+    function shellOn(){
+        return !!(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive && XiaomeiShellKernel.isActive());
+    }
+    function shellMetrics(){
+        return {
+            dpr: window.devicePixelRatio,
+            width: window.innerWidth,
+            height: window.innerHeight,
+            screenLong: Math.max(window.screen?.width || 0, window.screen?.height || 0)
+        };
+    }
+
     function currentAppearance(){
         try {
             const stored = JSON.parse(localStorage.getItem(APPEARANCE_KEY) || '{}') || {};
+            if(shellOn()) return XiaomeiShellKernel.resolveAppearance(stored, currentTheme());
             if(!SKIN_NAMES.has(stored.skin)) stored.skin = currentTheme() === 'dark' ? 'dark' : (stored.eyeCare ? 'soft' : 'minimal');
             if(ACCENT_MIGRATIONS[stored.accent]) stored.accent = ACCENT_MIGRATIONS[stored.accent];
             return { ...APPEARANCE_DEFAULTS, ...stored };
@@ -144,6 +157,7 @@
     }
 
     function normalizeScaleMode(mode){
+        if(shellOn()) return XiaomeiShellKernel.scaleMode(mode);
         return SCALE_OPTIONS.includes(mode) ? mode : 'auto';
     }
 
@@ -156,6 +170,7 @@
     }
 
     function autoScale(){
+        if(shellOn()) return XiaomeiShellKernel.autoScale(shellMetrics());
         const dpr = Math.max(1, Number(window.devicePixelRatio || 1));
         const viewportWidth = Math.max(320, Number(window.innerWidth || 0));
         const viewportHeight = Math.max(320, Number(window.innerHeight || 0));
@@ -174,6 +189,7 @@
     }
 
     function scaleForMode(mode){
+        if(shellOn()) return XiaomeiShellKernel.scaleValue(mode, shellMetrics(), externalScaleValue);
         const next = normalizeScaleMode(mode);
         if(next === 'auto' && Number.isFinite(externalScaleValue)) return externalScaleValue;
         if(next === 'auto') return autoScale();

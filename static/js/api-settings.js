@@ -5237,6 +5237,24 @@ function saveProviders(){
 async function performProviderSave(){
     syncEditor();
     const submittedVersion = providerDraftVersion;
+    const useShell = window.XiaomeiShellKernel && XiaomeiShellKernel.isActive();
+    let shellBody = null;
+    if(useShell){
+        const prepared = XiaomeiShellKernel.prepareProviders(providers, {
+            displayName: modelDisplayName,
+            normalizeRh: normalizeRhEntries,
+            selectedId
+        });
+        if(prepared.error){
+            alert(tr('api.duplicateId'));
+            providerSaveError = tr('api.duplicateId');
+            return false;
+        }
+        providers = prepared.providers;
+        selectedId = prepared.selectedId || selectedId;
+        shellBody = XiaomeiShellKernel.wireProviders(providers);
+    }
+    if(!useShell){
     providers.forEach(item => {
         const oldId = item.id;
         item.id = normalizeId(newProviderId(item));
@@ -5286,12 +5304,13 @@ async function performProviderSave(){
         providerSaveError = tr('api.duplicateId');
         return false;
     }
+    }
     setStatus(tr('api.saving'));
     try {
         const res = await fetch('/api/providers', {
             method:'PUT',
             headers:{'Content-Type':'application/json'},
-            body:JSON.stringify(providers.map(item => ({
+            body:JSON.stringify(shellBody || providers.map(item => ({
                 id:item.id,
                 name:item.name,
                 base_url:item.base_url,

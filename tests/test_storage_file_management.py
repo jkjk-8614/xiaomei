@@ -1,5 +1,6 @@
 """Exercise file operations in isolated Chinese paths without loading user data."""
 import ast
+import asyncio
 import copy
 import json
 import os
@@ -79,7 +80,7 @@ class StorageFileManagementTests(unittest.TestCase):
 
         namespace = {
             "app": app, "os": os, "shutil": shutil, "uuid": uuid, "urllib": urllib,
-            "json": json, "DATA_DIR": str(root),
+            "json": json, "asyncio": asyncio, "DATA_DIR": str(root),
             "Any": Any, "Dict": Dict, "List": List, "Request": Request,
             "File": File, "Form": Form, "UploadFile": UploadFile,
             "HTTPException": HTTPException,
