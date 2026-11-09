@@ -2784,7 +2784,7 @@ def apply_locked_recommended_model_rules(base_url="", grouped=None):
     return grouped
 
 def provider_endpoint_url(provider, key, default_path):
-    if dispatch_kernel.selected():
+    if (_xm_dispatch := globals().get("dispatch_kernel")) is not None and _xm_dispatch.selected():
         return dispatch_kernel.join_endpoint(provider, key, default_path, fallback_base=AI_BASE_URL)
     base_url = str((provider or {}).get("base_url") or AI_BASE_URL).strip().rstrip("/")
     override = str((provider or {}).get(key) or "").strip()
@@ -2819,7 +2819,7 @@ def runninghub_openapi_url(provider, path=""):
     return f"{base}/{path}" if path else base
 
 def normalize_provider(item):
-    if dispatch_kernel.selected():
+    if (_xm_dispatch := globals().get("dispatch_kernel")) is not None and _xm_dispatch.selected():
         core = dispatch_kernel.provider_core(item)
         if core.get("error"):
             raise HTTPException(status_code=400, detail=core["error"])
@@ -13767,7 +13767,7 @@ def image_task_error_code(payload):
     return str(error.get("code") or error.get("error_code") or error.get("errorCode") or "").strip()
 
 def image_task_url_for_provider(provider, task_id):
-    if dispatch_kernel.selected():
+    if (_xm_dispatch := globals().get("dispatch_kernel")) is not None and _xm_dispatch.selected():
         return dispatch_kernel.task_lookup_url(provider, task_id, apimart=is_apimart_provider(provider))
     base_url = (provider.get("base_url") if provider else AI_BASE_URL).rstrip("/")
     # 异步生图（openai-video-proxy）模式优先于 apimart 协议判断：
@@ -13807,7 +13807,7 @@ def image_task_data(payload):
     return payload if isinstance(payload, dict) else {}
 
 def image_task_status(payload):
-    if dispatch_kernel.selected():
+    if (_xm_dispatch := globals().get("dispatch_kernel")) is not None and _xm_dispatch.selected():
         return dispatch_kernel.read_status(payload)
     current = image_task_data(payload)
     for _ in range(6):
@@ -13827,7 +13827,7 @@ def image_task_status(payload):
     return ""
 
 def image_task_fail_reason(payload):
-    if dispatch_kernel.selected():
+    if (_xm_dispatch := globals().get("dispatch_kernel")) is not None and _xm_dispatch.selected():
         return dispatch_kernel.failure_message(payload)
     error = image_task_error_payload(payload)
     if error is not None:
@@ -14043,7 +14043,7 @@ def output_path_for(filename, category="output"):
     return os.path.join(folder, filename)
 
 def storage_kind_dir(kind):
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         bucket = asset_kernel.storage_bucket(kind)
         if bucket.get("error"):
             raise HTTPException(status_code=int(bucket.get("status") or 404), detail=bucket["error"])
@@ -14073,7 +14073,7 @@ def storage_kind_roots(kind):
     return roots
 
 def storage_file_path(kind, rel):
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         bucket = asset_kernel.storage_bucket(kind)
         if bucket.get("error"):
             raise HTTPException(status_code=int(bucket.get("status") or 404), detail=bucket["error"])
@@ -23678,7 +23678,7 @@ def default_asset_library():
     }
 
 def normalize_asset_library(lib):
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         return asset_kernel.normalize_catalog(lib, now_ms())
     if not isinstance(lib, dict):
         lib = default_asset_library()
@@ -23866,7 +23866,7 @@ def sort_asset_library_items(lib):
             items.sort(key=created_at_key, reverse=True)
 
 def asset_library_media_kind(path: str, content_type: str = "") -> str:
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         return asset_kernel.media_kind(path, content_type)
     ext = os.path.splitext(path or "")[1].lower()
     ct = (content_type or "").lower()
@@ -23879,7 +23879,7 @@ def asset_library_media_kind(path: str, content_type: str = "") -> str:
     return "image"
 
 def asset_library_safe_extension(path: str, kind: str) -> str:
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         return asset_kernel.safe_extension(path, kind)
     ext = os.path.splitext(path or "")[1].lower()
     allowed = {
@@ -26323,7 +26323,7 @@ def normalize_asset_classification(raw):
 
 
 def _normalize_asset_classification_fields(raw):
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         return asset_kernel.clean_labels(raw, now_ms(), ASSET_CLASSIFICATION_DIMENSION_NAMES)
     if not isinstance(raw, dict):
         raw = {}
@@ -27067,7 +27067,7 @@ def find_prompt_library(data, library_id=""):
     return next((item for item in libraries if item.get("id") == library_id), None) or (libraries[0] if libraries else None)
 
 def sanitize_asset_name(name, fallback="asset"):
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         return asset_kernel.display_name(name, fallback)
     name = re.sub(r'[\\/:*?"<>|]+', "_", str(name or fallback)).strip()
     return name[:120] or fallback
@@ -34685,7 +34685,7 @@ def _local_upload_display_name(filename):
     return m.group(1) if m else base
 
 def _local_upload_rel_path(value):
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         checked = asset_kernel.relative_path(value)
         if checked.get("error"):
             raise HTTPException(status_code=400, detail=checked["error"])
@@ -34701,7 +34701,7 @@ def _local_upload_rel_path(value):
     return norm
 
 def _local_upload_abs(rel):
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         held = asset_kernel.contained(LOCAL_UPLOAD_DIR, rel)
         if held.get("error"):
             raise HTTPException(status_code=400, detail=held["error"])
@@ -34728,7 +34728,7 @@ def _local_upload_safe_folder(path_value):
     return rel, path
 
 def _local_upload_safe_folder_name(name):
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         named = asset_kernel.folder_label(name)
         if named.get("error"):
             raise HTTPException(status_code=int(named.get("status") or 400), detail=named["error"])
@@ -34740,7 +34740,7 @@ def _local_upload_safe_folder_name(name):
     return cleaned[:60]
 
 def _local_upload_safe_file_stem(name):
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         named = asset_kernel.file_stem(name)
         if named.get("error"):
             raise HTTPException(status_code=int(named.get("status") or 400), detail=named["error"])
@@ -35053,7 +35053,7 @@ async def upload_local_assets(files: List[UploadFile] = File(...), folder: str =
         kind, ext = _local_upload_kind_ext(file.filename, file.content_type)
         if kind is None:
             continue
-        if asset_kernel.selected():
+        if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
             base = asset_kernel.upload_stem(file.filename, "file")
         else:
             base = os.path.splitext(os.path.basename(file.filename or "file"))[0]
@@ -35158,7 +35158,7 @@ async def import_local_assets_from_urls(payload: LocalAssetUrlImportRequest):
                 else:
                     base = os.path.splitext(os.path.basename(urllib.parse.unquote(name_path)))[0]
                 base = base or ("web-video" if kind == "video" else "web-image")
-                if asset_kernel.selected():
+                if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
                     base = asset_kernel.upload_stem(base, "web-video" if kind == "video" else "web-image", ext, already_stem=True)
                 else:
                     base = re.sub(r"[^0-9A-Za-z一-鿿._-]+", "_", base).strip("_") or ("web-video" if kind == "video" else "web-image")
@@ -35217,7 +35217,7 @@ async def reorder_local_asset_folders(payload: LocalAssetFolderOrderRequest, req
         if entry.is_dir() and not entry.name.startswith(".") and not entry.name.startswith("._")
     }
     paths = [_local_upload_safe_folder(path)[0] for path in payload.paths]
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         ordered = asset_kernel.same_members(paths, actual)
     else:
         ordered = len(paths) == len(actual) and set(paths) == actual
@@ -48477,7 +48477,7 @@ async def delete_prompt_library_category(category_id: str):
 @app.post("/api/asset-library/libraries")
 async def create_asset_library(payload: AssetLibraryRequest):
     lib = load_asset_library()
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         library = asset_kernel.spawn_library(payload.name, f"lib_{uuid.uuid4().hex[:12]}", f"cat_{uuid.uuid4().hex[:12]}", f"wf_{uuid.uuid4().hex[:12]}")
         lib.setdefault("libraries", []).append(library)
         lib["active_library_id"] = library["id"]
@@ -48494,7 +48494,7 @@ async def create_asset_library(payload: AssetLibraryRequest):
 @app.patch("/api/asset-library/libraries/{library_id}")
 async def rename_asset_library(library_id: str, payload: AssetLibraryRenameRequest):
     lib = load_asset_library()
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         outcome = asset_kernel.rename_library(lib, library_id, payload.name)
         if outcome.get("error"):
             raise HTTPException(status_code=int(outcome.get("status") or 400), detail=outcome["error"])
@@ -48510,7 +48510,7 @@ async def rename_asset_library(library_id: str, payload: AssetLibraryRenameReque
 @app.delete("/api/asset-library/libraries/{library_id}")
 async def delete_asset_library(library_id: str):
     lib = load_asset_library()
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         outcome = asset_kernel.drop_library(lib, library_id)
         if outcome.get("error"):
             raise HTTPException(status_code=int(outcome.get("status") or 400), detail=outcome["error"])
@@ -48530,7 +48530,7 @@ async def delete_asset_library(library_id: str):
 @app.post("/api/asset-library/categories")
 async def create_asset_library_category(payload: AssetLibraryCategoryRequest):
     lib = load_asset_library()
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         library = asset_kernel.pick_library(lib, payload.library_id)
         if not library:
             raise HTTPException(status_code=404, detail="资产库不存在")
@@ -48567,7 +48567,7 @@ async def create_asset_library_category(payload: AssetLibraryCategoryRequest):
 @app.patch("/api/asset-library/categories/{category_id}")
 async def rename_asset_library_category(category_id: str, payload: AssetLibraryRenameRequest):
     lib = load_asset_library()
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         outcome = asset_kernel.rename_category(lib, category_id, payload.library_id, payload.name)
         if outcome.get("error"):
             raise HTTPException(status_code=int(outcome.get("status") or 400), detail=outcome["error"])
@@ -48583,7 +48583,7 @@ async def rename_asset_library_category(category_id: str, payload: AssetLibraryR
 @app.delete("/api/asset-library/categories/{category_id}")
 async def delete_asset_library_category(category_id: str, library_id: str = ""):
     lib = load_asset_library()
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         plan = asset_kernel.removal_plan(lib, category_id, library_id)
         if plan.get("error"):
             raise HTTPException(status_code=int(plan.get("status") or 400), detail=plan["error"])
@@ -48861,7 +48861,7 @@ async def caption_image_with_provider(abs_path, prompt, provider_id, model, ms_m
 @app.patch("/api/asset-library/items/{item_id}")
 async def rename_asset_library_item(item_id: str, payload: AssetLibraryRenameRequest):
     lib = load_asset_library()
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         outcome = asset_kernel.rename_item(lib, item_id, payload.name)
         if outcome.get("error"):
             raise HTTPException(status_code=int(outcome.get("status") or 400), detail=outcome["error"])
@@ -48879,7 +48879,7 @@ async def rename_asset_library_item(item_id: str, payload: AssetLibraryRenameReq
 @app.patch("/api/asset-library/items/{item_id}/favorite")
 async def set_asset_library_item_favorite(item_id: str, payload: FavoriteFlagRequest):
     lib = load_asset_library()
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         outcome = asset_kernel.mark_favorite(lib, item_id, payload.favorite)
         if outcome.get("error"):
             raise HTTPException(status_code=int(outcome.get("status") or 400), detail=outcome["error"])
@@ -49550,7 +49550,7 @@ async def check_asset_library_avatar(item_id: str, payload: AssetAvatarRegisterR
 @app.delete("/api/asset-library/items/{item_id}")
 async def delete_asset_library_item(item_id: str):
     lib = load_asset_library()
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         matches = asset_kernel.locate_items(lib, [item_id])
         if not matches:
             raise HTTPException(status_code=404, detail="资产不存在")
@@ -49607,7 +49607,7 @@ async def batch_delete_asset_library_items(payload: AssetLibraryBatchDeleteReque
     if empty_category_id and not payload.library_id:
         raise HTTPException(status_code=400, detail="请指定要移除空分组的资产库")
     lib = load_asset_library()
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         matches = asset_kernel.locate_items(lib, ids, payload.library_id, empty_category_id)
         records = []
         preserved_asset_ids = []
@@ -49730,7 +49730,7 @@ async def batch_delete_asset_library_items(payload: AssetLibraryBatchDeleteReque
 @app.post("/api/asset-library/items/move")
 async def batch_move_asset_library_items(payload: AssetLibraryBatchMoveRequest):
     ids = {str(item) for item in (payload.ids or []) if str(item)}
-    if asset_kernel.selected():
+    if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
         if not ids:
             raise HTTPException(status_code=400, detail="没有选择资产")
         lib = load_asset_library()
@@ -49788,7 +49788,7 @@ async def batch_crop_asset_library_items(payload: AssetLibraryBatchCropRequest):
         with Image.open(src) as img:
             img = img.convert("RGBA")
             w, h = img.size
-            if asset_kernel.selected():
+            if (_xm_assets := globals().get("asset_kernel")) is not None and _xm_assets.selected():
                 box = asset_kernel.center_box(w, h)
             else:
                 side = min(w, h)

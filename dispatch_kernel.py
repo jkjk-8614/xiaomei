@@ -149,27 +149,28 @@ def failure_message(payload: Any) -> str:
     return ""
 
 
+def _accept_url(found: list[str], value: Any) -> None:
+    if isinstance(value, dict):
+        value = value.get("url") or value.get("image_url") or value.get("video_url")
+    text = value.strip() if isinstance(value, str) else ""
+    if text and text not in found:
+        found.append(text)
+
+
 def collect_urls(payload: Any) -> list[str]:
-    found = []
-
-    def add(value: Any) -> None:
-        if isinstance(value, str) and value.strip() and value not in found:
-            found.append(value.strip())
-        elif isinstance(value, dict):
-            add(value.get("url") or value.get("image_url") or value.get("video_url"))
-
-    current = payload if isinstance(payload, dict) else {}
+    found: list[str] = []
+    record = payload if isinstance(payload, dict) else {}
     for key in ("url", "image_url", "video_url"):
-        add(current.get(key))
+        _accept_url(found, record.get(key))
     for key in ("images", "data", "output", "results"):
-        value = current.get(key)
-        if isinstance(value, list):
-            for item in value:
-                add(item)
-        elif isinstance(value, dict):
-            add(value.get("url"))
-            for item in value.get("images") or []:
-                add(item)
+        bucket = record.get(key)
+        rows = bucket if isinstance(bucket, list) else []
+        for item in rows:
+            _accept_url(found, item)
+        if isinstance(bucket, dict):
+            _accept_url(found, bucket.get("url"))
+            for item in bucket.get("images") or []:
+                _accept_url(found, item)
     return found
 
 
