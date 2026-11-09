@@ -4,7 +4,9 @@
 
 第二阶段把六个内核做成可选开关，后来默认改成 next，并保留 `?=0`、`localStorage` 和请求头回滚。这一次去掉这些开关。运行时只走新内核。
 
-没有改根目录 `LICENSE`，没有改写 Git 历史，没有从 `electron-builder.yml` 拿掉 A 类旧文件，也没有宣称产品已经完全独立。CainFlow 保持原样。废弃的电商工作台没有恢复。旧函数仍留在 `canvas.js`、`smart-canvas.js`、`main.py` 和设置、素材、主题、预览、历史多选脚本里，但查询参数、存储键、请求头和 `setActive(false)` 都不能再选中它们。
+没有改根目录 `LICENSE`，没有改写 Git 历史，没有从 `electron-builder.yml` 拿掉 A 类旧文件，也没有宣称产品已经完全独立。CainFlow 保持原样。废弃的电商工作台没有恢复。查询参数、存储键、请求头和 `setActive(false)` 都不能再选中旧实现。
+
+后来又删掉了六个内核已经完全盖住的旧分支：`isActive()` / `selected()` 恒为真时走不到的 `else`，以及提前 `return` 后面的旧函数体。调用处不再写成 `if (kernel && kernel.isActive())`。内核脚本没有加载时，这些调用会直接找不到内核，不再退回旧公式。哪些文件因此少了一段、哪些 A 类文件仍整份留着，见 `docs/audits/residual-fallback-removal.md`。
 
 ## 现在的行为
 
@@ -30,13 +32,13 @@
 
 脚本地址上的 `xmViewportKernel=1` 这一类参数仍只用于缓存，不是开关。
 
-服务端 `dispatch_kernel.selected()` 和 `asset_kernel.selected()` 固定返回真。以前按请求头设置的 `DispatchSwitchMiddleware`、`AssetSwitchMiddleware` 已从 `main.py` 去掉。`main.py` 和 `image_space.py` 里原先靠这两个判断分叉的旧分支不再会被选中。
+服务端 `dispatch_kernel.selected()` 和 `asset_kernel.selected()` 固定返回真。以前按请求头设置的 `DispatchSwitchMiddleware`、`AssetSwitchMiddleware` 已从 `main.py` 去掉。`main.py` 和 `image_space.py` 里靠这两个判断分叉的旧分支已经删掉，见 `docs/audits/residual-fallback-removal.md`。
 
-调用处仍写成 `if (kernel && kernel.isActive())`。内核脚本加载后 `isActive()` 恒为真，所以走新实现。只有内核脚本本身没有加载时，页面才会落到同一文件里的旧函数。那不是开关。
+`isActive()` 和 `selected()` 仍恒为真，但业务脚本不再用它们选择旧函数。页面在加载内核脚本之后直接调用内核。内核脚本缺失时没有旧函数可退。那不是开关。
 
 ## 旧文件仍在
 
-A 类旧文件仍在源码树里，也仍由当前 `electron-builder.yml` 的 `files` 打进安装包。它们不再是可切换的回滚实现。从安装包移除这些文件，仍然要另外满足第三阶段和第五阶段写过的条件：不带参数的手工验收通过、发布清单不再把该路径当成必需内容、用户目录里的画布和素材不被迁移或删除、并且留有可安装的旧构建。这一次只去掉开关，不满足那些删除条件。
+A 类旧文件仍在源码树里，也仍由当前 `electron-builder.yml` 的 `files` 打进安装包。它们不再是可切换的回滚实现。从安装包移除这些文件，仍然要另外满足第三阶段和第五阶段写过的条件：不带参数的手工验收通过、发布清单不再把该路径当成必需内容、用户目录里的画布和素材不被迁移或删除、并且留有可安装的旧构建。去掉开关、再删走不到的旧分支，都不满足那些整文件删除条件。
 
 ## 自动化
 

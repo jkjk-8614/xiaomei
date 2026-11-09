@@ -1,24 +1,6 @@
 /* Shared image-space filters, saved queries and manual classification editor. */
 function imageSpaceMatches(item, filters){
-    if(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive()) return XiaomeiShellKernel.matches(item, filters);
-    const c = item.classification || {}, categories = c.categories || {}, tags = c.tags || [];
-    const ext = String(item.url || item.name || '').split('?')[0].split('.').pop().toLowerCase();
-    const kind = ['image','video','audio','text'].includes(item.kind) ? item.kind : (/^(mp4|webm|mov|m4v|avi|mkv|flv)$/.test(ext) ? 'video' : /^(mp3|wav|flac|ogg|m4a|aac)$/.test(ext) ? 'audio' : 'image');
-    if(filters.kind && filters.kind !== kind) return false;
-    if(filters.format && !filters.format.toLowerCase().split(',').includes(ext)) return false;
-    for(const dimension of ['color','materials','style','use_case','tags']){
-        const wanted = String(filters[dimension] || '').split(/[,，、\n]+/).map(t => t.trim().toLowerCase()).filter(Boolean);
-        const actual = (dimension === 'tags' ? tags : categories[dimension] || []).map(t => String(t).toLowerCase());
-        if(wanted.length && !wanted.some(t => actual.includes(t))) return false;
-    }
-    const w = Number(item.width || item.natural_w || 0), h = Number(item.height || item.natural_h || 0);
-    if((filters.shape || Number(filters.min_edge)) && !(w && h)) return false;
-    if(Number(filters.min_edge) && Math.min(w,h) < Number(filters.min_edge)) return false;
-    if(filters.shape === 'landscape' && w <= h || filters.shape === 'portrait' && w >= h || filters.shape === 'square' && w !== h) return false;
-    if(filters.annotated === 'manual' && !Object.keys(c.manual || {}).length) return false;
-    if(filters.annotated === 'missing' && (tags.length || Object.keys(categories).length || c.summary)) return false;
-    const text = [item.name,item.url,item.folder,item.rel,item.file,c.summary,...tags,...Object.values(categories).flat()].join(' ').toLowerCase();
-    return String(filters.query || '').trim().toLowerCase().split(/\s+/).every(word => text.includes(word));
+    return XiaomeiShellKernel.matches(item, filters);
 }
 const imageSpaceState = {filters:{assets:{},upload:{},local:{},generated:{}}, all:{assets:false,upload:false,local:false,generated:false}, open:false, collections:[], collectionId:'', editor:null};
 const imageSpaceDimensions = {environment:'环境',scene:'场景',space:'空间',subject:'主体',model:'模特',people:'人物',style:'风格',lighting:'光影',color:'色彩',composition:'构图',mood:'氛围',use_case:'用途',objects:'物体',materials:'材质',quality:'质量'};

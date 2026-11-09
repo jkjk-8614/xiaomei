@@ -1136,13 +1136,10 @@ function setCreateMode(active, kind='classic'){
     refreshIcons();
 }
 function screenToWorld(clientX, clientY){
-    if(window.XiaomeiViewportKernel?.isActive()) return XiaomeiViewportKernel.pointerToWorld(viewport, XiaomeiViewportKernel.frameFromElement(board), clientX, clientY);
-    const rect = board.getBoundingClientRect();
-    return { x:(clientX - rect.left - viewport.x) / viewport.scale, y:(clientY - rect.top - viewport.y) / viewport.scale };
+    return XiaomeiViewportKernel.pointerToWorld(viewport, XiaomeiViewportKernel.frameFromElement(board), clientX, clientY);
 }
 function applyViewport(options={}){
-    if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.paintWorldLayer(world, viewport, 'translate3d');
-    else world.style.transform = `translate3d(${viewport.x}px, ${viewport.y}px, 0) scale(${viewport.scale})`;
+    XiaomeiViewportKernel.paintWorldLayer(world, viewport, 'translate3d');
     const zoomLabel = document.getElementById('canvasZoomLabel');
     if(zoomLabel) zoomLabel.textContent = `${Math.round(safeViewportScale(viewport.scale) * 100)}%`;
     if(options.scheduleMinimap !== false) scheduleMinimapRender();
@@ -1163,33 +1160,17 @@ function scheduleViewportRender(save=false){
     });
 }
 function adjustCanvasZoom(delta){
-    if(window.XiaomeiViewportKernel?.isActive()){
-        if(!board) return;
-        const rect = board.getBoundingClientRect();
-        const oldScale = XiaomeiViewportKernel.positiveScale(viewport.scale, 1);
-        const nextScale = Math.max(0.12, Math.min(2.4, oldScale + Number(delta || 0)));
-        XiaomeiViewportKernel.zoomAboutCenter(viewport, {width:rect.width, height:rect.height}, nextScale);
-        applyViewport();
-        renderLinks();
-        renderSelectionHub();
-        scheduleViewportSave();
-        return;
-    }
     if(!board) return;
     const rect = board.getBoundingClientRect();
-    const oldScale = safeViewportScale(viewport.scale);
+    const oldScale = XiaomeiViewportKernel.positiveScale(viewport.scale, 1);
     const nextScale = Math.max(0.12, Math.min(2.4, oldScale + Number(delta || 0)));
-    const centerX = rect.width / 2;
-    const centerY = rect.height / 2;
-    const worldX = (centerX - viewport.x) / oldScale;
-    const worldY = (centerY - viewport.y) / oldScale;
-    viewport.scale = nextScale;
-    viewport.x = centerX - worldX * nextScale;
-    viewport.y = centerY - worldY * nextScale;
+    XiaomeiViewportKernel.zoomAboutCenter(viewport, {width:rect.width, height:rect.height}, nextScale);
     applyViewport();
     renderLinks();
     renderSelectionHub();
     scheduleViewportSave();
+    return;
+
 }
 function estimatedNodeRect(n){
     const el = nodesEl?.querySelector?.(`.node[data-id="${CSS.escape(n.id)}"]`);
@@ -1248,142 +1229,71 @@ function scheduleLinksRender(){
     });
 }
 function renderMinimap(){
-    if(window.XiaomeiViewportKernel?.isActive()){
-        const rect = board.getBoundingClientRect();
-        const painted = XiaomeiViewportKernel.paintClassicMinimap({
-            content:minimapContent,
-            viewportEl:minimapViewport,
-            arrangeButton:canvasArrangeBtn,
-            selectedCount:selected.size,
-            frame:{width:rect.width, height:rect.height},
-            camera:viewport,
-            boxes:(nodes || []).map(n => {
-                const box = estimatedNodeRect(n);
-                return {x:box.x, y:box.y, w:box.w, h:box.h, selected:selected.has(n.id)};
-            })
-        });
-        if(!painted) return;
-        minimapState = painted.state;
-        minimapViewport = painted.viewportEl;
-        return;
-    }
-    if(!minimapContent || !minimapViewport) return;
-    canvasArrangeBtn?.classList.toggle('visible', selected.size > 0);
-    const bounds = minimapBounds();
-    const cw = minimapContent.clientWidth || 172;
-    const ch = minimapContent.clientHeight || 110;
-    const scale = Math.min(cw / bounds.w, ch / bounds.h);
-    const mapW = bounds.w * scale;
-    const mapH = bounds.h * scale;
-    const ox = (cw - mapW) / 2;
-    const oy = (ch - mapH) / 2;
-    minimapState = {bounds, scale, ox, oy, cw, ch};
-    const nodeHtml = (nodes || []).map(n => {
-        const r = estimatedNodeRect(n);
-        return `<div class="minimap-node ${selected.has(n.id) ? 'selected' : ''}" style="left:${ox + (r.x - bounds.x) * scale}px;top:${oy + (r.y - bounds.y) * scale}px;width:${Math.max(3, r.w * scale)}px;height:${Math.max(3, r.h * scale)}px"></div>`;
-    }).join('');
-    minimapContent.innerHTML = `${nodeHtml}${nodes?.length ? '' : '<div class="minimap-empty">EMPTY</div>'}<div id="minimapViewport" class="minimap-viewport"></div>`;
-    minimapViewport = document.getElementById('minimapViewport');
-    updateMinimapViewport();
+    const rect = board.getBoundingClientRect();
+    const painted = XiaomeiViewportKernel.paintClassicMinimap({
+        content:minimapContent,
+        viewportEl:minimapViewport,
+        arrangeButton:canvasArrangeBtn,
+        selectedCount:selected.size,
+        frame:{width:rect.width, height:rect.height},
+        camera:viewport,
+        boxes:(nodes || []).map(n => {
+            const box = estimatedNodeRect(n);
+            return {x:box.x, y:box.y, w:box.w, h:box.h, selected:selected.has(n.id)};
+        })
+    });
+    if(!painted) return;
+    minimapState = painted.state;
+    minimapViewport = painted.viewportEl;
+    return;
+
 }
 function updateMinimapViewport(){
-    if(window.XiaomeiViewportKernel?.isActive()){
-        if(!minimapViewport || !minimapState) return;
-        const rect = board.getBoundingClientRect();
-        XiaomeiViewportKernel.positionClassicMinimapViewport(minimapViewport, minimapState, viewport, {width:rect.width, height:rect.height});
-        return;
-    }
     if(!minimapViewport || !minimapState) return;
-    const r = currentWorldViewRect();
-    const {bounds, scale, ox, oy} = minimapState;
-    minimapViewport.style.left = `${ox + (r.x - bounds.x) * scale}px`;
-    minimapViewport.style.top = `${oy + (r.y - bounds.y) * scale}px`;
-    minimapViewport.style.width = `${Math.max(8, r.w * scale)}px`;
-    minimapViewport.style.height = `${Math.max(8, r.h * scale)}px`;
+    const rect = board.getBoundingClientRect();
+    XiaomeiViewportKernel.positionClassicMinimapViewport(minimapViewport, minimapState, viewport, {width:rect.width, height:rect.height});
+    return;
+
 }
 function minimapEventToWorld(e){
-    if(window.XiaomeiViewportKernel?.isActive()){
-        if(!minimapState) renderMinimap();
-        const rect = minimapContent.getBoundingClientRect();
-        return XiaomeiViewportKernel.minimapPointerToWorld({
-            scale:minimapState.scale,
-            offsetX:minimapState.ox,
-            offsetY:minimapState.oy,
-            bounds:minimapState.bounds
-        }, rect, e.clientX, e.clientY, 0);
-    }
     if(!minimapState) renderMinimap();
-    const state = minimapState;
     const rect = minimapContent.getBoundingClientRect();
-    const x = (e.clientX - rect.left - state.ox) / state.scale + state.bounds.x;
-    const y = (e.clientY - rect.top - state.oy) / state.scale + state.bounds.y;
-    return {x, y};
+    return XiaomeiViewportKernel.minimapPointerToWorld({
+        scale:minimapState.scale,
+        offsetX:minimapState.ox,
+        offsetY:minimapState.oy,
+        bounds:minimapState.bounds
+    }, rect, e.clientX, e.clientY, 0);
+
 }
 function centerViewportOnWorldPoint(point){
-    if(window.XiaomeiViewportKernel?.isActive()){
-        const rect = board.getBoundingClientRect();
-        XiaomeiViewportKernel.centerOn(viewport, {width:rect.width, height:rect.height}, point);
-        applyViewport();
-        renderLinks();
-        renderSelectionHub();
-        return;
-    }
     const rect = board.getBoundingClientRect();
-    viewport.x = rect.width / 2 - point.x * viewport.scale;
-    viewport.y = rect.height / 2 - point.y * viewport.scale;
+    XiaomeiViewportKernel.centerOn(viewport, {width:rect.width, height:rect.height}, point);
     applyViewport();
     renderLinks();
     renderSelectionHub();
+    return;
+
 }
 function safeViewportScale(value){
     const n = Number(value);
     return Number.isFinite(n) && n > 0 ? n : 1;
 }
 function fitAllNodesViewport(){
-    if(window.XiaomeiViewportKernel?.isActive()){
-        const rect = board.getBoundingClientRect();
-        const boxes = nodes.map(n => {
-            const box = estimatedNodeRect(n);
-            return {x:box.x, y:box.y, w:box.w, h:box.h};
-        });
-        XiaomeiViewportKernel.fitBoxes(viewport, {width:rect.width, height:rect.height}, boxes, {
-            pad:180, inset:80, minZoom:0.06, maxZoom:0.82, emptyZoom:0.45, allowEmpty:true
-        });
-        applyViewport();
-        renderLinks();
-        renderSelectionHub();
-        scheduleViewportSave();
-        return;
-    }
     const rect = board.getBoundingClientRect();
-    if(!nodes.length){
-        viewport.scale = 0.45;
-        viewport.x = rect.width / 2;
-        viewport.y = rect.height / 2;
-        applyViewport();
-        renderLinks();
-        renderSelectionHub();
-        scheduleViewportSave();
-        return;
-    }
-    const rects = nodes.map(estimatedNodeRect);
-    const minX = Math.min(...rects.map(r => r.x));
-    const minY = Math.min(...rects.map(r => r.y));
-    const maxX = Math.max(...rects.map(r => r.x + r.w));
-    const maxY = Math.max(...rects.map(r => r.y + r.h));
-    const pad = 180;
-    const width = Math.max(1, maxX - minX + pad * 2);
-    const height = Math.max(1, maxY - minY + pad * 2);
-    const nextScale = Math.max(0.06, Math.min(0.82, (rect.width - 80) / width, (rect.height - 80) / height));
-    const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
-    viewport.scale = nextScale;
-    viewport.x = rect.width / 2 - cx * viewport.scale;
-    viewport.y = rect.height / 2 - cy * viewport.scale;
+    const boxes = nodes.map(n => {
+        const box = estimatedNodeRect(n);
+        return {x:box.x, y:box.y, w:box.w, h:box.h};
+    });
+    XiaomeiViewportKernel.fitBoxes(viewport, {width:rect.width, height:rect.height}, boxes, {
+        pad:180, inset:80, minZoom:0.06, maxZoom:0.82, emptyZoom:0.45, allowEmpty:true
+    });
     applyViewport();
     renderLinks();
     renderSelectionHub();
     scheduleViewportSave();
+    return;
+
 }
 function enterZoomPreview(){
     if(zoomPreviewState || !canvas) return;
@@ -1395,36 +1305,15 @@ function enterZoomPreview(){
     fitAllNodesViewport();
 }
 function exitZoomPreview(point=null){
-    if(window.XiaomeiViewportKernel?.isActive()){
-        if(!zoomPreviewState) return false;
-        const prev = zoomPreviewState;
-        zoomPreviewState = null;
-        shell.classList.remove('zoom-preview');
-        document.body.classList.remove('canvas-zoom-preview');
-        viewport.scale = XiaomeiViewportKernel.positiveScale(prev.scale, 1);
-        if(point){
-            const rect = board.getBoundingClientRect();
-            XiaomeiViewportKernel.centerOn(viewport, {width:rect.width, height:rect.height}, point);
-        } else {
-            viewport.x = prev.x;
-            viewport.y = prev.y;
-        }
-        applyViewport();
-        renderLinks();
-        renderSelectionHub();
-        scheduleViewportSave();
-        return true;
-    }
     if(!zoomPreviewState) return false;
     const prev = zoomPreviewState;
     zoomPreviewState = null;
     shell.classList.remove('zoom-preview');
     document.body.classList.remove('canvas-zoom-preview');
-    viewport.scale = safeViewportScale(prev.scale);
+    viewport.scale = XiaomeiViewportKernel.positiveScale(prev.scale, 1);
     if(point){
         const rect = board.getBoundingClientRect();
-        viewport.x = rect.width / 2 - point.x * viewport.scale;
-        viewport.y = rect.height / 2 - point.y * viewport.scale;
+        XiaomeiViewportKernel.centerOn(viewport, {width:rect.width, height:rect.height}, point);
     } else {
         viewport.x = prev.x;
         viewport.y = prev.y;
@@ -1434,54 +1323,27 @@ function exitZoomPreview(point=null){
     renderSelectionHub();
     scheduleViewportSave();
     return true;
+
 }
 function exitZoomPreviewToNode(nodeId){
-    if(window.XiaomeiViewportKernel?.isActive()){
-        if(!zoomPreviewState) return false;
-        const node = nodes.find(n => n.id === nodeId);
-        if(!node) return exitZoomPreview();
-        const prev = zoomPreviewState;
-        const boardRect = board.getBoundingClientRect();
-        const rect = estimatedNodeRect(node);
-        zoomPreviewState = null;
-        shell.classList.remove('zoom-preview');
-        document.body.classList.remove('canvas-zoom-preview');
-        XiaomeiViewportKernel.frameOnNode(viewport, {width:boardRect.width, height:boardRect.height}, {x:rect.x, y:rect.y, w:rect.w, h:rect.h}, prev.scale, {
-            margin:160, maxScale:ZOOM_PREVIEW_NODE_MAX_SCALE, defaultScale:ZOOM_PREVIEW_NODE_DEFAULT_SCALE
-        });
-        applyViewport();
-        renderLinks();
-        renderSelectionHub();
-        scheduleViewportSave();
-        return true;
-    }
     if(!zoomPreviewState) return false;
     const node = nodes.find(n => n.id === nodeId);
     if(!node) return exitZoomPreview();
     const prev = zoomPreviewState;
     const boardRect = board.getBoundingClientRect();
     const rect = estimatedNodeRect(node);
-    const cx = rect.x + rect.w / 2;
-    const cy = rect.y + rect.h / 2;
-    const fitW = Math.max(1, boardRect.width - 160);
-    const fitH = Math.max(1, boardRect.height - 160);
-    const fitScale = Math.min(
-        ZOOM_PREVIEW_NODE_MAX_SCALE,
-        fitW / Math.max(1, rect.w),
-        fitH / Math.max(1, rect.h)
-    );
-    const readableScale = Math.min(ZOOM_PREVIEW_NODE_MAX_SCALE, Math.max(ZOOM_PREVIEW_NODE_DEFAULT_SCALE, fitScale));
     zoomPreviewState = null;
     shell.classList.remove('zoom-preview');
     document.body.classList.remove('canvas-zoom-preview');
-    viewport.scale = Math.max(safeViewportScale(prev.scale), readableScale);
-    viewport.x = boardRect.width / 2 - cx * viewport.scale;
-    viewport.y = boardRect.height / 2 - cy * viewport.scale;
+    XiaomeiViewportKernel.frameOnNode(viewport, {width:boardRect.width, height:boardRect.height}, {x:rect.x, y:rect.y, w:rect.w, h:rect.h}, prev.scale, {
+        margin:160, maxScale:ZOOM_PREVIEW_NODE_MAX_SCALE, defaultScale:ZOOM_PREVIEW_NODE_DEFAULT_SCALE
+    });
     applyViewport();
     renderLinks();
     renderSelectionHub();
     scheduleViewportSave();
     return true;
+
 }
 function toggleZoomPreview(){
     if(zoomPreviewState) exitZoomPreview();
@@ -1565,8 +1427,7 @@ async function performCanvasSave(){
         const res = await fetch(`/api/canvases/${canvas.id}`, {
             method:'PUT',
             headers:{'Content-Type':'application/json'},
-            body:JSON.stringify(window.XiaomeiDocumentKernel?.isActive()
-                ? XiaomeiDocumentKernel.saveBody({
+            body:JSON.stringify(XiaomeiDocumentKernel.saveBody({
                     title:canvas.title,
                     icon:canvas.icon || '🧩',
                     nodes:serializableCanvasNodes(),
@@ -1578,17 +1439,7 @@ async function performCanvasSave(){
                     fallbackIcon:'🧩',
                     clientId:CLIENT_ID,
                     baseUpdatedAt:Number(lastCanvasUpdatedAt || canvas.updated_at || 0)
-                })
-                : {
-                title:canvas.title,
-                icon:canvas.icon || '🧩',
-                nodes:serializableCanvasNodes(),
-                connections,
-                viewport,
-                logs:canvas.logs || [],
-                client_id:CLIENT_ID,
-                base_updated_at:Number(lastCanvasUpdatedAt || canvas.updated_at || 0)
-            })
+                }))
         });
         if(res.status === 409){
             const data = await res.json().catch(() => ({}));
@@ -2176,9 +2027,8 @@ async function openCanvas(id){
             openSmartCanvasPage(canvas.id);
             return;
         }
-        if(window.XiaomeiDocumentKernel?.isActive()){
-            canvas = XiaomeiDocumentKernel.adopt(canvas, {profile:'classic', fallbackIcon:canvas.icon || '🧩'}).document;
-        }
+        canvas = XiaomeiDocumentKernel.adopt(canvas, {profile:'classic', fallbackIcon:canvas.icon || '🧩'}).document;
+
         canvas.logs = canvas.logs || [];
         nodes = canvas.nodes || [];
         connections = canvas.connections || [];
@@ -2213,7 +2063,7 @@ function applyRemoteCanvasData(remote){
     }
     applyingRemoteCanvas = true;
     try {
-        if(window.XiaomeiDocumentKernel?.isActive()) remote = XiaomeiDocumentKernel.adopt(remote, {profile:'classic'}).document;
+        remote = XiaomeiDocumentKernel.adopt(remote, {profile:'classic'}).document;
         resetCascadeRuntimeState();
         const localViewport = localViewportForCanvas(canvas.id, viewport || remote.viewport || {x:0, y:0, scale:1});
         const localSelectedIds = new Set(selected);
@@ -5755,11 +5605,7 @@ function renderNode(node){
     const size = defaultNodeSize(node.type);
     const hasFixedSize = Boolean(node.h || size.h);
     el.className = `node ${node.type}-node ${node.url ? 'has-image' : ''} ${hasFixedSize ? 'sized' : ''} ${selected.has(node.id) ? 'selected' : ''}`;
-    if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.writeRawOrigin(el, node.x, node.y);
-    else {
-        el.style.left = `${node.x}px`;
-        el.style.top = `${node.y}px`;
-    }
+    XiaomeiViewportKernel.writeRawOrigin(el, node.x, node.y);
     el.style.width = `${node.w || size.w}px`;
     if(node.h || size.h) el.style.height = `${node.h || size.h}px`;
     el.dataset.id = node.id;
@@ -6624,7 +6470,7 @@ async function addUrlToCanvasAssetLibrary(url, name=''){
     const data = await fetch('/api/asset-library/items', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive() ? XiaomeiShellKernel.assetBatch('save', {libraryId:activeCanvasAssetLibraryId, categoryId:cat.id, url, name}) : {library_id:activeCanvasAssetLibraryId, category_id:cat.id, url, name})
+        body:JSON.stringify(XiaomeiShellKernel.assetBatch('save', {libraryId:activeCanvasAssetLibraryId, categoryId:cat.id, url, name}))
     }).then(async r => {
         if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || '保存失败');
         return r.json();
@@ -12159,33 +12005,17 @@ async function pollCanvasImageTask(taskId, options={}){
                 return error;
             },
             classifyTask(data){
-                if(window.XiaomeiDispatchKernel?.isActive()){
-                    const decision = XiaomeiDispatchKernel.pollDecision(data);
-                    if(decision.state === 'succeeded'){
-                        completeCanvasImageTask(taskId, data.result || {});
-                        return {action:'resolve',value:'succeeded'};
-                    }
-                    if(decision.state === 'empty' || decision.state === 'failed' || decision.state === 'cancelled'){
-                        failCanvasImageTask(taskId, decision.message || tr('canvas.generationFailed'), data);
-                        return {action:'resolve',value:'failed'};
-                    }
-                    return null;
-                }
-                if(data?.status === 'succeeded'){
-                    const result = data.result || {};
-                    if(!resultMediaUrls(result).length){
-                        const message = '任务已完成，但没有返回可显示的图片';
-                        failCanvasImageTask(taskId, message, data);
-                        return {action:'resolve',value:'failed'};
-                    }
+                const decision = XiaomeiDispatchKernel.pollDecision(data);
+                if(decision.state === 'succeeded'){
                     completeCanvasImageTask(taskId, data.result || {});
                     return {action:'resolve',value:'succeeded'};
                 }
-                if(data?.status === 'failed'){
-                    failCanvasImageTask(taskId, data.error || tr('canvas.generationFailed'), data);
+                if(decision.state === 'empty' || decision.state === 'failed' || decision.state === 'cancelled'){
+                    failCanvasImageTask(taskId, decision.message || tr('canvas.generationFailed'), data);
                     return {action:'resolve',value:'failed'};
                 }
                 return null;
+
             },
         });
     } catch(err) {
@@ -12213,21 +12043,13 @@ async function waitCanvasImageTaskResult(taskId, options={}){
             return error;
         },
         classifyTask(data){
-            if(window.XiaomeiDispatchKernel?.isActive()){
-                const decision = XiaomeiDispatchKernel.pollDecision(data);
-                if(decision.state === 'succeeded') return {action:'resolve',value:data.result || {}};
-                if(decision.state === 'empty' || decision.state === 'failed' || decision.state === 'cancelled'){
-                    return {action:'reject',error:new Error(decision.message || tr('canvas.generationFailed'))};
-                }
-                return null;
+            const decision = XiaomeiDispatchKernel.pollDecision(data);
+            if(decision.state === 'succeeded') return {action:'resolve',value:data.result || {}};
+            if(decision.state === 'empty' || decision.state === 'failed' || decision.state === 'cancelled'){
+                return {action:'reject',error:new Error(decision.message || tr('canvas.generationFailed'))};
             }
-            if(data?.status === 'succeeded'){
-                const result = data.result || {};
-                if(!resultMediaUrls(result).length) return {action:'reject',error:new Error('任务已完成，但没有返回可显示的图片')};
-                return {action:'resolve',value:result};
-            }
-            if(data?.status === 'failed') return {action:'reject',error:new Error(data.error || tr('canvas.generationFailed'))};
             return null;
+
         },
     });
     return task;
@@ -12845,7 +12667,7 @@ assetManagerModal?.addEventListener('click', async event => {
     }
     if(event.target.closest?.('[data-manager-asset-delete]')){
         if(!managerSelectedAssetIds.size) return;
-        const data = await fetch('/api/asset-library/items/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive() ? XiaomeiShellKernel.assetBatch('delete', {libraryId:activeCanvasAssetLibraryId, ids:[...managerSelectedAssetIds]}) : {library_id:activeCanvasAssetLibraryId, ids:[...managerSelectedAssetIds]})}).then(r => r.json());
+        const data = await fetch('/api/asset-library/items/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(XiaomeiShellKernel.assetBatch('delete', {libraryId:activeCanvasAssetLibraryId, ids:[...managerSelectedAssetIds]}))}).then(r => r.json());
         canvasAssetLibrary = data.library || canvasAssetLibrary;
         managerSelectedAssetIds.clear();
         renderAssetManager(); renderCanvasAssetLibrary(); return;
@@ -12863,7 +12685,7 @@ assetManagerModal?.addEventListener('click', async event => {
     }
     if(event.target.closest?.('[data-manager-workflow-delete]')){
         if(!managerSelectedWorkflowIds.size) return;
-        const data = await fetch('/api/asset-library/items/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive() ? XiaomeiShellKernel.assetBatch('delete', {libraryId:activeCanvasAssetLibraryId, ids:[...managerSelectedWorkflowIds]}) : {library_id:activeCanvasAssetLibraryId, ids:[...managerSelectedWorkflowIds]})}).then(r => r.json());
+        const data = await fetch('/api/asset-library/items/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(XiaomeiShellKernel.assetBatch('delete', {libraryId:activeCanvasAssetLibraryId, ids:[...managerSelectedWorkflowIds]}))}).then(r => r.json());
         canvasAssetLibrary = data.library || canvasAssetLibrary;
         managerSelectedWorkflowIds.clear();
         renderAssetManager(); renderCanvasAssetLibrary(); return;
@@ -13253,35 +13075,24 @@ function connectSelectionToGenerator(kind, genId){
 
 function pushUndo(){
     if(!canvas) return;
-    if(window.XiaomeiHistoryKernel?.isActive()){
-        XiaomeiHistoryKernel.push(undoStack, null, {
-            nodes:XiaomeiHistoryKernel.cloneData(serializableCanvasNodes()),
-            connections:XiaomeiHistoryKernel.cloneData(connections)
-        }, UNDO_MAX, false);
-        return;
-    }
-    undoStack.push({nodes:JSON.parse(JSON.stringify(serializableCanvasNodes())), connections:JSON.parse(JSON.stringify(connections))});
-    if(undoStack.length > UNDO_MAX) undoStack.shift();
+    XiaomeiHistoryKernel.push(undoStack, null, {
+        nodes:XiaomeiHistoryKernel.cloneData(serializableCanvasNodes()),
+        connections:XiaomeiHistoryKernel.cloneData(connections)
+    }, UNDO_MAX, false);
+    return;
+
 }
 function performUndo(){
-    if(window.XiaomeiHistoryKernel?.isActive()){
-        if(!canvas) return;
-        const state = XiaomeiHistoryKernel.undo(undoStack, null);
-        if(!state) return;
-        nodes = state.nodes;
-        connections = state.connections;
-        selected.clear();
-        render();
-        scheduleSave();
-        return;
-    }
-    if(!canvas || !undoStack.length) return;
-    const state = undoStack.pop();
+    if(!canvas) return;
+    const state = XiaomeiHistoryKernel.undo(undoStack, null);
+    if(!state) return;
     nodes = state.nodes;
     connections = state.connections;
     selected.clear();
     render();
     scheduleSave();
+    return;
+
 }
 function cloneNode(n, dx, dy){
     const copy = JSON.parse(JSON.stringify(serializableCanvasNode(n)));
@@ -13339,14 +13150,9 @@ function copySelectedNodes(){
     if(!toCopy.length) return;
     const ids = new Set(toCopy.map(n => n.id));
     const pickedConnections = (connections || []).filter(c => ids.has(c.from) && ids.has(c.to)).map(c => ({...c}));
-    clipboard = window.XiaomeiHistoryKernel?.isActive()
-        ? {
+    clipboard = {
             nodes:XiaomeiHistoryKernel.cloneData(serializableCanvasNodes(toCopy)),
             connections:XiaomeiHistoryKernel.cloneData(pickedConnections)
-        }
-        : {
-            nodes:JSON.parse(JSON.stringify(serializableCanvasNodes(toCopy))),
-            connections:JSON.parse(JSON.stringify(pickedConnections))
         };
 }
 function clipboardNodeCount(){
@@ -13362,32 +13168,19 @@ function pasteNodes(){
     pushUndo();
     let dx;
     let dy;
-    if(window.XiaomeiHistoryKernel?.isActive()){
-        const shift = XiaomeiHistoryKernel.centerShift(clipNodes.map(n => ({x:n.x, y:n.y})), lastMouseBoard);
-        dx = shift.x;
-        dy = shift.y;
-    } else {
-        const xs = clipNodes.map(n => n.x), ys = clipNodes.map(n => n.y);
-        const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
-        const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-        dx = lastMouseBoard.x - cx;
-        dy = lastMouseBoard.y - cy;
-    }
+    const shift = XiaomeiHistoryKernel.centerShift(clipNodes.map(n => ({x:n.x, y:n.y})), lastMouseBoard);
+    dx = shift.x;
+    dy = shift.y;
+
     const idMap = new Map();
     const copies = clipNodes.map(n => { const c = cloneNode(n, dx, dy); idMap.set(n.id, c.id); return c; });
     const idTable = () => Object.fromEntries(idMap);
     copies.forEach(c => {
         if((c.type === 'group' || c.type === 'promptGroup') && c.items){
-            c.items = window.XiaomeiHistoryKernel?.isActive()
-                ? XiaomeiHistoryKernel.remapIdList(c.items, idTable(), true)
-                : c.items.map(id => idMap.get(id) || id);
+            c.items = XiaomeiHistoryKernel.remapIdList(c.items, idTable(), true);
         }
     });
-    const newConnections = window.XiaomeiHistoryKernel?.isActive()
-        ? XiaomeiHistoryKernel.remapEdges(clipConnections, idTable(), {newId:() => uid('c')})
-        : clipConnections
-        .map(c => ({...c, id:uid('c'), from:idMap.get(c.from), to:idMap.get(c.to)}))
-        .filter(c => c.from && c.to);
+    const newConnections = XiaomeiHistoryKernel.remapEdges(clipConnections, idTable(), {newId:() => uid('c')});
     nodes.push(...copies);
     connections.push(...newConnections);
     selected.clear();
@@ -13649,33 +13442,15 @@ function startNodeDrag(e, node){
     }
     const isGroup = dragTarget.type === 'group' || dragTarget.type === 'promptGroup';
     let children;
-    if(window.XiaomeiNodeKernel?.isActive()){
-        const records = {};
-        nodes.forEach(n => {
-            records[n.id] = {id:n.id, x:n.x, y:n.y, items:n.items, group:n.type === 'group' || n.type === 'promptGroup'};
-        });
-        children = XiaomeiNodeKernel.dragCompanions(records, {id:dragTarget.id, group:isGroup, items:dragTarget.items}, [...selected]).map(item => {
-            const found = nodes.find(n => n.id === item.id);
-            return found ? {node:found, ox:item.originX, oy:item.originY} : null;
-        }).filter(Boolean);
-    } else {
-    const collected = new Map();
-    const collect = n => {
-        if(!n || collected.has(n.id) || n.id === dragTarget.id) return;
-        collected.set(n.id, {node:n, ox:n.x, oy:n.y});
-        if(n.type === 'group' || n.type === 'promptGroup'){
-            (n.items || []).map(id => nodes.find(x => x.id === id)).forEach(collect);
-        }
-    };
-    if(isGroup){
-        (dragTarget.items || []).map(id => nodes.find(n => n.id === id)).forEach(collect);
-    }
-    // 如果被拖节点在多选里，所有其他选中节点（含其组成员）一起移动
-    if(selected.has(dragTarget.id) && selected.size > 1){
-        [...selected].forEach(id => collect(nodes.find(n => n.id === id)));
-    }
-    children = [...collected.values()];
-    }
+    const records = {};
+    nodes.forEach(n => {
+        records[n.id] = {id:n.id, x:n.x, y:n.y, items:n.items, group:n.type === 'group' || n.type === 'promptGroup'};
+    });
+    children = XiaomeiNodeKernel.dragCompanions(records, {id:dragTarget.id, group:isGroup, items:dragTarget.items}, [...selected]).map(item => {
+        const found = nodes.find(n => n.id === item.id);
+        return found ? {node:found, ox:item.originX, oy:item.originY} : null;
+    }).filter(Boolean);
+
     dragNode = {node: dragTarget, children, sx:e.clientX, sy:e.clientY, ox:dragTarget.x, oy:dragTarget.y};
     document.body.classList.add('canvas-node-drag');
     window.onmousemove = onNodeDrag;
@@ -13683,44 +13458,19 @@ function startNodeDrag(e, node){
 }
 function onNodeDrag(e){
     if(!dragNode) return;
-    if(window.XiaomeiNodeKernel?.isActive()){
-        const delta = XiaomeiNodeKernel.worldDelta({x:e.clientX, y:e.clientY}, {x:dragNode.sx, y:dragNode.sy}, viewport.scale);
-        const primary = XiaomeiNodeKernel.shiftPoint(dragNode.ox, dragNode.oy, delta.x, delta.y, false);
-        dragNode.node.x = primary.x;
-        dragNode.node.y = primary.y;
-        const el = nodesEl.querySelector(`.node[data-id="${dragNode.node.id}"]`);
-        if(el){
-            el.style.left = `${dragNode.node.x}px`;
-            el.style.top = `${dragNode.node.y}px`;
-        }
-        (dragNode.children || []).forEach(childDrag => {
-            const next = XiaomeiNodeKernel.shiftPoint(childDrag.ox, childDrag.oy, delta.x, delta.y, false);
-            childDrag.node.x = next.x;
-            childDrag.node.y = next.y;
-            const childEl = nodesEl.querySelector(`.node[data-id="${childDrag.node.id}"]`);
-            if(childEl){
-                childEl.style.left = `${childDrag.node.x}px`;
-                childEl.style.top = `${childDrag.node.y}px`;
-            }
-        });
-        scheduleLinksRender();
-        renderSelectionHub();
-        if(workflowTransferModal?.classList.contains('open')) updateWorkflowTransferMeta();
-        scheduleMinimapRender();
-        return;
-    }
-    const dx = (e.clientX - dragNode.sx) / viewport.scale;
-    const dy = (e.clientY - dragNode.sy) / viewport.scale;
-    dragNode.node.x = dragNode.ox + dx;
-    dragNode.node.y = dragNode.oy + dy;
+    const delta = XiaomeiNodeKernel.worldDelta({x:e.clientX, y:e.clientY}, {x:dragNode.sx, y:dragNode.sy}, viewport.scale);
+    const primary = XiaomeiNodeKernel.shiftPoint(dragNode.ox, dragNode.oy, delta.x, delta.y, false);
+    dragNode.node.x = primary.x;
+    dragNode.node.y = primary.y;
     const el = nodesEl.querySelector(`.node[data-id="${dragNode.node.id}"]`);
     if(el){
         el.style.left = `${dragNode.node.x}px`;
         el.style.top = `${dragNode.node.y}px`;
     }
     (dragNode.children || []).forEach(childDrag => {
-        childDrag.node.x = childDrag.ox + dx;
-        childDrag.node.y = childDrag.oy + dy;
+        const next = XiaomeiNodeKernel.shiftPoint(childDrag.ox, childDrag.oy, delta.x, delta.y, false);
+        childDrag.node.x = next.x;
+        childDrag.node.y = next.y;
         const childEl = nodesEl.querySelector(`.node[data-id="${childDrag.node.id}"]`);
         if(childEl){
             childEl.style.left = `${childDrag.node.x}px`;
@@ -13731,6 +13481,8 @@ function onNodeDrag(e){
     renderSelectionHub();
     if(workflowTransferModal?.classList.contains('open')) updateWorkflowTransferMeta();
     scheduleMinimapRender();
+    return;
+
 }
 function startNodeResize(e, node){
     e.preventDefault();
@@ -13822,79 +13574,28 @@ function nearestPort(clientX, clientY, kind){
     const selector = `.port.${kind}`;
     const direct = document.elementFromPoint(clientX, clientY)?.closest(selector);
     if(direct) return direct;
-    if(window.XiaomeiNodeKernel?.isActive()){
-        const points = [...nodesEl.querySelectorAll(selector)].map(port => {
-            const r = port.getBoundingClientRect();
-            return {port, x:r.left + r.width / 2, y:r.top + r.height / 2};
-        });
-        return XiaomeiNodeKernel.nearestPoint(points, clientX, clientY, 48)?.port || null;
-    }
-    let best = null;
-    let bestDistance = Infinity;
-    nodesEl.querySelectorAll(selector).forEach(port => {
+    const points = [...nodesEl.querySelectorAll(selector)].map(port => {
         const r = port.getBoundingClientRect();
-        const cx = r.left + r.width / 2;
-        const cy = r.top + r.height / 2;
-        const d = Math.hypot(clientX - cx, clientY - cy);
-        if(d < bestDistance){
-            bestDistance = d;
-            best = port;
-        }
+        return {port, x:r.left + r.width / 2, y:r.top + r.height / 2};
     });
-    return bestDistance <= 48 ? best : null;
+    return XiaomeiNodeKernel.nearestPoint(points, clientX, clientY, 48)?.port || null;
+
 }
 function wouldCreateGeneratorCycle(fromId, toId){
-    if(window.XiaomeiNodeKernel?.isActive()) return XiaomeiNodeKernel.reaches(connections, toId, fromId);
-    const seen = new Set();
-    const walk = id => {
-        if(id === fromId) return true;
-        if(seen.has(id)) return false;
-        seen.add(id);
-        for(const c of connections.filter(x => x.from === id)){
-            if(walk(c.to)) return true;
-            const next = nodes.find(n => n.id === c.to);
-            if(next?.type === 'output'){
-                for(const cc of connections.filter(x => x.from === next.id)){
-                    if(walk(cc.to)) return true;
-                }
-            }
-        }
-        return false;
-    };
-    return walk(toId);
+    return XiaomeiNodeKernel.reaches(connections, toId, fromId);
 }
 function canConnect(fromId, toId){
-    if(window.XiaomeiNodeKernel?.isActive()){
-        if(!fromId || !toId || fromId === toId) return false;
-        const from = nodes.find(n => n.id === fromId);
-        const to = nodes.find(n => n.id === toId);
-        if(!from || !to) return false;
-        return XiaomeiNodeKernel.classicMayConnect(from.type, to.type, {
-            mediaOutput:CANVAS_MEDIA_OUTPUT_TYPES.includes(from.type),
-            acyclic:!wouldCreateGeneratorCycle(fromId, toId),
-            loopImage:Boolean(to.imageInput),
-            loopPrompt:Boolean(to.showPrompt)
-        });
-    }
     if(!fromId || !toId || fromId === toId) return false;
     const from = nodes.find(n => n.id === fromId);
     const to = nodes.find(n => n.id === toId);
     if(!from || !to) return false;
-    if(CANVAS_GENERATOR_TYPES.includes(from.type)){
-        if(to.type === 'output') return true;
-        if(CANVAS_MEDIA_OUTPUT_TYPES.includes(from.type) && CANVAS_GENERATOR_TYPES.includes(to.type)){
-            return !wouldCreateGeneratorCycle(fromId, toId);
-        }
-        return false;
-    }
-    if(to.type === 'loop'){
-        const allowImage = Boolean(to.imageInput) && ['image','group','output'].includes(from.type);
-        const allowPrompt = Boolean(to.showPrompt) && ['prompt','promptGroup','loop','llm'].includes(from.type);
-        return allowImage || allowPrompt;
-    }
-    if(to.type === 'llm') return ['prompt','loop','promptGroup','llm','image','group','output'].includes(from.type);
-    if(from.type === 'llm') return CANVAS_GENERATOR_TYPES.includes(to.type);
-    return CANVAS_GENERATOR_TYPES.includes(to.type) && ['image','prompt','loop','group','promptGroup','output','llm'].includes(from.type);
+    return XiaomeiNodeKernel.classicMayConnect(from.type, to.type, {
+        mediaOutput:CANVAS_MEDIA_OUTPUT_TYPES.includes(from.type),
+        acyclic:!wouldCreateGeneratorCycle(fromId, toId),
+        loopImage:Boolean(to.imageInput),
+        loopPrompt:Boolean(to.showPrompt)
+    });
+
 }
 function sanitizeConnections(){
     connections = (connections || []).filter(c => canConnect(c.from, c.to));
@@ -13970,14 +13671,10 @@ function canvasArrangeAtomicIds(ids){
 function translateCanvasNodeWithMembers(node, dx, dy, seen=new Set()){
     if(!node || seen.has(node.id)) return;
     seen.add(node.id);
-    if(window.XiaomeiNodeKernel?.isActive()){
-        const next = XiaomeiNodeKernel.shiftPoint(node.x, node.y, dx, dy, true);
-        node.x = next.x;
-        node.y = next.y;
-    } else {
-    node.x = Math.round((Number(node.x) || 0) + dx);
-    node.y = Math.round((Number(node.y) || 0) + dy);
-    }
+    const next = XiaomeiNodeKernel.shiftPoint(node.x, node.y, dx, dy, true);
+    node.x = next.x;
+    node.y = next.y;
+
     if(node.type === 'group' || node.type === 'promptGroup'){
         (node.items || []).forEach(id => translateCanvasNodeWithMembers(nodes.find(n => n.id === id), dx, dy, seen));
     }
@@ -13988,68 +13685,21 @@ function moveCanvasNodeAtom(node, x, y){
     translateCanvasNodeWithMembers(node, dx, dy);
 }
 function arrangeIdsByConnections(ids){
-    if(window.XiaomeiNodeKernel?.isActive()){
-        const idSet = new Set(canvasArrangeAtomicIds(ids));
-        const selectedNodes = [...idSet].map(id => nodes.find(n => n.id === id)).filter(Boolean);
-        if(selectedNodes.length < 2) return false;
-        const items = selectedNodes.map(n => {
-            const rect = nodeRect(n);
-            return {id:n.id, x:rect.x, y:rect.y, w:rect.w, h:rect.h, sortY:rect.y};
-        });
-        const placed = XiaomeiNodeKernel.columnLayout(items, connections, {minRow:120, rowGap:56, minCol:220, colGap:180});
-        if(!placed) return false;
-        placed.forEach(spot => {
-            const node = nodes.find(n => n.id === spot.id);
-            if(node) moveCanvasNodeAtom(node, spot.x, spot.y);
-        });
-        return true;
-    }
     const idSet = new Set(canvasArrangeAtomicIds(ids));
     const selectedNodes = [...idSet].map(id => nodes.find(n => n.id === id)).filter(Boolean);
     if(selectedNodes.length < 2) return false;
-    const rects = selectedNodes.map(n => ({node:n, rect:nodeRect(n)}));
-    const startX = Math.min(...rects.map(item => item.rect.x));
-    const startY = Math.min(...rects.map(item => item.rect.y));
-    const internal = connections.filter(c => idSet.has(c.from) && idSet.has(c.to));
-    const depth = new Map(selectedNodes.map(n => [n.id, 0]));
-    if(internal.length){
-        const indegree = new Map(selectedNodes.map(n => [n.id, 0]));
-        internal.forEach(c => indegree.set(c.to, (indegree.get(c.to) || 0) + 1));
-        const roots = [...indegree.entries()].filter(([, n]) => n === 0).map(([id]) => id);
-        const queue = roots.length ? roots.slice() : [selectedNodes[0].id];
-        const seen = new Set(queue);
-        while(queue.length){
-            const id = queue.shift();
-            internal.filter(c => c.from === id).forEach(c => {
-                depth.set(c.to, Math.max(depth.get(c.to) || 0, (depth.get(id) || 0) + 1));
-                if(!seen.has(c.to)){
-                    seen.add(c.to);
-                    queue.push(c.to);
-                }
-            });
-        }
-    }
-    const groups = new Map();
-    selectedNodes.forEach(n => {
-        const d = depth.get(n.id) || 0;
-        if(!groups.has(d)) groups.set(d, []);
-        groups.get(d).push(n);
+    const items = selectedNodes.map(n => {
+        const rect = nodeRect(n);
+        return {id:n.id, x:rect.x, y:rect.y, w:rect.w, h:rect.h, sortY:rect.y};
     });
-    const sortedDepths = [...groups.keys()].sort((a, b) => a - b);
-    let x = startX;
-    sortedDepths.forEach(d => {
-        const col = groups.get(d).slice().sort((a, b) => nodeRect(a).y - nodeRect(b).y || String(a.id).localeCompare(String(b.id)));
-        let y = startY;
-        let maxW = 0;
-        col.forEach(n => {
-            const r = nodeRect(n);
-            moveCanvasNodeAtom(n, x, y);
-            y += Math.max(120, r.h) + 56;
-            maxW = Math.max(maxW, Math.max(220, r.w));
-        });
-        x += maxW + 180;
+    const placed = XiaomeiNodeKernel.columnLayout(items, connections, {minRow:120, rowGap:56, minCol:220, colGap:180});
+    if(!placed) return false;
+    placed.forEach(spot => {
+        const node = nodes.find(n => n.id === spot.id);
+        if(node) moveCanvasNodeAtom(node, spot.x, spot.y);
     });
     return true;
+
 }
 function arrangeSelectedCanvasNodes(){
     if(!canvas || !selected.size) return;
@@ -14116,8 +13766,7 @@ function updateGroupMembership(movedNodes){
             const cr = nodeRect(child);
             const containing = groups.find(g => {
                 const gr = nodeRect(g);
-                if(window.XiaomeiNodeKernel?.isActive()) return XiaomeiNodeKernel.centerInside({x:cr.x, y:cr.y, w:cr.w, h:cr.h}, {x:gr.x, y:gr.y, w:gr.w, h:gr.h});
-                return cr.cx >= gr.x && cr.cx <= gr.x + gr.w && cr.cy >= gr.y && cr.cy <= gr.y + gr.h;
+                return XiaomeiNodeKernel.centerInside({x:cr.x, y:cr.y, w:cr.w, h:cr.h}, {x:gr.x, y:gr.y, w:gr.w, h:gr.h});
             });
             groups.forEach(g => {
                 if(g === containing) return;
@@ -14152,8 +13801,7 @@ function portPoint(id, kind){
     // 让连线仍画在节点附近，而不是落到 (0,0) 或干脆消失。
     const w = (el?.offsetWidth) || n.w || 260, h = (el?.offsetHeight) || n.h || 160;
     const nx = Number(n.x) || 0, ny = Number(n.y) || 0;
-    if(window.XiaomeiNodeKernel?.isActive()) return XiaomeiNodeKernel.edgeAnchor({x:nx, y:ny, w, h}, kind);
-    return kind === 'out' ? {x:nx + w, y:ny + h / 2} : {x:nx, y:ny + h / 2};
+    return XiaomeiNodeKernel.edgeAnchor({x:nx, y:ny, w, h}, kind);
 }
 function canResolvePort(id){
     // 只跳过“真正的孤儿连线”（端点节点已不存在）；节点存在但暂时没 DOM 的，portPoint 会用几何坐标兜底。
@@ -14268,12 +13916,8 @@ function refreshSelectionVisuals(){
 }
 function pathEl(x1,y1,x2,y2,cls){
     const p = document.createElementNS('http://www.w3.org/2000/svg','path');
-    if(window.XiaomeiNodeKernel?.isActive()){
-        p.setAttribute('d', XiaomeiNodeKernel.curveBetween({x:x1, y:y1}, {x:x2, y:y2}, 'classic').d);
-    } else {
-    const dx = Math.max(80, Math.abs(x2 - x1) * .45);
-    p.setAttribute('d', `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`);
-    }
+    p.setAttribute('d', XiaomeiNodeKernel.curveBetween({x:x1, y:y1}, {x:x2, y:y2}, 'classic').d);
+
     p.setAttribute('class', cls);
     return p;
 }
@@ -14301,15 +13945,7 @@ function segmentIntersectsRect(a, b, r){
     return segmentsIntersect(a, b, p1, p2) || segmentsIntersect(a, b, p2, p3) || segmentsIntersect(a, b, p3, p4) || segmentsIntersect(a, b, p4, p1);
 }
 function cubicPoint(a, b, t){
-    if(window.XiaomeiNodeKernel?.isActive()) return XiaomeiNodeKernel.sampleCurve(a, b, t, 'classic');
-    const dx = Math.max(80, Math.abs(b.x - a.x) * .45);
-    const p1 = {x:a.x + dx, y:a.y};
-    const p2 = {x:b.x - dx, y:b.y};
-    const u = 1 - t;
-    return {
-        x:u*u*u*a.x + 3*u*u*t*p1.x + 3*u*t*t*p2.x + t*t*t*b.x,
-        y:u*u*u*a.y + 3*u*u*t*p1.y + 3*u*t*t*p2.y + t*t*t*b.y
-    };
+    return XiaomeiNodeKernel.sampleCurve(a, b, t, 'classic');
 }
 function knifeHitsConnection(a, b, connection){
     const from = portPoint(connection.from, 'out');
@@ -14441,11 +14077,7 @@ function startBoardPan(e, opts={}){
     document.body.classList.add('canvas-board-pan');
     window.onmousemove = e2 => {
         if(Math.hypot(e2.clientX - dragBoard.sx, e2.clientY - dragBoard.sy) > 4) dragBoard.moved = true;
-        if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.dragCamera(viewport, dragBoard.ox, dragBoard.oy, e2.clientX - dragBoard.sx, e2.clientY - dragBoard.sy);
-        else {
-            viewport.x = dragBoard.ox + e2.clientX - dragBoard.sx;
-            viewport.y = dragBoard.oy + e2.clientY - dragBoard.sy;
-        }
+        XiaomeiViewportKernel.dragCamera(viewport, dragBoard.ox, dragBoard.oy, e2.clientX - dragBoard.sx, e2.clientY - dragBoard.sy);
         applyViewport();
     };
     window.onmouseup = e2 => {
@@ -14515,18 +14147,10 @@ board.onwheel = e => {
     if(!canvas) return;
     if(isEditableTarget(e.target)) return;
     e.preventDefault();
-    if(window.XiaomeiViewportKernel?.isActive()){
-        XiaomeiViewportKernel.classicWheel(viewport, XiaomeiViewportKernel.frameFromElement(board), e.clientX, e.clientY, e.deltaY);
-        scheduleViewportRender(true);
-        return;
-    }
-    const before = screenToWorld(e.clientX, e.clientY);
-    viewport.scale = viewport.scale * (e.deltaY > 0 ? .92 : 1.08);
-    const rect = board.getBoundingClientRect();
-    viewport.x = e.clientX - rect.left - before.x * viewport.scale;
-    viewport.y = e.clientY - rect.top - before.y * viewport.scale;
-    // 触控板/高刷新率鼠标可能一帧内触发多次 wheel，合并 DOM、连线和小地图更新。
+    XiaomeiViewportKernel.classicWheel(viewport, XiaomeiViewportKernel.frameFromElement(board), e.clientX, e.clientY, e.deltaY);
     scheduleViewportRender(true);
+    return;
+
 };
 board.addEventListener('dragover', e => {
     if(e.target.closest?.('.image-node')){
@@ -14592,43 +14216,42 @@ window.addEventListener('paste', e => {
 });
 window.addEventListener('keydown', e => {
     if(!canvas) return;
-    if(window.XiaomeiHistoryKernel?.isActive()){
-        const tag = document.activeElement?.tagName;
-        const commandEditable = tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable;
-        const modal = Boolean(document.getElementById('imageEditModal')?.classList.contains('open')
-            || promptTemplateModal?.classList.contains('open')
-            || outputLightbox.classList.contains('open')
-            || assetManagerModal?.classList.contains('open')
-            || workflowTransferModal?.classList.contains('open')
-            || logModal?.classList.contains('open'));
-        const action = XiaomeiHistoryKernel.chord({
-            key:e.key, ctrl:e.ctrlKey, meta:e.metaKey, alt:e.altKey, shift:e.shiftKey, repeat:e.repeat
-        }, {
-            profile:'classic',
-            plainEditable:isEditableTarget(e.target),
-            commandEditable,
-            modal,
-            textSelected:Boolean(window.getSelection && window.getSelection().toString().length),
-            canPaste:clipboardNodeCount() > 0
-        });
-        if(action?.type === 'ignore' || action?.type === 'zoom-preview'){
-            e.preventDefault();
-            if(action.type === 'zoom-preview') toggleZoomPreview();
-            return;
-        }
-        if(action?.type === 'undo'){ e.preventDefault(); performUndo(); return; }
-        if(action?.type === 'copy'){ e.preventDefault(); copySelectedNodes(); return; }
-        if(action?.type === 'group'){ e.preventDefault(); groupSelectedImages(); return; }
-        if(action?.type === 'paste-deferred'){
-            const pasteRequestedAt = Date.now();
-            setTimeout(() => {
-                if(!canvas) return;
-                if(!XiaomeiHistoryKernel.pasteStillFresh(pasteRequestedAt, [lastImagePasteAt])) return;
-                pasteNodes();
-            }, action.delay);
-            return;
-        }
+    const tag = document.activeElement?.tagName;
+    const commandEditable = tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable;
+    const modal = Boolean(document.getElementById('imageEditModal')?.classList.contains('open')
+        || promptTemplateModal?.classList.contains('open')
+        || outputLightbox.classList.contains('open')
+        || assetManagerModal?.classList.contains('open')
+        || workflowTransferModal?.classList.contains('open')
+        || logModal?.classList.contains('open'));
+    const action = XiaomeiHistoryKernel.chord({
+        key:e.key, ctrl:e.ctrlKey, meta:e.metaKey, alt:e.altKey, shift:e.shiftKey, repeat:e.repeat
+    }, {
+        profile:'classic',
+        plainEditable:isEditableTarget(e.target),
+        commandEditable,
+        modal,
+        textSelected:Boolean(window.getSelection && window.getSelection().toString().length),
+        canPaste:clipboardNodeCount() > 0
+    });
+    if(action?.type === 'ignore' || action?.type === 'zoom-preview'){
+        e.preventDefault();
+        if(action.type === 'zoom-preview') toggleZoomPreview();
+        return;
     }
+    if(action?.type === 'undo'){ e.preventDefault(); performUndo(); return; }
+    if(action?.type === 'copy'){ e.preventDefault(); copySelectedNodes(); return; }
+    if(action?.type === 'group'){ e.preventDefault(); groupSelectedImages(); return; }
+    if(action?.type === 'paste-deferred'){
+        const pasteRequestedAt = Date.now();
+        setTimeout(() => {
+            if(!canvas) return;
+            if(!XiaomeiHistoryKernel.pasteStillFresh(pasteRequestedAt, [lastImagePasteAt])) return;
+            pasteNodes();
+        }, action.delay);
+        return;
+    }
+
     const key = String(e.key || '').toLowerCase();
     if(key === 'r' && !isEditableTarget(e.target)) isRKeyDown = true;
     if(e.key === 'Shift' && !e.altKey && !isEditableTarget(document.activeElement)) setKnifeMode(true);

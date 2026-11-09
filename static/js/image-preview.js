@@ -87,25 +87,12 @@
             const rect = container.getBoundingClientRect();
             const lx = e.clientX - rect.left;
             const ly = e.clientY - rect.top;
-            if(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive()){
-                const next = XiaomeiShellKernel.previewWheel({zoom:zoom, panX:pan.x, panY:pan.y}, {x:lx, y:ly}, e.deltaY, {min:minZoom, max:maxZoom});
-                zoom = next.zoom;
-                pan = {x:next.panX, y:next.panY};
-                apply();
-                return;
-            }
-            const before = {
-                x: (lx - pan.x) / zoom,
-                y: (ly - pan.y) / zoom
-            };
-            const factor = e.deltaY > 0 ? 0.9 : 1.1;
-            const nz = Math.max(minZoom, Math.min(maxZoom, zoom * factor));
-            zoom = nz;
-            pan = nz <= 1.001 ? { x:0, y:0 } : {
-                x: lx - before.x * nz,
-                y: ly - before.y * nz
-            };
+            const next = XiaomeiShellKernel.previewWheel({zoom:zoom, panX:pan.x, panY:pan.y}, {x:lx, y:ly}, e.deltaY, {min:minZoom, max:maxZoom});
+            zoom = next.zoom;
+            pan = {x:next.panX, y:next.panY};
             apply();
+            return;
+
         }
 
         function onDown(e){

@@ -53,7 +53,11 @@ test('canvas polling starts immediately and bounds each read without resubmittin
     const ctx = vm.createContext({
         activeSmartTaskPolls:new Map(), tr:key => key,
         XiaomeiImageTaskClient:{pollImageTask:async (_id, options) => { received = options; return {images:['/ready.png']}; }},
+        document:{documentElement:{setAttribute(){}}},
     });
+    ctx.window = ctx;
+    ctx.globalThis = ctx;
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../static/js/xiaomei-dispatch-kernel.js'), 'utf8'), ctx);
     vm.runInContext(extract('pollSmartCanvasTask'), ctx);
     await ctx.pollSmartCanvasTask('existing-task');
     assert.equal(received.initialDelayMs, 0);

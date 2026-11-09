@@ -16,9 +16,6 @@
     };
     const FONT_SIZES = { small:'14px', normal:'16px', large:'18px', xlarge:'20px' };
 
-    function shellOn(){
-        return !!(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive && XiaomeiShellKernel.isActive());
-    }
     function shellMetrics(){
         return {
             dpr: window.devicePixelRatio,
@@ -31,10 +28,7 @@
     function currentAppearance(){
         try {
             const stored = JSON.parse(localStorage.getItem(APPEARANCE_KEY) || '{}') || {};
-            if(shellOn()) return XiaomeiShellKernel.resolveAppearance(stored, currentTheme());
-            if(!SKIN_NAMES.has(stored.skin)) stored.skin = currentTheme() === 'dark' ? 'dark' : (stored.eyeCare ? 'soft' : 'minimal');
-            if(ACCENT_MIGRATIONS[stored.accent]) stored.accent = ACCENT_MIGRATIONS[stored.accent];
-            return { ...APPEARANCE_DEFAULTS, ...stored };
+            return XiaomeiShellKernel.resolveAppearance(stored, currentTheme());
         } catch(e) {
             return { ...APPEARANCE_DEFAULTS };
         }
@@ -157,8 +151,7 @@
     }
 
     function normalizeScaleMode(mode){
-        if(shellOn()) return XiaomeiShellKernel.scaleMode(mode);
-        return SCALE_OPTIONS.includes(mode) ? mode : 'auto';
+        return XiaomeiShellKernel.scaleMode(mode);
     }
 
     function currentScaleMode(){
@@ -170,30 +163,11 @@
     }
 
     function autoScale(){
-        if(shellOn()) return XiaomeiShellKernel.autoScale(shellMetrics());
-        const dpr = Math.max(1, Number(window.devicePixelRatio || 1));
-        const viewportWidth = Math.max(320, Number(window.innerWidth || 0));
-        const viewportHeight = Math.max(320, Number(window.innerHeight || 0));
-        const compactRatio = Math.min(viewportWidth / 1500, viewportHeight / 940);
-        if(compactRatio < 1) {
-            return Math.max(0.68, Math.min(1, compactRatio));
-        }
-        const screenLong = Math.max(window.screen?.width || 0, window.screen?.height || 0);
-        const viewportLong = Math.max(viewportWidth, viewportHeight);
-        const longEdge = Math.max(screenLong, viewportLong);
-        if(dpr >= 1.35) return 1;
-        if(longEdge >= 3600) return 1.22;
-        if(longEdge >= 3000) return 1.16;
-        if(longEdge >= 2500 && dpr <= 1.15) return 1.1;
-        return 1;
+        return XiaomeiShellKernel.autoScale(shellMetrics());
     }
 
     function scaleForMode(mode){
-        if(shellOn()) return XiaomeiShellKernel.scaleValue(mode, shellMetrics(), externalScaleValue);
-        const next = normalizeScaleMode(mode);
-        if(next === 'auto' && Number.isFinite(externalScaleValue)) return externalScaleValue;
-        if(next === 'auto') return autoScale();
-        return Math.max(0.58, Math.min(1.4, Number(next) / 100));
+        return XiaomeiShellKernel.scaleValue(mode, shellMetrics(), externalScaleValue);
     }
 
     let externalScaleValue = null;

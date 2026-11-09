@@ -5237,111 +5237,27 @@ function saveProviders(){
 async function performProviderSave(){
     syncEditor();
     const submittedVersion = providerDraftVersion;
-    const useShell = window.XiaomeiShellKernel && XiaomeiShellKernel.isActive();
     let shellBody = null;
-    if(useShell){
-        const prepared = XiaomeiShellKernel.prepareProviders(providers, {
-            displayName: modelDisplayName,
-            normalizeRh: normalizeRhEntries,
-            selectedId
-        });
-        if(prepared.error){
-            alert(tr('api.duplicateId'));
-            providerSaveError = tr('api.duplicateId');
-            return false;
-        }
-        providers = prepared.providers;
-        selectedId = prepared.selectedId || selectedId;
-        shellBody = XiaomeiShellKernel.wireProviders(providers);
-    }
-    if(!useShell){
-    providers.forEach(item => {
-        const oldId = item.id;
-        item.id = normalizeId(newProviderId(item));
-        if(selectedId === oldId) selectedId = item.id;
-        applyLockedRecommendedProtocol(item);
-        item.protocol = item.id === 'runninghub'
-            ? 'runninghub'
-            : item.id === 'volcengine'
-            ? 'volcengine'
-            : API_PROTOCOLS.includes(String(item.protocol || '').toLowerCase()) ? String(item.protocol).toLowerCase() : 'openai';
-        const isCliProtocol = CLI_PROTOCOLS.has(item.protocol);
-        item.image_request_mode = normalizeImageRequestMode(
-            item.id === 'runninghub' || item.id === 'volcengine' || isCliProtocol
-                ? 'openai'
-                : item.image_request_mode
-        );
-        item.image_edit_route = normalizeImageEditRoute(
-            item.id === 'runninghub' || item.id === 'volcengine' || isCliProtocol
-                ? 'general'
-                : item.image_edit_route
-        );
-        if(isCliProtocol) applyCliProtocolDefaults(item, item.protocol);
-        if(item.id === 'runninghub'){
-            item.base_url = item.base_url || RH_DEFAULT_BASE_URL;
-            item.image_models = unique(item.image_models || []);
-            item.chat_models = unique(item.chat_models || []);
-            item.video_models = unique(item.video_models || []);
-        }
-        item.image_generation_endpoint = '';
-        item.image_edit_endpoint = '';
-        item.image_models = unique(item.image_models || []);
-        item.chat_models = unique(item.chat_models || []);
-        item.video_models = unique(item.video_models || []);
-        const modelNameSource = (item.model_names && typeof item.model_names === 'object') ? item.model_names : {};
-        const modelNameMap = {};
-        [...item.image_models, ...item.chat_models, ...item.video_models].forEach(model => {
-            const raw = String(model || '').trim();
-            const label = String(modelNameSource[raw] || modelDisplayName(raw, item) || '').trim();
-            if(raw && label && label !== raw) modelNameMap[raw] = label;
-        });
-        item.model_names = modelNameMap;
-        item.rh_apps = normalizeRhEntries(item.rh_apps || [], 'app');
-        item.rh_workflows = normalizeRhEntries(item.rh_workflows || [], 'workflow');
+    const prepared = XiaomeiShellKernel.prepareProviders(providers, {
+        displayName: modelDisplayName,
+        normalizeRh: normalizeRhEntries,
+        selectedId
     });
-    if(new Set(providers.map(item => item.id)).size !== providers.length){
+    if(prepared.error){
         alert(tr('api.duplicateId'));
         providerSaveError = tr('api.duplicateId');
         return false;
     }
-    }
+    providers = prepared.providers;
+    selectedId = prepared.selectedId || selectedId;
+    shellBody = XiaomeiShellKernel.wireProviders(providers);
+
     setStatus(tr('api.saving'));
     try {
         const res = await fetch('/api/providers', {
             method:'PUT',
             headers:{'Content-Type':'application/json'},
-            body:JSON.stringify(shellBody || providers.map(item => ({
-                id:item.id,
-                name:item.name,
-                base_url:item.base_url,
-                protocol:item.id === 'runninghub' ? 'runninghub' : item.id === 'volcengine' ? 'volcengine' : (item.protocol || 'openai'),
-                image_request_mode:item.image_request_mode || 'openai',
-                image_edit_route:item.image_edit_route || 'general',
-                image_generation_endpoint:item.image_generation_endpoint || '',
-                image_edit_endpoint:item.image_edit_endpoint || '',
-                enabled:item.enabled !== false,
-                primary:false,
-                image_models:item.image_models || [],
-                chat_models:item.chat_models || [],
-                video_models:item.video_models || [],
-                model_selection_managed:item.model_selection_managed === true,
-                model_names:(item.model_names && typeof item.model_names === 'object') ? item.model_names : {},
-                model_protocols:(item.model_protocols && typeof item.model_protocols === 'object') ? item.model_protocols : {},
-
-
-                rh_apps:item.id === 'runninghub' ? (item.rh_apps || []) : [],
-                rh_workflows:item.id === 'runninghub' ? (item.rh_workflows || []) : [],
-                volcengine_project_name:item.id === 'volcengine' ? (item.volcengine_project_name || VOLCENGINE_DEFAULT_PROJECT_NAME) : '',
-                volcengine_region:item.id === 'volcengine' ? (item.volcengine_region || VOLCENGINE_DEFAULT_REGION) : '',
-                volcengine_access_key_id:item.volcengine_access_key_id || undefined,
-                volcengine_secret_access_key:item.volcengine_secret_access_key || undefined,
-                api_key:item.api_key || undefined,
-                wallet_api_key:item.wallet_api_key || undefined,
-                clear_key:item._clearKey === true,
-                clear_wallet_key:item._clearWalletKey === true,
-                clear_volcengine_access_key_id:item._clearVolcengineAccessKey === true,
-                clear_volcengine_secret_access_key:item._clearVolcengineSecretKey === true
-            })))
+            body:JSON.stringify(shellBody)
         });
         if(!res.ok) throw new Error((await res.json()).detail || tr('api.saveFailed'));
         const data = await res.json();

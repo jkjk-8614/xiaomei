@@ -182,17 +182,13 @@
 
         selectAllBtn.addEventListener('click', () => {
             const all = cards();
-            if(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive()){
-                const ids = all.map(card => card.dataset.historyTs);
-                const chosen = selectedCards().map(card => card.dataset.historyTs);
-                const next = new Set(XiaomeiShellKernel.bulkAll(ids, chosen));
-                all.forEach(card => card.classList.toggle('hbm-selected', next.has(card.dataset.historyTs)));
-                refreshLabels();
-                return;
-            }
-            const allSelected = all.length > 0 && selectedCards().length === all.length;
-            all.forEach(c => c.classList.toggle('hbm-selected', !allSelected));
+            const ids = all.map(card => card.dataset.historyTs);
+            const chosen = selectedCards().map(card => card.dataset.historyTs);
+            const next = new Set(XiaomeiShellKernel.bulkAll(ids, chosen));
+            all.forEach(card => card.classList.toggle('hbm-selected', next.has(card.dataset.historyTs)));
             refreshLabels();
+            return;
+
         });
 
         /* 选择模式下点击卡片 = 切换选中（捕获阶段拦截，避免触发卡片自身逻辑） */
@@ -202,13 +198,10 @@
             if(!card || !masonry.contains(card)) return;
             e.preventDefault();
             e.stopPropagation();
-            if(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive()){
-                const pool = cards();
-                const next = new Set(XiaomeiShellKernel.bulkChoice(pool.map(item => item.dataset.historyTs), selectedCards().map(item => item.dataset.historyTs), card.dataset.historyTs));
-                pool.forEach(item => item.classList.toggle('hbm-selected', next.has(item.dataset.historyTs)));
-            } else {
-                card.classList.toggle('hbm-selected');
-            }
+            const pool = cards();
+            const next = new Set(XiaomeiShellKernel.bulkChoice(pool.map(item => item.dataset.historyTs), selectedCards().map(item => item.dataset.historyTs), card.dataset.historyTs));
+            pool.forEach(item => item.classList.toggle('hbm-selected', next.has(item.dataset.historyTs)));
+
             refreshLabels();
         }, true);
 
@@ -225,7 +218,7 @@
                 return fetch('/api/history/delete', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(window.XiaomeiShellKernel && XiaomeiShellKernel.isActive() ? XiaomeiShellKernel.historyDeleteBody(ts) : { timestamp: ts })
+                    body: JSON.stringify(XiaomeiShellKernel.historyDeleteBody(ts))
                 }).then(r => r.json()).then(res => {
                     if(res && res.success){ card.remove(); return true; }
                     throw new Error('delete failed');

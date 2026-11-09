@@ -242,28 +242,13 @@
     }
 
     function defaultTaskDecision(task) {
-        if (global.XiaomeiDispatchKernel?.isActive()) {
-            const decision = global.XiaomeiDispatchKernel.pollDecision(task);
-            if (decision.state === 'succeeded') return { action: 'resolve', value: task };
-            if (decision.state === 'empty' || decision.state === 'failed' || decision.state === 'cancelled') {
-                return { action: 'reject', error: httpError(decision.message) };
-            }
-            return { action: 'continue' };
-        }
-        const status = String(task?.status || task?.task_status || '').toLowerCase();
-        if (status === 'succeeded' || status === 'success' || status === 'completed' || status === 'complete') {
-            if (!taskHasMediaResult(task)) {
-                const message = task?.error
-                    ? taskErrorMessage(task, '上游任务已完成，但没有返回可显示的图片')
-                    : '上游任务已完成，但没有返回可显示的图片';
-                return { action: 'reject', error: httpError(message) };
-            }
-            return { action: 'resolve', value: task };
-        }
-        if (status === 'failed' || status === 'error' || status === 'cancelled' || status === 'canceled') {
-            return { action: 'reject', error: httpError(taskErrorMessage(task)) };
+        const decision = global.XiaomeiDispatchKernel.pollDecision(task);
+        if (decision.state === 'succeeded') return { action: 'resolve', value: task };
+        if (decision.state === 'empty' || decision.state === 'failed' || decision.state === 'cancelled') {
+            return { action: 'reject', error: httpError(decision.message) };
         }
         return { action: 'continue' };
+
     }
 
     async function pollImageTask(taskId, options = {}) {
