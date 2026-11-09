@@ -31,15 +31,15 @@ English: this pass deletes only the Daxiong/Infinite-Canvas fallback bodies that
 
 ## 2. 明确留下的代码，以及原因
 
-这些不是「内核分支恒真所以走不到」的 `else`。删它们会拆掉仍在执行的页面，或者把仍被调用的公式改写成另一种样子。本轮不做。
+这些不是「内核分支恒真所以走不到」的 `else`。删它们会拆掉仍在执行的页面。画布界面那一行后来有一部分改写了，见第 3 节；这里只保留仍未换掉的原因。
 
 | 留下的路径 | 原因 |
 | --- | --- |
-| `static/js/canvas.js`、`static/js/smart-canvas.js` 里内核调用之外的节点渲染、菜单、生成和快捷键尾部 | 文件仍是画布程序本身。`XiaomeiHistoryKernel.chord()` 对 Delete、Escape、方向键和部分组合键返回 `null`，后面的按键处理仍会执行，不是被 `return` 盖住的旧分支 |
+| `static/js/canvas.js`、`static/js/smart-canvas.js` 里各节点类型的正文、提示词、Comfy、RunningHub、LTX、循环和 LLM 表单 | 快捷键尾部、经典菜单、经典节点外壳、图片/视频生成表单和智能画布卡片外壳已经换到新模块。类型正文仍直接改 DOM，浏览器用例按这些 class 和字段名点击。整段换掉要单独一轮，不能靠改名 |
 | `main.py` 的 `storage_kind_dir` 在 `asset_kernel.storage_bucket` 之后的目录映射；`normalize_provider` 在 `provider_core` 之后的模型、端点和锁定规则 | 内核只先整理入参，后面的语句是两条路径共用的后续逻辑，内核打开时本来就会执行 |
-| `static/js/canvas-editor-core.js`、`static/js/canvas-list.js` | 没有 `isActive()` 回退。列表和编辑器仍调用这里的 `screenToWorld`。视口内核没有接到这些调用点。把公式换掉是另一次行为改写，不是删除走不到的分支 |
+| `static/js/canvas-editor-core.js` 里文字测量以外的下载、网格和裁切比例 | 屏幕坐标和画布中心已经改走视口内核。其余函数仍被图片编辑器和素材页调用，这一轮没有整文件重写 |
 | `static/js/touch-mouse.js`、`ltx-director-timeline.js`、`comfyui-settings.js` 及其 CSS、`i18n.js`、`i18n/**`、`i18n-core.js` | 六个内核没有替换这些脚本和词典。页面仍加载它们 |
-| `static/css/canvas.css`、`smart-canvas.css`、`api-settings.css`、`asset-manager.css`、`theme.css`、`canvas-editor-common.css`，以及对应 HTML 壳 | 样式和页面标记仍在用。本轮没有换皮 |
+| `static/css/canvas.css`、`smart-canvas.css`、`canvas-list.css` 里功能规则的后半段；`api-settings.css`、`asset-manager.css`、`theme.css` | 画布、列表和编辑器的纸色与松绿已经换过。功能规则仍决定批量、代理、图层的布局，设置页和主题页整表换皮会改到每一条产品路由 |
 | `static/angle.html`、`enhance.html`、`klein.html`、`zimage.html`、`gpt-chat.html`、`online.html` 的页面正文 | 卫星页仍打开。只更新了已改脚本的 `?v=` |
 | `static/system-prompts/infinite-canvas-prompt-templates.md`、`static/runninghub/api_providers.json` | 仍被产品读取的数据，不是内核回退分支 |
 | `tools/chrome-local-asset-importer/**`、`tools/photoshop-asset-connector/**` | 安装输入仍可能带上这些工具。`packages/photoshop-bridge/` 不是它们的替代品 |
@@ -50,3 +50,21 @@ English: this pass deletes only the Daxiong/Infinite-Canvas fallback bodies that
 | 根目录 `LICENSE`、Git 历史 | 不在本轮范围。不改许可证正文，不宣称闭源或商用许可已经完成 |
 
 `electron-builder.yml` 的 `files` 没有改。A 类文件仍会进安装包。这不表示产品已经独立，也不表示 B 类不再为空。第五阶段的商用清单仍然有效。
+
+## 3. 画布界面改写（接在第 2 节后面）
+
+日期：2026-11-09。细节和验证命令见 `docs/audits/canvas-surface-rewrite.md`。
+
+这一轮不是删走不到的分支。新文件用自己的函数划分调用已经在跑的六个内核，页面上的旧公式和快捷键尾部改成调用这些函数。`LICENSE`、Git 历史、CainFlow 和已废弃的电商工作台都没有动。
+
+| 已换掉 | 新代码 |
+| --- | --- |
+| 经典画布 `chord()` 返回 `null` 之后的 Delete、Escape、方向键、R、Shift 和 Ctrl/Cmd+Shift+G | `static/js/xiaomei-canvas-keys.js` |
+| 智能画布同一条按键链里的缩略图拖动、编辑器、R、擦除修饰键，以及字母 A 打开素材库 | 同一个文件。复制、粘贴、撤销、重做、成组仍只走 `XiaomeiHistoryKernel.chord()` |
+| 经典右键菜单、节点外框、端口、图片生成和视频生成表单 | `static/js/xiaomei-canvas-surface.js` |
+| 智能画布卡片的 class、外框和端口 | `static/js/xiaomei-smart-surface.js` |
+| `canvas-editor-core.js` 的 `screenToWorld`、`boardCenterWorld` | `XiaomeiViewportKernel.pointerToWorld` 与 `visibleWorldRect`。缩放为 0 时仍按 1 算 |
+| `canvas-list.js` 的平移、滚轮和世界层变换 | `dragCamera`、`zoomAboutClient`、`paintWorldLayer`。列表滚轮倍率仍是 1.1，不是经典画布的 0.92 |
+| `canvas-editor-common.css`；`canvas.css`、`smart-canvas.css`、`canvas-list.css` 的纸色和松绿 | 选择器和拖动手柄位置保留，颜色和卡片圆角换成小美工作室这套 |
+
+`static/canvas.html` 的创建菜单改为空节点，由表面模块在加载时填上。`canvas-list.html` 先加载视口内核。`smart-canvas.html` 在画布脚本前加载按键和卡片外壳。缓存参数是 `?v=2026.11.09.11`。

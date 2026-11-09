@@ -19031,25 +19031,77 @@ function render(options={}){
         // 非空节点使用悬浮删除按钮；标题栏按钮只给空上传节点，避免产生重复图标。
         const deleteBtn = isGroup || !isEmpty ? '' : `<button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button>`;
         const hint = isTextStack ? '' : isFidelity ? '' : isVideo ? (isFailed ? '生成失败 · 可修改参数后重新运行' : isPending ? escapeHtml(tr('smart.hintPending')) : '连接提示词或图片、视频、音频参考后生成') : isAiRender ? (isFailed ? '生成失败 · 可修改参数后重试' : isPending ? escapeHtml(tr('smart.hintPending')) : '连接白模、风格或产品参考图后开始渲染') : isTable ? '可接收文本或表格数据' : isTimeline ? '连接图片、视频和音频后导出成片' : isComfyWorkflow ? (isFailed ? '运行失败 · 可检查依赖或重新运行' : isPending ? escapeHtml(tr('smart.hintPending')) : '选中节点编辑参数，连接素材后运行') : isDrawingBoard ? escapeHtml(tr('smart.drawingBoardHint')) : isLoop ? '' : isSmartGroup ? '双击添加 · 拖入归组' : isCamera ? '连接参考图像 → 下游绘画节点' : isCompare ? escapeHtml(smartCompareText('smart.compareNodeConnectHint', '连接两张图片后开始对比')) : isColor ? '连接待修复图片和参考图' : isFailed ? '生成失败 · 可修改参数后重新运行' : isPending ? escapeHtml(tr('smart.hintPending')) : isPaint && !imgs.length ? (isProductFidelityNode(node) ? '连接产品参考图，设置蒙版与细节保护' : escapeHtml(tr('smart.createPaintNodeSub'))) : isUpload && !imgs.length ? escapeHtml(tr('smart.uploadHint')) : (imgs.length > 1 ? escapeHtml(tr('smart.hintMulti')) : imgs.length ? escapeHtml(tr('smart.hintSingle')) : escapeHtml(tr('smart.hintEmpty')));
-        const html = `<div class="image-node ${isTextStack ? 'collapsed-text-stack-node' : ''} ${isFidelity ? 'product-fidelity-smart-node' : ''} ${isVideo ? 'video-smart-node' : ''} ${isAiRender ? 'ai-render-smart-node' : ''} ${isReplica ? 'replica-smart-node' : ''} ${isComfyWorkflow ? 'comfy-workflow-smart-node' : ''} ${isDrawingBoard ? 'drawing-board-node' : ''} ${isTable ? 'smart-table-node' : ''} ${isTimeline ? 'smart-timeline-node' : ''} ${isEmpty ? 'empty-node' : ''} ${isUpload ? 'upload-node' : ''} ${isPaint ? 'painting-node' : ''} ${isDetailPaint ? 'smart-detail-paint-node' : ''} ${isDetailStitch ? 'smart-detail-stitch-node' : ''} ${isFailed ? 'node-failed' : ''} ${isGroup ? 'group-node' : ''} ${node.collapsed && isImageNode ? 'collapsed-stack-node' : ''} ${node.collapsed && isPrompt ? 'collapsed-prompt-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isAgent ? 'agent-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isCompare ? 'smart-compare-node' : ''} ${isColor ? 'color-smart-node' : ''} ${isSmartGroup ? 'smart-group-node' : ''} ${isCompactMember ? 'smart-group-member-node' : ''} ${collabLockedByOther ? 'collab-locked-by-other' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''}" data-id="${escapeHtml(node.id)}" style="${xmNodeOriginStyle(node)};${collabLockedByOther ? `--member-color:${escapeAttr(collabSafeColor(collabLock.member.color, collabLock.member.id))};` : ''}${node.collapsed && isImageNode ? 'background:transparent!important;border-color:transparent!important;box-shadow:none!important;backdrop-filter:none!important;' : ''}width:${layout.width}px;height:${layout.height}px">
-            ${isDetailPaint ? `<div class="smart-detail-screen-marker" aria-label="${escapeAttr(`第 ${detailScreenIndex} 屏${detailScreenTitle ? `：${detailScreenTitle}` : ''}`)}"><strong>第 ${detailScreenIndex} 屏</strong>${detailScreenTitle ? `<span>${escapeHtml(detailScreenTitle)}</span>` : ''}</div>` : ''}
-            ${isDetailStitch ? `<div class="smart-detail-stitch-marker ${detailStitchStale ? 'is-stale' : ''}"><strong>${escapeHtml(tr('smart.detailStitchTitle'))}</strong>${node.detailStitchActualRatio && node.detailStitchActualRatio !== '9:16' ? `<span>${escapeHtml(trf('smart.detailStitchSourceRatio', {ratio:node.detailStitchActualRatio}))}</span>` : ''}${detailStitchStale ? `<span>${escapeHtml(tr('smart.detailStitchNeedsUpdate'))}</span>` : ''}</div>` : ''}
-            ${smartNodeRunBorderHtml(node)}
-            <div class="node-head"><div class="node-title">${isReplica ? '<i data-lucide="copy"></i>一键复刻' : isProductRetouchNode(node) ? '产品精修' : isFusion ? (node.detailRepair?.enabled?'细节修复':'智能局部融合') : isProductFidelityNode(node) ? '产品保护' : title}</div><div class="node-actions">${deleteBtn}</div></div>
-            ${collabNodePresenceMarkup(node.id)}
-            ${!isEmpty && !isGroup ? `<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>` : ''}
-            ${smartNodeToolbarHtml(node)}${smartGroupToolbarHtml(node)}
-            <div class="node-body">${body}</div>
-            ${typeof productRetouchReviewHtml === 'function' ? productRetouchReviewHtml(node) : ''}
-            ${isCompactMember && (isPrompt || isLoop) ? '<div class="smart-group-member-grab" title="拖动分组"></div>' : ''}
-            <div class="node-hint">${hint}</div>
-             ${(isReplica || isProductRetouchNode(node) || isFidelity || isAiRender || isCompare || isColor || isDrawingBoard || isAgent || isComfyWorkflow || isTable || isTimeline || imgs.length || node.pending || isQueued || isJimengPending || isFailed || isPrompt || isLoop || isSmartGroup) ? `<div class="node-resize-handle" data-resize="1"${isReplica ? ' title="拖动调整节点大小"' : ''}></div>` : ''}
-             ${(isTextStack || isDrawingBoard || isGroup || isSmartGroup) ? '' : isReplica ? window.SmartCanvasReplica.ports(node) : isAiRender ? '<div class="node-port port-in ai-render-input-port" data-port="in" data-input-slot="white" title="连接白模" aria-label="白模"></div><div class="node-port port-in ai-render-input-port" data-port="in" data-input-slot="style" title="连接风格参考" aria-label="风格"></div><div class="node-port port-in ai-render-input-port" data-port="in" data-input-slot="product" title="连接产品参考" aria-label="产品"></div>' : isColor ? '<div class="node-port port-in color-input-port" data-port="in" data-input-slot="target" title="连接待修复图片"><span class="color-input-label">待修复</span></div><div class="node-port port-in color-input-port" data-port="in" data-input-slot="reference" title="连接参考图片"><span class="color-input-label">参考</span></div>' : smartLoopIsPaired(node) ? '<div class="node-port port-in batch-image-input-port" data-port="in" data-input-slot="product" title="连接产品图，保持产品外观" aria-label="连接产品图"></div>' : '<div class="node-port port-in" data-port="in" title="连接输入"></div>'}
-            ${smartLoopIsPaired(node) ? '<div class="node-port port-in batch-image-input-port" data-port="in" data-input-slot="reference" title="连接参考图，只借风格与配色" aria-label="连接参考图"></div><div class="node-port port-in batch-text-input-port" data-port="in" data-input-slot="text" title="连接提示词或文本" aria-label="连接提示词或文本"></div>' : ''}
-            ${window.SmartCanvasSku?.is(node) ? '<div class="node-port port-in batch-image-input-port" data-port="in" data-input-slot="template" title="连接统一 SKU 模板，替换为本款产品" aria-label="连接统一 SKU 模板"></div>' : ''}
-            ${window.SmartCanvasSku?.is(node) ? '<div class="node-port port-in batch-image-input-port" data-port="in" data-input-slot="gift" title="连接赠品图片或图片组，不单独建立 SKU" aria-label="连接赠品图"></div>' : ''}
-            ${!isCompare ? `<div class="node-port port-out" data-port="out" title="按住加号拖动连接" ${isReplica ? `style="top:${window.SmartCanvasReplica.portOffset(node,'')-1}px"` : ''}></div>` : ''}
-        </div>`;
+        const detailHtml = isDetailPaint ? `<div class="smart-detail-screen-marker" aria-label="${escapeAttr(`第 ${detailScreenIndex} 屏${detailScreenTitle ? `：${detailScreenTitle}` : ''}`)}"><strong>第 ${detailScreenIndex} 屏</strong>${detailScreenTitle ? `<span>${escapeHtml(detailScreenTitle)}</span>` : ''}</div>` : '';
+        const stitchHtml = isDetailStitch ? `<div class="smart-detail-stitch-marker ${detailStitchStale ? 'is-stale' : ''}"><strong>${escapeHtml(tr('smart.detailStitchTitle'))}</strong>${node.detailStitchActualRatio && node.detailStitchActualRatio !== '9:16' ? `<span>${escapeHtml(trf('smart.detailStitchSourceRatio', {ratio:node.detailStitchActualRatio}))}</span>` : ''}${detailStitchStale ? `<span>${escapeHtml(tr('smart.detailStitchNeedsUpdate'))}</span>` : ''}</div>` : '';
+        const html = XiaomeiSmartSurface.cardHtml({
+            id: node.id,
+            className: XiaomeiSmartSurface.cardClass({
+                textStack: isTextStack,
+                fidelity: isFidelity,
+                video: isVideo,
+                aiRender: isAiRender,
+                replica: isReplica,
+                comfy: isComfyWorkflow,
+                drawing: isDrawingBoard,
+                table: isTable,
+                timeline: isTimeline,
+                empty: isEmpty,
+                upload: isUpload,
+                paint: isPaint,
+                detailPaint: isDetailPaint,
+                detailStitch: isDetailStitch,
+                failed: isFailed,
+                group: isGroup,
+                collapsedImage: Boolean(node.collapsed && isImageNode),
+                collapsedPrompt: Boolean(node.collapsed && isPrompt),
+                history: isHistory,
+                prompt: isPrompt,
+                agent: isAgent,
+                loop: isLoop,
+                compare: isCompare,
+                color: isColor,
+                smartGroup: isSmartGroup,
+                compact: isCompactMember,
+                locked: collabLockedByOther,
+                selected: isNodeSelected(node.id),
+                dragging: Boolean(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id),
+                running: Boolean(node.running),
+                pending: isPending
+            }),
+            style: XiaomeiSmartSurface.cardStyle({
+                origin: xmNodeOriginStyle(node),
+                memberColor: collabLockedByOther ? collabSafeColor(collabLock.member.color, collabLock.member.id) : '',
+                clearChrome: Boolean(node.collapsed && isImageNode),
+                width: layout.width,
+                height: layout.height
+            }),
+            detailHtml,
+            stitchHtml,
+            runBorderHtml: smartNodeRunBorderHtml(node),
+            titleHtml: isReplica ? '<i data-lucide="copy"></i>一键复刻' : isProductRetouchNode(node) ? '产品精修' : isFusion ? (node.detailRepair?.enabled ? '细节修复' : '智能局部融合') : isProductFidelityNode(node) ? '产品保护' : title,
+            deleteHtml: deleteBtn,
+            collabHtml: collabNodePresenceMarkup(node.id),
+            floatingDelete: !isEmpty && !isGroup,
+            deleteTitle: tr('smart.deleteNode'),
+            toolbarHtml: smartNodeToolbarHtml(node) + smartGroupToolbarHtml(node),
+            bodyHtml: body,
+            reviewHtml: typeof productRetouchReviewHtml === 'function' ? productRetouchReviewHtml(node) : '',
+            grab: Boolean(isCompactMember && (isPrompt || isLoop)),
+            hintHtml: hint,
+            resize: Boolean(isReplica || isProductRetouchNode(node) || isFidelity || isAiRender || isCompare || isColor || isDrawingBoard || isAgent || isComfyWorkflow || isTable || isTimeline || imgs.length || node.pending || isQueued || isJimengPending || isFailed || isPrompt || isLoop || isSmartGroup),
+            resizeTitle: isReplica ? '拖动调整节点大小' : '',
+            ports: {
+                suppress: Boolean(isTextStack || isDrawingBoard || isGroup || isSmartGroup),
+                replica: isReplica,
+                replicaHtml: isReplica ? window.SmartCanvasReplica.ports(node) : '',
+                aiRender: isAiRender,
+                color: isColor,
+                loopPaired: smartLoopIsPaired(node),
+                sku: Boolean(window.SmartCanvasSku?.is(node)),
+                compare: isCompare,
+                outStyle: isReplica ? `top:${window.SmartCanvasReplica.portOffset(node, '') - 1}px` : ''
+            }
+        });
         return {node, html};
     });
     const changedEntries = nodeHtmlEntries.filter(entry => {
@@ -35811,34 +35863,30 @@ function handleCanvasRemoveKey(e){
 }
 window.addEventListener('keydown', refreshSmartCanvasPage, true);
 window.addEventListener('keydown', handleCanvasRemoveKey, true);
-window.addEventListener('keydown', e => {
-    if(e.key === 'Escape' && thumbDragState){
+function applySmartKeyEffect(event, effect){
+    if(effect.prevent) event.preventDefault();
+    if(effect.type === 'clear-thumb'){
         clearGroupThumbSort(thumbDragState);
         thumbDragState = null;
         discardPendingUndo();
         suppressImageClickUntil = Date.now() + 260;
-        e.preventDefault();
-        return;
-    }
-    if(e.key === 'Control' || e.key === 'Meta') connectionEraseModifierHeld = true;
-    const key = String(e.key || '').toLowerCase();
-    if(key === 'r' && !isEditableTarget(e.target)) isRKeyDown = true;
-    if(imageEditModal.classList.contains('open')){
-        if(e.key === 'Escape'){
-            closeImageEditor();
-            return;
-        }
-        if(imageEditMode === 'preview' && !isEditableTarget(e.target) && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')){
-            e.preventDefault();
-            if(!seekPreviewVideoFrames(e.key === 'ArrowLeft' ? -1 : 1)){
-                navigatePreviewImage(e.key === 'ArrowLeft' ? -1 : 1);
-            }
-        }
-        // 编辑器打开时，画布级快捷键（缩放、素材库、复制、粘贴、撤销、重做、成组）一律让位：
-        // 它们会在被遮住的画布上替换或移除节点，让仍然打开的编辑器丢失 currentEditImage()
-        // 的目标（应用裁剪会报“图片尚未加载”），用户也看不到画布上实际发生了什么。
-        return;
-    }
+    } else if(effect.type === 'arm-erase') connectionEraseModifierHeld = true;
+    else if(effect.type === 'arm-rotate') isRKeyDown = true;
+    else if(effect.type === 'close-editor') closeImageEditor();
+    else if(effect.type === 'preview-step'){
+        if(!seekPreviewVideoFrames(effect.direction)) navigatePreviewImage(effect.direction);
+    } else if(effect.type === 'toggle-assets') toggleAssetLibrary();
+}
+window.addEventListener('keydown', e => {
+    const prelude = XiaomeiCanvasKeys.smartPrelude({
+        key:e.key,
+        editable:isEditableTarget(e.target),
+        thumbDrag:Boolean(thumbDragState),
+        imageEditor:imageEditModal.classList.contains('open'),
+        previewMode:imageEditMode === 'preview'
+    });
+    prelude.effects.forEach(effect => applySmartKeyEffect(e, effect));
+    if(prelude.skipChord) return;
     const action = XiaomeiHistoryKernel.chord({
         key:e.key, ctrl:e.ctrlKey, meta:e.metaKey, alt:e.altKey, shift:e.shiftKey, repeat:e.repeat
     }, {
@@ -35877,53 +35925,13 @@ window.addEventListener('keydown', e => {
         return;
     }
     if(action?.type === 'group'){ e.preventDefault(); groupSelectedNodes(); return; }
-
-    if(!e.ctrlKey && !e.metaKey && !e.altKey && !isEditableTarget(e.target)){
-        if(key === 'z'){
-            if(e.repeat) return;
-            e.preventDefault();
-            toggleZoomPreview();
-            return;
-        }
-        if(key === 'a'){
-            if(e.repeat) return;
-            e.preventDefault();
-            toggleAssetLibrary();
-            return;
-        }
-    }
-    if((e.ctrlKey || e.metaKey) && key === 'c' && !isEditableTarget(e.target)){
-        const selectionText = window.getSelection?.().toString() || '';
-        if(selectionText) return;
-        e.preventDefault();
-        copySelectedNodes();
-        return;
-    }
-    if((e.ctrlKey || e.metaKey) && key === 'v' && !isEditableTarget(e.target) && nodeClipboard?.nodes?.length){
-        const requestedAt = Date.now();
-        setTimeout(() => {
-            if(lastImagePasteAt >= requestedAt) return;
-            if(lastNodePasteAt >= requestedAt) return;
-            pasteNodes();
-        }, 90);
-    }
-    if((e.ctrlKey || e.metaKey) && (key === 'z' || key === 'y') && !isEditableTarget(e.target)){
-        e.preventDefault();
-        if(e.shiftKey || key === 'y') performRedo();
-        else performUndo();
-        return;
-    }
-    if((e.ctrlKey || e.metaKey) && e.shiftKey && key === 'g' && !isEditableTarget(e.target)){
-        e.preventDefault();
-        const ids = selectedIds.length ? selectedIds.slice() : (selectedId ? [selectedId] : []);
-        const groupIds = [...new Set(ids.map(id => smartGroupContainingNode(id)?.id || id))];
-        const ok = groupIds.map(ungroupNode).some(Boolean);
-        if(ok) return;
-    }
-    if((e.ctrlKey || e.metaKey) && key === 'g' && !e.shiftKey && !isEditableTarget(e.target)){
-        e.preventDefault();
-        groupSelectedNodes();
-    }
+    XiaomeiCanvasKeys.smartRemainder({
+        key:e.key,
+        command:e.ctrlKey || e.metaKey,
+        alt:e.altKey,
+        editable:isEditableTarget(e.target),
+        repeat:e.repeat
+    }).effects.forEach(effect => applySmartKeyEffect(e, effect));
 });
 window.addEventListener('keyup', e => {
     if(e.key === 'Control' || e.key === 'Meta') connectionEraseModifierHeld = false;

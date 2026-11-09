@@ -1,20 +1,19 @@
 @import url('/static/vendor/css/fonts.css?v=2026.05.22.1');
 :root {
-    --page:#f8fafc; --grid:#d9e1ea; --panel:rgba(255,255,255,.9); --card:#fff;
-    --text:#111827; --muted:#5f697e; --faint:#667081; --line:#e8edf3; --soft:#f8fafc;
-    --shadow:rgba(15,23,42,.08); --strong:#111827; --strong-text:#fff; --strong-foreground:var(--strong);
+    --page:#f4efe4; --grid:#d9cbb6; --panel:rgba(255,251,244,.94); --card:#fffaf3;
+    --text:#243027; --muted:#6b6256; --faint:#8a7d6c; --line:#e4d8c4; --soft:#f7f1e6;
+    --shadow:rgba(48,38,22,.12); --strong:#1f6a4a; --strong-text:#f7fff8; --strong-foreground:var(--strong);
     /* 语义字阶：UI 文本只允许取这 6 步，禁止新写 8–13px 的裸字号。
        2xs=微标签/徽章  xs=说明与 meta  sm=小控件文字  md=常规 UI 文本  base=输入框与节点正文 */
     --fs-2xs:9px; --fs-xs:10px; --fs-sm:11px; --fs-md:12px; --fs-base:13px; --fs-lg:14px;
 }
 .theme-dark {
-    /* Liblib 黑夜画布的中性炭黑层次：画布、节点、控件各留一级明度差。 */
-    --page:#151515; --grid:rgba(255,255,255,.12); --panel:rgba(35,35,35,.96); --card:#242424;
-    --text:#f2f2f2; --muted:#a2a2a2; --faint:#777; --line:#3a3a3a; --soft:#1e1e1e;
-    --shadow:rgba(0,0,0,.48); --strong:#f2f2f2; --strong-text:#171717; --strong-foreground:#f2f2f2;
+    --page:#141714; --grid:rgba(214,196,160,.16); --panel:rgba(28,32,27,.94); --card:#22261f;
+    --text:#f3efe4; --muted:#c4b8a4; --faint:#8f8678; --line:#3c463c; --soft:#232822;
+    --shadow:rgba(0,0,0,.42); --strong:#8dcea8; --strong-text:#142018; --strong-foreground:#8dcea8;
 }
 * { box-sizing:border-box; }
-body { margin:0; height:100vh; overflow:hidden; color:var(--text); font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--page); }
+body { margin:0; height:100vh; overflow:hidden; color:var(--text); font-family:"Avenir Next","Segoe UI","PingFang SC","Noto Sans SC",sans-serif; background:var(--page); }
 .reference-picker-bar { position:fixed; z-index:12000; top:16px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:14px; max-width:calc(100vw - 32px); padding:8px 10px 8px 16px; border:1px solid var(--line); border-radius:14px; color:var(--text); background:var(--panel); box-shadow:0 6px 24px var(--shadow); font-size:var(--fs-base); animation:reference-picker-enter 220ms ease-out; }
 .reference-picker-bar strong { white-space:nowrap; font-weight:600; }
 .reference-picker-bar [data-picker-hint] { color:var(--muted); font-size:var(--fs-md); }
@@ -170,7 +169,7 @@ body.canvas-share-readonly .smart-log-toggle { opacity:.72; }
 .smart-log-toggle i,.smart-log-toggle svg,.smart-shortcut-toggle i,.smart-shortcut-toggle svg,.smart-workflow-toggle i,.smart-workflow-toggle svg { width:16px; height:16px; }
 :root { --node-run-color:#2563eb; --node-run-light:#0284c7; --node-run-bg:#eff6ff; --node-run-text:#1d4ed8; --node-run-success:#15803d; --node-run-success-bg:#f0fdf4; --node-run-error:#dc2626; --node-run-error-bg:#fef2f2; }
 .theme-dark,.studio-theme-dark { --node-run-color:#22d3ee; --node-run-light:#a5f3fc; --node-run-bg:#123344; --node-run-text:#a5f3fc; --node-run-success:#4ade80; --node-run-success-bg:#153725; --node-run-error:#f87171; --node-run-error-bg:#421f25; }
-.image-node { position:absolute; width:260px; min-height:178px; border-radius:16px; background:transparent; border:0; box-shadow:none; overflow:visible; user-select:none; cursor:move; }
+.image-node { position:absolute; width:260px; min-height:178px; border-radius:18px; background:transparent; border:0; box-shadow:none; overflow:visible; user-select:none; cursor:move; }
 .smart-detail-paint-node { overflow:visible; }
 .smart-detail-screen-marker { position:absolute; left:8px; top:-15px; z-index:16; display:flex; align-items:center; gap:6px; max-width:calc(100% - 16px); min-height:24px; padding:3px 8px; border:1px solid color-mix(in srgb, var(--studio-skin-accent, var(--strong, #b45f06)) 35%, var(--line)); border-radius:999px; background:color-mix(in srgb, var(--panel) 92%, var(--studio-skin-accent, var(--strong, #b45f06)) 8%); box-shadow:0 6px 16px rgba(15,23,42,.14); color:var(--text); pointer-events:none; white-space:nowrap; }
 .smart-detail-screen-marker strong { flex:0 0 auto; color:var(--studio-skin-accent, var(--strong, #b45f06)); font-size:var(--fs-sm); line-height:1; font-weight:950; letter-spacing:.02em; }
@@ -216,10 +215,10 @@ body.smart-node-drag .thumb-item:hover .image-resolution-badge,
 body.smart-node-drag .image-wrap:hover .image-resolution-badge { opacity:0 !important; pointer-events:none !important; }
 .image-node:not(.empty-node) { min-height:0; }
 .image-node.empty-node { background:var(--card); border:1px solid var(--line); box-shadow:0 12px 34px var(--shadow); overflow:visible; display:flex; flex-direction:column; }
-.image-node.group-node { padding:16px; background:rgba(255,255,255,.46); border:1px solid rgba(148,163,184,.35); box-shadow:0 10px 30px rgba(15,23,42,.06); backdrop-filter:blur(12px); }
-.theme-dark .image-node.group-node { background:rgba(15,23,42,.28); border-color:rgba(148,163,184,.28); }
-.image-node.history-group-node { border-color:rgba(148,163,184,.34); background:rgba(248,250,252,.66); }
-.theme-dark .image-node.history-group-node { border-color:rgba(148,163,184,.28); background:rgba(30,41,59,.28); }
+.image-node.group-node { padding:16px; background:rgba(255,250,243,.72); border:1px solid rgba(203,187,163,.7); box-shadow:0 10px 28px rgba(48,38,22,.08); backdrop-filter:blur(12px); }
+.theme-dark .image-node.group-node { background:rgba(32,36,30,.55); border-color:rgba(83,96,83,.7); }
+.image-node.history-group-node { border-color:rgba(203,187,163,.8); background:rgba(247,241,230,.78); }
+.theme-dark .image-node.history-group-node { border-color:rgba(83,96,83,.7); background:rgba(28,32,27,.55); }
 .image-node.selected { outline:0; }
 .image-node.selected:not(.empty-node):not(.group-node):not(.prompt-smart-node):not(.loop-smart-node):not(.smart-group-node) { box-shadow:none; border-radius:12px; }
 .image-node.selected:not(.empty-node):not(.group-node) .image-wrap > img, .image-node.selected:not(.empty-node):not(.group-node) .image-wrap > .node-img { border-color:var(--strong); box-shadow:0 0 0 1px var(--strong); }

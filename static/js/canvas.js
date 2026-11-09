@@ -2693,49 +2693,34 @@ function closeCreateMenu(){
     closeLinkCreateMenu();
     closeImageNodeMenu();
 }
-function linkCreateOptions(state){
-    const node = nodes.find(n => n.id === state?.originId);
-    if(!node) return [];
-    if(state.originKind === 'out'){
-        if(['image','prompt','loop','group','promptGroup','llm','output'].includes(node.type)){
-            return [
-                {type:'generator', label:tr('canvas.apiGenerate'), icon:'wand-sparkles'},
-                {type:'comfy', label:tr('canvas.comfyGenerate'), icon:'workflow'},
-                {type:'rh', label:tr('canvas.rhGenerate'), icon:'workflow'},
-                {type:'ltxDirector', label:tr('canvas.ltxDirector'), icon:'film'},
-                {type:'video', label:tr('canvas.videoGenerateNode'), icon:'clapperboard'},
-                ...(node.type === 'output' ? [] : [{type:'llm', label:'LLM', icon:'message-square-text'}])
-            ];
-        }
-        return [];
-    }
-    if(CANVAS_GENERATOR_TYPES.includes(node.type) || node.type === 'llm'){
-        return [
-            {type:'image', label:tr('canvas.imageCard'), icon:'image-plus'},
-            {type:'prompt', label:tr('canvas.prompt'), icon:'text-cursor-input'},
-            {type:'loop', label:tr('canvas.loopNode'), icon:'repeat-2'},
-            {type:'group', label:tr('canvas.group'), icon:'group'},
-            {type:'llm', label:'LLM', icon:'message-square-text'}
-        ];
-    }
-    return [];
+function canvasSurfaceCatalog(){
+    return {
+        label: tr,
+        generatorTypes: CANVAS_GENERATOR_TYPES,
+        imageOutputTypes: CANVAS_IMAGE_OUTPUT_TYPES,
+        titleFor: node => node.type === 'image' && node.url ? nodeTitleForMedia(node) : ''
+    };
 }
 function openLinkCreateMenu(originId, originKind, clientX, clientY){
     const state = {originId, originKind, point:screenToWorld(clientX, clientY)};
-    const options = linkCreateOptions(state);
+    const node = nodes.find(n => n.id === state.originId);
+    const options = XiaomeiCanvasSurface.linkChoices(node, originKind, canvasSurfaceCatalog());
     if(!options.length) return false;
     linkCreateState = state;
     createMenu.classList.remove('open');
-    linkCreateMenu.innerHTML = options.map(opt => `<button class="menu-btn" data-link-create="${escapeAttr(opt.type)}"><i data-lucide="${escapeAttr(opt.icon)}" class="w-4 h-4"></i><span>${escapeHtml(opt.label)}</span></button>`).join('');
-    linkCreateMenu.style.left = `${clientX}px`;
-    linkCreateMenu.style.top = `${clientY}px`;
+    XiaomeiCanvasSurface.paintMenu(linkCreateMenu, [{
+        items: options.map(opt => ({
+            icon: opt.icon,
+            label: opt.label,
+            dataset: { linkCreate: opt.type },
+            onClick: e => {
+                e.stopPropagation();
+                createLinkedNode(opt.type);
+            }
+        }))
+    }]);
+    XiaomeiCanvasSurface.pinMenu(linkCreateMenu, clientX, clientY);
     linkCreateMenu.classList.add('open');
-    linkCreateMenu.querySelectorAll('[data-link-create]').forEach(btn => {
-        btn.onclick = e => {
-            e.stopPropagation();
-            createLinkedNode(btn.dataset.linkCreate);
-        };
-    });
     refreshIcons();
     return true;
 }
@@ -2745,24 +2730,27 @@ function openGeneratorNodeMenu(nodeId, clientX, clientY){
     const el = nodesEl.querySelector(`.node[data-id="${CSS.escape(nodeId)}"]`);
     const rect = el?.getBoundingClientRect();
     const point = screenToWorld(clientX, clientY);
-    const inputOptions = linkCreateOptions({originId:nodeId, originKind:'in', point});
-    const outputOptions = [
-        {type:'output', label:'Output', icon:'circle-dot'},
-        ...(CANVAS_IMAGE_OUTPUT_TYPES.includes(node.type) ? [
-            {type:'generator', label:tr('canvas.apiGenerate'), icon:'wand-sparkles'},
-            {type:'comfy', label:tr('canvas.comfyGenerate'), icon:'workflow'},
-            {type:'ltxDirector', label:tr('canvas.ltxDirector'), icon:'film'},
-            {type:'video', label:tr('canvas.videoGenerateNode'), icon:'clapperboard'}
-        ] : [])
-    ];
-    const buttonsHtml = (options, kind) => `<div class="node-port-menu-grid">${options.map(opt => `<button class="menu-btn" data-link-create="${escapeAttr(opt.type)}" data-link-kind="${kind}" title="${escapeAttr(opt.label)}"><i data-lucide="${escapeAttr(opt.icon)}"></i><span>${escapeHtml(opt.label.replace('生成', ''))}</span></button>`).join('')}</div>`;
+    const inputOptions = XiaomeiCanvasSurface.linkChoices(node, 'in', canvasSurfaceCatalog());
+    const outputOptions = XiaomeiCanvasSurface.outputChoices(node, canvasSurfaceCatalog());
+    const choiceItems = (options, kind) => options.map(opt => ({
+        icon: opt.icon,
+        iconClass: '',
+        label: String(opt.label || '').replace('生成', ''),
+        title: opt.label,
+        dataset: { linkCreate: opt.type, linkKind: kind },
+        onClick: e => {
+            e.stopPropagation();
+            linkCreateState = {originId:nodeId, originKind:kind, point};
+            createLinkedNode(opt.type);
+        }
+    }));
     linkCreateState = {originId:nodeId, originKind:'in', point};
     createMenu.classList.remove('open');
     linkCreateMenu.classList.remove('open');
     nodeInputMenu.classList.add('node-port-menu');
     nodeOutputMenu.classList.add('node-port-menu');
-    nodeInputMenu.innerHTML = `<div class="menu-section-title">添加输入</div>${buttonsHtml(inputOptions, 'in')}`;
-    nodeOutputMenu.innerHTML = `<div class="menu-section-title">添加输出</div>${buttonsHtml(outputOptions, 'out')}`;
+    XiaomeiCanvasSurface.paintMenu(nodeInputMenu, [{ title: '添加输入', grid: true, items: choiceItems(inputOptions, 'in') }]);
+    XiaomeiCanvasSurface.paintMenu(nodeOutputMenu, [{ title: '添加输出', grid: true, items: choiceItems(outputOptions, 'out') }]);
     const inputLeft = Math.max(10, (rect?.left || clientX) - 158);
     const outputLeft = Math.min(window.innerWidth - 158, (rect?.right || clientX) + 10);
     const menuTop = Math.max(10, Math.min(window.innerHeight - 260, (rect?.top || clientY) + 36));
@@ -2772,13 +2760,6 @@ function openGeneratorNodeMenu(nodeId, clientX, clientY){
     nodeOutputMenu.style.top = `${menuTop}px`;
     nodeInputMenu.classList.add('open');
     nodeOutputMenu.classList.add('open');
-    [nodeInputMenu, nodeOutputMenu].forEach(menu => menu.querySelectorAll('[data-link-create]').forEach(btn => {
-        btn.onclick = e => {
-            e.stopPropagation();
-            linkCreateState = {originId:nodeId, originKind:btn.dataset.linkKind || 'in', point};
-            createLinkedNode(btn.dataset.linkCreate);
-        };
-    }));
     refreshIcons();
     return true;
 }
@@ -2800,35 +2781,13 @@ function openImageNodeMenu(nodeId, clientX, clientY){
     const kind = mediaKindForNode(node);
     const canPreview = node.url && !isMissingAssetUrl(node.url) && ['image','video'].includes(kind);
     const canEdit = node.url && !isMissingAssetUrl(node.url) && kind === 'image';
-    imageNodeMenu.innerHTML = `
-        ${canPreview ? `<button class="menu-btn" data-image-preview="${escapeAttr(nodeId)}"><i data-lucide="eye" class="w-4 h-4"></i><span>预览</span></button>` : ''}
-        ${canEdit ? `<button class="menu-btn" data-image-edit="${escapeAttr(nodeId)}"><i data-lucide="pencil" class="w-4 h-4"></i><span>编辑</span></button>` : ''}
-        <button class="menu-btn" data-image-replace="${escapeAttr(nodeId)}"><i data-lucide="image-plus" class="w-4 h-4"></i><span>替换</span></button>
-    `;
-    imageNodeMenu.style.left = `${clientX}px`;
-    imageNodeMenu.style.top = `${clientY}px`;
+    const items = [];
+    if(canPreview) items.push({ icon:'eye', label:'预览', onClick: e => { e.stopPropagation(); closeImageNodeMenu(); openImageNodePreview(nodeId); } });
+    if(canEdit) items.push({ icon:'pencil', label:'编辑', onClick: e => { e.stopPropagation(); closeImageNodeMenu(); openImageEditor(nodeId); } });
+    items.push({ icon:'image-plus', label:'替换', onClick: e => { e.stopPropagation(); closeImageNodeMenu(); pickImageForNode(nodeId); } });
+    XiaomeiCanvasSurface.paintMenu(imageNodeMenu, [{ items }]);
+    XiaomeiCanvasSurface.pinMenu(imageNodeMenu, clientX, clientY);
     imageNodeMenu.classList.add('open');
-    const previewBtn = imageNodeMenu.querySelector('[data-image-preview]');
-    if(previewBtn){
-        previewBtn.onclick = e => {
-            e.stopPropagation();
-            closeImageNodeMenu();
-            openImageNodePreview(nodeId);
-        };
-    }
-    const editBtn = imageNodeMenu.querySelector('[data-image-edit]');
-    if(editBtn){
-        editBtn.onclick = e => {
-            e.stopPropagation();
-            closeImageNodeMenu();
-            openImageEditor(nodeId);
-        };
-    }
-    imageNodeMenu.querySelector('[data-image-replace]').onclick = e => {
-        e.stopPropagation();
-        closeImageNodeMenu();
-        pickImageForNode(nodeId);
-    };
     refreshIcons();
 }
 function openImageNodePreview(nodeId){
@@ -2845,39 +2804,25 @@ function openOutputNodeMenu(nodeId, clientX, clientY){
     const imageCount = outputImageUrls(node).length;
     const downloadableCount = outputDownloadableImageUrls(node).length;
     imageNodeMenu.classList.add('output-node-menu');
-    imageNodeMenu.innerHTML = `
-        <div class="menu-section-title">${tr('canvas.outputGroupActions')}</div>
-        <button class="menu-btn" data-output-convert="${escapeAttr(nodeId)}" ${imageCount ? '' : 'disabled'}><i data-lucide="replace" class="w-4 h-4"></i><span>${tr('canvas.outputConvertToInputGroup')}</span></button>
-        <button class="menu-btn" data-output-copy="${escapeAttr(nodeId)}" ${imageCount ? '' : 'disabled'}><i data-lucide="copy-plus" class="w-4 h-4"></i><span>${tr('canvas.outputCopyToInputGroup')}</span></button>
-        <div class="menu-divider"></div>
-        <div class="menu-section-title">${tr('canvas.outputFileActions')}</div>
-        <button class="menu-btn" data-output-download="${escapeAttr(nodeId)}" ${downloadableCount ? '' : 'disabled'}><i data-lucide="download" class="w-4 h-4"></i><span>${tr('canvas.outputDownloadAllImages')}</span></button>
-    `;
+    XiaomeiCanvasSurface.paintMenu(imageNodeMenu, [
+        {
+            title: tr('canvas.outputGroupActions'),
+            items: [
+                { icon:'replace', label: tr('canvas.outputConvertToInputGroup'), disabled: !imageCount, onClick: e => { e.stopPropagation(); convertOutputNodeToInputGroup(nodeId); closeImageNodeMenu(); } },
+                { icon:'copy-plus', label: tr('canvas.outputCopyToInputGroup'), disabled: !imageCount, onClick: e => { e.stopPropagation(); copyOutputNodeToInputGroup(nodeId); closeImageNodeMenu(); } }
+            ],
+            divider: true
+        },
+        {
+            title: tr('canvas.outputFileActions'),
+            items: [
+                { icon:'download', label: tr('canvas.outputDownloadAllImages'), disabled: !downloadableCount, onClick: e => { e.stopPropagation(); downloadOutputNodeImages(nodeId); closeImageNodeMenu(); } }
+            ]
+        }
+    ]);
     const menuWidth = 260;
-    imageNodeMenu.style.left = `${Math.max(10, Math.min(window.innerWidth - menuWidth - 10, clientX))}px`;
-    imageNodeMenu.style.top = `${clientY}px`;
+    XiaomeiCanvasSurface.pinMenu(imageNodeMenu, Math.max(10, Math.min(window.innerWidth - menuWidth - 10, clientX)), clientY);
     imageNodeMenu.classList.add('open');
-    const convertBtn = imageNodeMenu.querySelector('[data-output-convert]');
-    if(convertBtn){
-        convertBtn.onclick = e => {
-            e.stopPropagation();
-            convertOutputNodeToInputGroup(nodeId);
-            closeImageNodeMenu();
-        };
-    }
-    imageNodeMenu.querySelector('[data-output-copy]').onclick = e => {
-        e.stopPropagation();
-        copyOutputNodeToInputGroup(nodeId);
-        closeImageNodeMenu();
-    };
-    const downloadBtn = imageNodeMenu.querySelector('[data-output-download]');
-    if(downloadBtn){
-        downloadBtn.onclick = e => {
-            e.stopPropagation();
-            downloadOutputNodeImages(nodeId);
-            closeImageNodeMenu();
-        };
-    }
     refreshIcons();
 }
 function closeImageNodeMenu(){
@@ -5601,40 +5546,32 @@ function renderNode(node){
     }
     normalizeApiNodeLayout(node);
     if(node.type === 'rh' && Number(node.h) === 560) delete node.h;
-    const el = document.createElement('div');
-    const size = defaultNodeSize(node.type);
-    const hasFixedSize = Boolean(node.h || size.h);
-    el.className = `node ${node.type}-node ${node.url ? 'has-image' : ''} ${hasFixedSize ? 'sized' : ''} ${selected.has(node.id) ? 'selected' : ''}`;
-    XiaomeiViewportKernel.writeRawOrigin(el, node.x, node.y);
-    el.style.width = `${node.w || size.w}px`;
-    if(node.h || size.h) el.style.height = `${node.h || size.h}px`;
-    el.dataset.id = node.id;
-    el.onclick = (e) => {
-        e.stopPropagation();
-        if(isNodeControl(e.target)) return;
-        if(e.ctrlKey || e.metaKey) selected.has(node.id) ? selected.delete(node.id) : selected.add(node.id);
-        else if(!selected.has(node.id)) { selected.clear(); selected.add(node.id); }
-        refreshSelectionVisuals();
-    };
-    el.oncontextmenu = e => {
-    if(!CANVAS_GENERATOR_TYPES.includes(node.type) && node.type !== 'output') return;
-        e.preventDefault();
-        e.stopPropagation();
-        if(node.type === 'output') openOutputNodeMenu(node.id, e.clientX, e.clientY);
-        else openGeneratorNodeMenu(node.id, e.clientX, e.clientY);
-    };
-    const title = node.type === 'image' ? 'Image' : node.type === 'prompt' ? 'Prompt' : node.type === 'loop' ? tr('canvas.loopNode') : node.type === 'promptGroup' ? 'Prompts' : node.type === 'group' ? 'Group' : node.type === 'output' ? 'Output' : node.type === 'llm' ? 'LLM' : node.type === 'comfy' ? 'ComfyUI' : node.type === 'ltxDirector' ? tr('canvas.ltxDirector') : node.type === 'rh' ? 'RunningHub' : node.type === 'msgen' ? tr('canvas.apiGenerate') : node.type === 'video' ? tr('canvas.videoGenerateNode') : tr('canvas.apiGenerate');
-    const displayTitle = node.type === 'image' && node.url ? nodeTitleForMedia(node) : title;
-    // 失败徽章只在一键运行模式中显示，单节点失败已通过 alert 提示
     const showStatus = ['generator','msgen','comfy','ltxDirector','llm','video','rh'].includes(node.type) && node.runStatus
         && (node.runStatus !== 'failed' || node._cascadeFailed);
-    const statusHtml = showStatus ? (() => {
-        const label = { queued:'排队中', running:'运行中', done:'完成', failed:'失败' }[node.runStatus] || '';
-        return `<span class="node-run-status ${node.runStatus}"><span class="dot"></span>${escapeHtml(label)}${node._cascadeIdx?' '+node._cascadeIdx:''}</span>`;
-    })() : '';
-    el.innerHTML = `<div class="node-head"><span class="node-title">${displayTitle}</span><div style="display:flex;align-items:center;gap:8px">${statusHtml}<button onclick="deleteNodeFromButton('${node.id}', event)" class="text-gray-300 hover:text-red-500"><i data-lucide="x" class="w-4 h-4"></i></button></div></div>`;
-    const body = document.createElement('div');
-    body.className = 'node-body';
+    const frame = XiaomeiCanvasSurface.mountClassicFrame(node, {
+        size: defaultNodeSize(node.type),
+        selected: selected.has(node.id),
+        catalog: canvasSurfaceCatalog(),
+        title: node.type === 'image' && node.url ? nodeTitleForMedia(node) : XiaomeiCanvasSurface.frameTitle(node, canvasSurfaceCatalog()),
+        status: showStatus ? { state: node.runStatus, index: node._cascadeIdx || '' } : null,
+        onSelect: e => {
+            e.stopPropagation();
+            if(isNodeControl(e.target)) return;
+            if(e.ctrlKey || e.metaKey) selected.has(node.id) ? selected.delete(node.id) : selected.add(node.id);
+            else if(!selected.has(node.id)) { selected.clear(); selected.add(node.id); }
+            refreshSelectionVisuals();
+        },
+        onContext: e => {
+            if(!CANVAS_GENERATOR_TYPES.includes(node.type) && node.type !== 'output') return;
+            e.preventDefault();
+            e.stopPropagation();
+            if(node.type === 'output') openOutputNodeMenu(node.id, e.clientX, e.clientY);
+            else openGeneratorNodeMenu(node.id, e.clientX, e.clientY);
+        },
+        onDelete: event => deleteNodeFromButton(node.id, event)
+    });
+    const el = frame.root;
+    const body = frame.body;
     if(node.type === 'image') {
         if(node.url) {
             const missing = isMissingAssetUrl(node.url);
@@ -5794,6 +5731,13 @@ function renderNode(node){
         body.querySelectorAll('.output-img-wrap').forEach(wrap => bindOutputWrap(wrap, node));
     }
     el.appendChild(body);
+    XiaomeiCanvasSurface.attachClassicPorts(el, {
+        input: ['generator','comfy','ltxDirector','output','llm','msgen','video','rh'].includes(node.type) || (node.type === 'loop' && (node.imageInput || node.showPrompt)),
+        output: ['image','prompt','loop','group','promptGroup','generator','comfy','ltxDirector','llm','msgen','video','rh','output'].includes(node.type),
+        inputTitle: tr('canvas.connectHere'),
+        outputTitle: tr('canvas.dragConnect'),
+        resizeTitle: tr('canvas.resize')
+    });
     el.querySelectorAll('button, select, textarea, input').forEach(control => {
         control.addEventListener('mousedown', e => e.stopPropagation(), true);
         control.addEventListener('click', e => e.stopPropagation());
@@ -5802,11 +5746,6 @@ function renderNode(node){
         if(e.button !== 0 || !isNodeDragSurface(e.target)) return;
         startNodeDrag(e, node);
     };
-    const canInput = ['generator','comfy','ltxDirector','output','llm','msgen','video','rh'].includes(node.type) || (node.type === 'loop' && (node.imageInput || node.showPrompt));
-    const canOutput = ['image','prompt','loop','group','promptGroup','generator','comfy','ltxDirector','llm','msgen','video','rh','output'].includes(node.type);
-    if(canInput) el.insertAdjacentHTML('beforeend', `<div class="port in" title="${tr('canvas.connectHere')}"></div>`);
-    if(canOutput) el.insertAdjacentHTML('beforeend', `<div class="port out" title="${tr('canvas.dragConnect')}"></div>`);
-    el.insertAdjacentHTML('beforeend', `<div class="resize-handle" title="${tr('canvas.resize')}"></div>`);
     el.querySelector('.node-head').onmousedown = e => {
         if(e.button !== 0) return;
         if(isNodeControl(e.target)) return;
@@ -7757,83 +7696,27 @@ function renderGeneratorBody(node){
     const promptInputs = ordered.filter(src => src.prompt && !src.refs?.length);
     sanitizeImageNodeProviderModel(node);
     normalizeApiNodeSizeChoice(node);
-    wrap.innerHTML = `
-        <div class="prompt-list mb-3"></div>
-        <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">${tr('canvas.images')}</div>
-        <div class="input-list"></div>
-        <div class="gen-settings">
-            <div class="gen-settings-row">
-                <select class="select-lite provider-select">${providerOptions(node.apiProvider)}</select>
-                <select class="select-lite model-select">${imageModelOptions(node.model, node.apiProvider)}</select>
-            </div>
-            <div class="gen-settings-row api-size-row">
-                <select class="select-lite resolution compact-select" data-field="resolution">
-                    <option value="auto">自动</option>
-                    <option value="1k">1K</option>
-                    <option value="2k">2K</option>
-                    <option value="4k">4K</option>
-                    <option value="custom">${tr('canvas.custom')}</option>
-                </select>
-                <select class="select-lite ratio compact-select" data-field="ratio">
-                    <option value="square">1:1</option>
-                    <option value="portrait">2:3</option>
-                    <option value="landscape">3:2</option>
-                    <option value="portrait43">3:4</option>
-                    <option value="landscape43">4:3</option>
-                    <option value="story">9:16</option>
-                    <option value="wide">16:9</option>
-                    <option value="ultrawide">21:9</option>
-                    <option value="ultratall">9:21</option>
-                    <option value="source">${tr('canvas.adaptiveRatio')}</option>
-                    <option value="custom">${tr('canvas.custom')}</option>
-                </select>
-                <select class="select-lite quality-select">
-                    <option value="auto">Q auto</option>
-                    <option value="low">Q low</option>
-                    <option value="medium">Q med</option>
-                    <option value="high">Q high</option>
-                </select>
-                <select class="select-lite background-select" style="display:none">
-                    <option value="auto">背景 auto</option>
-                    <option value="opaque">背景 opaque</option>
-                    <option value="transparent">背景 transparent</option>
-                </select>
-                <div class="gen-count-row">
-                    <div class="gen-stepper">
-                        <button class="gen-step-btn" data-step="-1" type="button" title="${tr('canvas.decrease')}" aria-label="${tr('canvas.decreaseCount')}"><i data-lucide="chevron-left" class="w-3.5 h-3.5"></i></button>
-                        <input class="gen-count-input" type="text" inputmode="numeric" pattern="[0-9]*" value="${Math.max(1, Math.min(8, Number(node.count || 1)))}">
-                        <button class="gen-step-btn" data-step="1" type="button" title="${tr('canvas.increase')}" aria-label="${tr('canvas.increaseCount')}"><i data-lucide="chevron-right" class="w-3.5 h-3.5"></i></button>
-                    </div>
-                </div>
-            </div>
-            <div class="gen-settings-row custom-ratio-row" style="display:none">
-                <label class="field">
-                    <div class="setting-title">${tr('canvas.ratioWidth')}</div>
-                    <input class="setting-input custom-ratio-w-input" type="number" min="1" step="1" value="${escapeHtml(node.customRatioWidth || '')}" placeholder="4">
-                </label>
-                <label class="field">
-                    <div class="setting-title">${tr('canvas.ratioHeight')}</div>
-                    <input class="setting-input custom-ratio-h-input" type="number" min="1" step="1" value="${escapeHtml(node.customRatioHeight || '')}" placeholder="3">
-                </label>
-            </div>
-            <div class="gen-settings-row custom-size-row" style="display:none">
-                <label class="field">
-                    <div class="setting-title">${tr('canvas.width')}</div>
-                    <input class="setting-input custom-w-input" type="number" min="64" step="64" value="${escapeHtml(node.customWidth || '')}" placeholder="Auto">
-                </label>
-                <label class="field">
-                    <div class="setting-title">${tr('canvas.height')}</div>
-                    <input class="setting-input custom-h-input" type="number" min="64" step="64" value="${escapeHtml(node.customHeight || '')}" placeholder="Auto">
-                </label>
-                <button class="secondary-btn fit-size-btn" type="button" style="height:32px;align-self:flex-end;padding:0 10px;font-size:11px">${tr('canvas.fitImageSize')}</button>
-            </div>
-        </div>
-        <div class="gen-run-row">
-            <button class="gen-btn ${node.running ? 'running' : ''}" ${node.running ? 'disabled' : ''}><i data-lucide="zap" class="w-4 h-4"></i>${node.running ? tr('canvas.generating') : tr('canvas.apiGenerate')}</button>
-            ${cascadeBtnHtml(node)}
-        </div>
-        ${retryBarHtml(node)}
-    `;
+    XiaomeiCanvasSurface.mountImageGeneration(wrap, {
+        imagesLabel: tr('canvas.images'),
+        providerOptionsHtml: providerOptions(node.apiProvider),
+        modelOptionsHtml: imageModelOptions(node.model, node.apiProvider),
+        customLabel: tr('canvas.custom'),
+        adaptiveLabel: tr('canvas.adaptiveRatio'),
+        count: node.count,
+        ratioWidthLabel: tr('canvas.ratioWidth'),
+        ratioHeightLabel: tr('canvas.ratioHeight'),
+        widthLabel: tr('canvas.width'),
+        heightLabel: tr('canvas.height'),
+        fitLabel: tr('canvas.fitImageSize'),
+        ratioWidth: node.customRatioWidth || '',
+        ratioHeight: node.customRatioHeight || '',
+        customWidth: node.customWidth || '',
+        customHeight: node.customHeight || '',
+        running: Boolean(node.running),
+        runLabel: node.running ? tr('canvas.generating') : tr('canvas.apiGenerate'),
+        cascadeHtml: cascadeBtnHtml(node),
+        retryHtml: retryBarHtml(node)
+    });
     const providerSelect = wrap.querySelector('.provider-select');
     const modelSelect = wrap.querySelector('.model-select');
     providerSelect.onmousedown = e => e.stopPropagation();
@@ -8096,67 +7979,29 @@ function renderVideoBody(node){
     const promptInputs = ordered.filter(src => src.prompt && !src.refs?.length);
     sanitizeVideoNodeProviderModel(node);
     node.model = node.model || 'veo3-fast';
-    wrap.innerHTML = `
-        <div class="prompt-list mb-3"></div>
-        <div class="video-input-head">
-            <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Media</div>
-            <div class="video-input-actions">
-                <button type="button" class="tool-btn" data-video-manual-url title="手动输入视频 URL"><i data-lucide="link" class="w-4 h-4"></i><span>输入网址</span></button>
-                <button type="button" class="tool-btn" data-video-temp-sh ${node.tempShUploading ? 'disabled' : ''} title="上传当前输入视频到云端直链"><i data-lucide="upload-cloud" class="w-4 h-4"></i><span>${node.tempShUploading ? '上传中...' : '上传云端'}</span></button>
-            </div>
-        </div>
-        <div class="input-list video-img-list"></div>
-        <div class="gen-settings">
-            <div class="gen-settings-row">
-                <select class="select-lite video-provider" style="flex:1">${videoProviderOptions(node.apiProvider)}</select>
-                <select class="select-lite video-model" style="flex:2">${videoModelOptions(node.model, node.apiProvider)}</select>
-            </div>
-            <div class="gen-settings-row">
-                <label class="field" style="flex:1">
-                    <div class="setting-title">${tr('canvas.videoDuration')}</div>
-                    <input class="setting-input video-duration" type="number" min="1" max="60" step="1" value="${Number(node.duration || 5)}">
-                </label>
-                <label class="field" style="flex:1">
-                    <div class="setting-title">${tr('canvas.videoAspect')}</div>
-                    <select class="select-lite video-aspect compact-select">
-                        <option value="16:9">16:9</option>
-                        <option value="9:16">9:16</option>
-                        <option value="1:1">1:1</option>
-                        <option value="4:3">4:3</option>
-                        <option value="3:4">3:4</option>
-                        <option value="21:9">21:9</option>
-                        <option value="9:21">9:21</option>
-                        <option value="keep_ratio">keep</option>
-                        <option value="adaptive">adapt</option>
-                    </select>
-                </label>
-                <label class="field" style="flex:1">
-                    <div class="setting-title">${tr('canvas.videoResolution')}</div>
-                    <select class="select-lite video-resolution compact-select">
-                        <option value="">Auto</option>
-                        <option value="480p">480p</option>
-                        <option value="720p">720p</option>
-                        <option value="1080p">1080p</option>
-                        <option value="780P">780P</option>
-                    </select>
-                </label>
-            </div>
-            <div class="gen-settings-row" style="flex-wrap:wrap">
-                <button type="button" class="setting-check ${node.enhancePrompt ? 'active' : ''}" data-video-toggle="enhancePrompt"><span class="check-dot"></span>${tr('canvas.videoEnhancePrompt')}</button>
-                <button type="button" class="setting-check ${node.enableUpsample ? 'active' : ''}" data-video-toggle="enableUpsample"><span class="check-dot"></span>${tr('canvas.videoUpsample')}</button>
-                <button type="button" class="setting-check ${node.watermark ? 'active' : ''}" data-video-toggle="watermark"><span class="check-dot"></span>${tr('canvas.videoWatermark')}</button>
-                <button type="button" class="setting-check ${node.cameraFixed ? 'active' : ''}" data-video-toggle="cameraFixed"><span class="check-dot"></span>${tr('canvas.videoCameraFixed')}</button>
-                <button type="button" class="setting-check ${node.generateAudio ? 'active' : ''}" data-video-toggle="generateAudio"><span class="check-dot"></span>${tr('canvas.videoGenerateAudio')}</button>
-                <button type="button" class="setting-check ${node.multimodal ? 'active' : ''}" data-video-toggle="multimodal"><span class="check-dot"></span>${tr('canvas.videoMultimodal')}</button>
-                <button type="button" class="setting-check ${node.useFrameRoles ? 'active' : ''}" data-video-toggle="useFrameRoles"><span class="check-dot"></span>${tr('canvas.videoFirstLastFrames')}</button>
-            </div>
-        </div>
-        <div class="gen-run-row">
-            <button class="gen-btn ${node.running ? 'running' : ''}" ${node.running ? 'disabled' : ''}><i data-lucide="clapperboard" class="w-4 h-4"></i>${node.running ? tr('canvas.generating') : tr('canvas.videoGenerate')}</button>
-            ${cascadeBtnHtml(node)}
-        </div>
-        ${retryBarHtml(node)}
-    `;
+    XiaomeiCanvasSurface.mountVideoGeneration(wrap, {
+        providerOptionsHtml: videoProviderOptions(node.apiProvider),
+        modelOptionsHtml: videoModelOptions(node.model, node.apiProvider),
+        uploading: Boolean(node.tempShUploading),
+        duration: Number(node.duration || 5),
+        durationLabel: tr('canvas.videoDuration'),
+        aspectLabel: tr('canvas.videoAspect'),
+        resolutionLabel: tr('canvas.videoResolution'),
+        label: tr,
+        flags: {
+            enhancePrompt: node.enhancePrompt,
+            enableUpsample: node.enableUpsample,
+            watermark: node.watermark,
+            cameraFixed: node.cameraFixed,
+            generateAudio: node.generateAudio,
+            multimodal: node.multimodal,
+            useFrameRoles: node.useFrameRoles
+        },
+        running: Boolean(node.running),
+        runLabel: node.running ? tr('canvas.generating') : tr('canvas.videoGenerate'),
+        cascadeHtml: cascadeBtnHtml(node),
+        retryHtml: retryBarHtml(node)
+    });
     const providerSelect = wrap.querySelector('.video-provider');
     const modelSelect = wrap.querySelector('.video-model');
     const durationSelect = wrap.querySelector('.video-duration');
@@ -14214,23 +14059,40 @@ window.addEventListener('paste', e => {
     else if(files.length > 1) uploadImageGroup(files);
     else uploadImages(files);
 });
+function applyClassicKeyEffect(event, effect){
+    if(effect.prevent) event.preventDefault();
+    if(effect.type === 'arm-rotate') isRKeyDown = true;
+    else if(effect.type === 'arm-knife') setKnifeMode(true);
+    else if(effect.type === 'close' && effect.target === 'image-editor') closeImageEditor();
+    else if(effect.type === 'close' && effect.target === 'prompt-templates') closePromptTemplateModal();
+    else if(effect.type === 'close' && effect.target === 'lightbox') closeOutputLightbox();
+    else if(effect.type === 'lightbox-step'){
+        if(navigateOutputLightbox(effect.direction)){
+            event.preventDefault();
+            event.stopPropagation();
+        }
+    } else if(effect.type === 'group') groupSelectedImages();
+    else if(effect.type === 'delete-selection') deleteSelectedNodes();
+}
 window.addEventListener('keydown', e => {
     if(!canvas) return;
     const tag = document.activeElement?.tagName;
-    const commandEditable = tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable;
-    const modal = Boolean(document.getElementById('imageEditModal')?.classList.contains('open')
-        || promptTemplateModal?.classList.contains('open')
-        || outputLightbox.classList.contains('open')
-        || assetManagerModal?.classList.contains('open')
-        || workflowTransferModal?.classList.contains('open')
-        || logModal?.classList.contains('open'));
+    const fieldFocused = tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable;
+    const surfaces = {
+        imageEditor: Boolean(document.getElementById('imageEditModal')?.classList.contains('open')),
+        promptTemplates: Boolean(promptTemplateModal?.classList.contains('open')),
+        lightbox: outputLightbox.classList.contains('open'),
+        assetManager: Boolean(assetManagerModal?.classList.contains('open')),
+        workflow: Boolean(workflowTransferModal?.classList.contains('open')),
+        log: Boolean(logModal?.classList.contains('open'))
+    };
     const action = XiaomeiHistoryKernel.chord({
         key:e.key, ctrl:e.ctrlKey, meta:e.metaKey, alt:e.altKey, shift:e.shiftKey, repeat:e.repeat
     }, {
         profile:'classic',
         plainEditable:isEditableTarget(e.target),
-        commandEditable,
-        modal,
+        commandEditable:fieldFocused,
+        modal:Object.values(surfaces).some(Boolean),
         textSelected:Boolean(window.getSelection && window.getSelection().toString().length),
         canPaste:clipboardNodeCount() > 0
     });
@@ -14251,67 +14113,18 @@ window.addEventListener('keydown', e => {
         }, action.delay);
         return;
     }
-
-    const key = String(e.key || '').toLowerCase();
-    if(key === 'r' && !isEditableTarget(e.target)) isRKeyDown = true;
-    if(e.key === 'Shift' && !e.altKey && !isEditableTarget(document.activeElement)) setKnifeMode(true);
-    if(e.key === 'Escape' && document.getElementById('imageEditModal').classList.contains('open')) { closeImageEditor(); return; }
-    if(e.key === 'Escape' && promptTemplateModal?.classList.contains('open')) { closePromptTemplateModal(); return; }
-    if(outputLightbox.classList.contains('open') && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')){
-        if(navigateOutputLightbox(e.key === 'ArrowRight' ? 1 : -1)){
-            e.preventDefault();
-            e.stopPropagation();
-        }
-        return;
-    }
-    if(e.key === 'Escape' && outputLightbox.classList.contains('open')) { closeOutputLightbox(); return; }
-    if(!e.ctrlKey && !e.metaKey && !e.altKey && key === 'z' && !isEditableTarget(e.target)
-        && !document.getElementById('imageEditModal')?.classList.contains('open')
-        && !promptTemplateModal?.classList.contains('open')
-        && !outputLightbox.classList.contains('open')
-        && !assetManagerModal?.classList.contains('open')
-        && !workflowTransferModal?.classList.contains('open')
-        && !logModal?.classList.contains('open')){
-        if(e.repeat) return;
-        e.preventDefault();
-        toggleZoomPreview();
-        return;
-    }
-    if((e.ctrlKey || e.metaKey) && key === 'g') { e.preventDefault(); groupSelectedImages(); }
-    if((e.ctrlKey || e.metaKey) && key === 'c') {
-        // 在输入框/可编辑元素里时，让浏览器原生 Ctrl+C 工作
-        const tag = document.activeElement?.tagName;
-        if(tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
-        // 用户在页面任意位置选中了文本时，也不要拦截
-        const sel = window.getSelection && window.getSelection();
-        if(sel && sel.toString().length > 0) return;
-        e.preventDefault();
-        copySelectedNodes();
-    }
-    if((e.ctrlKey || e.metaKey) && key === 'v') {
-        const tag = document.activeElement?.tagName;
-        if(tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
-        if(clipboardNodeCount()) {
-            const pasteRequestedAt = Date.now();
-            setTimeout(() => {
-                if(!canvas) return;
-                if(lastImagePasteAt >= pasteRequestedAt) return;
-                pasteNodes();
-            }, 90);
-        }
-    }
-    if((e.ctrlKey || e.metaKey) && key === 'z') {
-        const tag = document.activeElement?.tagName;
-        if(tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
-        e.preventDefault(); performUndo();
-    }
-    if(e.key === 'Delete' || e.key === 'Backspace') {
-        const tag = document.activeElement?.tagName;
-        if(tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
-        if(selected.size === 0) return;
-        e.preventDefault();
-        deleteSelectedNodes();
-    }
+    const decision = XiaomeiCanvasKeys.classicRemainder({
+        key:e.key,
+        command:e.ctrlKey || e.metaKey,
+        alt:e.altKey,
+        shift:e.shiftKey,
+        editable:isEditableTarget(e.target),
+        activeEditable:isEditableTarget(document.activeElement),
+        fieldFocused,
+        selectionCount:selected.size,
+        surfaces
+    });
+    decision.effects.forEach(effect => applyClassicKeyEffect(e, effect));
 });
 window.addEventListener('keyup', e => {
     if(String(e.key || '').toLowerCase() === 'r') isRKeyDown = false;
@@ -14395,6 +14208,7 @@ function escapeAttr(str){ return escapeHtml(str); }
 window.onload = async () => {
     applyTheme(window.StudioTheme?.get?.() || localStorage.getItem(CANVAS_THEME_KEY) || 'light');
     applyQuickToolbarState();
+    if(createMenu) XiaomeiCanvasSurface.fillClassicCreateMenu(createMenu, tr, menuAdd);
     if(window.StudioI18n) StudioI18n.apply();
     document.title = tr('canvas.title');
     initOutputCompareEvents();

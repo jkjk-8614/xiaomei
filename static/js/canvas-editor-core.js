@@ -19,30 +19,44 @@
         }
     }
 
+    function boundedTextSize(value) {
+        const size = Number(value);
+        const base = Number.isFinite(size) ? size : 28;
+        return Math.max(10, Math.min(120, base));
+    }
+
     function textItemFont(item) {
-        const size = Math.max(10, Math.min(120, Number(item?.size) || 28));
-        return `900 ${size}px Arial, sans-serif`;
+        return `900 ${boundedTextSize(item?.size)}px Arial, sans-serif`;
+    }
+
+    function readTextMetrics(item, ctx) {
+        const size = boundedTextSize(item?.size);
+        ctx.save();
+        ctx.font = textItemFont(item);
+        const metrics = ctx.measureText(String(item?.text || ''));
+        ctx.restore();
+        const ascent = Number.isFinite(metrics.actualBoundingBoxAscent) ? metrics.actualBoundingBoxAscent : size * 0.8;
+        const descent = Number.isFinite(metrics.actualBoundingBoxDescent) ? metrics.actualBoundingBoxDescent : size * 0.25;
+        return {
+            width: Math.max(1, metrics.width || 1),
+            textH: ascent + descent,
+            inset: Math.max(4, Math.round(size * 0.18)),
+        };
     }
 
     function measureEditTextItem(item, ctx) {
         if (!item || !ctx) return {x:0, y:0, w:0, h:0};
-        const size = Math.max(10, Math.min(120, Number(item.size) || 28));
-        ctx.save();
-        ctx.font = textItemFont(item);
-        const metrics = ctx.measureText(String(item.text || ''));
-        ctx.restore();
-        const width = Math.max(1, metrics.width || 1);
-        const ascent = Number.isFinite(metrics.actualBoundingBoxAscent) ? metrics.actualBoundingBoxAscent : size * 0.8;
-        const descent = Number.isFinite(metrics.actualBoundingBoxDescent) ? metrics.actualBoundingBoxDescent : size * 0.25;
-        const pad = Math.max(4, Math.round(size * 0.18));
+        const metrics = readTextMetrics(item, ctx);
+        const w = metrics.width + metrics.inset * 2;
+        const h = metrics.textH + metrics.inset * 2;
         return {
-            x:item.x - width / 2 - pad,
-            y:item.y - (ascent + descent) / 2 - pad,
-            w:width + pad * 2,
-            h:ascent + descent + pad * 2,
-            textW:width,
-            textH:ascent + descent,
-            pad,
+            x:item.x - w / 2,
+            y:item.y - h / 2,
+            w,
+            h,
+            textW:metrics.width,
+            textH:metrics.textH,
+            pad:metrics.inset,
         };
     }
 
@@ -69,22 +83,39 @@
         return parts.length === 2 && parts[0] > 0 && parts[1] > 0 ? parts[0] / parts[1] : null;
     }
 
-    function screenToWorld(clientX, clientY, rect, viewport) {
+    function viewportKernel() {
+        const kernel = global.XiaomeiViewportKernel;
+        if (!kernel) throw new Error('XiaomeiViewportKernel is required');
+        return kernel;
+    }
+
+    function cameraRecord(viewport) {
         const view = viewport || {};
-        const scale = Number(view.scale) || 1;
+        const scale = Number(view.scale);
         return {
-            x:(Number(clientX) - Number(rect?.left || 0) - Number(view.x || 0)) / scale,
-            y:(Number(clientY) - Number(rect?.top || 0) - Number(view.y || 0)) / scale,
+            x: Number(view.x) || 0,
+            y: Number(view.y) || 0,
+            scale: scale > 0 ? scale : 1,
         };
     }
 
-    function boardCenterWorld(width, height, viewport) {
-        const view = viewport || {};
-        const scale = Number(view.scale) || 1;
+    function frameFromRect(rect) {
         return {
-            x:(Number(width || 0) / 2 - Number(view.x || 0)) / scale,
-            y:(Number(height || 0) / 2 - Number(view.y || 0)) / scale,
+            left: Number(rect?.left || 0),
+            top: Number(rect?.top || 0),
+            width: Number(rect?.width || 0),
+            height: Number(rect?.height || 0),
         };
+    }
+
+    function screenToWorld(clientX, clientY, rect, viewport) {
+        return viewportKernel().pointerToWorld(cameraRecord(viewport), frameFromRect(rect), clientX, clientY);
+    }
+
+    function boardCenterWorld(width, height, viewport) {
+        const frame = { left: 0, top: 0, width: Number(width || 0), height: Number(height || 0) };
+        const visible = viewportKernel().visibleWorldRect(cameraRecord(viewport), frame);
+        return { x: visible.x + visible.w / 2, y: visible.y + visible.h / 2 };
     }
 
     function editCanvasScale(canvasEl) {
