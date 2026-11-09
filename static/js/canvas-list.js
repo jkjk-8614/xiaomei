@@ -103,11 +103,15 @@ function setStatus(text){
     statusTimer = setTimeout(() => statusEl.classList.remove('show'), 2200);
 }
 
-/* ===== Viewport math (mirrors smart-canvas.js) ===== */
+/* ===== Board camera. Pan, zoom, and screen mapping go through XiaomeiViewportKernel. ===== */
 function applyViewport(){
-    boardWorld.style.transform = `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`;
-    board.style.backgroundSize = `${120 * viewport.scale}px ${120 * viewport.scale}px, ${120 * viewport.scale}px ${120 * viewport.scale}px, ${24 * viewport.scale}px ${24 * viewport.scale}px`;
-    board.style.backgroundPosition = `${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px`;
+    XiaomeiViewportKernel.paintWorldLayer(boardWorld, viewport, 'translate');
+    const zoom = XiaomeiViewportKernel.positiveScale(viewport.scale, 1);
+    const grid = 120 * zoom;
+    const fine = 24 * zoom;
+    const origin = `${viewport.x}px ${viewport.y}px`;
+    board.style.backgroundSize = `${grid}px ${grid}px, ${grid}px ${grid}px, ${fine}px ${fine}px`;
+    board.style.backgroundPosition = `${origin}, ${origin}, ${origin}`;
 }
 function screenToWorld(clientX, clientY){
     const rect = board.getBoundingClientRect();
@@ -156,8 +160,7 @@ function onBoardPanStart(e){
 }
 function onBoardPanMove(e){
     if(!panState) return;
-    viewport.x = panState.ox + (e.clientX - panState.startX);
-    viewport.y = panState.oy + (e.clientY - panState.startY);
+    XiaomeiViewportKernel.dragCamera(viewport, panState.ox, panState.oy, e.clientX - panState.startX, e.clientY - panState.startY);
     if(Math.abs(e.clientX - panState.startX) > 3 || Math.abs(e.clientY - panState.startY) > 3) panState.moved = true;
     applyViewport();
 }
@@ -168,17 +171,11 @@ function onBoardPanEnd(){
 }
 function onBoardWheel(e){
     e.preventDefault();
-    const rect = board.getBoundingClientRect();
-    const px = e.clientX - rect.left, py = e.clientY - rect.top;
-    // world point under cursor before zoom
-    const wx = (px - viewport.x) / viewport.scale;
-    const wy = (py - viewport.y) / viewport.scale;
+    const frame = XiaomeiViewportKernel.frameFromElement(board);
     const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-    const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, viewport.scale * factor));
-    viewport.scale = next;
-    // keep the same world point under the cursor
-    viewport.x = px - wx * next;
-    viewport.y = py - wy * next;
+    const current = XiaomeiViewportKernel.positiveScale(viewport.scale, 1);
+    const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, current * factor));
+    XiaomeiViewportKernel.zoomAboutClient(viewport, frame, e.clientX, e.clientY, next);
     applyViewport();
 }
 

@@ -3,56 +3,56 @@
 /* ===== Theme variables ===== */
 :root {
     --ease:cubic-bezier(.4,0,.2,1);
-    --page:#f6f7f9;
-    --grid:rgba(100,116,139,.18);
-    --panel:rgba(255,255,255,.9);
-    --panel-solid:#fff;
-    --card:rgba(255,255,255,.98);
-    --card-solid:#fff;
-    --soft:#f7f8fa;
-    --soft-2:#eef2f6;
-    --line:#e5e9ef;
-    --line-2:#cbd5e1;
-    --text:#151922;
-    --muted:#5f6b7a;
-    --faint:#98a2b3;
-    --shadow:rgba(15,23,42,.08);
-    --shadow-strong:rgba(15,23,42,.14);
-    --strong:#2e2e33;
-    --strong-text:#f0f0f2;
-    --accent:#0e7490;
-    --accent-soft:#e0f5fb;
-    --accent-line:#a8dbe8;
+    --page:#f4efe4;
+    --grid:rgba(180,150,110,.28);
+    --panel:rgba(255,251,244,.94);
+    --panel-solid:#fffaf3;
+    --card:rgba(255,252,246,.98);
+    --card-solid:#fffaf3;
+    --soft:#f7f1e6;
+    --soft-2:#efe6d6;
+    --line:#e4d8c4;
+    --line-2:#cbbba3;
+    --text:#243027;
+    --muted:#6b6256;
+    --faint:#8a7d6c;
+    --shadow:rgba(48,38,22,.1);
+    --shadow-strong:rgba(48,38,22,.16);
+    --strong:#1f6a4a;
+    --strong-text:#f7fff8;
+    --accent:#1f6a4a;
+    --accent-soft:#e7f4ec;
+    --accent-line:#b7dcc6;
     --success:#059669;
     --danger:#dc2626;
     --danger-soft:#fff1f2;
 }
 .theme-dark {
-    --page:#0c0c0d;
-    --grid:rgba(160,160,168,.16);
-    --panel:rgba(26,26,29,.9);
-    --panel-solid:#131316;
-    --card:rgba(26,26,29,.98);
-    --card-solid:#1a1a1d;
-    --soft:#141416;
-    --soft-2:#232327;
-    --line:#2a2a2e;
-    --line-2:#3a3a3f;
-    --text:#f0f0f2;
-    --muted:#a3a3ab;
-    --faint:#86868e;
-    --shadow:rgba(0,0,0,.3);
-    --shadow-strong:rgba(0,0,0,.42);
-    --strong:#e8edf5;
-    --strong-text:#111827;
-    --accent:#60a5fa;
-    --accent-soft:rgba(37,99,235,.16);
-    --accent-line:rgba(96,165,250,.34);
+    --page:#141714;
+    --grid:rgba(214,196,160,.16);
+    --panel:rgba(28,32,27,.94);
+    --panel-solid:#1c211c;
+    --card:rgba(32,36,30,.98);
+    --card-solid:#22261f;
+    --soft:#232822;
+    --soft-2:#2c332b;
+    --line:#3c463c;
+    --line-2:#536053;
+    --text:#f3efe4;
+    --muted:#c4b8a4;
+    --faint:#8f8678;
+    --shadow:rgba(0,0,0,.36);
+    --shadow-strong:rgba(0,0,0,.48);
+    --strong:#8dcea8;
+    --strong-text:#142018;
+    --accent:#8dcea8;
+    --accent-soft:rgba(141,206,168,.16);
+    --accent-line:rgba(141,206,168,.4);
     --danger-soft:rgba(220,38,38,.16);
 }
 
 * { box-sizing:border-box; }
-body { margin:0; height:100vh; overflow:hidden; background:var(--page); color:var(--text); font-family:'Inter',-apple-system,sans-serif; -webkit-font-smoothing:antialiased; }
+body { margin:0; height:100vh; overflow:hidden; background:var(--page); color:var(--text); font-family:"Avenir Next","Segoe UI","PingFang SC","Noto Sans SC",sans-serif; -webkit-font-smoothing:antialiased; }
 
 /* 画布列表只使用这几种图标尺寸，不为首屏加载整套 Tailwind 运行时。 */
 .w-3\.5 { width:.875rem; }
