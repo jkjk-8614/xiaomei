@@ -1565,7 +1565,21 @@ async function performCanvasSave(){
         const res = await fetch(`/api/canvases/${canvas.id}`, {
             method:'PUT',
             headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({
+            body:JSON.stringify(window.XiaomeiDocumentKernel?.isActive()
+                ? XiaomeiDocumentKernel.saveBody({
+                    title:canvas.title,
+                    icon:canvas.icon || '🧩',
+                    nodes:serializableCanvasNodes(),
+                    connections,
+                    viewport,
+                    logs:canvas.logs || []
+                }, {
+                    profile:'classic',
+                    fallbackIcon:'🧩',
+                    clientId:CLIENT_ID,
+                    baseUpdatedAt:Number(lastCanvasUpdatedAt || canvas.updated_at || 0)
+                })
+                : {
                 title:canvas.title,
                 icon:canvas.icon || '🧩',
                 nodes:serializableCanvasNodes(),
@@ -2162,6 +2176,9 @@ async function openCanvas(id){
             openSmartCanvasPage(canvas.id);
             return;
         }
+        if(window.XiaomeiDocumentKernel?.isActive()){
+            canvas = XiaomeiDocumentKernel.adopt(canvas, {profile:'classic', fallbackIcon:canvas.icon || '🧩'}).document;
+        }
         canvas.logs = canvas.logs || [];
         nodes = canvas.nodes || [];
         connections = canvas.connections || [];
@@ -2196,6 +2213,7 @@ function applyRemoteCanvasData(remote){
     }
     applyingRemoteCanvas = true;
     try {
+        if(window.XiaomeiDocumentKernel?.isActive()) remote = XiaomeiDocumentKernel.adopt(remote, {profile:'classic'}).document;
         resetCascadeRuntimeState();
         const localViewport = localViewportForCanvas(canvas.id, viewport || remote.viewport || {x:0, y:0, scale:1});
         const localSelectedIds = new Set(selected);

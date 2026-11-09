@@ -11349,6 +11349,23 @@ async function loadCanvas(){
         migratedLegacySmartVideoNodes = false;
         migratedInvalidImageTaskRecoveries = false;
         sharedEditorInitialSelectionApplied = false;
+        if(window.XiaomeiDocumentKernel?.isActive()){
+            const adopted = XiaomeiDocumentKernel.adopt(canvas, {
+                profile:'smart',
+                dropNodeIds:[SMART_LOG_PREVIEW_NODE_ID],
+                fallbackTitle:tr('canvas.smartCanvas'),
+                labels:{
+                    upload:tr('smart.createImportNode'),
+                    paint:tr('smart.createPaintNode'),
+                    video:'视频',
+                    group:'Group',
+                    image:'Image'
+                }
+            });
+            canvas = adopted.document;
+            if(adopted.migrations.upload) migratedLegacySmartUploadNodes = true;
+            if(adopted.migrations.video) migratedLegacySmartVideoNodes = true;
+        }
         nodes = (Array.isArray(canvas.nodes) ? canvas.nodes : []).map(normalizeLegacySmartNode).filter(Boolean);
         nodes.forEach(node => {
             normalizeSmartCameraNode(node);
@@ -11493,7 +11510,9 @@ async function performCanvasSave(){
             base_updated_at:Number(canvas.updated_at || 0)
         };
         if(changedConnections) incrementalBody.connections = storageCanvas.connections || [];
-        if(changedViewport) incrementalBody.viewport = storageCanvas.viewport || {x:0,y:0,scale:1};
+        if(changedViewport) incrementalBody.viewport = window.XiaomeiDocumentKernel?.isActive()
+            ? XiaomeiDocumentKernel.normalizeViewport(storageCanvas.viewport)
+            : (storageCanvas.viewport || {x:0,y:0,scale:1});
         if(changedTitle) incrementalBody.title = storageCanvas.title || tr('smart.title');
         if(changedIcon) incrementalBody.icon = storageCanvas.icon || 'sparkles';
         if(changedLogs) incrementalBody.logs = storageCanvas.logs || [];
@@ -11501,7 +11520,18 @@ async function performCanvasSave(){
         const requestUrl = useIncremental
             ? `/api/canvases/${encodeURIComponent(canvasId)}/nodes`
             : `/api/canvases/${encodeURIComponent(canvasId)}`;
-        const requestBody = useIncremental ? incrementalBody : {
+        const requestBody = useIncremental ? incrementalBody : (window.XiaomeiDocumentKernel?.isActive()
+            ? XiaomeiDocumentKernel.saveBody(storageCanvas, {
+                profile:'smart',
+                includeSettings:true,
+                fallbackTitle:tr('smart.title'),
+                fallbackIcon:'sparkles',
+                dropNodeIds:[SMART_LOG_PREVIEW_NODE_ID],
+                baseUpdatedAt:storageCanvas.updated_at || canvas.updated_at || 0,
+                clientId:smartClientId,
+                labels:{upload:tr('smart.createImportNode'), paint:tr('smart.createPaintNode'), video:'视频'}
+            })
+            : {
             title:storageCanvas.title || tr('smart.title'),
             icon:storageCanvas.icon || 'sparkles',
             nodes:storageCanvas.nodes || [],
@@ -11511,7 +11541,7 @@ async function performCanvasSave(){
             settings:storageCanvas.settings,
             base_updated_at:storageCanvas.updated_at || canvas.updated_at || 0,
             client_id:smartClientId
-        };
+        });
         const res = await fetch(requestUrl, {
             method:useIncremental ? 'PATCH' : 'PUT',
             headers:{'Content-Type':'application/json'},
