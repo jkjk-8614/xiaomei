@@ -1,7 +1,9 @@
-"""Protocol and task-status helpers for the opt-in dispatch path.
+"""Protocol and task-status helpers for the switchable dispatch path.
 
-The legacy functions in main.py stay in place. A request uses this module only
-when it sends ``X-Xiaomei-Dispatch: next``.
+The legacy functions in main.py stay in place. A request uses this module when
+it sends ``X-Xiaomei-Dispatch: next``. The default client sends that value.
+A missing header, or ``legacy``, keeps the old functions so an explicit
+rollback still reaches them.
 """
 from __future__ import annotations
 
@@ -218,6 +220,7 @@ class DispatchSwitchMiddleware:
             await self.app(scope, receive, send)
             return
         headers = {key.decode("latin1").lower(): value.decode("latin1") for key, value in scope.get("headers") or []}
+        # Absent and "legacy" stay on the old functions. The default client sends "next".
         mode = "next" if headers.get(HEADER) == "next" else "legacy"
         token = MODE.set(mode)
         try:

@@ -4,7 +4,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 const test = require('node:test');
 
-function loadKernel(search) {
+function loadKernel(search, saved) {
+    const store = new Map(Object.entries(saved || {}));
     const calls = [];
     const sandbox = {
         URLSearchParams,
@@ -16,20 +17,43 @@ function loadKernel(search) {
         },
         document: { documentElement: { setAttribute() {} } },
         location: { search: search || '', href: 'http://127.0.0.1:3000/asset-manager.html' },
-        localStorage: { getItem() { return null; }, setItem() {} },
+        localStorage: {
+            getItem(key) { return store.has(key) ? store.get(key) : null; },
+            setItem(key, value) { store.set(key, String(value)); }
+        },
         fetch(input, init) { calls.push({ input, init }); return Promise.resolve({ ok: true }); }
     };
     sandbox.window = sandbox;
     sandbox.globalThis = sandbox;
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../static/js/xiaomei-shell-kernel.js'), 'utf8'), sandbox, { filename: 'xiaomei-shell-kernel.js' });
     sandbox.XiaomeiShellKernel._calls = calls;
+    sandbox._store = store;
     return sandbox;
 }
 
-test('asset shell stays on the legacy path until asked', () => {
-    assert.equal(loadKernel('').XiaomeiShellKernel.isActive(), false);
-    assert.equal(loadKernel('?xmAssets=1').XiaomeiShellKernel.isActive(), true);
-    assert.equal(loadKernel('?xmAssets=0').XiaomeiShellKernel.isActive(), false);
+test('asset shell defaults to next and a legacy rollback omits the header', async () => {
+    const fresh = loadKernel('');
+    assert.equal(fresh.XiaomeiShellKernel.isActive(), true);
+    assert.equal(fresh._store.has('xiaomei.assetKernel'), false);
+    await fresh.fetch('/api/asset-library');
+    assert.equal(fresh.XiaomeiShellKernel._calls[0].init.headers.map['X-Xiaomei-Assets'], 'next');
+    await fresh.fetch('/api/history');
+    assert.equal(fresh.XiaomeiShellKernel._calls[1].init, undefined);
+
+    const enabled = loadKernel('?xmAssets=1');
+    assert.equal(enabled.XiaomeiShellKernel.isActive(), true);
+    assert.equal(enabled._store.get('xiaomei.assetKernel'), 'next');
+
+    const disabled = loadKernel('?xmAssets=0');
+    assert.equal(disabled.XiaomeiShellKernel.isActive(), false);
+    assert.equal(disabled._store.get('xiaomei.assetKernel'), 'legacy');
+    await disabled.fetch('/api/providers');
+    assert.equal(disabled.XiaomeiShellKernel._calls[0].init, undefined);
+
+    const stuck = loadKernel('', { 'xiaomei.assetKernel': 'legacy' });
+    assert.equal(stuck.XiaomeiShellKernel.isActive(), false);
+    stuck.XiaomeiShellKernel.setActive(false);
+    assert.equal(stuck._store.get('xiaomei.assetKernel'), 'legacy');
 });
 
 test('selection, preview, theme, and history decisions', () => {

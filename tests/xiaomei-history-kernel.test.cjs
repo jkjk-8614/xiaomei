@@ -8,8 +8,8 @@ function local(value) {
     return JSON.parse(JSON.stringify(value));
 }
 
-function loadKernel(search) {
-    const store = new Map();
+function loadKernel(search, saved) {
+    const store = new Map(Object.entries(saved || {}));
     const sandbox = {
         URLSearchParams,
         Math,
@@ -30,14 +30,21 @@ function loadKernel(search) {
     return { kernel: sandbox.XiaomeiHistoryKernel, store };
 }
 
-test('history kernel stays legacy until opted in', () => {
+test('history kernel defaults to the next path and legacy still sticks', () => {
     const { kernel, store } = loadKernel('');
-    assert.equal(kernel.isActive(), false);
+    assert.equal(kernel.isActive(), true);
     assert.equal(store.has('xiaomei.historyKernel'), false);
     const enabled = loadKernel('?xmHistory=1');
     assert.equal(enabled.kernel.isActive(), true);
+    assert.equal(enabled.store.get('xiaomei.historyKernel'), 'next');
     const disabled = loadKernel('?xmHistory=0');
     assert.equal(disabled.kernel.isActive(), false);
+    assert.equal(disabled.store.get('xiaomei.historyKernel'), 'legacy');
+    const stuck = loadKernel('', { 'xiaomei.historyKernel': disabled.store.get('xiaomei.historyKernel') });
+    assert.equal(stuck.kernel.isActive(), false);
+    kernel.setActive(false);
+    assert.equal(kernel.isActive(), false);
+    assert.equal(store.get('xiaomei.historyKernel'), 'legacy');
 });
 
 test('undo stack is bounded and smart redo restores the replaced frame', () => {

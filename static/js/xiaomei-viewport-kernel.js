@@ -1,7 +1,7 @@
-/* Xiaomei viewport kernel, phase 2 step 1.
+/* Xiaomei viewport kernel.
    Independent camera math for pan, zoom, fit, minimap projection, and node origin.
-   The legacy canvas scripts remain the default path. This file does not read
-   their function bodies; callers opt in through XiaomeiViewportKernel.isActive(). */
+   The next path is the default. Legacy canvas scripts stay loaded; ?xmViewport=0
+   or XiaomeiViewportKernel.setActive(false) runs them instead. */
 (function (root) {
     'use strict';
 
@@ -41,7 +41,7 @@
         var store = storage();
         var saved = '';
         try { saved = store ? store.getItem(STORAGE_KEY) || '' : ''; } catch (error) { saved = ''; }
-        return saved === 'next';
+        return saved !== 'legacy' && saved !== '0';
     }
 
     var active = initialActive();

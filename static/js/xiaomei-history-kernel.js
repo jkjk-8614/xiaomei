@@ -1,6 +1,7 @@
-/* Xiaomei history kernel, phase 2 step 3.
+/* Xiaomei history kernel.
    Bounded undo stacks, paste placement, id remapping, and shortcut chords.
-   The legacy handlers remain the default path. */
+   The next path is the default. Legacy handlers stay loaded; ?xmHistory=0
+   or XiaomeiHistoryKernel.setActive(false) runs them instead. */
 (function (root) {
     'use strict';
 
@@ -37,7 +38,7 @@
         }
         var saved = '';
         try { saved = storage() ? storage().getItem(STORAGE_KEY) || '' : ''; } catch (error) { saved = ''; }
-        return saved === 'next';
+        return saved !== 'legacy' && saved !== '0';
     }
 
     var active = initialActive();

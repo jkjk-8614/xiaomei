@@ -1,6 +1,7 @@
-/* Xiaomei node kernel, phase 2 step 2.
+/* Xiaomei node kernel.
    Drag cohorts, connection curves, and group membership.
-   Legacy canvas scripts stay in place and remain the default. */
+   The next path is the default. Legacy canvas scripts stay loaded; ?xmNodes=0
+   or XiaomeiNodeKernel.setActive(false) runs them instead. */
 (function (root) {
     'use strict';
 
@@ -42,7 +43,7 @@
         }
         var saved = '';
         try { saved = storage() ? storage().getItem(STORAGE_KEY) || '' : ''; } catch (error) { saved = ''; }
-        return saved === 'next';
+        return saved !== 'legacy' && saved !== '0';
     }
 
     var active = initialActive();

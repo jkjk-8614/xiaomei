@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 
 import dispatch_kernel
@@ -35,6 +36,29 @@ class DispatchKernelTest(unittest.TestCase):
         finished = dispatch_kernel.observe_task(record, done)
         self.assertEqual(finished["status"], "succeeded")
         self.assertEqual(finished["result"]["urls"], ["https://img/a.png"])
+
+    def test_header_accepts_next_and_keeps_legacy_rollback(self):
+        async def run(headers):
+            seen = {}
+
+            async def app(scope, receive, send):
+                seen["mode"] = dispatch_kernel.MODE.get()
+
+            middleware = dispatch_kernel.DispatchSwitchMiddleware(app)
+
+            async def receive():
+                return {"type": "http.request"}
+
+            async def send(message):
+                return None
+
+            await middleware({"type": "http", "headers": headers}, receive, send)
+            return seen["mode"]
+
+        self.assertEqual(asyncio.run(run([])), "legacy")
+        self.assertEqual(asyncio.run(run([(b"x-xiaomei-dispatch", b"next")])), "next")
+        self.assertEqual(asyncio.run(run([(b"x-xiaomei-dispatch", b"legacy")])), "legacy")
+        self.assertEqual(dispatch_kernel.MODE.get(), "legacy")
 
 
 if __name__ == "__main__":

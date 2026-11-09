@@ -1,7 +1,9 @@
-"""Catalog, path, and filter helpers for the opt-in asset path.
+"""Catalog, path, and filter helpers for the switchable asset path.
 
-Legacy routes stay in place. A request reaches this module only when it sends
-``X-Xiaomei-Assets: next``.
+Legacy routes stay in place. A request reaches this module when it sends
+``X-Xiaomei-Assets: next``. The default client sends that value. A missing
+header, or ``legacy``, keeps the old functions so an explicit rollback still
+reaches them.
 """
 from __future__ import annotations
 
@@ -591,6 +593,7 @@ class AssetSwitchMiddleware:
             await self.app(scope, receive, send)
             return
         headers = {key.decode("latin1").lower(): value.decode("latin1") for key, value in scope.get("headers") or []}
+        # Absent and "legacy" stay on the old functions. The default client sends "next".
         token = MODE.set("next" if headers.get(HEADER) == "next" else "legacy")
         try:
             await self.app(scope, receive, send)
