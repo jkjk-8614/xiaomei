@@ -3482,6 +3482,11 @@ function smartGroupLayoutSize(node){
 function smartGroupMembers(node){
     if(!isSmartGroupNode(node)) return [];
     const ids = Array.isArray(node.items) ? node.items : [];
+    if(window.XiaomeiNodeKernel?.isActive()){
+        return XiaomeiNodeKernel.directMembers(node.id, ids, id => nodes.find(n => n.id === id), member => isSmartGroupNode(member))
+            .map(id => nodes.find(n => n.id === id))
+            .filter(Boolean);
+    }
     const seen = new Set([node.id]);
     return ids.map(id => nodes.find(n => n.id === id)).filter(member => {
         if(!member || seen.has(member.id) || isSmartGroupNode(member)) return false;
@@ -3547,6 +3552,7 @@ function smartConnectionIdentity(connection, fromId=connection?.from, toId=conne
     ].join('\u0000');
 }
 function uniqueSmartConnections(connections=[]){
+    if(window.XiaomeiNodeKernel?.isActive()) return XiaomeiNodeKernel.uniqueEdges(connections, smartConnectionIdentity);
     const seen = new Set();
     return (connections || []).filter(connection => {
         if(!connection?.from || !connection?.to || connection.from === connection.to) return false;
@@ -4994,8 +5000,14 @@ function smartArrangeAtomicIds(ids){
 function translateSmartNodeWithMembers(node, dx, dy, seen=new Set()){
     if(!node || seen.has(node.id)) return;
     seen.add(node.id);
+    if(window.XiaomeiNodeKernel?.isActive()){
+        const next = XiaomeiNodeKernel.shiftPoint(node.x, node.y, dx, dy, true);
+        node.x = next.x;
+        node.y = next.y;
+    } else {
     node.x = Math.round((Number(node.x) || 0) + dx);
     node.y = Math.round((Number(node.y) || 0) + dy);
+    }
     if(isSmartGroupNode(node)){
         smartGroupMembers(node).forEach(member => translateSmartNodeWithMembers(member, dx, dy, seen));
     }
@@ -5006,6 +5018,23 @@ function moveSmartNodeAtom(node, x, y){
     translateSmartNodeWithMembers(node, dx, dy);
 }
 function arrangeSmartIdsByConnections(ids){
+    if(window.XiaomeiNodeKernel?.isActive()){
+        const idSet = new Set(smartArrangeAtomicIds(ids));
+        const selectedNodes = [...idSet].map(id => nodes.find(n => n.id === id)).filter(Boolean);
+        if(selectedNodes.length < 2) return false;
+        const items = selectedNodes.map(node => {
+            const visual = smartBatchVisualRect(node);
+            const rect = nodeRect(node);
+            return {id:node.id, x:visual.x, y:visual.y, w:rect.width, h:rect.height, sortY:rect.y};
+        });
+        const placed = XiaomeiNodeKernel.columnLayout(items, canvas?.connections || [], {minRow:110, rowGap:56, minCol:180, colGap:180});
+        if(!placed) return false;
+        placed.forEach(spot => {
+            const node = nodes.find(n => n.id === spot.id);
+            if(node) moveSmartNodeAtom(node, spot.x, spot.y);
+        });
+        return true;
+    }
     const idSet = new Set(smartArrangeAtomicIds(ids));
     const selectedNodes = [...idSet].map(id => nodes.find(n => n.id === id)).filter(Boolean);
     if(selectedNodes.length < 2) return false;
@@ -12328,6 +12357,11 @@ function connectionGeometryForItem(item, draggedNodeIds=new Set(), nodeMap=null,
     const isDraggedLine = draggedNodeIds.has(item.from)
         || draggedNodeIds.has(item.toId)
         || (item.targets || []).some(targetId => draggedNodeIds.has(targetId));
+    if(window.XiaomeiNodeKernel?.isActive()){
+        const mode = isDraggedLine ? 'straight' : (isHistory ? 'history' : 'smart');
+        const geometry = XiaomeiNodeKernel.curveBetween({x:fx, y:fy}, {x:tx, y:ty}, mode);
+        return {curve:geometry.d, tx:geometry.endX, ty:geometry.endY, mx:geometry.midX, my:geometry.midY};
+    }
     const curve = isDraggedLine
         ? `M${fx} ${fy} L${tx} ${ty}`
         : isHistory
@@ -21069,7 +21103,10 @@ function updatePortDragVisual(){
         const fx = fromPort?.x ?? (isOut ? fr.x + fr.width : fr.x);
         const fy = fromPort?.y ?? (fr.y + fr.height / 2);
         const dx = Math.max(50, Math.abs(tx - fx) * 0.45);
-        path.setAttribute('d', `M${fx} ${fy} C ${fx + dx * sign} ${fy}, ${tx - dx * sign} ${ty}, ${tx} ${ty}`);
+        const curve = window.XiaomeiNodeKernel?.isActive()
+            ? XiaomeiNodeKernel.curveBetween({x:fx, y:fy}, {x:tx, y:ty}, 'port', sign).d
+            : `M${fx} ${fy} C ${fx + dx * sign} ${fy}, ${tx - dx * sign} ${ty}, ${tx} ${ty}`;
+        path.setAttribute('d', curve);
         path.classList.toggle('is-snapped', Boolean(portDragState.hoverTargetId));
     });
     const tip = world.querySelector('g.port-drag-tip');
@@ -22629,7 +22666,14 @@ function bindNodeEvents(nodeEls=world.querySelectorAll('.image-node')){
                 const group = isSmartGroupNode(item) ? item : smartGroupContainingNode(dragId);
                 if(group) groupRoots.set(group.id, group);
             });
-            dragIds = Array.from(new Set([...dragIds, ...[...groupRoots.values()].flatMap(group => [group.id, ...smartGroupMembers(group).map(member => member.id)])]));
+            dragIds = window.XiaomeiNodeKernel?.isActive()
+                ? XiaomeiNodeKernel.expandIds(dragIds, dragId => {
+                    const item = nodes.find(n => n.id === dragId);
+                    const group = item && (isSmartGroupNode(item) ? item : smartGroupContainingNode(dragId));
+                    if(!group) return null;
+                    return {groupId:group.id, memberIds:smartGroupMembers(group).map(member => member.id)};
+                })
+                : Array.from(new Set([...dragIds, ...[...groupRoots.values()].flatMap(group => [group.id, ...smartGroupMembers(group).map(member => member.id)])]));
             if(!dragIds.every(targetId => collabCanEditNode(targetId))) return;
             const moveIds = canvasViewPrefs.follow
                 ? Array.from(new Set([...dragIds, ...connectedDownstreamNodeIds(dragIds)])).filter(moveId => collabCanEditNode(moveId))
@@ -35710,13 +35754,20 @@ window.onmousemove = e => {
     document.body.classList.add('smart-node-drag');
     const node = nodes.find(n => n.id === dragState.id);
     if(!node) return;
-    const rawMoveDx = (e.clientX - dragState.startX) / viewport.scale;
-    const rawMoveDy = (e.clientY - dragState.startY) / viewport.scale;
+    const raw = window.XiaomeiNodeKernel?.isActive()
+        ? XiaomeiNodeKernel.worldDelta({x:e.clientX, y:e.clientY}, {x:dragState.startX, y:dragState.startY}, viewport.scale)
+        : {x:(e.clientX - dragState.startX) / viewport.scale, y:(e.clientY - dragState.startY) / viewport.scale};
+    const rawMoveDx = raw.x;
+    const rawMoveDy = raw.y;
     const moveDx = canvasViewPrefs.snap
-        ? Math.round(((Number(dragState.ox) || 0) + rawMoveDx) / CANVAS_SNAP_GRID) * CANVAS_SNAP_GRID - (Number(dragState.ox) || 0)
+        ? (window.XiaomeiNodeKernel?.isActive()
+            ? XiaomeiNodeKernel.snappedDelta(dragState.ox, rawMoveDx, CANVAS_SNAP_GRID)
+            : Math.round(((Number(dragState.ox) || 0) + rawMoveDx) / CANVAS_SNAP_GRID) * CANVAS_SNAP_GRID - (Number(dragState.ox) || 0))
         : rawMoveDx;
     const moveDy = canvasViewPrefs.snap
-        ? Math.round(((Number(dragState.oy) || 0) + rawMoveDy) / CANVAS_SNAP_GRID) * CANVAS_SNAP_GRID - (Number(dragState.oy) || 0)
+        ? (window.XiaomeiNodeKernel?.isActive()
+            ? XiaomeiNodeKernel.snappedDelta(dragState.oy, rawMoveDy, CANVAS_SNAP_GRID)
+            : Math.round(((Number(dragState.oy) || 0) + rawMoveDy) / CANVAS_SNAP_GRID) * CANVAS_SNAP_GRID - (Number(dragState.oy) || 0))
         : rawMoveDy;
     (dragState.moveGroup || dragState.group || [{id:dragState.id, ox:dragState.ox, oy:dragState.oy}]).forEach(item => {
         const n = nodes.find(x => x.id === item.id);
