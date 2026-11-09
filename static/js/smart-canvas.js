@@ -2759,8 +2759,26 @@ function safeScale(value){
     const n = Number(value);
     return Number.isFinite(n) && n > 0 ? n : 1;
 }
+function xmNodeOriginStyle(node){
+    if(window.XiaomeiViewportKernel?.isActive()) return XiaomeiViewportKernel.nodeOriginStyle(node);
+    return `left:${node.x || 0}px;top:${node.y || 0}px`;
+}
 function setCanvasZoom(nextScale, {save=false} = {}){
     if(!shell) return;
+    if(window.XiaomeiViewportKernel?.isActive()){
+        const min = Number(canvasZoomRange?.min) || 0.06;
+        const max = Number(canvasZoomRange?.max) || 2;
+        const step = Number(canvasZoomRange?.step) || 0.05;
+        const scale = XiaomeiViewportKernel.steppedZoom(nextScale, min, max, step);
+        if(scale == null) return;
+        if(Math.abs(scale - XiaomeiViewportKernel.positiveScale(viewport.scale, 1)) < 0.0001) return;
+        cancelViewportWheelAnimation();
+        XiaomeiViewportKernel.zoomAboutCenter(viewport, {width:shell.clientWidth, height:shell.clientHeight}, scale);
+        applyViewport();
+        scheduleCanvasViewportRender();
+        if(save) scheduleSave();
+        return;
+    }
     const min = Number(canvasZoomRange?.min) || 0.06;
     const max = Number(canvasZoomRange?.max) || 2;
     const step = Number(canvasZoomRange?.step) || 0.05;
@@ -5150,7 +5168,8 @@ function applyViewport(options={}){
     // 保持节点布局尺寸不变，缩放和平移共用一个矩阵，避免逐帧布局取整。
     invalidateClientToWorldMapper();
     const scale = safeScale(viewport.scale);
-    world.style.transform = `translate(${viewport.x}px, ${viewport.y}px) scale(${scale})`;
+    if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.paintWorldLayer(world, viewport, 'translate');
+    else world.style.transform = `translate(${viewport.x}px, ${viewport.y}px) scale(${scale})`;
     syncCanvasToolbarScale(scale);
     syncSmartNodeSettingsPanel();
     if(canvasZoomRange && document.activeElement !== canvasZoomRange) canvasZoomRange.value = String(Math.round(scale * 100) / 100);
@@ -5311,6 +5330,14 @@ function scheduleViewportApply(save=false){
     });
 }
 function queueViewportWheel(event){
+    if(window.XiaomeiViewportKernel?.isActive()){
+        const rect = shell.getBoundingClientRect();
+        const step = XiaomeiViewportKernel.smartWheelStep(viewportWheelTarget || viewport, {left:rect.left, top:rect.top}, event.clientX, event.clientY, event.deltaY, event.deltaMode, shell.clientHeight);
+        if(!step) return;
+        viewportWheelTarget = step;
+        scheduleViewportApply(true);
+        return;
+    }
     const mode = Number(event?.deltaMode || 0);
     const deltaY = Number(event?.deltaY || 0) * (mode === 1 ? 16 : mode === 2 ? shell.clientHeight : 1);
     if(!Number.isFinite(deltaY) || deltaY === 0) return;
@@ -5362,6 +5389,7 @@ function beginViewportInteraction(){
     viewportInteractionEndTimer = window.setTimeout(finishViewportInteraction, VIEWPORT_INTERACTION_IDLE_MS);
 }
 function invalidateClientToWorldMapper(){
+    if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.invalidateMapper();
     clientToWorldMapperCache = null;
     if(clientToWorldMapperCacheRaf){
         cancelAnimationFrame(clientToWorldMapperCacheRaf);
@@ -5432,6 +5460,16 @@ function createClientToWorldMapper(){
     return cacheClientToWorldMapper(mapper);
 }
 function clientToWorldPoint(clientX, clientY){
+    if(window.XiaomeiViewportKernel?.isActive()){
+        return XiaomeiViewportKernel.smartPointerToWorld({
+            svg:world.querySelector('svg.connection-layer'),
+            world,
+            shell,
+            camera:viewport,
+            clientX,
+            clientY
+        });
+    }
     return createClientToWorldMapper()(clientX, clientY);
 }
 function nodePortWorldPoint(nodeOrId, port='out', clientToWorld=null, inputSlot=''){
@@ -5513,6 +5551,29 @@ function viewportCenter(){
     };
 }
 function renderMinimap(){
+    if(window.XiaomeiViewportKernel?.isActive()){
+        if(!minimapContent || !minimapViewport) return;
+        smartArrangeBtn?.classList.toggle('visible', selectedNodeIds().length > 0);
+        const minimapNodes = nodes.filter(n => n.id !== SMART_LOG_PREVIEW_NODE_ID && !smartBatchIsHidden(n));
+        const painted = XiaomeiViewportKernel.paintSmartMinimap({
+            content:minimapContent,
+            viewportEl:minimapViewport,
+            mapWidth:minimapContent.clientWidth || 170,
+            mapHeight:minimapContent.clientHeight || 108,
+            shellWidth:shell.clientWidth,
+            shellHeight:shell.clientHeight,
+            camera:viewport,
+            boxes:minimapNodes.map(node => {
+                const rect = smartBatchVisualRect(node);
+                return {x:rect.x, y:rect.y, w:rect.width, h:rect.height};
+            })
+        });
+        smartMinimapState = painted.state;
+        smartMinimapNodeSignatures = new Map(minimapNodes.map(node => [String(node.id), smartMinimapNodeSignature(node)]));
+        smartMinimapNodeOrder = minimapNodes.map(node => String(node.id));
+        smartMinimapLayoutDirty = false;
+        return;
+    }
     if(!minimapContent || !minimapViewport) return;
     smartArrangeBtn?.classList.toggle('visible', selectedNodeIds().length > 0);
     const width = minimapContent.clientWidth || 170;
@@ -5571,6 +5632,31 @@ function renderMinimap(){
     }
 }
 function updateMinimapViewport(options={}){
+    if(window.XiaomeiViewportKernel?.isActive()){
+        if(!minimapContent) return;
+        if(!minimapViewport?.isConnected || !smartMinimapState){
+            scheduleMinimapRender(true);
+            return;
+        }
+        const decision = XiaomeiViewportKernel.syncSmartMinimapFrame(smartMinimapState, viewport, {
+            cached:options.useCachedLayout === true,
+            width:minimapContent.clientWidth || 170,
+            height:minimapContent.clientHeight || 108,
+            shellWidth:shell.clientWidth,
+            shellHeight:shell.clientHeight
+        });
+        if(decision.relayout){
+            smartMinimapLayoutDirty = true;
+            scheduleMinimapRender(true);
+            return;
+        }
+        const box = decision.box;
+        minimapViewport.style.left = `${box.left}px`;
+        minimapViewport.style.top = `${box.top}px`;
+        minimapViewport.style.width = `${box.width}px`;
+        minimapViewport.style.height = `${box.height}px`;
+        return;
+    }
     if(!minimapContent) return;
     // 小地图尺寸或节点结构变化时，交给完整渲染处理；正常缩放只复用上次
     // 的坐标映射并更新视口框，避免滚轮帧触发节点测量和布局写入。
@@ -5606,6 +5692,18 @@ function updateMinimapViewport(options={}){
     minimapViewport.style.height = `${view.height}px`;
 }
 function minimapEventToWorld(event){
+    if(window.XiaomeiViewportKernel?.isActive()){
+        if(!smartMinimapState) renderMinimap();
+        const state = smartMinimapState;
+        if(!state) return XiaomeiViewportKernel.pointerToWorld(viewport, {left:0, top:0, width:shell.clientWidth, height:shell.clientHeight}, shell.clientWidth / 2, shell.clientHeight / 2);
+        const rect = minimapContent.getBoundingClientRect();
+        return XiaomeiViewportKernel.minimapPointerToWorld({
+            scale:state.scale,
+            offsetX:state.offsetX,
+            offsetY:state.offsetY,
+            bounds:{x:state.minX, y:state.minY}
+        }, rect, event.clientX, event.clientY, 0.0001);
+    }
     if(!smartMinimapState) renderMinimap();
     const state = smartMinimapState;
     if(!state) return viewportCenter();
@@ -5618,6 +5716,13 @@ function minimapEventToWorld(event){
     };
 }
 function centerViewportOnWorldPoint(point){
+    if(window.XiaomeiViewportKernel?.isActive()){
+        cancelViewportWheelAnimation();
+        XiaomeiViewportKernel.centerOn(viewport, {width:shell.clientWidth, height:shell.clientHeight}, point);
+        applyViewport();
+        scheduleSave();
+        return;
+    }
     cancelViewportWheelAnimation();
     viewport.x = shell.clientWidth / 2 - point.x * viewport.scale;
     viewport.y = shell.clientHeight / 2 - point.y * viewport.scale;
@@ -5632,6 +5737,24 @@ function fitAllNodesViewport(){
 // 但节点铺得又长又散时适配会把缩放压到 6%，看起来还是一片空白，
 // 这种情况改成落在离内容中心最近的那个节点上，保证一打开就看得见真实内容。
 function focusViewportOnContent(options={}){
+    if(window.XiaomeiViewportKernel?.isActive()){
+        const apply = options.apply !== false;
+        if(!nodes.length) return false;
+        const boxes = nodes.filter(n => !smartBatchIsHidden(n)).map(node => {
+            const rect = smartBatchVisualRect(node);
+            return {x:rect.x, y:rect.y, w:rect.width, h:rect.height};
+        });
+        const placed = XiaomeiViewportKernel.focusContent(viewport, {width:shell.clientWidth, height:shell.clientHeight}, boxes, {
+            pad:160, inset:80, minZoom:0.06, maxZoom:0.82, emptyZoom:0.45, floor:0.18, focusZoom:0.45
+        });
+        if(!placed) return false;
+        if(apply){
+            applyViewport();
+            scheduleCanvasViewportRender();
+            scheduleSave();
+        }
+        return true;
+    }
     const apply = options.apply !== false;
     if(!nodes.length) return false;
     const applyNow = () => {
@@ -5666,6 +5789,23 @@ function focusViewportOnContent(options={}){
 // 计算"适配全部节点"的相机位置。apply=false 时只写 viewport、不立刻应用，
 // 供打开画布时在 render 之前修正相机使用（随后统一走 applyViewport/render）。
 function fitViewportToAllNodes(options={}){
+    if(window.XiaomeiViewportKernel?.isActive()){
+        const apply = options.apply !== false;
+        const boxes = nodes.filter(n => !smartBatchIsHidden(n)).map(node => {
+            const rect = smartBatchVisualRect(node);
+            return {x:rect.x, y:rect.y, w:rect.width, h:rect.height};
+        });
+        const placed = XiaomeiViewportKernel.fitBoxes(viewport, {width:shell.clientWidth, height:shell.clientHeight}, boxes, {
+            pad:160, inset:80, minZoom:0.06, maxZoom:0.82, emptyZoom:0.45, allowEmpty:apply
+        });
+        if(!placed) return false;
+        if(apply){
+            applyViewport();
+            scheduleCanvasViewportRender();
+            scheduleSave();
+        }
+        return true;
+    }
     const apply = options.apply !== false;
     if(!nodes.length){
         if(!apply) return false;
@@ -5706,6 +5846,23 @@ function enterZoomPreview(){
     fitAllNodesViewport();
 }
 function exitZoomPreview(point=null){
+    if(window.XiaomeiViewportKernel?.isActive()){
+        if(!zoomPreviewState) return false;
+        cancelViewportWheelAnimation();
+        const prev = zoomPreviewState;
+        zoomPreviewState = null;
+        shell.classList.remove('zoom-preview');
+        viewport.scale = prev.scale;
+        if(point) XiaomeiViewportKernel.centerOn(viewport, {width:shell.clientWidth, height:shell.clientHeight}, point);
+        else {
+            viewport.x = prev.x;
+            viewport.y = prev.y;
+        }
+        applyViewport();
+        scheduleCanvasViewportRender();
+        scheduleSave();
+        return true;
+    }
     if(!zoomPreviewState) return false;
     cancelViewportWheelAnimation();
     const prev = zoomPreviewState;
@@ -5725,6 +5882,23 @@ function exitZoomPreview(point=null){
     return true;
 }
 function exitZoomPreviewToNode(nodeId){
+    if(window.XiaomeiViewportKernel?.isActive()){
+        if(!zoomPreviewState) return false;
+        cancelViewportWheelAnimation();
+        const node = nodes.find(n => n.id === nodeId);
+        if(!node) return exitZoomPreview();
+        const prev = zoomPreviewState;
+        const rect = nodeRect(node);
+        zoomPreviewState = null;
+        shell.classList.remove('zoom-preview');
+        XiaomeiViewportKernel.frameOnNode(viewport, {width:shell.clientWidth, height:shell.clientHeight}, {x:rect.x, y:rect.y, w:rect.width, h:rect.height}, prev.scale, {
+            margin:160, maxScale:ZOOM_PREVIEW_NODE_MAX_SCALE, defaultScale:ZOOM_PREVIEW_NODE_DEFAULT_SCALE
+        });
+        applyViewport();
+        scheduleCanvasViewportRender();
+        scheduleSave();
+        return true;
+    }
     if(!zoomPreviewState) return false;
     cancelViewportWheelAnimation();
     const node = nodes.find(n => n.id === nodeId);
@@ -12320,8 +12494,11 @@ function commitDraggedNodeElementPositions(state=dragState){
         const n = nodes.find(x => x.id === item.id) || state.nodeMap?.get(item.id);
         const el = interactionNodeElement(item.id, state);
         if(!n || !el) return;
-        el.style.left = `${Number(n.x) || 0}px`;
-        el.style.top = `${Number(n.y) || 0}px`;
+        if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.writeMeasuredOrigin(el, n.x, n.y);
+        else {
+            el.style.left = `${Number(n.x) || 0}px`;
+            el.style.top = `${Number(n.y) || 0}px`;
+        }
         el.style.transform = '';
         el.style.willChange = '';
         el.classList.remove('dragging');
@@ -12445,8 +12622,11 @@ function syncSmartGroupMemberElements(group){
     smartGroupCompactMembers(group).forEach(member => {
         const el = world.querySelector(`.image-node[data-id="${CSS.escape(member.id)}"]`);
         if(el){
-            el.style.left = `${member.x || 0}px`;
-            el.style.top = `${member.y || 0}px`;
+            if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.writeMeasuredOrigin(el, member.x || 0, member.y || 0);
+            else {
+                el.style.left = `${member.x || 0}px`;
+                el.style.top = `${member.y || 0}px`;
+            }
         }
         updateNodeElementDuringResize(member);
     });
@@ -19156,7 +19336,7 @@ function render(options={}){
         // 非空节点使用悬浮删除按钮；标题栏按钮只给空上传节点，避免产生重复图标。
         const deleteBtn = isGroup || !isEmpty ? '' : `<button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button>`;
         const hint = isTextStack ? '' : isFidelity ? '' : isVideo ? (isFailed ? '生成失败 · 可修改参数后重新运行' : isPending ? escapeHtml(tr('smart.hintPending')) : '连接提示词或图片、视频、音频参考后生成') : isAiRender ? (isFailed ? '生成失败 · 可修改参数后重试' : isPending ? escapeHtml(tr('smart.hintPending')) : '连接白模、风格或产品参考图后开始渲染') : isTable ? '可接收文本或表格数据' : isTimeline ? '连接图片、视频和音频后导出成片' : isComfyWorkflow ? (isFailed ? '运行失败 · 可检查依赖或重新运行' : isPending ? escapeHtml(tr('smart.hintPending')) : '选中节点编辑参数，连接素材后运行') : isDrawingBoard ? escapeHtml(tr('smart.drawingBoardHint')) : isLoop ? '' : isSmartGroup ? '双击添加 · 拖入归组' : isCamera ? '连接参考图像 → 下游绘画节点' : isCompare ? escapeHtml(smartCompareText('smart.compareNodeConnectHint', '连接两张图片后开始对比')) : isColor ? '连接待修复图片和参考图' : isFailed ? '生成失败 · 可修改参数后重新运行' : isPending ? escapeHtml(tr('smart.hintPending')) : isPaint && !imgs.length ? (isProductFidelityNode(node) ? '连接产品参考图，设置蒙版与细节保护' : escapeHtml(tr('smart.createPaintNodeSub'))) : isUpload && !imgs.length ? escapeHtml(tr('smart.uploadHint')) : (imgs.length > 1 ? escapeHtml(tr('smart.hintMulti')) : imgs.length ? escapeHtml(tr('smart.hintSingle')) : escapeHtml(tr('smart.hintEmpty')));
-        const html = `<div class="image-node ${isTextStack ? 'collapsed-text-stack-node' : ''} ${isFidelity ? 'product-fidelity-smart-node' : ''} ${isVideo ? 'video-smart-node' : ''} ${isAiRender ? 'ai-render-smart-node' : ''} ${isReplica ? 'replica-smart-node' : ''} ${isComfyWorkflow ? 'comfy-workflow-smart-node' : ''} ${isDrawingBoard ? 'drawing-board-node' : ''} ${isTable ? 'smart-table-node' : ''} ${isTimeline ? 'smart-timeline-node' : ''} ${isEmpty ? 'empty-node' : ''} ${isUpload ? 'upload-node' : ''} ${isPaint ? 'painting-node' : ''} ${isDetailPaint ? 'smart-detail-paint-node' : ''} ${isDetailStitch ? 'smart-detail-stitch-node' : ''} ${isFailed ? 'node-failed' : ''} ${isGroup ? 'group-node' : ''} ${node.collapsed && isImageNode ? 'collapsed-stack-node' : ''} ${node.collapsed && isPrompt ? 'collapsed-prompt-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isAgent ? 'agent-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isCompare ? 'smart-compare-node' : ''} ${isColor ? 'color-smart-node' : ''} ${isSmartGroup ? 'smart-group-node' : ''} ${isCompactMember ? 'smart-group-member-node' : ''} ${collabLockedByOther ? 'collab-locked-by-other' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''}" data-id="${escapeHtml(node.id)}" style="left:${node.x || 0}px;top:${node.y || 0}px;${collabLockedByOther ? `--member-color:${escapeAttr(collabSafeColor(collabLock.member.color, collabLock.member.id))};` : ''}${node.collapsed && isImageNode ? 'background:transparent!important;border-color:transparent!important;box-shadow:none!important;backdrop-filter:none!important;' : ''}width:${layout.width}px;height:${layout.height}px">
+        const html = `<div class="image-node ${isTextStack ? 'collapsed-text-stack-node' : ''} ${isFidelity ? 'product-fidelity-smart-node' : ''} ${isVideo ? 'video-smart-node' : ''} ${isAiRender ? 'ai-render-smart-node' : ''} ${isReplica ? 'replica-smart-node' : ''} ${isComfyWorkflow ? 'comfy-workflow-smart-node' : ''} ${isDrawingBoard ? 'drawing-board-node' : ''} ${isTable ? 'smart-table-node' : ''} ${isTimeline ? 'smart-timeline-node' : ''} ${isEmpty ? 'empty-node' : ''} ${isUpload ? 'upload-node' : ''} ${isPaint ? 'painting-node' : ''} ${isDetailPaint ? 'smart-detail-paint-node' : ''} ${isDetailStitch ? 'smart-detail-stitch-node' : ''} ${isFailed ? 'node-failed' : ''} ${isGroup ? 'group-node' : ''} ${node.collapsed && isImageNode ? 'collapsed-stack-node' : ''} ${node.collapsed && isPrompt ? 'collapsed-prompt-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isAgent ? 'agent-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isCompare ? 'smart-compare-node' : ''} ${isColor ? 'color-smart-node' : ''} ${isSmartGroup ? 'smart-group-node' : ''} ${isCompactMember ? 'smart-group-member-node' : ''} ${collabLockedByOther ? 'collab-locked-by-other' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''}" data-id="${escapeHtml(node.id)}" style="${xmNodeOriginStyle(node)};${collabLockedByOther ? `--member-color:${escapeAttr(collabSafeColor(collabLock.member.color, collabLock.member.id))};` : ''}${node.collapsed && isImageNode ? 'background:transparent!important;border-color:transparent!important;box-shadow:none!important;backdrop-filter:none!important;' : ''}width:${layout.width}px;height:${layout.height}px">
             ${isDetailPaint ? `<div class="smart-detail-screen-marker" aria-label="${escapeAttr(`第 ${detailScreenIndex} 屏${detailScreenTitle ? `：${detailScreenTitle}` : ''}`)}"><strong>第 ${detailScreenIndex} 屏</strong>${detailScreenTitle ? `<span>${escapeHtml(detailScreenTitle)}</span>` : ''}</div>` : ''}
             ${isDetailStitch ? `<div class="smart-detail-stitch-marker ${detailStitchStale ? 'is-stale' : ''}"><strong>${escapeHtml(tr('smart.detailStitchTitle'))}</strong>${node.detailStitchActualRatio && node.detailStitchActualRatio !== '9:16' ? `<span>${escapeHtml(trf('smart.detailStitchSourceRatio', {ratio:node.detailStitchActualRatio}))}</span>` : ''}${detailStitchStale ? `<span>${escapeHtml(tr('smart.detailStitchNeedsUpdate'))}</span>` : ''}</div>` : ''}
             ${smartNodeRunBorderHtml(node)}
@@ -19325,7 +19505,7 @@ function render(options={}){
         const isPending = (node.pending || isQueued) && imgs.length === 0;
         const body = nodeBodyHtml(node, layout);
         const deleteBtn = isGroup || !isEmpty ? '' : `<button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button>`;
-        return `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${isGroup ? 'group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''}" data-id="${escapeHtml(node.id)}" style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px">
+        return `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${isGroup ? 'group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''}" data-id="${escapeHtml(node.id)}" style="${xmNodeOriginStyle(node)};width:${layout.width}px;height:${layout.height}px">
             <div class="node-head"><div class="node-title">${title}</div><div class="node-actions">${deleteBtn}</div></div>
             ${!isEmpty && !isGroup ? `<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>` : ''}
             ${smartNodeRunBorderHtml(node)}
@@ -35228,8 +35408,11 @@ window.onmousemove = e => {
             didPan = true;
             dismissComposerOnPan();
         }
-        viewport.x = panState.ox + dx;
-        viewport.y = panState.oy + dy;
+        if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.dragCamera(viewport, panState.ox, panState.oy, dx, dy);
+        else {
+            viewport.x = panState.ox + dx;
+            viewport.y = panState.oy + dy;
+        }
         schedulePanViewportApply();
         return;
     }
@@ -35349,8 +35532,11 @@ window.onmousemove = e => {
                 member.scale = 1;
                 const el = world.querySelector(`.image-node[data-id="${CSS.escape(member.id)}"]`);
                 if(el){
-                    el.style.left = `${member.x}px`;
-                    el.style.top = `${member.y}px`;
+                    if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.writeRawOrigin(el, member.x, member.y);
+                    else {
+                        el.style.left = `${member.x}px`;
+                        el.style.top = `${member.y}px`;
+                    }
                 }
                 scheduleNodeElementResizeUpdate(member);
             });
@@ -35418,7 +35604,8 @@ window.onmousemove = e => {
                 maxBottom = Math.max(maxBottom, member.y + member.h);
                 const memberEl = world.querySelector(`.image-node[data-id="${CSS.escape(member.id)}"]`);
                 if(memberEl){
-                    memberEl.style.left = `${member.x}px`;
+                    if(window.XiaomeiViewportKernel?.isActive()) XiaomeiViewportKernel.writeRawOrigin(memberEl, member.x, member.y);
+                    else memberEl.style.left = `${member.x}px`;
                     memberEl.style.top = `${member.y}px`;
                 }
                 scheduleNodeElementResizeUpdate(member);
