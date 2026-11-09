@@ -8,8 +8,8 @@ function local(value) {
     return JSON.parse(JSON.stringify(value));
 }
 
-function loadKernel(search) {
-    const store = new Map();
+function loadKernel(search, saved) {
+    const store = new Map(Object.entries(saved || {}));
     const sandbox = {
         URLSearchParams,
         Math,
@@ -28,15 +28,20 @@ function loadKernel(search) {
     return { kernel: sandbox.XiaomeiNodeKernel, store };
 }
 
-test('node kernel defaults to the legacy path', () => {
+test('node kernel defaults to the next path and legacy still sticks', () => {
     const { kernel, store } = loadKernel('');
-    assert.equal(kernel.isActive(), false);
-    kernel.setActive(true);
-    assert.equal(store.get('xiaomei.nodeKernel'), 'next');
+    assert.equal(kernel.isActive(), true);
+    assert.equal(store.has('xiaomei.nodeKernel'), false);
+    kernel.setActive(false);
+    assert.equal(store.get('xiaomei.nodeKernel'), 'legacy');
+    const stuck = loadKernel('', { 'xiaomei.nodeKernel': 'legacy' });
+    assert.equal(stuck.kernel.isActive(), false);
     const enabled = loadKernel('?xmNodes=1');
     assert.equal(enabled.kernel.isActive(), true);
+    assert.equal(enabled.store.get('xiaomei.nodeKernel'), 'next');
     const disabled = loadKernel('?xmNodes=legacy');
     assert.equal(disabled.kernel.isActive(), false);
+    assert.equal(disabled.store.get('xiaomei.nodeKernel'), 'legacy');
 });
 
 test('drag cohort moves group members and the rest of a multi-selection', () => {

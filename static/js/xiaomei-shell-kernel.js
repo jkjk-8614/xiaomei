@@ -1,6 +1,7 @@
-/* Xiaomei shell kernel, phase 2 step 6.
-   Asset selection, settings records, preview math, and the opt-in request header.
-   Pages keep their current markup until this kernel is switched on. */
+/* Xiaomei shell kernel.
+   Asset selection, settings records, preview math, and the X-Xiaomei-Assets header.
+   The next path is the default and sends that header as next.
+   ?xmAssets=0 or XiaomeiShellKernel.setActive(false) keeps the previous functions. */
 (function (root) {
     'use strict';
 
@@ -77,7 +78,7 @@
         }
         var saved = '';
         try { saved = storage() ? storage().getItem(STORAGE_KEY) || '' : ''; } catch (error) { saved = ''; }
-        return saved === 'next';
+        return saved !== 'legacy' && saved !== '0';
     }
 
     var active = initialActive();

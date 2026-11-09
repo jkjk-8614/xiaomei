@@ -1,5 +1,7 @@
-/* Xiaomei dispatch kernel, phase 2 step 5.
-   Task poll decisions and the opt-in header for the server protocol path. */
+/* Xiaomei dispatch kernel.
+   Task poll decisions and the X-Xiaomei-Dispatch header for the server path.
+   The next path is the default and sends that header as next.
+   ?xmDispatch=0 or XiaomeiDispatchKernel.setActive(false) omits it. */
 (function (root) {
     'use strict';
 
@@ -37,7 +39,7 @@
         }
         var saved = '';
         try { saved = storage() ? storage().getItem(STORAGE_KEY) || '' : ''; } catch (error) { saved = ''; }
-        return saved === 'next';
+        return saved !== 'legacy' && saved !== '0';
     }
 
     var active = initialActive();

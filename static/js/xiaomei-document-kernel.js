@@ -1,6 +1,7 @@
-/* Xiaomei document kernel, phase 2 step 4.
+/* Xiaomei document kernel.
    Canvas JSON envelope, legacy node migration, and save bodies.
-   Disk writes stay in the existing client. This file does not touch user directories. */
+   The next path is the default. Disk writes stay in the existing client.
+   ?xmDocument=0 or XiaomeiDocumentKernel.setActive(false) uses the old envelope. */
 (function (root) {
     'use strict';
 
@@ -38,7 +39,7 @@
         }
         var saved = '';
         try { saved = storage() ? storage().getItem(STORAGE_KEY) || '' : ''; } catch (error) { saved = ''; }
-        return saved === 'next';
+        return saved !== 'legacy' && saved !== '0';
     }
 
     var active = initialActive();

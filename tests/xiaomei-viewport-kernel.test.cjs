@@ -4,8 +4,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 const test = require('node:test');
 
-function loadKernel(search) {
-    const store = new Map();
+function loadKernel(search, saved) {
+    const store = new Map(Object.entries(saved || {}));
     const element = { style: {} };
     const sandbox = {
         URLSearchParams,
@@ -24,16 +24,22 @@ function loadKernel(search) {
     return { kernel: sandbox.XiaomeiViewportKernel, store, element };
 }
 
-test('viewport kernel stays on the legacy path unless opted in', () => {
+test('viewport kernel defaults to the next path and legacy still sticks', () => {
     const { kernel, store } = loadKernel('');
-    assert.equal(kernel.isActive(), false);
-    assert.equal(store.has('xiaomei.viewportKernel'), false);
-    kernel.setActive(true);
     assert.equal(kernel.isActive(), true);
-    assert.equal(store.get('xiaomei.viewportKernel'), 'next');
+    assert.equal(store.has('xiaomei.viewportKernel'), false);
     kernel.setActive(false);
     assert.equal(kernel.isActive(), false);
     assert.equal(store.get('xiaomei.viewportKernel'), 'legacy');
+    const stuck = loadKernel('', { 'xiaomei.viewportKernel': 'legacy' });
+    assert.equal(stuck.kernel.isActive(), false);
+    const zero = loadKernel('', { 'xiaomei.viewportKernel': '0' });
+    assert.equal(zero.kernel.isActive(), false);
+    kernel.setActive(true);
+    assert.equal(kernel.isActive(), true);
+    assert.equal(store.get('xiaomei.viewportKernel'), 'next');
+    const kept = loadKernel('', { 'xiaomei.viewportKernel': 'next' });
+    assert.equal(kept.kernel.isActive(), true);
 });
 
 test('query flag persists the next session and legacy clears it', () => {

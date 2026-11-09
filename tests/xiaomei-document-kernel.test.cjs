@@ -8,8 +8,8 @@ function local(value) {
     return JSON.parse(JSON.stringify(value));
 }
 
-function loadKernel(search) {
-    const store = new Map();
+function loadKernel(search, saved) {
+    const store = new Map(Object.entries(saved || {}));
     const sandbox = {
         URLSearchParams,
         Math,
@@ -27,18 +27,28 @@ function loadKernel(search) {
     sandbox.window = sandbox;
     sandbox.globalThis = sandbox;
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../static/js/xiaomei-document-kernel.js'), 'utf8'), sandbox, { filename: 'xiaomei-document-kernel.js' });
-    return sandbox.XiaomeiDocumentKernel;
+    return { kernel: sandbox.XiaomeiDocumentKernel, store };
 }
 
-test('document kernel stays legacy until opted in', () => {
-    const kernel = loadKernel('');
-    assert.equal(kernel.isActive(), false);
-    assert.equal(loadKernel('?xmDocument=1').isActive(), true);
-    assert.equal(loadKernel('?xmDocument=legacy').isActive(), false);
+test('document kernel defaults to the next path and legacy still sticks', () => {
+    const fresh = loadKernel('');
+    assert.equal(fresh.kernel.isActive(), true);
+    assert.equal(fresh.store.has('xiaomei.documentKernel'), false);
+    fresh.kernel.setActive(false);
+    assert.equal(fresh.kernel.isActive(), false);
+    assert.equal(fresh.store.get('xiaomei.documentKernel'), 'legacy');
+    const stuck = loadKernel('', { 'xiaomei.documentKernel': 'legacy' });
+    assert.equal(stuck.kernel.isActive(), false);
+    const enabled = loadKernel('?xmDocument=1');
+    assert.equal(enabled.kernel.isActive(), true);
+    assert.equal(enabled.store.get('xiaomei.documentKernel'), 'next');
+    const disabled = loadKernel('?xmDocument=legacy');
+    assert.equal(disabled.kernel.isActive(), false);
+    assert.equal(disabled.store.get('xiaomei.documentKernel'), 'legacy');
 });
 
 test('old smart files gain viewport, connections, and current node types', () => {
-    const kernel = loadKernel('');
+    const { kernel } = loadKernel('');
     const adopted = kernel.adopt({
         id: 'old',
         title: '旧项目',
@@ -73,7 +83,7 @@ test('old smart files gain viewport, connections, and current node types', () =>
 });
 
 test('classic save strips runtime fields and keeps the viewport', () => {
-    const kernel = loadKernel('');
+    const { kernel } = loadKernel('');
     const body = kernel.saveBody({
         title: 'Board',
         nodes: [{ id: 'n', type: 'msgen', x: 3, y: 4, running: true, _ltxEditor: {}, msRatio: 'wide' }],

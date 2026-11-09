@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 
 import asset_kernel
@@ -63,6 +64,29 @@ class AssetKernelTest(unittest.TestCase):
         self.assertEqual(asset_kernel.upload_stem("照片.png", "file", ".png", already_stem=True), "照片")
         self.assertTrue(asset_kernel.same_members(["a", "b"], ["b", "a"]))
         self.assertFalse(asset_kernel.same_members(["a"], ["a", "a"]))
+
+    def test_header_accepts_next_and_keeps_legacy_rollback(self):
+        async def run(headers):
+            seen = {}
+
+            async def app(scope, receive, send):
+                seen["mode"] = asset_kernel.MODE.get()
+
+            middleware = asset_kernel.AssetSwitchMiddleware(app)
+
+            async def receive():
+                return {"type": "http.request"}
+
+            async def send(message):
+                return None
+
+            await middleware({"type": "http", "headers": headers}, receive, send)
+            return seen["mode"]
+
+        self.assertEqual(asyncio.run(run([])), "legacy")
+        self.assertEqual(asyncio.run(run([(b"x-xiaomei-assets", b"next")])), "next")
+        self.assertEqual(asyncio.run(run([(b"x-xiaomei-assets", b"legacy")])), "legacy")
+        self.assertEqual(asset_kernel.MODE.get(), "legacy")
 
 
 if __name__ == "__main__":
