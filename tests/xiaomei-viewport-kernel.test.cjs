@@ -6,12 +6,13 @@ const test = require('node:test');
 
 function loadKernel(search, saved) {
     const store = new Map(Object.entries(saved || {}));
+    const attrs = {};
     const element = { style: {} };
     const sandbox = {
         URLSearchParams,
         Math,
         Number,
-        document: { documentElement: { setAttribute() {} } },
+        document: { documentElement: { setAttribute(name, value) { attrs[name] = value; } } },
         location: { search: search || '' },
         localStorage: {
             getItem(key) { return store.has(key) ? store.get(key) : null; },
@@ -21,34 +22,33 @@ function loadKernel(search, saved) {
     sandbox.window = sandbox;
     sandbox.globalThis = sandbox;
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../static/js/xiaomei-viewport-kernel.js'), 'utf8'), sandbox, { filename: 'xiaomei-viewport-kernel.js' });
-    return { kernel: sandbox.XiaomeiViewportKernel, store, element };
+    return { kernel: sandbox.XiaomeiViewportKernel, store, element, attrs };
 }
 
-test('viewport kernel defaults to the next path and legacy still sticks', () => {
-    const { kernel, store } = loadKernel('');
-    assert.equal(kernel.isActive(), true);
-    assert.equal(store.has('xiaomei.viewportKernel'), false);
-    kernel.setActive(false);
-    assert.equal(kernel.isActive(), false);
-    assert.equal(store.get('xiaomei.viewportKernel'), 'legacy');
-    const stuck = loadKernel('', { 'xiaomei.viewportKernel': 'legacy' });
-    assert.equal(stuck.kernel.isActive(), false);
-    const zero = loadKernel('', { 'xiaomei.viewportKernel': '0' });
-    assert.equal(zero.kernel.isActive(), false);
-    kernel.setActive(true);
-    assert.equal(kernel.isActive(), true);
-    assert.equal(store.get('xiaomei.viewportKernel'), 'next');
-    const kept = loadKernel('', { 'xiaomei.viewportKernel': 'next' });
-    assert.equal(kept.kernel.isActive(), true);
-});
-
-test('query flag persists the next session and legacy clears it', () => {
-    const enabled = loadKernel('?xmViewport=1');
-    assert.equal(enabled.kernel.isActive(), true);
-    assert.equal(enabled.store.get('xiaomei.viewportKernel'), 'next');
-    const disabled = loadKernel('?xmViewport=0');
-    assert.equal(disabled.kernel.isActive(), false);
-    assert.equal(disabled.store.get('xiaomei.viewportKernel'), 'legacy');
+test('viewport kernel stays on next and ignores legacy switches', () => {
+    const source = fs.readFileSync(path.join(__dirname, '../static/js/xiaomei-viewport-kernel.js'), 'utf8');
+    assert.equal(/xiaomei\.viewportKernel|xmViewport|localStorage/.test(source), false);
+    const fresh = loadKernel('');
+    assert.equal(fresh.kernel.isActive(), true);
+    assert.equal(fresh.attrs['data-xm-viewport'], 'next');
+    assert.equal(fresh.store.size, 0);
+    assert.equal(fresh.kernel.setActive(false), true);
+    assert.equal(fresh.kernel.isActive(), true);
+    assert.equal(fresh.attrs['data-xm-viewport'], 'next');
+    assert.equal(fresh.store.size, 0);
+    for (const search of ['?xmViewport=0', '?xmViewport=legacy', '?xmViewport=1', '?xmViewport=next']) {
+        const loaded = loadKernel(search);
+        assert.equal(loaded.kernel.isActive(), true);
+        assert.equal(loaded.attrs['data-xm-viewport'], 'next');
+        assert.equal(loaded.store.size, 0);
+    }
+    for (const saved of ['legacy', '0', 'next']) {
+        const loaded = loadKernel('', { 'xiaomei.viewportKernel': saved });
+        assert.equal(loaded.kernel.isActive(), true);
+        assert.equal(loaded.attrs['data-xm-viewport'], 'next');
+        assert.equal(loaded.kernel.setActive(false), true);
+        assert.equal(loaded.store.get('xiaomei.viewportKernel'), saved);
+    }
 });
 
 test('pointer mapping keeps the cursor anchored while zooming', () => {

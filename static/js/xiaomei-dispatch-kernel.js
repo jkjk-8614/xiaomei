@@ -1,87 +1,21 @@
 /* Xiaomei dispatch kernel.
-   Task poll decisions and the X-Xiaomei-Dispatch header for the server path.
-   The next path is the default and sends that header as next.
-   ?xmDispatch=0 or XiaomeiDispatchKernel.setActive(false) omits it. */
+   Task poll decisions for the only dispatch path.
+   Query parameters, stored flags, request headers, and setActive do not
+   select another implementation. */
 (function (root) {
     'use strict';
-
-    var STORAGE_KEY = 'xiaomei.dispatchKernel';
-    var QUERY_KEY = 'xmDispatch';
-    var HEADER = 'X-Xiaomei-Dispatch';
-
-    function storage() {
-        try { return root.localStorage || null; } catch (error) { return null; }
-    }
-
-    function readQuery() {
-        try {
-            return new URLSearchParams(root.location && root.location.search || '').get(QUERY_KEY);
-        } catch (error) {
-            return null;
-        }
-    }
-
-    function persist(mode) {
-        var store = storage();
-        if (!store) return;
-        try { store.setItem(STORAGE_KEY, mode); } catch (error) {}
-    }
-
-    function initialActive() {
-        var query = readQuery();
-        if (query === '1' || query === 'next') {
-            persist('next');
-            return true;
-        }
-        if (query === '0' || query === 'legacy') {
-            persist('legacy');
-            return false;
-        }
-        var saved = '';
-        try { saved = storage() ? storage().getItem(STORAGE_KEY) || '' : ''; } catch (error) { saved = ''; }
-        return saved !== 'legacy' && saved !== '0';
-    }
-
-    var active = initialActive();
 
     function markDocument() {
         var doc = root.document;
         if (!doc || !doc.documentElement) return;
-        doc.documentElement.setAttribute('data-xm-dispatch', active ? 'next' : 'legacy');
+        doc.documentElement.setAttribute('data-xm-dispatch', 'next');
     }
 
-    function isActive() { return active; }
+    function isActive() { return true; }
 
-    function setActive(next) {
-        active = Boolean(next);
-        persist(active ? 'next' : 'legacy');
+    function setActive() {
         markDocument();
-        if (active) installFetch();
-        return active;
-    }
-
-    function localApi(input) {
-        var url = typeof input === 'string' ? input : (input && input.url) || '';
-        if (url.indexOf('/api/') === 0) return true;
-        try {
-            var parsed = new URL(url, root.location && root.location.href);
-            return parsed.pathname.indexOf('/api/') === 0;
-        } catch (error) {
-            return false;
-        }
-    }
-
-    function installFetch() {
-        if (!root.fetch || root.__xiaomeiDispatchFetch) return;
-        var nativeFetch = root.fetch.bind(root);
-        root.fetch = function (input, init) {
-            if (!isActive() || !localApi(input)) return nativeFetch(input, init);
-            var headers = new root.Headers((init && init.headers) || (input && input.headers) || undefined);
-            if (!headers.has(HEADER)) headers.set(HEADER, 'next');
-            var nextInit = Object.assign({}, init || {}, { headers: headers });
-            return nativeFetch(input, nextInit);
-        };
-        root.__xiaomeiDispatchFetch = true;
+        return true;
     }
 
     function mediaUrls(result) {
@@ -131,12 +65,8 @@
     }
 
     markDocument();
-    if (active) installFetch();
 
     root.XiaomeiDispatchKernel = {
-        STORAGE_KEY: STORAGE_KEY,
-        QUERY_KEY: QUERY_KEY,
-        HEADER: HEADER,
         isActive: isActive,
         setActive: setActive,
         pollDecision: pollDecision,

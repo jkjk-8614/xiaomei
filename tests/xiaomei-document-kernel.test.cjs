@@ -10,6 +10,7 @@ function local(value) {
 
 function loadKernel(search, saved) {
     const store = new Map(Object.entries(saved || {}));
+    const attrs = {};
     const sandbox = {
         URLSearchParams,
         Math,
@@ -17,7 +18,7 @@ function loadKernel(search, saved) {
         String,
         JSON,
         Object,
-        document: { documentElement: { setAttribute() {} } },
+        document: { documentElement: { setAttribute(name, value) { attrs[name] = value; } } },
         location: { search: search || '' },
         localStorage: {
             getItem(key) { return store.has(key) ? store.get(key) : null; },
@@ -27,24 +28,28 @@ function loadKernel(search, saved) {
     sandbox.window = sandbox;
     sandbox.globalThis = sandbox;
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../static/js/xiaomei-document-kernel.js'), 'utf8'), sandbox, { filename: 'xiaomei-document-kernel.js' });
-    return { kernel: sandbox.XiaomeiDocumentKernel, store };
+    return { kernel: sandbox.XiaomeiDocumentKernel, store, attrs };
 }
 
-test('document kernel defaults to the next path and legacy still sticks', () => {
+test('document kernel stays on next and ignores legacy switches', () => {
+    const source = fs.readFileSync(path.join(__dirname, '../static/js/xiaomei-document-kernel.js'), 'utf8');
+    assert.equal(/xiaomei\.documentKernel|xmDocument|localStorage/.test(source), false);
     const fresh = loadKernel('');
     assert.equal(fresh.kernel.isActive(), true);
-    assert.equal(fresh.store.has('xiaomei.documentKernel'), false);
-    fresh.kernel.setActive(false);
-    assert.equal(fresh.kernel.isActive(), false);
-    assert.equal(fresh.store.get('xiaomei.documentKernel'), 'legacy');
+    assert.equal(fresh.attrs['data-xm-document'], 'next');
+    assert.equal(fresh.kernel.setActive(false), true);
+    assert.equal(fresh.kernel.isActive(), true);
+    assert.equal(fresh.store.size, 0);
+    for (const search of ['?xmDocument=0', '?xmDocument=legacy', '?xmDocument=next']) {
+        const loaded = loadKernel(search);
+        assert.equal(loaded.kernel.isActive(), true);
+        assert.equal(loaded.attrs['data-xm-document'], 'next');
+        assert.equal(loaded.store.size, 0);
+    }
     const stuck = loadKernel('', { 'xiaomei.documentKernel': 'legacy' });
-    assert.equal(stuck.kernel.isActive(), false);
-    const enabled = loadKernel('?xmDocument=1');
-    assert.equal(enabled.kernel.isActive(), true);
-    assert.equal(enabled.store.get('xiaomei.documentKernel'), 'next');
-    const disabled = loadKernel('?xmDocument=legacy');
-    assert.equal(disabled.kernel.isActive(), false);
-    assert.equal(disabled.store.get('xiaomei.documentKernel'), 'legacy');
+    assert.equal(stuck.kernel.isActive(), true);
+    assert.equal(stuck.kernel.setActive(false), true);
+    assert.equal(stuck.store.get('xiaomei.documentKernel'), 'legacy');
 });
 
 test('old smart files gain viewport, connections, and current node types', () => {

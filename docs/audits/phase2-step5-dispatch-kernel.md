@@ -4,7 +4,7 @@
 
 这一步只替换来自大熊的平台地址拼接、上游任务状态判断，以及画布侧的轮询结论。素材库、公共工具和界面整包替换没有做。CainFlow、商品分析、SKU、批量生成、电商工作台、`LICENSE` 和版权声明都没有改。用户目录不会被扫描或覆盖。
 
-交付当时默认走旧实现。不带开关时，请求不会带新头部。当前默认已改为 next，默认客户端会带 `X-Xiaomei-Dispatch: next`；回滚后不再带头。见 `docs/audits/kernel-defaults-next.md`。旧函数没有删除。
+交付当时默认走旧实现。不带开关时，请求不会带新头部。下面的开关表是当时的记录，不是现在的操作方法。查询参数、`localStorage`、`setActive(false)` 和 `X-Xiaomei-Dispatch` 已经去掉，运行时只走新内核，见 `docs/audits/kernel-defaults-next.md`。旧函数没有删除。
 
 ## 来源与做法
 

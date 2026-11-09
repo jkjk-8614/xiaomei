@@ -1,14 +1,10 @@
 /* Xiaomei shell kernel.
-   Asset selection, settings records, preview math, and the X-Xiaomei-Assets header.
-   The next path is the default and sends that header as next.
-   ?xmAssets=0 or XiaomeiShellKernel.setActive(false) keeps the previous functions. */
+   Asset selection, settings records, and preview math.
+   This is the only asset and shell path. Query parameters, stored flags,
+   request headers, and setActive do not select another implementation. */
 (function (root) {
     'use strict';
 
-    var STORAGE_KEY = 'xiaomei.assetKernel';
-    var QUERY_KEY = 'xmAssets';
-    var HEADER = 'X-Xiaomei-Assets';
-    var ASSET_PREFIXES = ['/api/asset-library', '/api/local-assets', '/api/image-space', '/api/assets', '/api/shared-folders', '/api/storage', '/api/providers'];
     var VIDEO_EXT = ['mp4', 'webm', 'mov', 'm4v', 'avi', 'mkv'];
     var AUDIO_EXT = ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'];
     var FILTER_VIDEO = VIDEO_EXT.concat(['flv']);
@@ -48,84 +44,17 @@
     var FONT_SIZES = { small: true, normal: true, large: true, xlarge: true };
     var FILTER_DIMENSIONS = ['color', 'materials', 'style', 'use_case', 'tags'];
 
-    function storage() {
-        try { return root.localStorage || null; } catch (error) { return null; }
-    }
-
-    function readQuery() {
-        try {
-            return new URLSearchParams(root.location && root.location.search || '').get(QUERY_KEY);
-        } catch (error) {
-            return null;
-        }
-    }
-
-    function persist(mode) {
-        var store = storage();
-        if (!store) return;
-        try { store.setItem(STORAGE_KEY, mode); } catch (error) {}
-    }
-
-    function initialActive() {
-        var query = readQuery();
-        if (query === '1' || query === 'next') {
-            persist('next');
-            return true;
-        }
-        if (query === '0' || query === 'legacy') {
-            persist('legacy');
-            return false;
-        }
-        var saved = '';
-        try { saved = storage() ? storage().getItem(STORAGE_KEY) || '' : ''; } catch (error) { saved = ''; }
-        return saved !== 'legacy' && saved !== '0';
-    }
-
-    var active = initialActive();
-
     function markDocument() {
         var doc = root.document;
         if (!doc || !doc.documentElement) return;
-        doc.documentElement.setAttribute('data-xm-assets', active ? 'next' : 'legacy');
+        doc.documentElement.setAttribute('data-xm-assets', 'next');
     }
 
-    function isActive() { return active; }
+    function isActive() { return true; }
 
-    function setActive(next) {
-        active = Boolean(next);
-        persist(active ? 'next' : 'legacy');
+    function setActive() {
         markDocument();
-        if (active) installFetch();
-        return active;
-    }
-
-    function pathnameOf(input) {
-        var url = typeof input === 'string' ? input : (input && input.url) || '';
-        if (url.indexOf('/api/') === 0) return url.split('?')[0];
-        try {
-            return new URL(url, root.location && root.location.href).pathname;
-        } catch (error) {
-            return '';
-        }
-    }
-
-    function assetRequest(input) {
-        var path = pathnameOf(input);
-        return ASSET_PREFIXES.some(function (prefix) {
-            return path === prefix || path.indexOf(prefix + '/') === 0;
-        });
-    }
-
-    function installFetch() {
-        if (!root.fetch || root.__xiaomeiAssetFetch) return;
-        var nativeFetch = root.fetch.bind(root);
-        root.fetch = function (input, init) {
-            if (!isActive() || !assetRequest(input)) return nativeFetch(input, init);
-            var headers = new root.Headers((init && init.headers) || (input && input.headers) || undefined);
-            if (!headers.has(HEADER)) headers.set(HEADER, 'next');
-            return nativeFetch(input, Object.assign({}, init || {}, { headers: headers }));
-        };
-        root.__xiaomeiAssetFetch = true;
+        return true;
     }
 
     function toggleMember(set, id) {
@@ -510,7 +439,6 @@
     }
 
     markDocument();
-    if (active) installFetch();
 
     root.XiaomeiShellKernel = {
         isActive: isActive,

@@ -237,8 +237,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
-app.add_middleware(dispatch_kernel.DispatchSwitchMiddleware)
-app.add_middleware(asset_kernel.AssetSwitchMiddleware)
 
 # --- WebSocket 状态管理器 ---
 COLLAB_MEMBER_MAX_NAME = 32

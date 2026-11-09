@@ -6,6 +6,7 @@ const test = require('node:test');
 
 function loadKernel(search, saved) {
     const store = new Map(Object.entries(saved || {}));
+    const attrs = {};
     const calls = [];
     const sandbox = {
         URLSearchParams,
@@ -15,7 +16,7 @@ function loadKernel(search, saved) {
             has(key) { return Object.keys(this.map).some(item => item.toLowerCase() === key.toLowerCase()); }
             set(key, value) { this.map[key] = value; }
         },
-        document: { documentElement: { setAttribute() {} } },
+        document: { documentElement: { setAttribute(name, value) { attrs[name] = value; } } },
         location: { search: search || '', href: 'http://127.0.0.1:3000/canvas' },
         localStorage: {
             getItem(key) { return store.has(key) ? store.get(key) : null; },
@@ -26,34 +27,38 @@ function loadKernel(search, saved) {
     sandbox.window = sandbox;
     sandbox.globalThis = sandbox;
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../static/js/xiaomei-dispatch-kernel.js'), 'utf8'), sandbox, { filename: 'xiaomei-dispatch-kernel.js' });
-    return { kernel: sandbox.XiaomeiDispatchKernel, store, calls, fetch: sandbox.fetch };
+    return { kernel: sandbox.XiaomeiDispatchKernel, store, calls, fetch: sandbox.fetch, attrs };
 }
 
-test('dispatch kernel defaults to next and a legacy rollback omits the header', async () => {
+test('dispatch kernel stays on next and does not attach a selection header', async () => {
+    const source = fs.readFileSync(path.join(__dirname, '../static/js/xiaomei-dispatch-kernel.js'), 'utf8');
+    assert.equal(/xiaomei\.dispatchKernel|xmDispatch|localStorage|X-Xiaomei-Dispatch/.test(source), false);
     const fresh = loadKernel('');
     assert.equal(fresh.kernel.isActive(), true);
-    assert.equal(fresh.store.has('xiaomei.dispatchKernel'), false);
-    await fresh.fetch('/api/tasks/1');
-    assert.equal(fresh.calls[0].init.headers.map['X-Xiaomei-Dispatch'], 'next');
+    assert.equal(fresh.attrs['data-xm-dispatch'], 'next');
+    assert.equal(fresh.kernel.setActive(false), true);
+    assert.equal(fresh.store.size, 0);
+    await fresh.fetch('/api/tasks/1', { headers: { 'Content-Type': 'application/json' } });
+    assert.equal(fresh.calls[0].init.headers['Content-Type'], 'application/json');
+    assert.equal(fresh.calls[0].init.headers['X-Xiaomei-Dispatch'], undefined);
     await fresh.fetch('https://example.com/outside');
     assert.equal(fresh.calls[1].init, undefined);
 
-    const enabled = loadKernel('?xmDispatch=1');
-    assert.equal(enabled.kernel.isActive(), true);
-    assert.equal(enabled.store.get('xiaomei.dispatchKernel'), 'next');
-
-    const disabled = loadKernel('?xmDispatch=0');
-    assert.equal(disabled.kernel.isActive(), false);
-    assert.equal(disabled.store.get('xiaomei.dispatchKernel'), 'legacy');
-    await disabled.fetch('/api/tasks/1');
-    assert.equal(disabled.calls[0].init, undefined);
+    for (const search of ['?xmDispatch=0', '?xmDispatch=legacy', '?xmDispatch=1']) {
+        const loaded = loadKernel(search);
+        assert.equal(loaded.kernel.isActive(), true);
+        assert.equal(loaded.attrs['data-xm-dispatch'], 'next');
+        assert.equal(loaded.store.size, 0);
+        await loaded.fetch('/api/generate');
+        assert.equal(loaded.calls[0].init, undefined);
+    }
 
     const stuck = loadKernel('', { 'xiaomei.dispatchKernel': 'legacy' });
-    assert.equal(stuck.kernel.isActive(), false);
+    assert.equal(stuck.kernel.isActive(), true);
+    assert.equal(stuck.kernel.setActive(false), true);
+    assert.equal(stuck.store.get('xiaomei.dispatchKernel'), 'legacy');
     await stuck.fetch('/api/generate');
     assert.equal(stuck.calls[0].init, undefined);
-    stuck.kernel.setActive(false);
-    assert.equal(stuck.store.get('xiaomei.dispatchKernel'), 'legacy');
 });
 
 test('poll decisions cover success, empty output, and failure', () => {

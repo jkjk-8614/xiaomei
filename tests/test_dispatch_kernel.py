@@ -1,5 +1,5 @@
-import asyncio
 import unittest
+from pathlib import Path
 
 import dispatch_kernel
 
@@ -37,28 +37,14 @@ class DispatchKernelTest(unittest.TestCase):
         self.assertEqual(finished["status"], "succeeded")
         self.assertEqual(finished["result"]["urls"], ["https://img/a.png"])
 
-    def test_header_accepts_next_and_keeps_legacy_rollback(self):
-        async def run(headers):
-            seen = {}
-
-            async def app(scope, receive, send):
-                seen["mode"] = dispatch_kernel.MODE.get()
-
-            middleware = dispatch_kernel.DispatchSwitchMiddleware(app)
-
-            async def receive():
-                return {"type": "http.request"}
-
-            async def send(message):
-                return None
-
-            await middleware({"type": "http", "headers": headers}, receive, send)
-            return seen["mode"]
-
-        self.assertEqual(asyncio.run(run([])), "legacy")
-        self.assertEqual(asyncio.run(run([(b"x-xiaomei-dispatch", b"next")])), "next")
-        self.assertEqual(asyncio.run(run([(b"x-xiaomei-dispatch", b"legacy")])), "legacy")
-        self.assertEqual(dispatch_kernel.MODE.get(), "legacy")
+    def test_request_header_cannot_select_another_path(self):
+        self.assertTrue(dispatch_kernel.selected())
+        self.assertFalse(hasattr(dispatch_kernel, "MODE"))
+        self.assertFalse(hasattr(dispatch_kernel, "HEADER"))
+        self.assertFalse(hasattr(dispatch_kernel, "DispatchSwitchMiddleware"))
+        source = Path(dispatch_kernel.__file__).read_text(encoding="utf-8").lower()
+        self.assertNotIn("x-xiaomei-dispatch", source)
+        self.assertNotIn("contextvars", source)
 
 
 if __name__ == "__main__":

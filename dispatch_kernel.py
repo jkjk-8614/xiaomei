@@ -1,20 +1,14 @@
-"""Protocol and task-status helpers for the switchable dispatch path.
+"""Protocol and task-status helpers.
 
-The legacy functions in main.py stay in place. A request uses this module when
-it sends ``X-Xiaomei-Dispatch: next``. The default client sends that value.
-A missing header, or ``legacy``, keeps the old functions so an explicit
-rollback still reaches them.
+Runtime always uses this module. Query parameters, stored flags, and request
+headers do not choose another implementation.
 """
 from __future__ import annotations
 
-import contextvars
 import json
 import re
 from typing import Any, Mapping
 from urllib.parse import urlsplit
-
-MODE = contextvars.ContextVar("xiaomei_dispatch_mode", default="legacy")
-HEADER = "x-xiaomei-dispatch"
 
 PROVIDER_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{2,40}$")
 PROTOCOLS = {"openai", "apimart", "gemini", "gemini-cli", "volcengine", "runninghub", "jimeng", "codex"}
@@ -27,7 +21,8 @@ REASON_KEYS = ("message", "detail", "fail_reason", "failReason", "reason", "desc
 
 
 def selected() -> bool:
-    return MODE.get() == "next"
+    """The next dispatch path is the only runtime path."""
+    return True
 
 
 def provider_core(item: Mapping[str, Any] | None) -> dict:
@@ -211,19 +206,3 @@ def observe_task(record: Mapping[str, Any], observation: Mapping[str, Any]) -> d
     return next_record
 
 
-class DispatchSwitchMiddleware:
-    def __init__(self, app):
-        self.app = app
-
-    async def __call__(self, scope, receive, send):
-        if scope.get("type") != "http":
-            await self.app(scope, receive, send)
-            return
-        headers = {key.decode("latin1").lower(): value.decode("latin1") for key, value in scope.get("headers") or []}
-        # Absent and "legacy" stay on the old functions. The default client sends "next".
-        mode = "next" if headers.get(HEADER) == "next" else "legacy"
-        token = MODE.set(mode)
-        try:
-            await self.app(scope, receive, send)
-        finally:
-            MODE.reset(token)

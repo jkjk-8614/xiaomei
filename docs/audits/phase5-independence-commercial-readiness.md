@@ -4,7 +4,7 @@
 
 这一阶段只写来源记录和检查清单。没有把根目录 `LICENSE` 改成 MIT，没有宣称整仓拥有完全独立版权，没有删除或改写历史版权信息、Git 历史和现有许可证文件，没有覆盖用户数据，没有删除旧版安装包，也没有发布新版本。当时六个新内核默认关闭。A 类旧文件没有从发行清单里物理删除。
 
-六个内核的默认后来改为 next，见 `docs/audits/kernel-defaults-next.md`。那次改动不删除 A 类文件，也不改变本节的许可证结论。A 类文件仍在安装包白名单里，并仍是 `?=0` 的回滚路径。
+六个内核的默认后来改为 next，再去掉旧路径开关，见 `docs/audits/kernel-defaults-next.md`。这些改动不删除 A 类文件，也不改变本节的许可证结论。A 类文件仍在安装包白名单里。`?=0`、存储键和请求头不再是回滚路径。
 
 商用义务完成之前，不得修改 `LICENSE`，也不得对外宣称产品已经完全独立。
 
@@ -125,8 +125,8 @@ Real-ESRGAN NCNN Vulkan 不在源码包里，首次使用才下载。许可证�
 | 检查 | 当前记录 | 通过标准 |
 | --- | --- | --- |
 | 是否仍含大熊受限代码 | 是。`main.py`、`static/**`、`tools/**`、`workflows/**` 都在白名单里，A 类旧文件会进包 | 要么取得授权，要么 A 类文件已按第 2.1 节的四条从前置条件中移除，并且解包后搜不到这些路径 |
-| 旁路旧实现 | `canvas.js`、`smart-canvas.js`、`main.py`、设置页、素材页、主题、预览、历史多选、i18n、采集插件、Photoshop 旧连接器、同源工作流和启动文档 | 清单里写明它们仍在包里，并且是回滚路径，不是已删除 |
-| 六个开关默认 | 全部 `next`。不带参数、且对应键不是 `legacy` 或 `0` 时走新内核；默认客户端的本地请求带 `X-Xiaomei-Dispatch: next` 与 `X-Xiaomei-Assets: next`。`?=0` 或 `setActive(false)` 写回 `legacy` 并在刷新后保持 | 见 `docs/audits/kernel-defaults-next.md`。缓存参数 `xmViewportKernel=1` 不是开关 |
+| 旁路旧实现 | `canvas.js`、`smart-canvas.js`、`main.py`、设置页、素材页、主题、预览、历史多选、i18n、采集插件、Photoshop 旧连接器、同源工作流和启动文档仍在包里。六个内核的查询参数、存储键和请求头不再选中它们 | 清单里写明它们仍在包里。它们不是已删除的文件，也不是还能用 `?=0` 打开的回滚路径 |
+| 六个内核路径 | 只走 next。`?=0`、`legacy`、那六个 `localStorage` 键、`setActive(false)`、`X-Xiaomei-Dispatch` 和 `X-Xiaomei-Assets` 都不选择旧实现 | 见 `docs/audits/kernel-defaults-next.md`。缓存参数 `xmViewportKernel=1` 不是开关 |
 | 新内核 | 随根目录 `*.py` 和 `static/**` 进包，并且现在默认执行 | 可以存在。不能据此宣称包内已经没有大熊代码 |
 | CainFlow | `static/js/smart-camera-node.js` 会进包 | GPL 全文和源码提供方式能在发布物里找到 |
 | ComfyUI | 白名单含 web、integration、comfy-app-bridge；不含 core 与 custom_nodes | 核对 web 资源是否仍要附 GPL 文本 |
@@ -144,7 +144,7 @@ Real-ESRGAN NCNN Vulkan 不在源码包里，首次使用才下载。许可证�
 | 状态 | 义务 |
 | --- | --- |
 | 未完成 | 取得根目录 `LICENSE` 所要求的商业授权，或在律师确认下先移除全部 A 类代码并且不再受该许可证对衍生商业产品的限制。仓库里没有授权记录 |
-| 未完成 | A 类旧文件仍在安装包白名单内，并仍是显式回滚路径。六个新内核已默认 `next`，这不表示 A 类文件已移除 |
+| 未完成 | A 类旧文件仍在安装包白名单内。六个新内核只走 next，这不表示 A 类文件已移除，也不能再靠 `?=0` 切回旧实现 |
 | 未完成 | B 类仍为空。不能把 E 类或新内核写成「整仓已原创」 |
 | 未完成 | 含 CainFlow 文件的安装包尚未核对 GPL-3.0 全文和源码提供方式 |
 | 未完成 | `ComfyUI/web` 进包，但 `ComfyUI/core/LICENSE` 不在白名单。发布前要核对 |

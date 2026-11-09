@@ -1,66 +1,27 @@
 /* Xiaomei node kernel.
    Drag cohorts, connection curves, and group membership.
-   The next path is the default. Legacy canvas scripts stay loaded; ?xmNodes=0
-   or XiaomeiNodeKernel.setActive(false) runs them instead. */
+   This is the only node path. Query parameters, stored flags, and setActive
+   do not select another implementation. */
 (function (root) {
     'use strict';
 
-    var STORAGE_KEY = 'xiaomei.nodeKernel';
-    var QUERY_KEY = 'xmNodes';
     var GENERATOR = { generator: 1, msgen: 1, comfy: 1, ltxDirector: 1, video: 1, rh: 1 };
     var LOOP_IMAGE = { image: 1, group: 1, output: 1 };
     var LOOP_PROMPT = { prompt: 1, promptGroup: 1, loop: 1, llm: 1 };
     var LLM_SOURCE = { prompt: 1, loop: 1, promptGroup: 1, llm: 1, image: 1, group: 1, output: 1 };
     var FLOW_SOURCE = { image: 1, prompt: 1, loop: 1, group: 1, promptGroup: 1, output: 1, llm: 1 };
 
-    function storage() {
-        try { return root.localStorage || null; } catch (error) { return null; }
-    }
-
-    function readQuery() {
-        try {
-            return new URLSearchParams(root.location && root.location.search || '').get(QUERY_KEY);
-        } catch (error) {
-            return null;
-        }
-    }
-
-    function persist(mode) {
-        var store = storage();
-        if (!store) return;
-        try { store.setItem(STORAGE_KEY, mode); } catch (error) {}
-    }
-
-    function initialActive() {
-        var query = readQuery();
-        if (query === '1' || query === 'next') {
-            persist('next');
-            return true;
-        }
-        if (query === '0' || query === 'legacy') {
-            persist('legacy');
-            return false;
-        }
-        var saved = '';
-        try { saved = storage() ? storage().getItem(STORAGE_KEY) || '' : ''; } catch (error) { saved = ''; }
-        return saved !== 'legacy' && saved !== '0';
-    }
-
-    var active = initialActive();
-
     function markDocument() {
         var doc = root.document;
         if (!doc || !doc.documentElement) return;
-        doc.documentElement.setAttribute('data-xm-nodes', active ? 'next' : 'legacy');
+        doc.documentElement.setAttribute('data-xm-nodes', 'next');
     }
 
-    function isActive() { return active; }
+    function isActive() { return true; }
 
-    function setActive(next) {
-        active = Boolean(next);
-        persist(active ? 'next' : 'legacy');
+    function setActive() {
         markDocument();
-        return active;
+        return true;
     }
 
     function worldDelta(pointer, origin, zoom) {
@@ -306,8 +267,6 @@
     markDocument();
 
     root.XiaomeiNodeKernel = {
-        STORAGE_KEY: STORAGE_KEY,
-        QUERY_KEY: QUERY_KEY,
         isActive: isActive,
         setActive: setActive,
         worldDelta: worldDelta,

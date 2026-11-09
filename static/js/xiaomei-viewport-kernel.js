@@ -1,66 +1,24 @@
 /* Xiaomei viewport kernel.
    Independent camera math for pan, zoom, fit, minimap projection, and node origin.
-   The next path is the default. Legacy canvas scripts stay loaded; ?xmViewport=0
-   or XiaomeiViewportKernel.setActive(false) runs them instead. */
+   This is the only viewport path. Query parameters, stored flags, and setActive
+   do not select another implementation. */
 (function (root) {
     'use strict';
 
-    var STORAGE_KEY = 'xiaomei.viewportKernel';
-    var QUERY_KEY = 'xmViewport';
     var WORLD_LAYOUT_FALLBACK = { width: 6000, height: 4000 };
-
-    function storage() {
-        try { return root.localStorage || null; } catch (error) { return null; }
-    }
-
-    function readQuery() {
-        try {
-            var search = root.location && root.location.search || '';
-            return new URLSearchParams(search).get(QUERY_KEY);
-        } catch (error) {
-            return null;
-        }
-    }
-
-    function persist(mode) {
-        var store = storage();
-        if (!store) return;
-        try { store.setItem(STORAGE_KEY, mode); } catch (error) {}
-    }
-
-    function initialActive() {
-        var query = readQuery();
-        if (query === '1' || query === 'next') {
-            persist('next');
-            return true;
-        }
-        if (query === '0' || query === 'legacy') {
-            persist('legacy');
-            return false;
-        }
-        var store = storage();
-        var saved = '';
-        try { saved = store ? store.getItem(STORAGE_KEY) || '' : ''; } catch (error) { saved = ''; }
-        return saved !== 'legacy' && saved !== '0';
-    }
-
-    var active = initialActive();
     var mapperCache = null;
 
     function markDocument() {
         var doc = root.document;
         if (!doc || !doc.documentElement) return;
-        doc.documentElement.setAttribute('data-xm-viewport', active ? 'next' : 'legacy');
+        doc.documentElement.setAttribute('data-xm-viewport', 'next');
     }
 
-    function isActive() { return active; }
+    function isActive() { return true; }
 
-    function setActive(next) {
-        active = Boolean(next);
-        persist(active ? 'next' : 'legacy');
+    function setActive() {
         markDocument();
-        invalidateMapper();
-        return active;
+        return true;
     }
 
     function finite(value) {
@@ -572,8 +530,6 @@
     markDocument();
 
     root.XiaomeiViewportKernel = {
-        STORAGE_KEY: STORAGE_KEY,
-        QUERY_KEY: QUERY_KEY,
         isActive: isActive,
         setActive: setActive,
         positiveScale: positiveScale,

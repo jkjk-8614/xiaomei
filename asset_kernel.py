@@ -1,20 +1,14 @@
-"""Catalog, path, and filter helpers for the switchable asset path.
+"""Catalog, path, and filter helpers.
 
-Legacy routes stay in place. A request reaches this module when it sends
-``X-Xiaomei-Assets: next``. The default client sends that value. A missing
-header, or ``legacy``, keeps the old functions so an explicit rollback still
-reaches them.
+Runtime always uses this module. Query parameters, stored flags, and request
+headers do not choose another implementation.
 """
 from __future__ import annotations
 
-import contextvars
 import os
 import re
 import uuid
 from typing import Any, Iterable, Mapping
-
-MODE = contextvars.ContextVar("xiaomei_asset_mode", default="legacy")
-HEADER = "x-xiaomei-assets"
 
 _ILLEGAL_NAME = re.compile(r'[\\/:*?"<>|\x00-\x1f]+')
 _SLUG = re.compile(r"[^A-Za-z0-9_-]+")
@@ -52,7 +46,8 @@ FALLBACK_EXT = {"image": ".png", "video": ".mp4", "audio": ".mp3", "workflow": "
 
 
 def selected() -> bool:
-    return MODE.get() == "next"
+    """The next asset path is the only runtime path."""
+    return True
 
 
 def display_name(value: Any, fallback: str = "asset", limit: int = 120) -> str:
@@ -584,18 +579,3 @@ def matches(item: Mapping[str, Any] | None, filters: Mapping[str, Any] | None) -
     return all(word in haystack for word in _QUERY_SPLIT.split(query) if word)
 
 
-class AssetSwitchMiddleware:
-    def __init__(self, app):
-        self.app = app
-
-    async def __call__(self, scope, receive, send):
-        if scope.get("type") != "http":
-            await self.app(scope, receive, send)
-            return
-        headers = {key.decode("latin1").lower(): value.decode("latin1") for key, value in scope.get("headers") or []}
-        # Absent and "legacy" stay on the old functions. The default client sends "next".
-        token = MODE.set("next" if headers.get(HEADER) == "next" else "legacy")
-        try:
-            await self.app(scope, receive, send)
-        finally:
-            MODE.reset(token)
