@@ -13573,6 +13573,17 @@ function startNodeDrag(e, node){
         render();
     }
     const isGroup = dragTarget.type === 'group' || dragTarget.type === 'promptGroup';
+    let children;
+    if(window.XiaomeiNodeKernel?.isActive()){
+        const records = {};
+        nodes.forEach(n => {
+            records[n.id] = {id:n.id, x:n.x, y:n.y, items:n.items, group:n.type === 'group' || n.type === 'promptGroup'};
+        });
+        children = XiaomeiNodeKernel.dragCompanions(records, {id:dragTarget.id, group:isGroup, items:dragTarget.items}, [...selected]).map(item => {
+            const found = nodes.find(n => n.id === item.id);
+            return found ? {node:found, ox:item.originX, oy:item.originY} : null;
+        }).filter(Boolean);
+    } else {
     const collected = new Map();
     const collect = n => {
         if(!n || collected.has(n.id) || n.id === dragTarget.id) return;
@@ -13588,7 +13599,8 @@ function startNodeDrag(e, node){
     if(selected.has(dragTarget.id) && selected.size > 1){
         [...selected].forEach(id => collect(nodes.find(n => n.id === id)));
     }
-    const children = [...collected.values()];
+    children = [...collected.values()];
+    }
     dragNode = {node: dragTarget, children, sx:e.clientX, sy:e.clientY, ox:dragTarget.x, oy:dragTarget.y};
     document.body.classList.add('canvas-node-drag');
     window.onmousemove = onNodeDrag;
@@ -13596,6 +13608,32 @@ function startNodeDrag(e, node){
 }
 function onNodeDrag(e){
     if(!dragNode) return;
+    if(window.XiaomeiNodeKernel?.isActive()){
+        const delta = XiaomeiNodeKernel.worldDelta({x:e.clientX, y:e.clientY}, {x:dragNode.sx, y:dragNode.sy}, viewport.scale);
+        const primary = XiaomeiNodeKernel.shiftPoint(dragNode.ox, dragNode.oy, delta.x, delta.y, false);
+        dragNode.node.x = primary.x;
+        dragNode.node.y = primary.y;
+        const el = nodesEl.querySelector(`.node[data-id="${dragNode.node.id}"]`);
+        if(el){
+            el.style.left = `${dragNode.node.x}px`;
+            el.style.top = `${dragNode.node.y}px`;
+        }
+        (dragNode.children || []).forEach(childDrag => {
+            const next = XiaomeiNodeKernel.shiftPoint(childDrag.ox, childDrag.oy, delta.x, delta.y, false);
+            childDrag.node.x = next.x;
+            childDrag.node.y = next.y;
+            const childEl = nodesEl.querySelector(`.node[data-id="${childDrag.node.id}"]`);
+            if(childEl){
+                childEl.style.left = `${childDrag.node.x}px`;
+                childEl.style.top = `${childDrag.node.y}px`;
+            }
+        });
+        scheduleLinksRender();
+        renderSelectionHub();
+        if(workflowTransferModal?.classList.contains('open')) updateWorkflowTransferMeta();
+        scheduleMinimapRender();
+        return;
+    }
     const dx = (e.clientX - dragNode.sx) / viewport.scale;
     const dy = (e.clientY - dragNode.sy) / viewport.scale;
     dragNode.node.x = dragNode.ox + dx;
@@ -13709,6 +13747,13 @@ function nearestPort(clientX, clientY, kind){
     const selector = `.port.${kind}`;
     const direct = document.elementFromPoint(clientX, clientY)?.closest(selector);
     if(direct) return direct;
+    if(window.XiaomeiNodeKernel?.isActive()){
+        const points = [...nodesEl.querySelectorAll(selector)].map(port => {
+            const r = port.getBoundingClientRect();
+            return {port, x:r.left + r.width / 2, y:r.top + r.height / 2};
+        });
+        return XiaomeiNodeKernel.nearestPoint(points, clientX, clientY, 48)?.port || null;
+    }
     let best = null;
     let bestDistance = Infinity;
     nodesEl.querySelectorAll(selector).forEach(port => {
@@ -13724,6 +13769,7 @@ function nearestPort(clientX, clientY, kind){
     return bestDistance <= 48 ? best : null;
 }
 function wouldCreateGeneratorCycle(fromId, toId){
+    if(window.XiaomeiNodeKernel?.isActive()) return XiaomeiNodeKernel.reaches(connections, toId, fromId);
     const seen = new Set();
     const walk = id => {
         if(id === fromId) return true;
@@ -13743,6 +13789,18 @@ function wouldCreateGeneratorCycle(fromId, toId){
     return walk(toId);
 }
 function canConnect(fromId, toId){
+    if(window.XiaomeiNodeKernel?.isActive()){
+        if(!fromId || !toId || fromId === toId) return false;
+        const from = nodes.find(n => n.id === fromId);
+        const to = nodes.find(n => n.id === toId);
+        if(!from || !to) return false;
+        return XiaomeiNodeKernel.classicMayConnect(from.type, to.type, {
+            mediaOutput:CANVAS_MEDIA_OUTPUT_TYPES.includes(from.type),
+            acyclic:!wouldCreateGeneratorCycle(fromId, toId),
+            loopImage:Boolean(to.imageInput),
+            loopPrompt:Boolean(to.showPrompt)
+        });
+    }
     if(!fromId || !toId || fromId === toId) return false;
     const from = nodes.find(n => n.id === fromId);
     const to = nodes.find(n => n.id === toId);
@@ -13837,8 +13895,14 @@ function canvasArrangeAtomicIds(ids){
 function translateCanvasNodeWithMembers(node, dx, dy, seen=new Set()){
     if(!node || seen.has(node.id)) return;
     seen.add(node.id);
+    if(window.XiaomeiNodeKernel?.isActive()){
+        const next = XiaomeiNodeKernel.shiftPoint(node.x, node.y, dx, dy, true);
+        node.x = next.x;
+        node.y = next.y;
+    } else {
     node.x = Math.round((Number(node.x) || 0) + dx);
     node.y = Math.round((Number(node.y) || 0) + dy);
+    }
     if(node.type === 'group' || node.type === 'promptGroup'){
         (node.items || []).forEach(id => translateCanvasNodeWithMembers(nodes.find(n => n.id === id), dx, dy, seen));
     }
@@ -13849,6 +13913,22 @@ function moveCanvasNodeAtom(node, x, y){
     translateCanvasNodeWithMembers(node, dx, dy);
 }
 function arrangeIdsByConnections(ids){
+    if(window.XiaomeiNodeKernel?.isActive()){
+        const idSet = new Set(canvasArrangeAtomicIds(ids));
+        const selectedNodes = [...idSet].map(id => nodes.find(n => n.id === id)).filter(Boolean);
+        if(selectedNodes.length < 2) return false;
+        const items = selectedNodes.map(n => {
+            const rect = nodeRect(n);
+            return {id:n.id, x:rect.x, y:rect.y, w:rect.w, h:rect.h, sortY:rect.y};
+        });
+        const placed = XiaomeiNodeKernel.columnLayout(items, connections, {minRow:120, rowGap:56, minCol:220, colGap:180});
+        if(!placed) return false;
+        placed.forEach(spot => {
+            const node = nodes.find(n => n.id === spot.id);
+            if(node) moveCanvasNodeAtom(node, spot.x, spot.y);
+        });
+        return true;
+    }
     const idSet = new Set(canvasArrangeAtomicIds(ids));
     const selectedNodes = [...idSet].map(id => nodes.find(n => n.id === id)).filter(Boolean);
     if(selectedNodes.length < 2) return false;
@@ -13961,6 +14041,7 @@ function updateGroupMembership(movedNodes){
             const cr = nodeRect(child);
             const containing = groups.find(g => {
                 const gr = nodeRect(g);
+                if(window.XiaomeiNodeKernel?.isActive()) return XiaomeiNodeKernel.centerInside({x:cr.x, y:cr.y, w:cr.w, h:cr.h}, {x:gr.x, y:gr.y, w:gr.w, h:gr.h});
                 return cr.cx >= gr.x && cr.cx <= gr.x + gr.w && cr.cy >= gr.y && cr.cy <= gr.y + gr.h;
             });
             groups.forEach(g => {
@@ -13996,6 +14077,7 @@ function portPoint(id, kind){
     // 让连线仍画在节点附近，而不是落到 (0,0) 或干脆消失。
     const w = (el?.offsetWidth) || n.w || 260, h = (el?.offsetHeight) || n.h || 160;
     const nx = Number(n.x) || 0, ny = Number(n.y) || 0;
+    if(window.XiaomeiNodeKernel?.isActive()) return XiaomeiNodeKernel.edgeAnchor({x:nx, y:ny, w, h}, kind);
     return kind === 'out' ? {x:nx + w, y:ny + h / 2} : {x:nx, y:ny + h / 2};
 }
 function canResolvePort(id){
@@ -14111,8 +14193,12 @@ function refreshSelectionVisuals(){
 }
 function pathEl(x1,y1,x2,y2,cls){
     const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+    if(window.XiaomeiNodeKernel?.isActive()){
+        p.setAttribute('d', XiaomeiNodeKernel.curveBetween({x:x1, y:y1}, {x:x2, y:y2}, 'classic').d);
+    } else {
     const dx = Math.max(80, Math.abs(x2 - x1) * .45);
     p.setAttribute('d', `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`);
+    }
     p.setAttribute('class', cls);
     return p;
 }
@@ -14140,6 +14226,7 @@ function segmentIntersectsRect(a, b, r){
     return segmentsIntersect(a, b, p1, p2) || segmentsIntersect(a, b, p2, p3) || segmentsIntersect(a, b, p3, p4) || segmentsIntersect(a, b, p4, p1);
 }
 function cubicPoint(a, b, t){
+    if(window.XiaomeiNodeKernel?.isActive()) return XiaomeiNodeKernel.sampleCurve(a, b, t, 'classic');
     const dx = Math.max(80, Math.abs(b.x - a.x) * .45);
     const p1 = {x:a.x + dx, y:a.y};
     const p2 = {x:b.x - dx, y:b.y};
