@@ -12159,6 +12159,18 @@ async function pollCanvasImageTask(taskId, options={}){
                 return error;
             },
             classifyTask(data){
+                if(window.XiaomeiDispatchKernel?.isActive()){
+                    const decision = XiaomeiDispatchKernel.pollDecision(data);
+                    if(decision.state === 'succeeded'){
+                        completeCanvasImageTask(taskId, data.result || {});
+                        return {action:'resolve',value:'succeeded'};
+                    }
+                    if(decision.state === 'empty' || decision.state === 'failed' || decision.state === 'cancelled'){
+                        failCanvasImageTask(taskId, decision.message || tr('canvas.generationFailed'), data);
+                        return {action:'resolve',value:'failed'};
+                    }
+                    return null;
+                }
                 if(data?.status === 'succeeded'){
                     const result = data.result || {};
                     if(!resultMediaUrls(result).length){
@@ -12201,6 +12213,14 @@ async function waitCanvasImageTaskResult(taskId, options={}){
             return error;
         },
         classifyTask(data){
+            if(window.XiaomeiDispatchKernel?.isActive()){
+                const decision = XiaomeiDispatchKernel.pollDecision(data);
+                if(decision.state === 'succeeded') return {action:'resolve',value:data.result || {}};
+                if(decision.state === 'empty' || decision.state === 'failed' || decision.state === 'cancelled'){
+                    return {action:'reject',error:new Error(decision.message || tr('canvas.generationFailed'))};
+                }
+                return null;
+            }
             if(data?.status === 'succeeded'){
                 const result = data.result || {};
                 if(!resultMediaUrls(result).length) return {action:'reject',error:new Error('任务已完成，但没有返回可显示的图片')};

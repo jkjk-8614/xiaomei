@@ -226,6 +226,7 @@ LOCAL_SESSION_COOKIE = "xiaomei_session"
 LOCAL_SESSION_TOKEN = secrets.token_urlsafe(32)
 LOCAL_API_BOOTSTRAP_PATH = "/api/app-info"
 LOCAL_SESSION_HEADER = "x-xiaomei-session"
+import dispatch_kernel
 
 app.add_middleware(
     CORSMiddleware,
@@ -235,6 +236,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+app.add_middleware(dispatch_kernel.DispatchSwitchMiddleware)
 
 # --- WebSocket 状态管理器 ---
 COLLAB_MEMBER_MAX_NAME = 32
@@ -2780,6 +2782,8 @@ def apply_locked_recommended_model_rules(base_url="", grouped=None):
     return grouped
 
 def provider_endpoint_url(provider, key, default_path):
+    if dispatch_kernel.selected():
+        return dispatch_kernel.join_endpoint(provider, key, default_path, fallback_base=AI_BASE_URL)
     base_url = str((provider or {}).get("base_url") or AI_BASE_URL).strip().rstrip("/")
     override = str((provider or {}).get(key) or "").strip()
     if override:
@@ -2813,6 +2817,11 @@ def runninghub_openapi_url(provider, path=""):
     return f"{base}/{path}" if path else base
 
 def normalize_provider(item):
+    if dispatch_kernel.selected():
+        core = dispatch_kernel.provider_core(item)
+        if core.get("error"):
+            raise HTTPException(status_code=400, detail=core["error"])
+        item = {**item, "id": core["id"], "name": core["name"], "base_url": core["base_url"], "protocol": core["protocol"]}
     provider_id = str(item.get("id") or "").strip().lower()
     if not PROVIDER_ID_RE.fullmatch(provider_id):
         raise HTTPException(status_code=400, detail=f"API 平台 ID 不合法：{provider_id or '(empty)'}")
@@ -13756,6 +13765,8 @@ def image_task_error_code(payload):
     return str(error.get("code") or error.get("error_code") or error.get("errorCode") or "").strip()
 
 def image_task_url_for_provider(provider, task_id):
+    if dispatch_kernel.selected():
+        return dispatch_kernel.task_lookup_url(provider, task_id, apimart=is_apimart_provider(provider))
     base_url = (provider.get("base_url") if provider else AI_BASE_URL).rstrip("/")
     # 异步生图（openai-video-proxy）模式优先于 apimart 协议判断：
     # 提交走 /v1/videos，轮询必须走 /v1/videos/{id}；否则 protocol=apimart 的平台会错走 /v1/tasks/{id}
@@ -13794,6 +13805,8 @@ def image_task_data(payload):
     return payload if isinstance(payload, dict) else {}
 
 def image_task_status(payload):
+    if dispatch_kernel.selected():
+        return dispatch_kernel.read_status(payload)
     current = image_task_data(payload)
     for _ in range(6):
         if not isinstance(current, dict):
@@ -13812,6 +13825,8 @@ def image_task_status(payload):
     return ""
 
 def image_task_fail_reason(payload):
+    if dispatch_kernel.selected():
+        return dispatch_kernel.failure_message(payload)
     error = image_task_error_payload(payload)
     if error is not None:
         if isinstance(error, dict):

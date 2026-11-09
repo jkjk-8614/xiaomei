@@ -34505,6 +34505,36 @@ async function pollSmartCanvasTask(taskId, options={}){
     // 后端单次生图最长约 30 分钟（不含排队与下载），前端额度要明显更长，
     // 且排队等待并发名额的时间不计入，避免平台已成功但画布放弃了任务。
     const classifyTask = task => {
+        if(window.XiaomeiDispatchKernel?.isActive()){
+            const decision = XiaomeiDispatchKernel.pollDecision(task);
+            if(decision.state === 'succeeded') return {action:'resolve',value:task.result || {}};
+            if(decision.state === 'empty') return {action:'reject',error:new Error(decision.message)};
+            if(decision.state === 'jimeng_pending') return {
+                action:'reject',
+                error:new JimengPendingSignal({submitId:task.submit_id, kind:task.kind, queueInfo:task.queue_info, message:task.message}),
+            };
+            if(decision.state === 'cancelled'){
+                const error = new Error(decision.message || '生图已取消');
+                error.cancelledTask = true;
+                return {action:'reject', error};
+            }
+            if(decision.state === 'failed'){
+                const terminalError = new Error(decision.message || tr('smart.errRunFailed'));
+                if(decision.terminal){
+                    terminalError.terminalTask = true;
+                    terminalError.startedAt = task.started_at || task.created_at || 0;
+                    terminalError.finishedAt = task.finished_at || task.updated_at || 0;
+                    return {action:'reject', error:terminalError};
+                }
+                const recoverTaskId = decision.recoverId || extractUpstreamTaskId(task.error || '');
+                if(recoverTaskId) return {
+                    action:'reject',
+                    error:new ImageTaskRecoverSignal({taskId, recoverTaskId, providerId:task.provider_id, kind:'image', message:decision.message || tr('smart.errRunFailed')}),
+                };
+                return {action:'reject',error:new Error(decision.message || tr('smart.errRunFailed'))};
+            }
+            return null;
+        }
         if(task?.status === 'succeeded'){
             const result = task.result || {};
             if(!resultMediaUrls(result).length){
