@@ -10,12 +10,13 @@ function local(value) {
 
 function loadKernel(search, saved) {
     const store = new Map(Object.entries(saved || {}));
+    const attrs = {};
     const sandbox = {
         URLSearchParams,
         Math,
         Number,
         String,
-        document: { documentElement: { setAttribute() {} } },
+        document: { documentElement: { setAttribute(name, value) { attrs[name] = value; } } },
         location: { search: search || '' },
         localStorage: {
             getItem(key) { return store.has(key) ? store.get(key) : null; },
@@ -25,23 +26,27 @@ function loadKernel(search, saved) {
     sandbox.window = sandbox;
     sandbox.globalThis = sandbox;
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../static/js/xiaomei-node-kernel.js'), 'utf8'), sandbox, { filename: 'xiaomei-node-kernel.js' });
-    return { kernel: sandbox.XiaomeiNodeKernel, store };
+    return { kernel: sandbox.XiaomeiNodeKernel, store, attrs };
 }
 
-test('node kernel defaults to the next path and legacy still sticks', () => {
-    const { kernel, store } = loadKernel('');
-    assert.equal(kernel.isActive(), true);
-    assert.equal(store.has('xiaomei.nodeKernel'), false);
-    kernel.setActive(false);
-    assert.equal(store.get('xiaomei.nodeKernel'), 'legacy');
+test('node kernel stays on next and ignores legacy switches', () => {
+    const source = fs.readFileSync(path.join(__dirname, '../static/js/xiaomei-node-kernel.js'), 'utf8');
+    assert.equal(/xiaomei\.nodeKernel|xmNodes|localStorage/.test(source), false);
+    const fresh = loadKernel('');
+    assert.equal(fresh.kernel.isActive(), true);
+    assert.equal(fresh.attrs['data-xm-nodes'], 'next');
+    assert.equal(fresh.kernel.setActive(false), true);
+    assert.equal(fresh.store.size, 0);
+    for (const search of ['?xmNodes=0', '?xmNodes=legacy', '?xmNodes=1']) {
+        const loaded = loadKernel(search);
+        assert.equal(loaded.kernel.isActive(), true);
+        assert.equal(loaded.attrs['data-xm-nodes'], 'next');
+        assert.equal(loaded.store.size, 0);
+    }
     const stuck = loadKernel('', { 'xiaomei.nodeKernel': 'legacy' });
-    assert.equal(stuck.kernel.isActive(), false);
-    const enabled = loadKernel('?xmNodes=1');
-    assert.equal(enabled.kernel.isActive(), true);
-    assert.equal(enabled.store.get('xiaomei.nodeKernel'), 'next');
-    const disabled = loadKernel('?xmNodes=legacy');
-    assert.equal(disabled.kernel.isActive(), false);
-    assert.equal(disabled.store.get('xiaomei.nodeKernel'), 'legacy');
+    assert.equal(stuck.kernel.isActive(), true);
+    assert.equal(stuck.kernel.setActive(false), true);
+    assert.equal(stuck.store.get('xiaomei.nodeKernel'), 'legacy');
 });
 
 test('drag cohort moves group members and the rest of a multi-selection', () => {

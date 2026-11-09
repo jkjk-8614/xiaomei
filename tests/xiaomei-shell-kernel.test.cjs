@@ -6,6 +6,7 @@ const test = require('node:test');
 
 function loadKernel(search, saved) {
     const store = new Map(Object.entries(saved || {}));
+    const attrs = {};
     const calls = [];
     const sandbox = {
         URLSearchParams,
@@ -15,7 +16,7 @@ function loadKernel(search, saved) {
             has(key) { return Object.keys(this.map).some(item => item.toLowerCase() === key.toLowerCase()); }
             set(key, value) { this.map[key] = value; }
         },
-        document: { documentElement: { setAttribute() {} } },
+        document: { documentElement: { setAttribute(name, value) { attrs[name] = value; } } },
         location: { search: search || '', href: 'http://127.0.0.1:3000/asset-manager.html' },
         localStorage: {
             getItem(key) { return store.has(key) ? store.get(key) : null; },
@@ -28,31 +29,35 @@ function loadKernel(search, saved) {
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../static/js/xiaomei-shell-kernel.js'), 'utf8'), sandbox, { filename: 'xiaomei-shell-kernel.js' });
     sandbox.XiaomeiShellKernel._calls = calls;
     sandbox._store = store;
+    sandbox._attrs = attrs;
     return sandbox;
 }
 
-test('asset shell defaults to next and a legacy rollback omits the header', async () => {
+test('asset shell stays on next and does not attach a selection header', async () => {
+    const source = fs.readFileSync(path.join(__dirname, '../static/js/xiaomei-shell-kernel.js'), 'utf8');
+    assert.equal(/xiaomei\.assetKernel|xmAssets|localStorage|X-Xiaomei-Assets/.test(source), false);
     const fresh = loadKernel('');
     assert.equal(fresh.XiaomeiShellKernel.isActive(), true);
-    assert.equal(fresh._store.has('xiaomei.assetKernel'), false);
+    assert.equal(fresh._attrs['data-xm-assets'], 'next');
+    assert.equal(fresh.XiaomeiShellKernel.setActive(false), true);
+    assert.equal(fresh._store.size, 0);
     await fresh.fetch('/api/asset-library');
-    assert.equal(fresh.XiaomeiShellKernel._calls[0].init.headers.map['X-Xiaomei-Assets'], 'next');
+    assert.equal(fresh.XiaomeiShellKernel._calls[0].init, undefined);
     await fresh.fetch('/api/history');
     assert.equal(fresh.XiaomeiShellKernel._calls[1].init, undefined);
 
-    const enabled = loadKernel('?xmAssets=1');
-    assert.equal(enabled.XiaomeiShellKernel.isActive(), true);
-    assert.equal(enabled._store.get('xiaomei.assetKernel'), 'next');
-
-    const disabled = loadKernel('?xmAssets=0');
-    assert.equal(disabled.XiaomeiShellKernel.isActive(), false);
-    assert.equal(disabled._store.get('xiaomei.assetKernel'), 'legacy');
-    await disabled.fetch('/api/providers');
-    assert.equal(disabled.XiaomeiShellKernel._calls[0].init, undefined);
+    for (const search of ['?xmAssets=0', '?xmAssets=legacy', '?xmAssets=1']) {
+        const loaded = loadKernel(search);
+        assert.equal(loaded.XiaomeiShellKernel.isActive(), true);
+        assert.equal(loaded._attrs['data-xm-assets'], 'next');
+        assert.equal(loaded._store.size, 0);
+        await loaded.fetch('/api/providers');
+        assert.equal(loaded.XiaomeiShellKernel._calls[0].init, undefined);
+    }
 
     const stuck = loadKernel('', { 'xiaomei.assetKernel': 'legacy' });
-    assert.equal(stuck.XiaomeiShellKernel.isActive(), false);
-    stuck.XiaomeiShellKernel.setActive(false);
+    assert.equal(stuck.XiaomeiShellKernel.isActive(), true);
+    assert.equal(stuck.XiaomeiShellKernel.setActive(false), true);
     assert.equal(stuck._store.get('xiaomei.assetKernel'), 'legacy');
 });
 
@@ -76,10 +81,12 @@ test('selection, preview, theme, and history decisions', () => {
 });
 
 test('asset requests and provider records keep the current fields', () => {
-    const sandbox = loadKernel('?xmAssets=1');
+    const sandbox = loadKernel('?xmAssets=0');
     const kernel = sandbox.XiaomeiShellKernel;
+    assert.equal(kernel.isActive(), true);
     return sandbox.fetch('/api/asset-library', { headers: { 'Content-Type': 'application/json' } }).then(() => {
-        assert.equal(sandbox.XiaomeiShellKernel._calls[0].init.headers.map[kernel ? 'X-Xiaomei-Assets' : ''], 'next');
+        assert.equal(sandbox.XiaomeiShellKernel._calls[0].init.headers['Content-Type'], 'application/json');
+        assert.equal(sandbox.XiaomeiShellKernel._calls[0].init.headers['X-Xiaomei-Assets'], undefined);
     }).then(() => {
         const saved = kernel.assetBatch('save', { libraryId: 'default', categoryId: 'scenes', url: '/assets/a.png', name: '衬衫' });
         assert.equal(saved.library_id, 'default');

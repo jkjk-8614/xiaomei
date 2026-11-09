@@ -1,62 +1,23 @@
 /* Xiaomei document kernel.
-   Canvas JSON envelope, legacy node migration, and save bodies.
-   The next path is the default. Disk writes stay in the existing client.
-   ?xmDocument=0 or XiaomeiDocumentKernel.setActive(false) uses the old envelope. */
+   Canvas JSON envelope, older node migration, and save bodies.
+   Disk writes stay in the existing client. This is the only document path.
+   Query parameters, stored flags, and setActive do not select another implementation. */
 (function (root) {
     'use strict';
 
-    var STORAGE_KEY = 'xiaomei.documentKernel';
-    var QUERY_KEY = 'xmDocument';
     var CLASSIC_RUNTIME = ['_ltxEditor', 'running', 'runStatus', 'runError', '_cascadeIdx', '_cascadeFailed', '_activeLoopCtx'];
-
-    function storage() {
-        try { return root.localStorage || null; } catch (error) { return null; }
-    }
-
-    function readQuery() {
-        try {
-            return new URLSearchParams(root.location && root.location.search || '').get(QUERY_KEY);
-        } catch (error) {
-            return null;
-        }
-    }
-
-    function persist(mode) {
-        var store = storage();
-        if (!store) return;
-        try { store.setItem(STORAGE_KEY, mode); } catch (error) {}
-    }
-
-    function initialActive() {
-        var query = readQuery();
-        if (query === '1' || query === 'next') {
-            persist('next');
-            return true;
-        }
-        if (query === '0' || query === 'legacy') {
-            persist('legacy');
-            return false;
-        }
-        var saved = '';
-        try { saved = storage() ? storage().getItem(STORAGE_KEY) || '' : ''; } catch (error) { saved = ''; }
-        return saved !== 'legacy' && saved !== '0';
-    }
-
-    var active = initialActive();
 
     function markDocument() {
         var doc = root.document;
         if (!doc || !doc.documentElement) return;
-        doc.documentElement.setAttribute('data-xm-document', active ? 'next' : 'legacy');
+        doc.documentElement.setAttribute('data-xm-document', 'next');
     }
 
-    function isActive() { return active; }
+    function isActive() { return true; }
 
-    function setActive(next) {
-        active = Boolean(next);
-        persist(active ? 'next' : 'legacy');
+    function setActive() {
         markDocument();
-        return active;
+        return true;
     }
 
     function copyValue(value) {
@@ -217,8 +178,6 @@
     markDocument();
 
     root.XiaomeiDocumentKernel = {
-        STORAGE_KEY: STORAGE_KEY,
-        QUERY_KEY: QUERY_KEY,
         isActive: isActive,
         setActive: setActive,
         normalizeViewport: normalizeViewport,

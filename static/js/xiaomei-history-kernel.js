@@ -1,61 +1,21 @@
 /* Xiaomei history kernel.
    Bounded undo stacks, paste placement, id remapping, and shortcut chords.
-   The next path is the default. Legacy handlers stay loaded; ?xmHistory=0
-   or XiaomeiHistoryKernel.setActive(false) runs them instead. */
+   This is the only history path. Query parameters, stored flags, and setActive
+   do not select another implementation. */
 (function (root) {
     'use strict';
-
-    var STORAGE_KEY = 'xiaomei.historyKernel';
-    var QUERY_KEY = 'xmHistory';
-
-    function storage() {
-        try { return root.localStorage || null; } catch (error) { return null; }
-    }
-
-    function readQuery() {
-        try {
-            return new URLSearchParams(root.location && root.location.search || '').get(QUERY_KEY);
-        } catch (error) {
-            return null;
-        }
-    }
-
-    function persist(mode) {
-        var store = storage();
-        if (!store) return;
-        try { store.setItem(STORAGE_KEY, mode); } catch (error) {}
-    }
-
-    function initialActive() {
-        var query = readQuery();
-        if (query === '1' || query === 'next') {
-            persist('next');
-            return true;
-        }
-        if (query === '0' || query === 'legacy') {
-            persist('legacy');
-            return false;
-        }
-        var saved = '';
-        try { saved = storage() ? storage().getItem(STORAGE_KEY) || '' : ''; } catch (error) { saved = ''; }
-        return saved !== 'legacy' && saved !== '0';
-    }
-
-    var active = initialActive();
 
     function markDocument() {
         var doc = root.document;
         if (!doc || !doc.documentElement) return;
-        doc.documentElement.setAttribute('data-xm-history', active ? 'next' : 'legacy');
+        doc.documentElement.setAttribute('data-xm-history', 'next');
     }
 
-    function isActive() { return active; }
+    function isActive() { return true; }
 
-    function setActive(next) {
-        active = Boolean(next);
-        persist(active ? 'next' : 'legacy');
+    function setActive() {
         markDocument();
-        return active;
+        return true;
     }
 
     function cloneData(value) {
@@ -183,8 +143,6 @@
     markDocument();
 
     root.XiaomeiHistoryKernel = {
-        STORAGE_KEY: STORAGE_KEY,
-        QUERY_KEY: QUERY_KEY,
         isActive: isActive,
         setActive: setActive,
         cloneData: cloneData,

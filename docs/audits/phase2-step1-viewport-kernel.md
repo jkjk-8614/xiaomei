@@ -4,7 +4,7 @@
 
 这一步只替换无限画布的坐标、缩放、平移和基础节点落位。拖拽连线、撤销、保存读取、模型调度、素材管理都还在旧文件里。CainFlow、商品分析、SKU、批量生成、电商工作台、`LICENSE` 和版权声明都没有动。
 
-交付当时默认走旧实现，要用户显式打开。当前默认已改为 next，回滚方式见 `docs/audits/kernel-defaults-next.md`。旧文件没有删除。
+交付当时默认走旧实现，要用户显式打开。下面的开关表是当时的记录，不是现在的操作方法。查询参数、`localStorage` 和 `setActive(false)` 已经去掉，运行时只走新内核，见 `docs/audits/kernel-defaults-next.md`。旧文件没有删除。
 
 ## 来源与做法
 

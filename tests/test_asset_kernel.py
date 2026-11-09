@@ -1,6 +1,6 @@
-import asyncio
 import os
 import unittest
+from pathlib import Path
 
 import asset_kernel
 
@@ -67,28 +67,14 @@ class AssetKernelTest(unittest.TestCase):
         self.assertTrue(asset_kernel.same_members(["a", "b"], ["b", "a"]))
         self.assertFalse(asset_kernel.same_members(["a"], ["a", "a"]))
 
-    def test_header_accepts_next_and_keeps_legacy_rollback(self):
-        async def run(headers):
-            seen = {}
-
-            async def app(scope, receive, send):
-                seen["mode"] = asset_kernel.MODE.get()
-
-            middleware = asset_kernel.AssetSwitchMiddleware(app)
-
-            async def receive():
-                return {"type": "http.request"}
-
-            async def send(message):
-                return None
-
-            await middleware({"type": "http", "headers": headers}, receive, send)
-            return seen["mode"]
-
-        self.assertEqual(asyncio.run(run([])), "legacy")
-        self.assertEqual(asyncio.run(run([(b"x-xiaomei-assets", b"next")])), "next")
-        self.assertEqual(asyncio.run(run([(b"x-xiaomei-assets", b"legacy")])), "legacy")
-        self.assertEqual(asset_kernel.MODE.get(), "legacy")
+    def test_request_header_cannot_select_another_path(self):
+        self.assertTrue(asset_kernel.selected())
+        self.assertFalse(hasattr(asset_kernel, "MODE"))
+        self.assertFalse(hasattr(asset_kernel, "HEADER"))
+        self.assertFalse(hasattr(asset_kernel, "AssetSwitchMiddleware"))
+        source = Path(asset_kernel.__file__).read_text(encoding="utf-8").lower()
+        self.assertNotIn("x-xiaomei-assets", source)
+        self.assertNotIn("contextvars", source)
 
 
 if __name__ == "__main__":

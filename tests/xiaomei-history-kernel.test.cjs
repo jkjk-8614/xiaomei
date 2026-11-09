@@ -10,6 +10,7 @@ function local(value) {
 
 function loadKernel(search, saved) {
     const store = new Map(Object.entries(saved || {}));
+    const attrs = {};
     const sandbox = {
         URLSearchParams,
         Math,
@@ -17,7 +18,7 @@ function loadKernel(search, saved) {
         String,
         Object,
         JSON,
-        document: { documentElement: { setAttribute() {} } },
+        document: { documentElement: { setAttribute(name, value) { attrs[name] = value; } } },
         location: { search: search || '' },
         localStorage: {
             getItem(key) { return store.has(key) ? store.get(key) : null; },
@@ -27,24 +28,27 @@ function loadKernel(search, saved) {
     sandbox.window = sandbox;
     sandbox.globalThis = sandbox;
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../static/js/xiaomei-history-kernel.js'), 'utf8'), sandbox, { filename: 'xiaomei-history-kernel.js' });
-    return { kernel: sandbox.XiaomeiHistoryKernel, store };
+    return { kernel: sandbox.XiaomeiHistoryKernel, store, attrs };
 }
 
-test('history kernel defaults to the next path and legacy still sticks', () => {
-    const { kernel, store } = loadKernel('');
-    assert.equal(kernel.isActive(), true);
-    assert.equal(store.has('xiaomei.historyKernel'), false);
-    const enabled = loadKernel('?xmHistory=1');
-    assert.equal(enabled.kernel.isActive(), true);
-    assert.equal(enabled.store.get('xiaomei.historyKernel'), 'next');
-    const disabled = loadKernel('?xmHistory=0');
-    assert.equal(disabled.kernel.isActive(), false);
-    assert.equal(disabled.store.get('xiaomei.historyKernel'), 'legacy');
-    const stuck = loadKernel('', { 'xiaomei.historyKernel': disabled.store.get('xiaomei.historyKernel') });
-    assert.equal(stuck.kernel.isActive(), false);
-    kernel.setActive(false);
-    assert.equal(kernel.isActive(), false);
-    assert.equal(store.get('xiaomei.historyKernel'), 'legacy');
+test('history kernel stays on next and ignores legacy switches', () => {
+    const source = fs.readFileSync(path.join(__dirname, '../static/js/xiaomei-history-kernel.js'), 'utf8');
+    assert.equal(/xiaomei\.historyKernel|xmHistory|localStorage/.test(source), false);
+    const fresh = loadKernel('');
+    assert.equal(fresh.kernel.isActive(), true);
+    assert.equal(fresh.attrs['data-xm-history'], 'next');
+    assert.equal(fresh.kernel.setActive(false), true);
+    assert.equal(fresh.kernel.isActive(), true);
+    assert.equal(fresh.store.size, 0);
+    for (const search of ['?xmHistory=0', '?xmHistory=legacy', '?xmHistory=1']) {
+        const loaded = loadKernel(search);
+        assert.equal(loaded.kernel.isActive(), true);
+        assert.equal(loaded.store.size, 0);
+    }
+    const stuck = loadKernel('', { 'xiaomei.historyKernel': '0' });
+    assert.equal(stuck.kernel.isActive(), true);
+    assert.equal(stuck.kernel.setActive(false), true);
+    assert.equal(stuck.store.get('xiaomei.historyKernel'), '0');
 });
 
 test('undo stack is bounded and smart redo restores the replaced frame', () => {
