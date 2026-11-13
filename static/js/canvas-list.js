@@ -182,7 +182,7 @@ function onBoardWheel(e){
 /* ===== Data loading ===== */
 function currentProject(){ return projects.find(p => p.id === currentProjectId) || projects[0] || null; }
 function canvasesInProject(pid){
-    return canvases.filter(c => (c.project || 'default') === pid && c.kind === 'smart');
+    return canvases.filter(c => (c.project || 'default') === pid && (c.kind === 'smart' || c.corrupt));
 }
 
 function setBoardEmptyState(state){
@@ -471,7 +471,7 @@ function buildCard(c){
     // 卡片布局：顶部=类型标签+更多按钮；中部=标题；底部=节点数·时间。已移除图标。
     card.innerHTML = `
         <div class="ws-card-top">
-            <span class="ws-card-kind ${isSmart ? 'smart' : 'classic'}">${isSmart ? compactLabel('智能画布','智能','Smart') : compactLabel('普通画布','普通','Classic')}</span>
+            <span class="ws-card-kind ${isSmart ? 'smart' : 'classic'}">${c.corrupt ? L('损坏','Damaged') : isSmart ? compactLabel('智能画布','智能','Smart') : compactLabel('普通画布','普通','Classic')}</span>
             <button class="ws-card-menu" type="button" title="${L('更多','More')}" aria-label="${L('更多','More')}"><i data-lucide="more-horizontal" class="w-4 h-4"></i></button>
         </div>
         <div class="ws-card-title">${escapeHtml(c.title)}</div>
@@ -481,7 +481,7 @@ function buildCard(c){
             <span class="ws-card-time">${formatCanvasTime(c.updated_at || c.created_at)}</span>
         </div>
         <div class="ws-card-delete-confirm">
-            <div class="ws-card-delete-title">${L('移入回收站？','Move to trash?')}</div>
+            <div class="ws-card-delete-title">${c.corrupt ? L('移除损坏的画布并保留备份？','Remove and back up this damaged canvas?') : L('移入回收站？','Move to trash?')}</div>
             <div class="ws-card-delete-actions">
                 <button class="ws-card-delete-yes" type="button">${L('删除','Delete')}</button>
                 <button class="ws-card-delete-no" type="button">${L('取消','Cancel')}</button>
@@ -652,12 +652,10 @@ async function openComfyWorkflowInbox(){
 
 /* ===== Card create flow ===== */
 let createCardEl = null;
-let createKind = 'smart';
 function closeCreateCard(){ createCardEl?.remove(); createCardEl = null; }
 function openCreateCard(worldPt){
     closeCreateCard();
     closeCardMenu();
-    createKind = 'smart';
     const el = document.createElement('div');
     el.className = 'ws-create-card';
     el.style.left = worldPt.x + 'px';
@@ -674,7 +672,7 @@ function openCreateCard(worldPt){
     el.addEventListener('mousedown', e => e.stopPropagation());
     const input = el.querySelector('.ws-create-input');
     input.focus();
-    const confirm = () => createCanvasOnBoard(input.value.trim(), createKind, worldPt);
+    const confirm = () => createCanvasOnBoard(input.value.trim(), worldPt);
     el.querySelector('.ws-create-confirm').onclick = confirm;
     el.querySelector('.ws-create-cancel').onclick = closeCreateCard;
     input.onkeydown = e => {
@@ -684,9 +682,7 @@ function openCreateCard(worldPt){
     };
 }
 
-async function createCanvasOnBoard(title, kind, worldPt){
-    kind = 'smart';
-    const isSmart = true;
+async function createCanvasOnBoard(title, worldPt){
     const base = L('智能画布','Smart canvas');
     const name = title || `${base} ${new Date().toLocaleTimeString(langIsEn() ? 'en-US' : 'zh-CN', { hour: '2-digit', minute: '2-digit' })}`;
     closeCreateCard();
@@ -696,8 +692,8 @@ async function createCanvasOnBoard(title, kind, worldPt){
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 title: name,
-                icon: isSmart ? 'sparkles' : '🧩',
-                kind: isSmart ? 'smart' : 'classic',
+                icon: 'sparkles',
+                kind: 'smart',
                 project: currentProjectId,
                 board_x: Math.round(worldPt.x),
                 board_y: Math.round(worldPt.y)
@@ -1393,15 +1389,21 @@ async function deleteCanvas(id){
     if(!c) return;
     try {
         const res = await fetch(`/api/canvases/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        if(res.status === 503){
+            setStatus(L('暂时无法移除画布，请重试','Could not remove the canvas. Please try again.'));
+            return;
+        }
         if(!res.ok) throw new Error('delete failed');
         const data = await res.json().catch(() => ({}));
         canvases = canvases.filter(x => x.id !== id);
         renderBoard();
         renderProjects();
         refreshTrashCount();
-        setStatus(data.purged
-            ? L('损坏的画布已彻底删除','Corrupt canvas permanently deleted')
-            : L('已移入回收站','Moved to trash'));
+        setStatus(data.backup_file
+            ? L(`损坏的画布已备份到画布目录，文件名为 ${data.backup_file}`, `Corrupt canvas backed up as ${data.backup_file}`)
+            : data.purged
+                ? L('损坏的画布已彻底删除','Corrupt canvas permanently deleted')
+                : L('已移入回收站','Moved to trash'));
     } catch(e){ console.error(e); setStatus(L('删除失败','Delete failed')); }
 }
 
@@ -1537,6 +1539,13 @@ async function restoreProject(id){
 async function purgeProject(id){
     try {
         const res = await fetch(`/api/projects/${encodeURIComponent(id)}/purge`, { method:'DELETE' });
+        if(res.status === 503){
+            await loadAll();
+            renderTrash();
+            updateTrashBadge();
+            setStatus(L('暂时无法清理项目，项目仍在回收站，请重试','Project is still in Trash. Please try again.'));
+            return;
+        }
         if(!res.ok) throw new Error('purge project failed');
         deletedProjects = deletedProjects.filter(p => p.id !== id);
         await loadAll();

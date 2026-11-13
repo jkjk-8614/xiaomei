@@ -129,8 +129,15 @@ test('canvas pages load the new surfaces and drop the duplicate chord tails', ()
     const listPage = fs.readFileSync(path.join(__dirname, '../static/canvas-list.html'), 'utf8');
     assert.equal(canvas.includes("if((e.ctrlKey || e.metaKey) && key === 'z')"), false);
     assert.equal(smart.includes("if((e.ctrlKey || e.metaKey) && (key === 'z' || key === 'y')"), false);
-    assert.equal(canvas.includes('XiaomeiCanvasSurface.mountClassicFrame'), true);
-    assert.equal(canvas.includes('XiaomeiCanvasSurface.mountImageGeneration'), true);
+    const cards = read('classic-canvas-cards.js');
+    assert.equal(classicPage.includes('classic-canvas-cards.js'), true);
+    assert.equal(canvas.includes('classicCards.mount(node)'), true);
+    assert.equal(cards.includes('surface.mountClassicFrame(node,'), true);
+    assert.equal(cards.includes('XiaomeiCanvasSurface.mountImageGeneration'), false);
+    assert.equal(canvas.includes('generator:classicImage.render'), true);
+    assert.equal(classicPage.includes('classic-canvas-image-generation.js'), true);
+    assert.equal(classicPage.includes('classic-canvas-image-tasks.js'), true);
+    assert.equal(classicPage.includes('classic-canvas-media-edits.js'), true);
     assert.equal(smart.includes('XiaomeiSmartSurface.cardHtml'), true);
     assert.equal(classicPage.includes('xiaomei-canvas-surface.js'), true);
     assert.equal(classicPage.includes('menuAdd(\'image\')'), false);

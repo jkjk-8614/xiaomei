@@ -1,26 +1,18 @@
 {
   "manifest_version": 3,
-  "name": "Infinite Canvas 本地素材导入",
-  "description": "扫描当前网页图片，批量导入 Infinite Canvas 本地素材并可调用智能分类。",
-  "version": "1.0.0",
+  "name": "小美画布网页素材采集",
+  "description": "扫描、截图和下载当前网页素材，也可导入本机小美画布。",
+  "version": "2.0.0",
   "action": {
+    "default_title": "采集网页素材",
     "default_popup": "popup.html",
-    "default_title": "导入本地素材",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "32": "icons/icon32.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    }
+    "default_icon": "brand.png"
   },
   "icons": {
-    "16": "icons/icon16.png",
-    "32": "icons/icon32.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
+    "128": "brand.png"
   },
   "side_panel": {
-    "default_path": "sidepanel.html"
+    "default_path": "popup.html?side=1"
   },
   "background": {
     "service_worker": "background.js"
@@ -34,7 +26,6 @@
     "downloads"
   ],
   "host_permissions": [
-    "http://*/*",
-    "https://*/*"
+    "<all_urls>"
   ]
 }

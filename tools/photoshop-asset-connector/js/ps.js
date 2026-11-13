@@ -1,337 +1,299 @@
-/* Photoshop 侧操作：下载到临时文件、置入文档、导出当前文档为 PNG、外部打开。 */
 (function () {
-  const photoshop = require('photoshop');
-  const app = photoshop.app;
-  const core = photoshop.core;
-  const action = photoshop.action;
-  const imaging = photoshop.imaging;
-  const uxp = require('uxp');
-  const fs = uxp.storage.localFileSystem;
-  const formats = uxp.storage.formats;
-  const shell = uxp.shell;
+  const { app, action, core, constants } = require('photoshop');
+  const { storage, shell } = require('uxp');
+  const { net, sources, state } = DX;
+  const anchors = constants.AnchorPosition;
+  const binary = { format: storage.formats.binary };
+  const edges = [
+    { name: 'left', horizontal: true, leading: true, near: anchors.MIDDLELEFT, far: anchors.MIDDLERIGHT },
+    { name: 'right', horizontal: true, leading: false, near: anchors.MIDDLELEFT, far: anchors.MIDDLERIGHT },
+    { name: 'top', horizontal: false, leading: true, near: anchors.TOPCENTER, far: anchors.BOTTOMCENTER },
+    { name: 'bottom', horizontal: false, leading: false, near: anchors.TOPCENTER, far: anchors.BOTTOMCENTER },
+  ];
+  let nextFile = 0;
 
-  const net = DX.net;
-  const itemIsImage = DX.sources.itemIsImage;
+  function activeDocument() {
+    return app.documents.length ? app.activeDocument : null;
+  }
 
-  function hasDocument() { return app.documents.length > 0; }
+  function requireDocument() {
+    const doc = activeDocument();
+    if (!doc) throw new Error('没有打开的 Photoshop 文档');
+    return doc;
+  }
 
-  // 当前文档像素尺寸（用于"适配当前尺寸"），无文档返回 null
+  function hasDocument() {
+    return app.documents.length > 0;
+  }
+
   function docSize() {
-    const d = app.activeDocument;
-    if (!d) return null;
-    try { return { w: Math.round(d.width), h: Math.round(d.height) }; }
-    catch (e) { return null; }
+    const doc = activeDocument();
+    return doc && { w: Math.round(doc.width), h: Math.round(doc.height) };
   }
 
-  async function downloadToTemp(item) {
-    // WebP 等 PS 可能打不开的格式：取后端转好的整张 JPEG；其余直接取原图
-    const unsupported = net.needsJpeg(item.url);
-    const buffer = await net.fetchBytes(unsupported ? net.displayUrl(item.url, 0) : item.url);
-    let ext = unsupported ? 'jpg' : (String(item.url || '').split(/[?#]/)[0].split('.').pop() || 'png').toLowerCase();
-    if (!/^[a-z0-9]{1,5}$/.test(ext)) ext = 'png';
-    const safe = String(item.name || 'asset').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 48) || 'asset';
-    const folder = await fs.getTemporaryFolder();
-    const file = await folder.createFile(`dx_${safe}_${Date.now()}.${ext}`, { overwrite: true });
-    await file.write(buffer, { format: formats.binary });
-    return file;
+  async function modal(commandName, operation) {
+    let result;
+    await core.executeAsModal(async (context) => {
+      result = await operation(context);
+    }, { commandName });
+    return result;
   }
 
-  // 资产 → PS：置入为智能对象（无文档时直接打开）
-  async function placeImage(item) {
-    if (!itemIsImage(item)) throw new Error('该素材不是图片');
-    const file = await downloadToTemp(item);
-    const token = await fs.createSessionToken(file);
-    await core.executeAsModal(async () => {
-      if (!app.documents.length) { await app.open(file); return; }
-      await action.batchPlay([{
-        _obj: 'placeEvent',
-        null: { _path: token, _kind: 'local' },
-        freeTransformCenterState: { _enum: 'quadCenterState', _value: 'QCSAverage' },
-        offset: {
-          _obj: 'offset',
-          horizontal: { _unit: 'pixelsUnit', _value: 0 },
-          vertical: { _unit: 'pixelsUnit', _value: 0 },
-        },
-      }], {});
-    }, { commandName: '置入素材' });
+  function stem(name, fallback) {
+    return String(name || '').replace(/\.(?:png|jpe?g|tiff?|bmp|gif|avif|webp|hei[cf]|psd|psb|pdf)$/i, '').trim() || fallback;
   }
 
-  // PS → 后端：导出当前文档为合并 PNG（asCopy=true，不改动用户文档），返回字节
-  async function exportDocPng() {
-    const folder = await fs.getTemporaryFolder();
-    const file = await folder.createFile(`dx_export_${Date.now()}.png`, { overwrite: true });
-    let docName = 'document';
-    await core.executeAsModal(async () => {
-      const doc = app.activeDocument;
-      docName = (doc && doc.name) || 'document';
-      await doc.saveAs.png(file, {}, true);
-    }, { commandName: '导出文档' });
-    const buffer = await file.read({ format: formats.binary });
-    return { buffer, name: String(docName).replace(/\.[^.]+$/, '') || 'PS文档' };
+  async function temporaryFile(label, extension) {
+    const folder = await storage.localFileSystem.getTemporaryFolder();
+    const name = String(label || '图片').replace(/[\u0000-\u001f\\/:*?"<>|]/g, '_').slice(0, 48).trim();
+    const key = Date.now().toString(36) + '-' + (++nextFile);
+    return folder.createFile('xm-' + key + '-' + (name || '图片') + '.' + extension);
   }
 
-  // PS → 后端：只导出「当前激活图层」为 PNG。
-  // 做法：用当前图层新建一个临时文档（= 图层 > 复制图层 > 目标:新建文档），存 PNG，再关掉临时文档；
-  // 全程不改动用户的原文档。
-  async function exportActiveLayerPng() {
-    const folder = await fs.getTemporaryFolder();
-    const file = await folder.createFile(`dx_layer_${Date.now()}.png`, { overwrite: true });
-    let layerName = 'layer';
-    await core.executeAsModal(async () => {
-      const srcDoc = app.activeDocument;
-      if (!srcDoc) throw new Error('没有打开的文档');
-      const srcId = srcDoc.id;
-      const layers = srcDoc.activeLayers || [];
-      if (!layers.length) throw new Error('请先在图层面板选中要上传的图层');
-      layerName = layers[0].name || 'layer';
-      // 把当前选中图层复制成一个新文档
-      await action.batchPlay([{
-        _obj: 'make',
-        _target: [{ _ref: 'document' }],
-        name: 'dx_tmp_layer_export',
-        using: {
-          _ref: [
-            { _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' },
-            { _ref: 'document', _enum: 'ordinal', _value: 'targetEnum' },
-          ],
-        },
-      }], { synchronousExecution: true });
-      const tmpDoc = app.activeDocument;
-      // 安全护栏：确认确实新建了文档，否则绝不关闭（避免误关用户原文档）
-      if (!tmpDoc || tmpDoc.id === srcId) throw new Error('未能从图层创建临时文档');
-      await tmpDoc.saveAs.png(file, {}, true);
-      await tmpDoc.closeWithoutSaving();
-    }, { commandName: '导出当前图层' });
-    const buffer = await file.read({ format: formats.binary });
-    return { buffer, name: String(layerName).replace(/\.[^.]+$/, '') || 'layer' };
+  async function removeTemporaryFile(file) {
+    try {
+      await file.delete();
+    } catch (_) {
+      // UXP also clears its temporary storage when the session ends.
+    }
   }
 
-  async function exportCurrentPng() {
-    return DX.state.exportLayer ? exportActiveLayerPng() : exportDocPng();
+  async function exportFile(extension, save) {
+    const file = await temporaryFile('导出', extension);
+    try {
+      const metadata = await save(file);
+      if (!metadata) return null;
+      return { ...metadata, buffer: await file.read(binary) };
+    } finally {
+      await removeTemporaryFile(file);
+    }
   }
 
-  // 读当前矩形选区边界（原文档像素坐标）。无选区/无效返回 null。需在 executeAsModal 内调用。
-  async function readSelectionBounds() {
-    const [res] = await action.batchPlay([{
-      _obj: 'get',
-      _target: [{ _property: 'selection' }, { _ref: 'document', _enum: 'ordinal', _value: 'targetEnum' }],
-    }], { synchronousExecution: true });
-    const s = res && res.selection;
-    if (!s) return null;
-    const val = (v) => Math.round(typeof v === 'object' && v !== null ? v._value : v);
-    const left = val(s.left), top = val(s.top), right = val(s.right), bottom = val(s.bottom);
-    const width = right - left, height = bottom - top;
-    if (!(width > 0 && height > 0)) return null;
-    return { left, top, width, height, right, bottom };
+  async function command(descriptor) {
+    const [result] = await action.batchPlay([descriptor], {});
+    if (result?._obj === 'error') {
+      throw new Error(result.message || 'Photoshop 无法执行此操作');
+    }
   }
 
-  // 读当前矩形选区，直接抓「选区那块的合并画面」像素（imaging.getPixels + sourceBounds）。
-  // 不复制文档、不裁剪，一步到位，绝不改动用户原文档。无选区返回 null。
-  // 返回 { base64, mime, name, bounds:{left,top,width,height} }（bounds 为原文档像素坐标，jpeg base64）。
-  async function exportSelectionPng() {
-    let out = null;
-    await core.executeAsModal(async () => {
-      const srcDoc = app.activeDocument;
-      if (!srcDoc) throw new Error('没有打开的文档');
-      const sb = await readSelectionBounds();
-      if (!sb) return;   // 无选区/无效
-      const { left, top, right, bottom, width, height } = sb;
-      const bounds = { left, top, width, height };
-      // 直接抓选区那块的合并像素（composite = 所有可见图层）
-      const pix = await imaging.getPixels({
-        documentID: srcDoc.id,
-        sourceBounds: { left, top, right, bottom },
-        applyAlpha: true,
+  async function embedImage(file) {
+    const token = storage.localFileSystem.createSessionToken(file);
+    await command({
+      _obj: 'placeEvent',
+      null: { _kind: 'local', _path: token },
+      linked: false,
+      _options: { dialogOptions: 'dontDisplay' },
+    });
+  }
+
+  async function fitLayer(layer, bounds) {
+    const original = layer.boundsNoEffects;
+    const width = original.right - original.left;
+    const height = original.bottom - original.top;
+    if (!(width > 0 && height > 0)) throw new Error('生成的图层没有可置入的像素');
+    await layer.scale(100 * bounds.width / width, 100 * bounds.height / height, anchors.TOPLEFT);
+    const scaled = layer.boundsNoEffects;
+    const x = bounds.left - scaled.left;
+    const y = bounds.top - scaled.top;
+    if (x || y) await layer.translate(x, y);
+  }
+
+  async function place(item, bounds) {
+    if (!sources.itemIsImage(item)) throw new Error('请选择图片素材');
+    const targetId = bounds?.documentId ?? activeDocument()?.id;
+    const converted = net.needsJpeg(item.url);
+    const path = String(item.url).split(/[?#]/, 1)[0];
+    const extension = converted ? 'jpg' : (/\.(\w{1,5})$/.exec(path)?.[1]?.toLowerCase() || 'png');
+    const buffer = await net.fetchBytes(converted ? net.displayUrl(item.url) : item.url);
+    const file = await temporaryFile(stem(item.name, '素材'), extension);
+    let opened = false;
+    try {
+      await file.write(buffer, binary);
+      const title = bounds ? '置入选区结果' : '置入素材';
+      await modal(title, async ({ hostControl }) => {
+        if (targetId == null) {
+          await app.open(file);
+          opened = true;
+          return;
+        }
+        const doc = Array.from(app.documents).find((entry) => entry.id === targetId);
+        if (!doc) throw new Error('素材对应的 Photoshop 文档已关闭');
+        const previous = activeDocument();
+        if (previous?.id !== doc.id) app.activeDocument = doc;
+        try {
+          const history = await hostControl.suspendHistory({ documentID: doc.id, name: title });
+          await embedImage(file);
+          const layer = doc.activeLayers[0];
+          if (!layer) throw new Error('Photoshop 未返回置入的图层');
+          if (item.name) layer.name = stem(item.name, layer.name);
+          if (bounds) await fitLayer(layer, bounds);
+          await hostControl.resumeHistory(history, true);
+        } finally {
+          if (previous && previous.id !== doc.id) app.activeDocument = previous;
+        }
       });
-      // 编码成 jpeg base64（UXP imaging 输出 jpeg/base64）
-      const base64 = await imaging.encodeImageData({ imageData: pix.imageData, base64: true });
-      try { pix.imageData.dispose(); } catch (e) {}
-      out = { base64, mime: 'image/jpeg', name: 'selection', bounds };
-    }, { commandName: '导出选区' });
-    return out;
-  }
-
-  // 扩图用：导出选区那块，但【保留透明】（画布外/透明区不填白），输出透明 PNG。
-  // 做法：复制文档 → 裁到选区矩形 → 合并 → saveAs.png（PNG 保住 alpha）。绝不改动用户原文档。
-  // 返回 { base64, mime:'image/png', name, bounds }；无选区返回 null。
-  async function exportSelectionTransparent() {
-    const doc = app.activeDocument;
-    if (!doc) throw new Error('没有打开的文档');
-    const srcId = doc.id;
-    let bounds = null;
-    const folder = await fs.getTemporaryFolder();
-    const file = await folder.createFile(`dx_selpng_${Date.now()}.png`, { overwrite: true });
-    await core.executeAsModal(async () => {
-      const sb = await readSelectionBounds();
-      if (!sb) return;
-      bounds = { left: sb.left, top: sb.top, width: sb.width, height: sb.height };
-      // 复制文档，在副本上裁到选区、合并（保留透明），存 PNG
-      await action.batchPlay([{
-        _obj: 'duplicate',
-        _target: [{ _ref: 'document', _enum: 'ordinal', _value: 'targetEnum' }],
-        name: 'dx_tmp_selpng',
-      }], { synchronousExecution: true });
-      const tmp = app.activeDocument;
-      if (!tmp || tmp.id === srcId) throw new Error('未能复制文档用于导出选区');
-      await action.batchPlay([{
-        _obj: 'crop',
-        to: {
-          _obj: 'rectangle',
-          top: { _unit: 'pixelsUnit', _value: sb.top },
-          left: { _unit: 'pixelsUnit', _value: sb.left },
-          bottom: { _unit: 'pixelsUnit', _value: sb.bottom },
-          right: { _unit: 'pixelsUnit', _value: sb.right },
-        },
-        delete: true,
-      }], { synchronousExecution: true });
-      await tmp.flatten().catch(() => {});   // 合并可见图层，保留透明像素
-      await tmp.saveAs.png(file, {}, true);
-      await tmp.closeWithoutSaving();
-    }, { commandName: '导出选区(透明)' });
-    if (!bounds) return null;
-    const base64 = net.toBase64(await file.read({ format: formats.binary }));
-    return { base64, mime: 'image/png', name: 'selection', bounds };
-  }
-
-  // 方向扩图：按勾选方向(left/right/top/bottom) + 扩展像素 n，为每个方向生成一张「块」透明 PNG。
-  // 每块 = 「原图靠该侧边缘 n 一条（有像素，做参考/接口）」+「该侧 n 透明扩展区（待补）」，尺寸 2n×边长。
-  // 不依赖 PS 选区、不改动用户原文档（全程临时文档）。
-  // 返回 { blocks:[{ dir, base64, mime, name, size, bounds:{left,top,width,height} }] }，bounds 为原文档坐标（供 placeImageAt 贴回，可为负=贴到画布外）。
-  async function outpaintDirections(dirs, n) {
-    const doc = app.activeDocument;
-    if (!doc) throw new Error('没有打开的文档');
-    const OW = Math.round(doc.width), OH = Math.round(doc.height);
-    const srcId = doc.id;
-    const N = Math.max(1, Math.round(n));
-    const wanted = ['left', 'right', 'top', 'bottom'].filter((d) => dirs && dirs[d]);
-    if (!wanted.length) return { error: '请至少选择一个扩展方向（左/右/上/下）。' };
-
-    const folder = await fs.getTemporaryFolder();
-    // 先把原图合并导出成一张 PNG（作为要贴进各块透明画布的素材）
-    const origPng = await folder.createFile(`dx_op_src_${Date.now()}.png`, { overwrite: true });
-    await core.executeAsModal(async () => {
-      await action.batchPlay([{
-        _obj: 'duplicate',
-        _target: [{ _ref: 'document', _enum: 'ordinal', _value: 'targetEnum' }],
-        name: 'dx_tmp_op_src',
-      }], { synchronousExecution: true });
-      const tmp = app.activeDocument;
-      if (!tmp || tmp.id === srcId) throw new Error('未能复制文档用于扩图');
-      await tmp.flatten().catch(() => {});
-      await tmp.saveAs.png(origPng, {}, true);
-      await tmp.closeWithoutSaving();
-    }, { commandName: '扩图·导出原图' });
-    const origToken = await fs.createSessionToken(origPng);
-
-    // 每个方向的块几何：块尺寸(BW×BH)、原图在块坐标系里的原点(px,py)、贴回原文档的 bounds
-    // 约定：块坐标系里「有图的一半」是原图边缘条，「透明的一半」是扩展区。
-    function geom(dir) {
-      if (dir === 'right')  return { BW: 2 * N, BH: OH, px: -(OW - N), py: 0, bounds: { left: OW - N, top: 0, width: 2 * N, height: OH } };
-      if (dir === 'left')   return { BW: 2 * N, BH: OH, px: N,          py: 0, bounds: { left: -N,      top: 0, width: 2 * N, height: OH } };
-      if (dir === 'bottom') return { BW: OW, BH: 2 * N, px: 0, py: -(OH - N), bounds: { left: 0, top: OH - N, width: OW, height: 2 * N } };
-      /* top */              return { BW: OW, BH: 2 * N, px: 0, py: N,          bounds: { left: 0, top: -N,      width: OW, height: 2 * N } };
+    } finally {
+      // The document opened directly still owns its backing file.
+      if (!opened) await removeTemporaryFile(file);
     }
-
-    const blocks = [];
-    for (const dir of wanted) {
-      const g = geom(dir);
-      const file = await folder.createFile(`dx_op_${dir}_${Date.now()}.png`, { overwrite: true });
-      await core.executeAsModal(async () => {
-        const blkDoc = await app.documents.add({ width: g.BW, height: g.BH, resolution: 72, fill: 'transparent' });
-        if (!blkDoc || blkDoc.id === srcId) throw new Error('未能新建扩图块文档');
-        // place 默认居中；把原图中心平移到它在块坐标系里应有的中心 (px+OW/2, py+OH/2)
-        const dx = (g.px + OW / 2) - g.BW / 2;
-        const dy = (g.py + OH / 2) - g.BH / 2;
-        await action.batchPlay([{
-          _obj: 'placeEvent',
-          null: { _path: origToken, _kind: 'local' },
-          freeTransformCenterState: { _enum: 'quadCenterState', _value: 'QCSAverage' },
-          offset: { _obj: 'offset', horizontal: { _unit: 'pixelsUnit', _value: dx }, vertical: { _unit: 'pixelsUnit', _value: dy } },
-        }], {});
-        await blkDoc.saveAs.png(file, {}, true);
-        await blkDoc.closeWithoutSaving();
-      }, { commandName: `扩图·${dir}` });
-      const base64 = net.toBase64(await file.read({ format: formats.binary }));
-      blocks.push({ dir, base64, mime: 'image/png', name: `outpaint_${dir}`, size: `${g.BW}x${g.BH}`, bounds: g.bounds });
-    }
-    return { blocks };
   }
 
-  // 按选区位置+尺寸置入图片：API 有最低分辨率（如 1K），返回图往往比选区大（等比放大）。
-  // 这里置入后读图层实际 bounds，缩放并平移，让它精确覆盖选区矩形（左上对齐、宽高=选区）。
-  // 作为新图层盖在上面，不改动原图层（非破坏性）。
-  async function placeImageAt(item, bounds) {
-    if (!itemIsImage(item)) throw new Error('该素材不是图片');
-    if (!bounds) return placeImage(item);   // 无 bounds 回退到居中置入
-    const file = await downloadToTemp(item);
-    const token = await fs.createSessionToken(file);
-    await core.executeAsModal(async () => {
-      const doc = app.activeDocument;
-      if (!doc) { await app.open(file); return; }
-      // 1) 先置入（位置先不管，默认置于文档中心）
-      await action.batchPlay([{
-        _obj: 'placeEvent',
-        null: { _path: token, _kind: 'local' },
-        freeTransformCenterState: { _enum: 'quadCenterState', _value: 'QCSAverage' },
-      }], {});
-      // 2) 读刚置入图层的实际边界（像素）
-      const [res] = await action.batchPlay([{
-        _obj: 'get',
-        _target: [
-          { _property: 'boundsNoEffects' },
-          { _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' },
-        ],
-      }], { synchronousExecution: true });
-      const b = (res && (res.boundsNoEffects || res.bounds)) || null;
-      if (!b) return;   // 拿不到 bounds 就保持居中，不强行变换
-      const val = (v) => (typeof v === 'object' && v !== null ? v._value : v);
-      const curLeft = val(b.left), curTop = val(b.top), curRight = val(b.right), curBottom = val(b.bottom);
-      const curW = curRight - curLeft, curH = curBottom - curTop;
-      if (!(curW > 0 && curH > 0)) return;
-      // 3) 缩放到选区尺寸（按各自比例；返回图与选区同比时 sx≈sy）
-      const sx = (bounds.width / curW) * 100;
-      const sy = (bounds.height / curH) * 100;
-      // transform 的缩放以图层左上角为锚点，缩放后再把左上角平移到选区左上角
-      await action.batchPlay([{
-        _obj: 'transform',
-        _target: [{ _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' }],
-        freeTransformCenterState: { _enum: 'quadCenterState', _value: 'QCSIndependent' },
-        offset: { _obj: 'offset', horizontal: { _unit: 'pixelsUnit', _value: 0 }, vertical: { _unit: 'pixelsUnit', _value: 0 } },
-        width: { _unit: 'percentUnit', _value: sx },
-        height: { _unit: 'percentUnit', _value: sy },
-      }], {});
-      // 4) 缩放后重读 bounds，把左上角对齐到选区左上角
-      const [res2] = await action.batchPlay([{
-        _obj: 'get',
-        _target: [
-          { _property: 'boundsNoEffects' },
-          { _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' },
-        ],
-      }], { synchronousExecution: true });
-      const b2 = (res2 && (res2.boundsNoEffects || res2.bounds)) || null;
-      if (!b2) return;
-      const newLeft = val(b2.left), newTop = val(b2.top);
-      const dx = bounds.left - newLeft;
-      const dy = bounds.top - newTop;
-      if (dx !== 0 || dy !== 0) {
-        await action.batchPlay([{
-          _obj: 'move',
-          _target: [{ _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' }],
-          to: { _obj: 'offset', horizontal: { _unit: 'pixelsUnit', _value: dx }, vertical: { _unit: 'pixelsUnit', _value: dy } },
-        }], {});
+  const placeImage = (item) => place(item, null);
+  const placeImageAt = (item, bounds) => place(item, bounds);
+
+  async function withTemporaryDocument(source, context, create, use) {
+    const existing = new Set(Array.from(app.documents, (doc) => doc.id));
+    const copy = await create();
+    if (!copy || existing.has(copy.id)) throw new Error('Photoshop 未创建临时文档');
+    try {
+      // Also close when Photoshop cancels the modal before cleanup can run.
+      await context.hostControl.registerAutoCloseDocument(copy.id);
+      return await use(copy);
+    } finally {
+      if (!context.isCancelled) {
+        await copy.closeWithoutSaving();
+        await context.hostControl.unregisterAutoCloseDocument(copy.id);
+        app.activeDocument = source;
       }
-    }, { commandName: '置入选区结果' });
+    }
   }
 
-  async function openExternal(item) { await shell.openExternal(net.absUrl(item.url)); }
-
-  async function openUrl(url) { await shell.openExternal(url); }
-
-  // 文档开关/切换时回调（用于刷新导出按钮可用性）
-  function onDocChange(cb) {
-    try { action.addNotificationListener(['open', 'close', 'select', 'newDocument'], cb); }
-    catch (e) { /* 部分版本不支持 */ }
+  function exportDocPng() {
+    return exportFile('png', (file) => modal('导出文档', async () => {
+      const doc = requireDocument();
+      await doc.saveAs.png(file, {}, true);
+      return { name: stem(doc.name, '文档') };
+    }));
   }
 
-  DX.ps = { hasDocument, docSize, placeImage, placeImageAt, exportDocPng, exportActiveLayerPng, exportCurrentPng, exportSelectionPng, exportSelectionTransparent, outpaintDirections, openExternal, openUrl, onDocChange };
+  function exportActiveLayerPng() {
+    return exportFile('png', (file) => modal('导出选中图层', async (context) => {
+      const doc = requireDocument();
+      const selected = doc.activeLayers[0];
+      if (!selected) throw new Error('请在图层面板选择要导出的图层');
+      const name = stem(selected.name, '图层');
+      const create = async () => {
+        await command({
+          _obj: 'make',
+          _target: [{ _ref: 'document' }],
+          using: {
+            _ref: [{ _ref: 'layer', _enum: 'ordinal', _value: 'targetEnum' },
+              { _ref: 'document', _id: doc.id }],
+          },
+          name: '小美画布图层副本',
+        });
+        return activeDocument();
+      };
+      await withTemporaryDocument(doc, context, create, (copy) => copy.saveAs.png(file, {}, true));
+      return { name };
+    }));
+  }
+
+  const exportCurrentPng = () => state.exportLayer ? exportActiveLayerPng() : exportDocPng();
+
+  async function selectionRectangle(doc) {
+    let box;
+    if (doc.selection) {
+      box = doc.selection.bounds;
+    } else {
+      const [result] = await action.batchPlay([{
+        _obj: 'get',
+        _target: [{ _property: 'selection' }, { _ref: 'document', _id: doc.id }],
+      }], {});
+      box = result?.selection;
+    }
+    if (!box) return null;
+    const pixel = (value) => Math.round(value?._value ?? value);
+    const rect = { left: pixel(box.left), top: pixel(box.top), right: pixel(box.right), bottom: pixel(box.bottom) };
+    return rect.right > rect.left && rect.bottom > rect.top ? rect : null;
+  }
+
+  function exportSelection(transparent) {
+    const mime = transparent ? 'image/png' : 'image/jpeg';
+    const extension = transparent ? 'png' : 'jpg';
+    return exportFile(extension, (file) => modal('导出选区', async (context) => {
+      const doc = requireDocument();
+      const rect = await selectionRectangle(doc);
+      if (!rect) return null;
+      const create = () => doc.duplicate('小美画布选区副本', true);
+      await withTemporaryDocument(doc, context, create, async (copy) => {
+        await copy.crop(rect);
+        if (transparent) await copy.saveAs.png(file, {}, true);
+        else await copy.saveAs.jpg(file, { quality: 12, matteColor: constants.MatteColor.WHITE }, true);
+      });
+      return {
+        mime, name: 'selection',
+        bounds: { left: rect.left, top: rect.top, width: rect.right - rect.left,
+          height: rect.bottom - rect.top, documentId: doc.id },
+      };
+    })).then((result) => {
+      if (!result) return null;
+      const { buffer, ...metadata } = result;
+      return { ...metadata, base64: net.toBase64(buffer) };
+    });
+  }
+
+  const exportSelectionJpeg = () => exportSelection(false);
+  const exportSelectionTransparent = () => exportSelection(true);
+
+  function outpaintDirections(directions, amount) {
+    const selectedEdges = edges.filter(({ name }) => directions?.[name]);
+    if (!selectedEdges.length) return Promise.resolve({ error: '请选择要扩展的方向' });
+    const pixels = Math.round(Number(amount));
+    if (!Number.isSafeInteger(pixels) || pixels < 1) throw new Error('请输入有效的扩展像素数');
+    return modal('导出扩图参考', async (context) => {
+      const doc = requireDocument();
+      const { w, h } = docSize();
+      const blocks = [];
+      for (const edge of selectedEdges) {
+        const { name, horizontal, leading, near, far } = edge;
+        const extent = horizontal ? w : h;
+        const start = leading ? 0 : Math.max(0, extent - pixels);
+        const end = leading ? Math.min(extent, pixels) : extent;
+        const crop = horizontal
+          ? { left: start, top: 0, right: end, bottom: h }
+          : { left: 0, top: start, right: w, bottom: end };
+        const create = () => doc.duplicate('小美画布扩图副本', true);
+        const width = horizontal ? 2 * pixels : w;
+        const height = horizontal ? h : 2 * pixels;
+        const { buffer } = await exportFile('png', async (file) => {
+          await withTemporaryDocument(doc, context, create, async (copy) => {
+            const background = copy.backgroundLayer;
+            if (background) {
+              await background.duplicate();
+              await background.delete();
+            }
+            if (end - start < extent) await copy.crop(crop);
+            // Pad short reference strips before adding the transparent extension.
+            if (extent < pixels) {
+              await copy.resizeCanvas(horizontal ? pixels : w, horizontal ? h : pixels, leading ? near : far);
+            }
+            await copy.resizeCanvas(width, height, leading ? far : near);
+            await copy.saveAs.png(file, {}, true);
+          });
+          return {};
+        });
+        const origin = leading ? -pixels : extent - pixels;
+        blocks.push({
+          dir: name, mime: 'image/png', name: 'outpaint_' + name, size: width + 'x' + height,
+          base64: net.toBase64(buffer),
+          bounds: { left: horizontal ? origin : 0, top: horizontal ? 0 : origin,
+            width, height, documentId: doc.id },
+        });
+      }
+      return { blocks };
+    });
+  }
+
+  const openUrl = (url) => shell.openExternal(url);
+  const openExternal = (item) => openUrl(net.absUrl(item.url));
+
+  function onDocChange(callback) {
+    return action.addNotificationListener(['open', 'close', 'select', 'make'], callback).catch(() => {});
+  }
+
+  DX.ps = {
+    hasDocument, docSize, placeImage, placeImageAt, exportDocPng, exportActiveLayerPng, exportCurrentPng,
+    exportSelectionJpeg, exportSelectionTransparent, outpaintDirections, openExternal, openUrl, onDocChange,
+  };
 })();

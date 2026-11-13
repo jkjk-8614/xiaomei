@@ -2372,7 +2372,7 @@ class AgentTaskStore:
         except (OSError, ValueError) as exc:
             raise DesignBrainError("state_unavailable", "设计任务记录暂时无法读取，请检查本地数据文件", 503) from exc
         if not isinstance(state, dict) or not isinstance(state.get("tasks"), list):
-            raise DesignBrainError("state_unavailable", "设计任务记录内容无效，请检查本地数据文件", 503) from exc
+            raise DesignBrainError("state_unavailable", "设计任务记录内容无效，请检查本地数据文件", 503)
         state["tasks"] = [normalize_agent_task(item) for item in state["tasks"][:AGENT_TASK_LIST_MAX]]
         return state
 

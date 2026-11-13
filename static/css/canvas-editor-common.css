@@ -1,6 +1,7 @@
 /* Shared crop and outpaint chrome for the Xiaomei image editor.
    Handle positions stay put so drag math still lines up with the canvas. */
 .edit-draw-canvas,
+.classic-ink-preview,
 .edit-text-canvas {
     position: absolute;
     inset: 0;
@@ -10,6 +11,8 @@
     pointer-events: none;
 }
 .edit-text-canvas { z-index: 2; }
+.classic-ink-preview { z-index: 3; }
+#imageEditModal .edit-draw-canvas, #imageEditModal .edit-text-canvas { touch-action: none; }
 .edit-text-inline {
     position: absolute;
     z-index: 7;

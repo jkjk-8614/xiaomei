@@ -1,0 +1,42 @@
+.studio-preview-frame {
+    --preview-background: rgb(241 245 249 / 72%);
+    --preview-border: rgb(15 23 42 / 8%);
+    --preview-shadow: rgb(15 23 42 / 18%);
+    position: relative;
+    inline-size: min(92vw, 1280px);
+    block-size: min(78vh, 820px);
+    max-inline-size: 100%;
+    overflow: hidden;
+    border: 1px solid var(--preview-border);
+    border-radius: 24px;
+    background-color: var(--preview-background);
+    box-shadow: 0 30px 90px var(--preview-shadow);
+    touch-action: none;
+    user-select: none;
+    cursor: grab;
+}
+
+.theme-dark .studio-preview-frame {
+    --preview-background: #020617;
+    --preview-border: rgb(148 163 184 / 24%);
+    --preview-shadow: rgb(0 0 0 / 45%);
+}
+
+.studio-preview-frame[data-preview-panning] { cursor: grabbing; }
+
+.studio-preview-img {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: contain;
+    transform-origin: top left;
+    transition: transform 120ms ease-out;
+    pointer-events: none;
+    -webkit-user-drag: none;
+}
+
+[data-preview-panning] > .studio-preview-img { transition: none; }
+
+@media (prefers-reduced-motion: reduce) {
+    .studio-preview-img { transition: none; }
+}

@@ -13,6 +13,11 @@ const snapshotPath = path.join(releaseRoot, 'source-snapshot.json');
 const capture = process.argv.includes('--capture');
 const local = process.argv.includes('--local');
 const criticalPackagedPaths = [
+  'asset_kernel.py', 'dispatch_kernel.py', 'release_info.py',
+  'static/js/xiaomei-canvas-surface.js', 'static/js/xiaomei-smart-surface.js',
+  'static/js/xiaomei-dispatch-kernel.js', 'static/js/xiaomei-document-kernel.js',
+  'static/js/xiaomei-history-kernel.js', 'static/js/xiaomei-node-kernel.js',
+  'static/js/xiaomei-shell-kernel.js', 'static/js/xiaomei-viewport-kernel.js',
   'main.py', 'runtime_paths.py', 'skill_capabilities.py', 'desktop/main.cjs', 'desktop/preload.cjs',
   'desktop/harness-mcp-entry.js',
   'desktop/harness-patches/manifest.json', 'desktop/harness-patches/README.md',
@@ -55,7 +60,12 @@ function isProductSource(file, tracked) {
   if (/^desktop\/harness-patches\/[^/]+$/.test(file)) {
     return ['.json', '.md', '.patch'].includes(extension);
   }
+  if (file === 'desktop/launch-hidden.vbs') return true;
+  if (/^tools\/(?:chrome-local-asset-importer|photoshop-asset-connector)\//.test(file)) {
+    return tracked && ['.md', '.mjs', '.js', '.json', '.html', '.css', '.png', '.svg'].includes(extension);
+  }
   if (file.startsWith('static/')) {
+    if (file === 'static/vendor/x6/LICENSE') return true;
     if (/^static\/photocraft\//.test(file)) {
       return !/(?:^|\/)\.env(?:\.|$)/i.test(file)
         && ['.html', '.js', '.css', '.json', '.md', '.wasm', '.part-aa', '.txt'].includes(extension)

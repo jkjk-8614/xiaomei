@@ -1,2 +1,6 @@
 # PhotoCraft 的 SRI 校验依赖原始字节，Windows 检出时也不得转换换行。
 static/photocraft/** -text
+
+# 保留 AntV X6 发布包中的脚本和许可证原始字节。
+static/vendor/x6/x6.min.js -text
+static/vendor/x6/LICENSE -text

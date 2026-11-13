@@ -15,14 +15,28 @@ PROTOCOLS = {"openai", "apimart", "gemini", "gemini-cli", "volcengine", "running
 VERSION_PREFIXES = ("/api/v3", "/v1beta", "/v1", "/v2")
 STATUS_KEYS = ("status", "task_status", "taskStatus", "state", "phase", "job_status", "jobStatus")
 NEST_KEYS = ("data", "result", "task", "job", "operation", "output", "response")
+_RECEIPT_FIELDS = (
+    "task_id", "taskId", "submit_id", "submitId", "job_id", "jobId", "operation_id", "operationId",
+    "prediction_id", "predictionId", "generation_id", "generationId", "video_id", "videoId",
+)
+_RECEIPT_ENVELOPES = ("data", "result", "output", "response", "detail", "task", "job", "operation")
 SUCCESS = {"SUCCESS", "SUCCESSFUL", "SUCCEED", "SUCCEEDED", "COMPLETED", "COMPLETE", "DONE", "FINISHED", "OK", "READY"}
 FAILED = {"FAILURE", "FAILED", "FAIL", "ERROR", "ERRORED", "CANCELED", "CANCELLED", "TIMEOUT", "REJECTED", "EXPIRED"}
+PENDING = {
+    "ACCEPTED", "CREATED", "IN_PROGRESS", "IN-PROGRESS", "IN PROGRESS", "PENDING", "PROCESSING",
+    "QUEUED", "RUNNING", "SCHEDULED", "STARTED", "SUBMITTED", "WAITING",
+}
 REASON_KEYS = ("message", "detail", "fail_reason", "failReason", "reason", "description", "error_message", "errorMessage")
 
 
 def selected() -> bool:
     """The next dispatch path is the only runtime path."""
     return True
+
+
+def bearer_auth_value(value):
+    token = re.sub(r"^Bearer\s+", "", str(value or "").strip(), flags=re.I).strip()
+    return f"Bearer {token}" if token else ""
 
 
 def provider_core(item: Mapping[str, Any] | None) -> dict:
@@ -91,32 +105,62 @@ def read_status(payload: Any) -> str:
         current = next((current.get(key) for key in NEST_KEYS if isinstance(current.get(key), dict)), None)
     return ""
 
-
-def _walk_error(payload: Any):
-    pending = [(payload, 0)]
-    seen = set()
-    while pending:
-        current, depth = pending.pop()
-        if isinstance(current, dict):
-            marker = id(current)
-            if marker in seen:
-                continue
-            seen.add(marker)
-            if "error" in current and current.get("error") not in (None, "", [], {}):
-                return current.get("error")
-            if depth >= 6:
-                continue
-            for key in NEST_KEYS:
-                child = current.get(key)
-                if isinstance(child, (dict, list)):
-                    pending.append((child, depth + 1))
-        elif isinstance(current, list) and depth < 6:
-            pending.extend((child, depth + 1) for child in current if isinstance(child, (dict, list)))
-    return None
+def task_records(value: Any, *, depth=0):
+    if depth > 8:
+        return
+    if isinstance(value, dict):
+        yield value
+        for key in _RECEIPT_ENVELOPES:
+            if key in value:
+                yield from task_records(value[key], depth=depth + 1)
+    elif isinstance(value, list):
+        for item in value:
+            yield from task_records(item, depth=depth + 1)
 
 
-def failure_message(payload: Any) -> str:
-    error = _walk_error(payload)
+def task_receipt(raw, fields=_RECEIPT_FIELDS, *, plain_id=True):
+    records = list(task_records(raw))
+    for keys in (fields, ("id",) if plain_id else ()):
+        for row in records:
+            for key in keys:
+                value = row.get(key)
+                if type(value) not in (str, int):
+                    continue
+                identifier = str(value).strip()
+                if identifier and not identifier.lower().startswith(("chatcmpl-", "resp_", "response_")):
+                    return identifier
+    return ""
+
+
+def read_error(payload: Any, *, extra_envelopes=()):
+    keys = (*NEST_KEYS, *extra_envelopes)
+
+    def find(value, remaining):
+        if isinstance(value, dict):
+            error = value.get("error")
+            if isinstance(error, str):
+                if error.strip():
+                    return error
+            elif error:
+                return error
+            children = (value[key] for key in reversed(keys) if key in value)
+        elif isinstance(value, list):
+            children = reversed(value)
+        else:
+            return None
+        if remaining:
+            for child in children:
+                error = find(child, remaining - 1)
+                if error is not None:
+                    return error
+        return None
+
+    return find(payload, 6)
+
+
+def failure_message(payload: Any, *, error=None) -> str:
+    if error is None:
+        error = read_error(payload)
     reason = ""
     code = ""
     if isinstance(error, dict):
@@ -175,7 +219,7 @@ def classify_remote(payload: Any) -> dict:
     status = read_status(payload)
     if status in SUCCESS:
         return {"state": "succeeded", "status": status, "urls": collect_urls(payload), "message": ""}
-    if status in FAILED or (not status and _walk_error(payload) is not None):
+    if status in FAILED or (not status and read_error(payload) is not None):
         return {"state": "failed", "status": status, "urls": [], "message": failure_message(payload)}
     return {"state": "pending", "status": status, "urls": [], "message": ""}
 

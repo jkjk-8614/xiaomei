@@ -1,0 +1,527 @@
+/* 小美画布 X6 引擎样式
+ *
+ * 全部选择器都带 xm- 前缀，刻意与正式画布的 .image-node / .node-body 不重叠。
+ * 原因很实际：阶段 4 要让两套引擎在同一页面里并存灰度，共用类名会让
+ * 旧画布的 9108 行 CSS 直接命中新引擎的 DOM，反过来也一样，两边都不可控。
+ *
+ * 取值全部对齐 smart-canvas.css：
+ *   .image-node           → 圆角 18px（:172）
+ *   .node-head            → 38px 高、1px --line 下边线（:962）
+ *   .node-body            → 10px 内边距（:1116）
+ *   .node-drop            → 15px 圆角虚线框（:1118）
+ *   .prompt-node-text     → 13px 圆角、11px 字、1.45 行高（:279）
+ *   .node-port            → 14px 圆点、--card 底、1.8px --strong 描边
+ * token 来自 smart-canvas.css 的 :root / .theme-dark。
+ */
+
+/* ---------- X6 容器 ---------- */
+
+.xm-canvas-stage { position: absolute; inset: 0; overflow: hidden; }
+.xm-canvas-stage .x6-graph { background: transparent; }
+.xm-canvas-stage .x6-graph-grid { opacity: .55; }
+
+/* X6 会在 foreignObject 里放我们的 HTML，必须让它铺满节点矩形 */
+.xm-canvas-stage .x6-node foreignObject > div { width: 100%; height: 100%; }
+
+/* ---------- 卡片 ---------- */
+
+.xm-node {
+    position: relative;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 18px;
+    border: 1px solid var(--line, #e4d8c4);
+    background: var(--card, #fffaf3);
+    box-shadow: 0 10px 28px var(--shadow, rgba(48, 38, 22, .12));
+    color: var(--text, #243027);
+    cursor: move;
+    user-select: none;
+    transition: border-color .14s ease, box-shadow .14s ease;
+}
+
+.xm-node.is-selected {
+    border-color: var(--strong, #1f6a4a);
+    box-shadow: 0 0 0 1.5px var(--strong, #1f6a4a), 0 14px 34px var(--shadow, rgba(48, 38, 22, .12));
+}
+
+/* 拖动时关掉阴影与模糊，和正式画布 body.smart-node-drag 的做法一致，
+   顺带减少合成开销（500 节点时这一条能省下可观的绘制时间）。 */
+body.is-node-drag .xm-node { box-shadow: none; }
+body.is-node-drag .xm-node * { pointer-events: none !important; }
+
+/* ---------- 头部 ---------- */
+
+.xm-node-head {
+    flex: 0 0 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 10px 0 12px;
+    border-bottom: 1px solid var(--line, #e4d8c4);
+    cursor: move;
+}
+
+.xm-node-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--fs-sm, 11px);
+    font-weight: 900;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted, #6b6256);
+}
+
+/* ---------- 主体 ---------- */
+
+.xm-node-body {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.xm-node-body.is-prompt { padding: 0; align-items: stretch; justify-content: stretch; }
+.xm-node-body.is-stack { padding: 12px; align-items: stretch; justify-content: stretch; }
+
+/* 图片节点的主体不留内边距，边距交给网格自己算。
+   正式画布对图片节点的规则是 `.image-node:not(.empty-node) .node-body{padding:0}`，
+   多图的 16px 外边距与 8px 间隙是在 imageLayout() 里按 PAD=32 / GAP=8 算进尺寸的
+   （smart-canvas.js:4537 一带），所以这里必须让网格自己承担，否则
+   「尺寸对齐了、里面却多出一圈白边」，两块拼不到一起。 */
+.xm-node-body.is-media { padding: 0; align-items: stretch; justify-content: stretch; }
+
+/* 图片网格：单图铺满，多图按列数排 */
+.xm-image-grid {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    gap: 8px;
+    padding: 16px;
+    box-sizing: border-box;
+}
+
+/* 单图：无外边距、无间隙，图片直接贴到卡片边缘（圆角由卡片裁剪） */
+.xm-image-grid.single { grid-template-columns: 1fr; padding: 0; gap: 0; }
+
+.xm-image-grid img {
+    width: 100%;
+    height: 100%;
+    /* 单图用 contain 与正式画布的 .node-img 一致；多图格子是 imageLayout()
+       按真实宽高比收紧过的，cover 不会裁到内容，且能避免留白。 */
+    object-fit: cover;
+    display: block;
+    border-radius: 12px;
+    background: var(--soft, #f7f1e6);
+}
+
+.xm-image-grid.single img { object-fit: contain; }
+
+/* ---------- 视频 ---------- */
+
+.xm-video-wrap {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #000;
+}
+
+.xm-video-wrap video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+/* ---------- 提示词 ---------- */
+
+.xm-node-prompt {
+    padding: 12px;
+    background: var(--panel, rgba(255, 251, 244, .94));
+    backdrop-filter: blur(20px);
+}
+
+/* 对齐 .prompt-node-text（smart-canvas.css:279）：
+   textarea 没有 div 的自动撑高，必须显式 height:100% + resize:none。 */
+.xm-prompt-input {
+    flex: 1 1 auto;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    padding: 10px;
+    border-radius: 13px;
+    border: 1px solid rgba(148, 163, 184, .32);
+    background: rgba(255, 255, 255, .74);
+    color: var(--text, #243027);
+    font-family: inherit;
+    font-size: var(--fs-sm, 11px);
+    line-height: 1.45;
+    resize: none;
+    outline: none;
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, .45) transparent;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55);
+    /* 光标必须是文本光标，否则用户不知道这里能打字 */
+    cursor: text;
+}
+
+.xm-prompt-input:focus {
+    border-color: var(--strong, #1f6a4a);
+    background: var(--card, #fffaf3);
+}
+
+.xm-prompt-input::placeholder { color: var(--faint, #8a7d6c); }
+
+.theme-dark .xm-prompt-input {
+    background: rgba(15, 23, 42, .42);
+    border-color: rgba(148, 163, 184, .24);
+    box-shadow: none;
+}
+
+/* ---------- 占位（空节点） ---------- */
+
+.xm-drop {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 12px;
+    border-radius: 15px;
+    border: 1px dashed var(--line, #e4d8c4);
+    background: var(--soft, #f7f1e6);
+    color: var(--faint, #8a7d6c);
+    font-size: var(--fs-md, 12px);
+    font-weight: 800;
+    text-align: center;
+}
+
+.xm-drop-icon { font-size: 20px; opacity: .8; }
+
+/* ---------- 结构化节点骨架 ---------- */
+
+.xm-plain {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    padding: 10px;
+    box-sizing: border-box;
+    border-radius: 13px;
+    border: 1px solid var(--line, #e4d8c4);
+    background: var(--soft, #f7f1e6);
+    overflow: hidden;
+}
+
+.xm-plain-line {
+    font-size: var(--fs-sm, 11px);
+    line-height: 1.45;
+    color: var(--text, #243027);
+    overflow: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
+
+.xm-plain-meta {
+    font-size: var(--fs-xs, 10px);
+    font-weight: 800;
+    letter-spacing: .04em;
+    color: var(--muted, #6b6256);
+}
+
+/* ---------- 分组 ---------- */
+
+.xm-group {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    border-radius: 18px;
+    border: 1px dashed var(--strong, #1f6a4a);
+    background: color-mix(in srgb, var(--strong, #1f6a4a) 6%, transparent);
+}
+
+.xm-group-head {
+    flex: 0 0 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    border-bottom: 1px dashed color-mix(in srgb, var(--strong, #1f6a4a) 35%, transparent);
+    color: var(--strong, #1f6a4a);
+    font-size: var(--fs-sm, 11px);
+    font-weight: 900;
+    letter-spacing: .06em;
+    cursor: move;
+}
+
+.xm-group-count {
+    margin-left: auto;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--strong, #1f6a4a) 14%, transparent);
+    font-size: var(--fs-2xs, 9px);
+    font-variant-numeric: tabular-nums;
+}
+
+.xm-group-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 10px;
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+}
+
+/* 组内图片网格：多图时铺满可用区域，单图铺满整块 */
+.xm-group-grid { width: 100%; height: 100%; }
+
+/* 分组节点整体是背板，拖动应该抓头部而不是抓空白区 */
+.xm-node-group { background: transparent; border: 0; box-shadow: none; }
+.xm-node-group .xm-group { pointer-events: none; }
+.xm-node-group .xm-group-head { pointer-events: auto; }
+
+/* ---------- 节点内工具栏 ---------- */
+
+.xm-node-tools {
+    position: absolute;
+    left: 14px;
+    bottom: 14px;
+    z-index: 4;
+    display: flex;
+    gap: 6px;
+    opacity: 0;
+    transition: opacity .16s ease;
+}
+
+.xm-node:hover .xm-node-tools { opacity: 1; }
+
+.xm-tool {
+    height: 24px;
+    padding: 0 9px;
+    border-radius: 7px;
+    border: 1px solid var(--line, #e4d8c4);
+    background: var(--panel, rgba(255, 251, 244, .94));
+    color: var(--text, #243027);
+    font-family: inherit;
+    font-size: var(--fs-2xs, 9px);
+    font-weight: 800;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+}
+
+.xm-tool:hover { border-color: var(--strong, #1f6a4a); color: var(--strong, #1f6a4a); }
+
+/* ---------- 端口 ---------- */
+
+/* X6 3.x 的端口结构是 <g class="x6-port"><circle class="x6-port-body" r="7">，
+   class 挂在 circle 自己身上，不是父级 g，样式必须直接命中 circle。
+   r=7 → 直径 14px，与正式画布的 .node-port 一致。 */
+.xm-canvas-stage .x6-port-body {
+    fill: var(--card, #fffaf3);
+    stroke: var(--strong, #1f6a4a);
+    stroke-width: 1.8;
+    transition: transform .16s ease, fill .16s ease;
+}
+
+.xm-canvas-stage .x6-port-body:hover {
+    fill: var(--strong, #1f6a4a);
+    transform: scale(1.18);
+}
+
+/* 端口默认隐藏，hover 或选中节点才显示，避免 500 节点时满屏圆点 */
+.xm-canvas-stage .x6-port { opacity: 0; transition: opacity .16s ease; }
+.xm-canvas-stage .x6-node:hover .x6-port,
+.xm-canvas-stage .x6-node.x6-node-selected .x6-port,
+.xm-canvas-stage .x6-node.is-selected .x6-port { opacity: 1; }
+
+/* ---------- 连线 ---------- */
+
+.xm-canvas-stage .x6-edge path.x6-edge-path {
+    fill: none;
+    stroke: var(--strong, #1f6a4a);
+    stroke-width: 1.6;
+}
+
+/* flow 型连线：虚线 + 弱化色，对应正式画布的 kind:'flow' */
+.xm-canvas-stage .x6-edge.xm-edge-flow path.x6-edge-path {
+    stroke: var(--muted, #6b6256);
+    stroke-dasharray: 5 4;
+}
+
+.xm-canvas-stage .x6-edge.x6-edge-selected path.x6-edge-path { stroke-width: 2.6; }
+
+/* 加宽的透明命中区，细线也能点中（正式画布同样做了这件事） */
+.xm-canvas-stage .x6-edge path.x6-edge-hit {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 12;
+}
+
+/* ---------- 选中框 ---------- */
+
+.xm-canvas-stage .x6-widget-selection-box {
+    border: 1.5px solid var(--strong, #1f6a4a);
+    border-radius: 18px;
+    pointer-events: none;
+}
+
+/* ---------- 小地图（可选，阶段 4 接入） ---------- */
+
+.xm-canvas-minimap {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    z-index: 20;
+    width: 180px;
+    height: 120px;
+    border-radius: 12px;
+    border: 1px solid var(--line, #e4d8c4);
+    background: var(--panel, rgba(255, 251, 244, .94));
+    box-shadow: 0 10px 28px var(--shadow, rgba(48, 38, 22, .12));
+    overflow: hidden;
+    backdrop-filter: blur(14px);
+}
+
+.xm-canvas-minimap .x6-widget-minimap-viewport {
+    border: 1.5px solid var(--strong, #1f6a4a);
+    background: color-mix(in srgb, var(--strong, #1f6a4a) 8%, transparent);
+}
+
+/* ---------- 灰度页（?engine=x6） ---------- */
+
+/* 只保留舞台和角标，其余正式画布 UI 全部不参与布局。
+   注意：这里用 display:none 而不是删 DOM——旧启动链被跳过时那些节点本来
+   就是空的，留着它们能保证「切回旧引擎」时页面结构和之前一模一样。 */
+body.engine-x6 #shell > *:not(#xmGrayStage):not(.xm-gray-badge) { display: none !important; }
+body.engine-x6 > *:not(#shell):not(.xm-gray-badge):not(script):not(style):not(link) {
+    display: none !important;
+}
+
+.xm-gray-stage {
+    position: absolute;
+    inset: 0;
+    background-color: var(--page, #f4efe4);
+    background-image: radial-gradient(color-mix(in srgb, var(--grid, #d9cbb6) 52%, transparent) .75px, transparent .75px);
+    background-size: 28px 28px;
+    cursor: grab;
+}
+.xm-gray-stage:active { cursor: grabbing; }
+
+/* ---------- 角标 ---------- */
+
+.xm-gray-badge {
+    position: fixed;
+    z-index: 900;
+    left: 18px;
+    bottom: 18px;
+    display: grid;
+    gap: 6px;
+    width: 236px;
+    padding: 12px 14px 11px;
+    border: 1px solid color-mix(in srgb, var(--line, #e4d8c4) 72%, var(--faint, #8a7d6c));
+    border-radius: 14px;
+    color: var(--text, #243027);
+    background: var(--card, #fffaf3);
+    box-shadow: 0 14px 36px var(--shadow, rgba(48, 38, 22, .12));
+    backdrop-filter: blur(14px);
+    font-family: "Avenir Next", "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+    user-select: none;
+}
+
+.xm-gray-badge-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--strong, #1f6a4a);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+.xm-gray-badge-title::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.xm-gray-badge-name {
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.xm-gray-badge-stats {
+    display: grid;
+    grid-template-columns: auto 1fr auto 1fr;
+    gap: 2px 8px;
+    margin: 2px 0 0;
+    font-size: 11px;
+}
+.xm-gray-badge-stats dt { color: var(--faint, #8a7d6c); }
+.xm-gray-badge-stats dd { margin: 0; color: var(--text, #243027); font-variant-numeric: tabular-nums; }
+
+.xm-gray-badge-note {
+    padding: 5px 8px;
+    border-radius: 8px;
+    color: var(--text, #243027);
+    background: color-mix(in srgb, var(--strong, #1f6a4a) 12%, transparent);
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.xm-gray-badge-actions { display: flex; gap: 6px; margin-top: 2px; }
+
+.xm-gray-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 6px 6px;
+    border: 1px solid var(--line, #e4d8c4);
+    border-radius: 8px;
+    color: var(--text, #243027);
+    background: var(--soft, #f7f1e6);
+    font-size: 11px;
+    line-height: 1.2;
+    white-space: nowrap;
+    transition: background 140ms ease, border-color 140ms ease;
+}
+.xm-gray-btn:hover {
+    border-color: var(--strong, #1f6a4a);
+    background: color-mix(in srgb, var(--strong, #1f6a4a) 10%, var(--card, #fffaf3));
+}
+
+.xm-gray-badge-back {
+    color: var(--muted, #6b6256);
+    font-size: 11px;
+    text-decoration: none;
+    text-underline-offset: 2px;
+}
+.xm-gray-badge-back:hover { color: var(--strong, #1f6a4a); text-decoration: underline; }
+
+.xm-gray-badge-error { border-color: #d9534f; }
+.xm-gray-badge-error .xm-gray-badge-title { color: #b52b27; }

@@ -1,137 +1,129 @@
-/* 三个数据源适配器：把 资产库 / 画布资产 / 本地素材 统一成 {id,name,url,kind,search}。
- * 每个适配器暴露：load / optionsA / optionsB / items / exportTarget / doExport。 */
 (function () {
-  const state = DX.state;
-  const net = DX.net;
+  const { net, state } = DX;
+  const allCanvases = '__all__';
+  const list = (value) => Array.isArray(value) ? value : [];
 
   function itemIsImage(item) {
     if (!item) return false;
     if (item.kind) return item.kind === 'image';
-    const text = String(item.url || item.name || '').toLowerCase().split(/[?#]/)[0];
-    return /\.(png|jpe?g|webp|gif|avif|bmp)$/i.test(text);
+    const path = String(item.url || item.name || '').split(/[?#]/, 1)[0];
+    return /\.(?:png|jpe?g|webp|gif|avif|bmp)$/i.test(path);
   }
 
-  function classificationText(cls) {
-    if (!cls || typeof cls !== 'object') return '';
-    const parts = [cls.summary];
-    if (Array.isArray(cls.tags)) parts.push(cls.tags.join(' '));
-    if (cls.categories && typeof cls.categories === 'object') {
-      for (const v of Object.values(cls.categories)) if (Array.isArray(v)) parts.push(v.join(' '));
+  function classificationText(classification) {
+    if (!classification) return '';
+    const categories = Object.values(classification.categories || {}).flatMap(list);
+    return [classification.summary, ...list(classification.tags), ...categories].filter(Boolean).join(' ');
+  }
+
+  function imageRow(item, ...keywords) {
+    return {
+      id: item.id,
+      url: item.url,
+      kind: item.kind || 'image',
+      name: item.name || '未命名',
+      search: [item.name, ...keywords].filter(Boolean).join(' ').toLowerCase(),
+    };
+  }
+
+  const catalogRow = (item) => imageRow(item, item.caption, classificationText(item.classification));
+  const named = (id, name) => ({ id, name });
+  const counted = (name, count) => `${name} · ${count}`;
+
+  function libraries() {
+    return list(state.raw.assets?.libraries);
+  }
+
+  function groups(libraryId) {
+    const entries = libraries();
+    const library = entries.find(({ id }) => id === libraryId) || entries[0];
+    return list(library?.categories);
+  }
+
+  function groupById(libraryId, groupId) {
+    return groups(libraryId).find(({ id }) => id === groupId);
+  }
+
+  function matchesKind(kind, filter) {
+    return !filter || filter === 'all' || (kind || 'classic') === filter;
+  }
+
+  function appendFolders(options, node, depth) {
+    for (const child of list(node?.children)) {
+      options.push(named(child.path, '　'.repeat(depth) + (child.name || child.path)));
+      appendFolders(options, child, depth + 1);
     }
-    return parts.filter(Boolean).join(' ');
   }
 
   const adapters = {
-    /* 图片资产 —— /api/asset-library */
     assets: {
-      editable: true,
-      async load() { state.raw.assets = (await net.apiGet('/api/asset-library')).library || null; },
-      libraries() {
-        const lib = state.raw.assets;
-        return lib && Array.isArray(lib.libraries) ? lib.libraries : [];
+      async load() {
+        const response = await net.apiGet('/api/asset-library');
+        return response.library || null;
       },
-      optionsA() { return this.libraries().map((l) => ({ id: l.id, name: l.name || '资产库' })); },
-      categoriesOf(aId) {
-        const l = this.libraries().find((x) => x.id === aId) || this.libraries()[0];
-        return l && Array.isArray(l.categories) ? l.categories : [];
-      },
-      optionsB(aId) {
-        return this.categoriesOf(aId).map((c) => ({
-          id: c.id,
-          name: `${c.name || '分组'}${c.type === 'workflow' ? '（工作流）' : ''} · ${(c.items || []).length}`,
-        }));
-      },
-      items(aId, bId) {
-        const cat = this.categoriesOf(aId).find((c) => c.id === bId);
-        if (!cat || cat.type === 'workflow') return [];
-        return (cat.items || []).map((it) => ({
-          id: it.id, name: it.name || '未命名', url: it.url, kind: it.kind || 'image',
-          search: `${it.name || ''} ${it.caption || ''} ${classificationText(it.classification)}`.toLowerCase(),
-        }));
-      },
-      exportTarget(aId, bId) {
-        const cat = this.categoriesOf(aId).find((c) => c.id === bId);
-        if (!cat || cat.type !== 'image') return null;
-        return { label: cat.name || '分组' };
-      },
-      async doExport(aId, bId, name, buffer) {
-        const url = await net.uploadInputBase64(buffer, name);     // 先上传拿 /assets 临时 url
-        await net.apiSend('POST', '/api/asset-library/items', { library_id: aId, category_id: bId, url, name });
-      },
-    },
-
-    /* 画布资产 —— /api/canvas-assets（只读） */
-    canvas: {
-      editable: false,
-      async load() { state.raw.canvas = await net.apiGet('/api/canvas-assets'); },
       optionsA() {
-        const cats = (state.raw.canvas && state.raw.canvas.categories) || [];
-        return cats.map((c) => ({ id: c.id, name: `${c.name}` }));
+        return libraries().map(({ id, name }) => named(id, name || '资产库'));
       },
-      optionsB(aId) {
-        const all = (state.raw.canvas && state.raw.canvas.canvases) || [];
-        const list = aId && aId !== 'all' ? all.filter((c) => (c.kind || 'classic') === aId) : all;
-        return [{ id: '__all__', name: '全部画布' }].concat(
-          list.map((c) => ({ id: c.id, name: `${c.title || '未命名画布'} · ${c.asset_count || 0}` }))
-        );
-      },
-      items(aId, bId) {
-        let list = (state.raw.canvas && state.raw.canvas.items) || [];
-        if (aId && aId !== 'all') list = list.filter((it) => (it.canvas_kind || 'classic') === aId);
-        if (bId && bId !== '__all__') list = list.filter((it) => it.canvas_id === bId);
-        return list.map((it) => ({
-          id: it.id, name: it.name || '未命名', url: it.url, kind: it.kind || 'image',
-          search: `${it.name || ''} ${it.canvas_title || ''} ${it.node_title || ''}`.toLowerCase(),
-        }));
-      },
-      exportTarget() { return null; },
-    },
-
-    /* 本地素材 —— /api/local-assets */
-    local: {
-      editable: true,
-      async load() { state.raw.local = await net.apiGet('/api/local-assets'); },
-      optionsA() { return null; },
-      folders() {
-        const tree = state.raw.local && state.raw.local.tree;
-        const out = [{ id: '', name: '全部素材' }];
-        const walk = (node, depth) => {
-          if (!node) return;
-          for (const child of node.children || []) {
-            out.push({ id: child.path, name: `${'　'.repeat(depth)}${child.name || child.path}` });
-            walk(child, depth + 1);
-          }
-        };
-        walk(tree, 0);
-        return out;
-      },
-      optionsB() { return this.folders(); },
-      items(_aId, bId) {
-        let list = (state.raw.local && state.raw.local.items) || [];
-        if (bId) list = list.filter((it) => it.folder === bId || String(it.folder || '').startsWith(`${bId}/`));
-        return list.map((it) => ({
-          id: it.id, name: it.name || '未命名', url: it.url, kind: it.kind || 'image',
-          search: `${it.name || ''} ${it.caption || ''} ${classificationText(it.classification)}`.toLowerCase(),
-        }));
-      },
-      exportTarget(_aId, bId) { return { label: bId || '全部素材' }; },
-      async doExport(_aId, bId, name, buffer) {
-        // 走 base64 import-urls（带 folder），避开 FormData；素材直接落到选中的本地文件夹
-        const b64 = net.toBase64(buffer);
-        const res = await net.apiSend('POST', '/api/local-assets/import-urls', {
-          folder: bId || '',
-          items: [{ data: `data:image/png;base64,${b64}`, name, content_type: 'image/png' }],
+      optionsB(libraryId) {
+        return groups(libraryId).map((group) => {
+          const name = (group.name || '分组') + (group.type === 'workflow' ? '（工作流）' : '');
+          return named(group.id, counted(name, list(group.items).length));
         });
-        const r = (res.items || [])[0];
-        if (r && r.ok === false) throw new Error(r.error || '导入失败');
+      },
+      items(libraryId, groupId) {
+        const group = groupById(libraryId, groupId);
+        return group?.type === 'workflow' ? [] : list(group?.items).map(catalogRow);
+      },
+      exportTarget(libraryId, groupId) {
+        const group = groupById(libraryId, groupId);
+        return group?.type === 'image' ? { label: group.name || '分组' } : null;
+      },
+      async doExport(libraryId, groupId, name, buffer) {
+        const url = await net.uploadInputBase64(buffer, name);
+        await net.apiSend('POST', '/api/asset-library/items', {
+          library_id: libraryId, category_id: groupId, url, name,
+        });
+      },
+    },
+    canvas: {
+      load: () => net.apiGet('/api/canvas-assets'),
+      optionsA() {
+        return list(state.raw.canvas?.categories).map(({ id, name }) => named(id, String(name)));
+      },
+      optionsB(kind) {
+        const canvases = list(state.raw.canvas?.canvases).filter((canvas) => matchesKind(canvas.kind, kind));
+        return [named(allCanvases, '全部画布'), ...canvases.map((canvas) =>
+          named(canvas.id, counted(canvas.title || '未命名画布', canvas.asset_count || 0)))];
+      },
+      items(kind, canvasId) {
+        return list(state.raw.canvas?.items)
+          .filter((item) => matchesKind(item.canvas_kind, kind)
+            && (!canvasId || canvasId === allCanvases || item.canvas_id === canvasId))
+          .map((item) => imageRow(item, item.canvas_title, item.node_title));
+      },
+      exportTarget: () => null,
+    },
+    local: {
+      load: () => net.apiGet('/api/local-assets'),
+      optionsA: () => null,
+      optionsB() {
+        const options = [named('', '全部素材')];
+        appendFolders(options, state.raw.local?.tree, 0);
+        return options;
+      },
+      items(_libraryId, folder) {
+        return list(state.raw.local?.items)
+          .filter((item) => !folder || item.folder === folder || String(item.folder || '').startsWith(folder + '/'))
+          .map(catalogRow);
+      },
+      exportTarget(_libraryId, folder) {
+        return { label: folder || '全部素材' };
+      },
+      doExport(_libraryId, folder, name, buffer) {
+        return net.uploadToFolder(folder || '', buffer, name);
       },
     },
   };
 
-  DX.sources = {
-    adapters,
-    adapter() { return adapters[state.source]; },
-    itemIsImage,
-    classificationText,
-  };
+  DX.sources = { adapters, adapter: () => adapters[state.source], itemIsImage };
 })();

@@ -1775,7 +1775,7 @@ const ELECTRON_ASSISTANT_CONTEXT_SCRIPT = String.raw`(() => {
 })()`;
 
 if (process.platform === 'win32') {
-  app.setAppUserModelId('com.xiaomei.canvas.desktop');
+  app.setAppUserModelId(app.isPackaged ? 'com.xiaomei.canvas.desktop' : 'com.xiaomei.canvas.desktop.brand');
 }
 try {
   app.setPath('userData', TEST_USER_DATA_ROOT);
@@ -1964,17 +1964,20 @@ function desktopUpdateOwnerWindow() {
 async function showDesktopUpdateResult(result) {
   const status = String(result?.status || 'error');
   const failed = ['unavailable', 'invalid', 'error'].includes(status);
-  const title = status === 'current' ? '检查更新' : status === 'disabled' ? '桌面版更新' : '更新检查失败';
+  const informational = status === 'current' || status === 'disabled' || status === 'development';
+  const title = status === 'current' ? '检查更新' : informational ? '桌面版更新' : '更新检查失败';
   const message = status === 'current'
     ? `当前已经是最新版本（v${APP_DISPLAY_VERSION}）`
     : String(result?.message || '暂时无法检查更新');
   const options = {
-    type: status === 'current' || status === 'disabled' ? 'info' : 'error',
+    type: informational ? 'info' : 'error',
     title,
     message,
     detail: status === 'disabled'
       ? '请在发布前配置 desktop/update-config.json 中的 GitHub 仓库或 manifestUrl。'
-      : failed ? '可检查网络或系统代理后重试，也可打开官方下载页面获取安装包。' : '',
+      : status === 'development'
+        ? '当前是源码开发模式，桌面版更新只在安装包内检查；安装版会自动检查并在有新版时提示。'
+        : failed ? '可检查网络或系统代理后重试，也可打开官方下载页面获取安装包。' : '',
     buttons: failed ? ['重试', '打开下载页面', '稍后'] : ['知道了'],
     defaultId: 0,
     cancelId: failed ? 2 : 0,
@@ -7136,6 +7139,7 @@ function createWindow() {
     mainWindow = null;
   });
   try {
+    try { if (fs.existsSync(APP_ICON_PATH)) { mainWindow.setIcon(APP_ICON_PATH); if (process.platform === 'win32') mainWindow.setAppDetails({ appId: app.isPackaged ? 'com.xiaomei.canvas.desktop' : 'com.xiaomei.canvas.desktop.brand', appIconPath: APP_ICON_PATH, appIconIndex: 0 }); } } catch {}
     desktopTray = installDesktopTray(mainWindow, lifecycle, APP_ICON_PATH, APP_NAME);
   } catch (error) {
     console.warn('无法创建小美画布托盘：', error?.message || error);

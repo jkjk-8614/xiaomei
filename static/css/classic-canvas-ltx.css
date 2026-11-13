@@ -1,0 +1,208 @@
+.classic-ltx .ltx-director-timeline-host {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+.classic-ltx .setting-input {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--soft);
+    color: var(--text);
+}
+.classic-ltx textarea.setting-input {
+    display: block;
+    flex: none;
+    width: 100%;
+    min-height: 48px;
+    padding: 7px 9px;
+    resize: vertical;
+    font: inherit;
+}
+.classic-ltx-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+}
+.classic-ltx-toolbar .tool-btn,
+.classic-ltx-inspector .tool-btn {
+    min-height: 28px;
+    padding: 4px 8px;
+    font-size: 11px;
+}
+.classic-ltx-toolbar .tool-btn[aria-pressed="true"] {
+    border-color: var(--strong);
+    background: var(--strong);
+    color: var(--strong-text);
+}
+.classic-ltx-toolbar .tool-btn:disabled { opacity: .45; cursor: default; }
+.classic-ltx-clock {
+    padding-inline: 4px;
+    color: var(--muted);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+.classic-ltx-scroller {
+    flex: none;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--soft);
+    overscroll-behavior: contain;
+}
+.classic-ltx-tracks {
+    position: relative;
+    width: 100%;
+    min-width: 420px;
+    touch-action: pan-x;
+}
+.classic-ltx-ruler {
+    position: relative;
+    height: 25px;
+    cursor: crosshair;
+    touch-action: none;
+}
+.classic-ltx-tick {
+    position: absolute;
+    bottom: 0;
+    padding: 1px 4px 5px;
+    border-left: 1px solid var(--line);
+    color: var(--muted);
+    font: 10px ui-monospace, monospace;
+    pointer-events: none;
+}
+.classic-ltx-tick:last-child { transform: translateX(-100%); border-left: 0; border-right: 1px solid var(--line); }
+.classic-ltx-track {
+    position: relative;
+    height: 74px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+}
+.classic-ltx-track::before {
+    position: absolute;
+    top: 2px;
+    left: 6px;
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 10px;
+}
+.classic-ltx-audio { height: 53px; }
+.classic-ltx-playhead {
+    position: absolute;
+    inset-block: 0;
+    width: 1px;
+    z-index: 2;
+    background: #ff5e6e;
+    pointer-events: none;
+}
+.classic-ltx-clip {
+    --ltx-clip-color: #5383d0;
+    position: absolute;
+    inset-block: 17px 3px;
+    min-width: 4px;
+    overflow: hidden;
+    padding: 2px 9px;
+    border: 1px solid var(--ltx-clip-color);
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--ltx-clip-color) 25%, var(--panel));
+    color: var(--text);
+    cursor: grab;
+    text-align: left;
+    touch-action: none;
+}
+.classic-ltx-clip[data-kind="image"] { --ltx-clip-color: #9770d7; }
+.classic-ltx-clip[data-kind="audio"] { --ltx-clip-color: #308d70; }
+.classic-ltx-clip[aria-pressed="true"] { z-index: 1; box-shadow: inset 0 0 0 1px var(--text); }
+.classic-ltx-clip img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: .58;
+    pointer-events: none;
+}
+.classic-ltx-clip-name {
+    position: relative;
+    display: block;
+    overflow: hidden;
+    padding: 2px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--panel) 82%, transparent);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
+}
+.classic-ltx-wave {
+    position: absolute;
+    inset: 2px 6px;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    pointer-events: none;
+}
+.classic-ltx-wave i { flex: 1; background: var(--ltx-clip-color); }
+.classic-ltx-handle {
+    position: absolute;
+    inset-block: 0;
+    width: min(8px, 28%);
+    background: color-mix(in srgb, var(--ltx-clip-color) 48%, transparent);
+    cursor: ew-resize;
+}
+.classic-ltx-handle[data-edge="left"] { left: 0; }
+.classic-ltx-handle[data-edge="right"] { right: 0; }
+.classic-ltx-detail {
+    display: grid;
+    flex: none;
+    grid-template-columns: minmax(100px, 1fr) minmax(200px, 2fr);
+    gap: 8px;
+}
+.classic-ltx-preview {
+    display: grid;
+    height: 100px;
+    padding: 4px;
+    place-items: center;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--soft);
+    color: var(--muted);
+    font-size: 11px;
+    white-space: pre-wrap;
+}
+.classic-ltx-preview img { width: 100%; height: 90px; object-fit: contain; }
+.classic-ltx-inspector {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    color: var(--muted);
+    font-size: 11px;
+}
+.classic-ltx-inspector .ltx-params-row { grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; }
+.classic-ltx-advanced, .classic-ltx-audio-toggle, .classic-ltx-linked { flex: none; font-size: 11px; color: var(--muted); }
+.classic-ltx-advanced summary { cursor: pointer; }
+.classic-ltx-advanced .ltx-params-row { margin-top: 4px; }
+.classic-ltx-audio-toggle { display: flex; align-items: center; gap: 5px; }
+
+.classic-ltx-menu {
+    position: fixed;
+    inset: auto;
+    margin: 0;
+    padding: 5px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--text);
+    box-shadow: 0 12px 28px var(--shadow);
+}
+.classic-ltx-menu .tool-btn {
+    display: flex;
+    width: 100%;
+    justify-content: flex-start;
+    border-color: transparent;
+    font-size: 11px;
+}

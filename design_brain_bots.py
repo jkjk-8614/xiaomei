@@ -950,9 +950,10 @@ class DesignBotOrchestrator:
         except (BotCancelled, asyncio.CancelledError):
             raise
         except Exception as exc:
+            error = self.safe_error(exc)
             self._patch(task_id, "executing", lambda t: next(s for s in t["execution"]["shots"] if s["id"] == shot_id).update(
-                status="failed", error=self.safe_error(exc)))
-            self._event(task_id, "executing", "shot_failed", f"{shot_id} 模板排字失败：{self.safe_error(exc)}")
+                status="failed", error=error))
+            self._event(task_id, "executing", "shot_failed", f"{shot_id} 模板排字失败：{error}")
 
     async def _execute_shot_locked(self, task_id: str, shot_id: str, design_run_id: str) -> None:
         task = self._snapshot(task_id)
@@ -1027,10 +1028,11 @@ class DesignBotOrchestrator:
             response = await self.host.create_canvas_image_task(payload)
             canvas_task_id = str(response.get("task_id") or "")
         except Exception as exc:  # noqa: BLE001 - 单张失败不拖垮整批
+            error = self.safe_error(exc)
             self._patch(task_id, "executing", lambda t: next(
                 shot for shot in t["execution"]["shots"] if shot["id"] == shot_id
-            ).update(status="failed", error=self.safe_error(exc)))
-            self._event(task_id, "executing", "shot_failed", f"{shot_id} 提交失败：{self.safe_error(exc)}")
+            ).update(status="failed", error=error))
+            self._event(task_id, "executing", "shot_failed", f"{shot_id} 提交失败：{error}")
             return
         if not canvas_task_id:
             self._patch(task_id, "executing", lambda t: next(

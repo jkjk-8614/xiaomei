@@ -1028,7 +1028,7 @@
             <label class="team-field"><span>角色</span><input id="teamBotRole" maxlength="200" value="${esc(bot?.role || '')}" placeholder="一句话说明它负责什么"></label>
             <label class="team-field"><span>人格</span><textarea id="teamBotPersonality" rows="3" maxlength="2000" placeholder="例如：嘴上挑剔但很热心，喜欢用短句，敢于提出不同意见">${esc(bot?.personality || '')}</textarea></label>
             <label class="team-field"><span>任务</span><textarea id="teamBotTask" rows="3" maxlength="4000" placeholder="例如：为每个方案找出一个问题，再给出可执行的改法">${esc(bot?.task || '')}</textarea></label>
-            <details class="team-details" ${bot?.instructions ? 'open' : ''}><summary>工作说明</summary><label class="team-field"><textarea id="teamBotInstructions" aria-label="工作说明" rows="4" maxlength="4000" placeholder="补充工作方法、交付要求和约束">${esc(bot?.instructions || '')}</textarea></label></details>
+            <details class="team-details" ${bot?.instructions ? 'open' : ''}><summary>工作说明</summary><label class="team-field"><textarea id="teamBotInstructions" aria-label="工作说明" rows="4" maxlength="${Number(state.team?.limits?.instructions) || 8000}" placeholder="补充工作方法、交付要求和约束">${esc(bot?.instructions || '')}</textarea></label></details>
             <label class="team-field"><span>对话模型</span>
                 <select id="teamBotProvider"></select>
                 <select id="teamBotModel"></select>

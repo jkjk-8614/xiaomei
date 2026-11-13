@@ -94,7 +94,7 @@ test('asset requests and provider records keep the current fields', () => {
         const prepared = kernel.prepareProviders([
             { id: 'tmp', _idDraft: true, name: '商店', base_url: 'https://api.example.com/v1', protocol: 'openai', image_models: ['a', 'a', ''], chat_models: [], video_models: [] },
             { id: 'jimeng', name: '即梦', protocol: 'jimeng', base_url: 'https://unused.example', image_models: ['jimeng-image-2k'], chat_models: [], video_models: [] }
-        ], { selectedId: 'tmp', displayName: (raw) => raw, normalizeRh: (values) => values });
+        ], { selectedId: 'tmp', displayName: (raw) => raw });
         assert.equal(prepared.providers[0].id, 'example-com');
         assert.deepEqual(Array.from(prepared.providers[0].image_models), ['a']);
         assert.equal(prepared.providers[1].base_url, '');

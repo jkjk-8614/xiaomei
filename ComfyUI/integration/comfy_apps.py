@@ -3636,9 +3636,9 @@ def install_comfy_apps(app, host):
             item['verified'] = False
             item['fields'] = extract_fields(graph, info)
             service.analyze(item, info)
-            write_json(self.host.workflow_path_from_name(item['workflow']), graph)
-            self.write_workflow_config(item)
-            self.save(item)
+            write_json(service.host.workflow_path_from_name(item['workflow']), graph)
+            service.write_workflow_config(item)
+            service.save(item)
             return item
 
     @router.post('/{app_id}/upload')

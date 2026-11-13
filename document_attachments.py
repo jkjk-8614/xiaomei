@@ -1,13 +1,26 @@
 """Read document text locally without running embedded content or following links."""
 
+import base64
 import json
+import logging
 import posixpath
 import re
 import zipfile
+from io import BytesIO
 from pathlib import Path
 from xml.etree import ElementTree as ET
+from zlib import error as DeflateError
+
+from PIL import Image
 
 
+_LOG = logging.getLogger(__name__)
+MAX_ATTACHMENT_TEXT_CHARS = 12000
+EXCEL_MAX_SHEETS = 8
+EXCEL_MAX_ROWS_PER_SHEET = 80
+EXCEL_MAX_COLS_PER_ROW = 30
+TEXT_ATTACHMENT_EXTS = {".txt", ".md", ".markdown", ".json", ".csv", ".log", ".py", ".js", ".ts", ".tsx",
+                        ".jsx", ".html", ".css", ".xml", ".yaml", ".yml"}
 DOCUMENT_EXTS = {".docx", ".pptx", ".pdf", ".xmind"}
 LEGACY_DOCUMENT_EXTS = {
     ".doc": ".docx", ".wps": ".docx",
@@ -213,8 +226,7 @@ def document_preview_images(path, limit=MAX_PREVIEW_IMAGES):
 
 def document_preview_image_bytes(path, index):
     """Return a bounded, decoded preview; never serve untrusted archive bytes as-is."""
-    from io import BytesIO
-    from PIL import Image, ImageOps
+    from PIL import ImageOps
 
     entries, _ = document_preview_images(path)
     if index < 0 or index >= len(entries):
@@ -260,9 +272,206 @@ def _pptx_slide_paths(archive):
         )
 
 
+def _workbook_media(archive):
+    return sorted(
+        entry.filename for entry in archive.infolist()
+        if entry.filename.startswith("xl/media/") and Path(entry.filename).suffix.lower() in PREVIEW_IMAGE_EXTS
+    )
+
+
+def _workbook_sheets(archive):
+    names = set(archive.namelist())
+    book, relationships = "xl/workbook.xml", "xl/_rels/workbook.xml.rels"
+    ordered = []
+    if book in names and relationships in names:
+        try:
+            workbook = ET.fromstring(document_archive_read(archive, book))
+            links = ET.fromstring(document_archive_read(archive, relationships))
+        except ET.ParseError:
+            pass
+        else:
+            destinations = {}
+            for link in links:
+                target = link.get("Target", "").replace("\\", "/")
+                link_id = link.get("Id")
+                if not link_id or not target or link.get("TargetMode", "").lower() == "external":
+                    continue
+                entry = posixpath.normpath(target.lstrip("/") if target.startswith(("/", "xl/")) else "xl/" + target)
+                if entry.startswith("xl/") and entry in names:
+                    destinations[link_id] = entry
+            for sheet in workbook.iter():
+                if _local(sheet.tag) != "sheet":
+                    continue
+                identifier = next((value for attr, value in sheet.attrib.items() if _local(attr) == "id"), None)
+                if identifier in destinations:
+                    ordered.append((sheet.get("name") or "Sheet", destinations[identifier]))
+    if ordered:
+        return ordered
+    sheets = []
+    for name in names:
+        match = re.fullmatch(r"xl/worksheets/sheet(\d+)\.xml", name)
+        if match:
+            sheets.append((int(match[1]), name))
+    return [(Path(name).stem, name) for _, name in sorted(sheets)]
+
+
+def _spreadsheet_text(element):
+    return "".join(node.text or "" for node in element.iter() if _local(node.tag) == "t").strip()
+
+
+def _spreadsheet_cell(cell, shared):
+    data = {_local(child.tag): child for child in cell}
+    value_node = data.get("v")
+    value = (value_node.text or "") if value_node is not None else ""
+    kind = cell.get("t")
+    if kind == "s" and value.isascii() and value.isdigit() and len(value) <= 10:
+        index = int(value)
+        if index < len(shared):
+            value = shared[index]
+    elif kind == "inlineStr" and "is" in data:
+        value = _spreadsheet_text(data["is"])
+    elif kind == "b":
+        value = {"0": "FALSE", "1": "TRUE"}.get(value, value)
+    value = value.strip()
+    formula = data["f"].text if "f" in data else ""
+    if formula:
+        return f"{value} [={formula}]" if value else f"={formula}"
+    return value
+
+
+def _spreadsheet_rows(sheet, shared):
+    number = 0
+    for row in sheet.iter():
+        if _local(row.tag) != "row":
+            continue
+        cells = []
+        for cell in row:
+            if _local(cell.tag) == "c":
+                value = _spreadsheet_cell(cell, shared)
+                if value:
+                    address = cell.get("r")
+                    cells.append(f"{address}={value}" if address else value)
+                    if len(cells) == EXCEL_MAX_COLS_PER_ROW:
+                        break
+        if cells:
+            number += 1
+            yield f"第 {row.get('r') or number} 行：" + " | ".join(cells)
+            if number == EXCEL_MAX_ROWS_PER_SHEET:
+                return
+
+
+def _workbook_lines(archive, path, strict):
+    members = archive.infolist()
+    if len(members) > 10000:
+        raise ValueError("文档内部文件过多，请拆分文件后上传")
+    if strict and any(entry.filename.endswith(".xml") and entry.file_size > MAX_DOCUMENT_MEMBER_BYTES
+                      for entry in members):
+        raise ValueError("表格中的文字数据过大，请拆分文件后上传")
+    sheets = _workbook_sheets(archive)
+    if strict and not sheets:
+        raise ValueError("Excel 中没有可读取的工作表，请重新保存后上传")
+    yield "Excel 工作簿：" + Path(path).name
+    count = len(_workbook_media(archive))
+    if count:
+        yield f"内嵌图片数量：{count}"
+    shared = []
+    if "xl/sharedStrings.xml" in archive.namelist():
+        strings = ET.fromstring(document_archive_read(archive, "xl/sharedStrings.xml"))
+        shared = [_spreadsheet_text(node) for node in strings if _local(node.tag) == "si"]
+    for index, (name, member) in enumerate(sheets[:EXCEL_MAX_SHEETS], 1):
+        try:
+            sheet = ET.fromstring(document_archive_read(archive, member))
+        except (ValueError, ET.ParseError, zipfile.BadZipFile, DeflateError, RuntimeError):
+            if strict:
+                raise
+            continue
+        yield f"\n工作表 {index}：{name}"
+        rows = _spreadsheet_rows(sheet, shared)
+        first = next(rows, None)
+        if first is None:
+            yield "（未读取到非空单元格）"
+        else:
+            yield first
+            yield from rows
+
+
+def read_workbook_text(path, limit, *, strict=False):
+    parts = []
+    remaining = max(0, limit)
+    with zipfile.ZipFile(path) as archive:
+        for line in _workbook_lines(archive, path, strict):
+            if parts:
+                line = "\n" + line
+            parts.append(line[:remaining])
+            remaining -= len(line)
+            if remaining <= 0:
+                break
+    text = "".join(parts)
+    return text.rstrip() if remaining > 0 else text
+
+
+def workbook_image_data_urls(path, max_images=4, max_size=1536):
+    if max_images <= 0:
+        return []
+    pictures = []
+    try:
+        with zipfile.ZipFile(path) as archive:
+            for member in _workbook_media(archive)[:max_images]:
+                try:
+                    raw = document_archive_read(archive, member)
+                    with Image.open(BytesIO(raw)) as source:
+                        if source.width * source.height > 24_000_000:
+                            continue
+                        source.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+                        if source.mode in {"RGBA", "LA"} or source.mode == "P" and "transparency" in source.info:
+                            rgba = source.convert("RGBA")
+                            rgb = Image.new("RGB", rgba.size, (255, 255, 255))
+                            rgb.paste(rgba, mask=rgba.getchannel("A"))
+                        else:
+                            rgb = source.convert("RGB")
+                        output = BytesIO()
+                        rgb.save(output, format="JPEG", quality=88, optimize=True)
+                    pictures.append("data:image/jpeg;base64," + base64.b64encode(output.getvalue()).decode("ascii"))
+                except (OSError, ValueError, RuntimeError, SyntaxError, zipfile.BadZipFile, DeflateError, Image.DecompressionBombError) as exc:
+                    _LOG.warning("无法读取工作簿内嵌图片 %s：%s", member, exc)
+    except (OSError, zipfile.BadZipFile) as exc:
+        _LOG.warning("无法读取工作簿图片：%s", exc)
+    return pictures
+
+
+def read_text_attachment(path, limit=MAX_ATTACHMENT_TEXT_CHARS, strict=False):
+    if not path or not Path(path).is_file():
+        return ""
+    source = Path(path)
+    ext = source.suffix.lower()
+    try:
+        if ext in TEXT_ATTACHMENT_EXTS:
+            with source.open("rb") as handle:
+                content = handle.read(max(0, limit) * 4)
+            for encoding in ("utf-8-sig", "gb18030"):
+                try:
+                    return content.decode(encoding).strip()[:limit]
+                except UnicodeDecodeError:
+                    continue
+            return content.decode("utf-8", errors="replace").strip()[:limit]
+        if ext == ".xlsx":
+            return read_workbook_text(source, limit, strict=strict)
+        if ext == ".xls" and not strict:
+            return "这是旧版 .xls 二进制 Excel 文件，当前内置解析器暂不支持直接读取内容。请另存为 .xlsx 后重新上传。"
+        if ext in DOCUMENT_EXTS or ext in LEGACY_DOCUMENT_EXTS:
+            return read_document_text(source, limit)
+    except Exception as exc:
+        if strict:
+            raise
+        _LOG.warning("无法读取附件文字 %s：%s", source.name, exc)
+    return ""
+
+
 def read_document_text(path, limit):
     """Return bounded text; the caller uses limit + 1 to detect truncation."""
     ext = Path(path).suffix.lower()
+    if ext == ".xlsx":
+        return read_workbook_text(path, limit, strict=True)
     if ext in LEGACY_DOCUMENT_EXTS:
         raise ValueError(f"{ext} 暂不能读取文字，请在 WPS / Office 中另存为 {LEGACY_DOCUMENT_EXTS[ext]} 后重新上传")
     parts, used = [], 0

@@ -37,6 +37,33 @@ const RCEDIT_CANDIDATES = [
   path.join(PROJECT_ROOT, 'tools', 'bin', 'rcedit.exe'),
 ];
 
+// Windows 的「生图完成」通知在应用已退出时被点击，Windows 会以 COM 激活方式
+// 重新运行 exe（命令行只有 `-Embedding`，没有 app 路径）。此时 Electron 会
+// 加载 resources/default_app.asar，弹出那个写着 “Electron” 的欢迎页——用户
+// 看到的就是一个莫名其妙的 Electron 窗口。dist/resources/app 的优先级高于
+// default_app.asar，所以在运行时目录里放一个极小的引导应用：有 app 路径时照
+// 原样加载，没有 app 路径时直接加载桌面端本体。
+const RESOURCES_DIR = path.join(DIST_DIR, 'resources');
+const BOOTSTRAP_APP_DIR = path.join(RESOURCES_DIR, 'app');
+const BOOTSTRAP_PACKAGE = `${JSON.stringify({
+  name: 'xiaomei-canvas-desktop',
+  productName: APP_NAME,
+  private: true,
+  main: 'main.js',
+}, null, 2)}\n`;
+const BOOTSTRAP_MAIN = `'use strict';
+
+// 由 desktop/brand-electron-exe.cjs 生成，请勿手工修改。
+// 作用见生成脚本中的注释：拦下没有 app 路径的启动（通知激活、误双击运行
+// 时等），避免出现 Electron 默认欢迎页。
+
+const path = require('node:path');
+
+const DESKTOP_DIR = path.resolve(__dirname, '..', '..', '..', '..', '..');
+const requested = process.argv.slice(1).find((arg) => arg && !arg.startsWith('-'));
+require(requested ? path.resolve(process.cwd(), requested) : DESKTOP_DIR);
+`;
+
 const VERSION_STRINGS = {
   FileDescription: APP_NAME,
   ProductName: APP_NAME,
@@ -88,6 +115,24 @@ function isUpToDate(sourceFingerprint) {
   return fileFingerprint(BRANDED_EXE) === state.branded;
 }
 
+function writeIfChanged(filePath, content) {
+  try {
+    if (fs.readFileSync(filePath, 'utf8') === content) return;
+  } catch {}
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content, 'utf8');
+}
+
+function ensureBootstrapApp() {
+  try {
+    writeIfChanged(path.join(BOOTSTRAP_APP_DIR, 'package.json'), BOOTSTRAP_PACKAGE);
+    writeIfChanged(path.join(BOOTSTRAP_APP_DIR, 'main.js'), BOOTSTRAP_MAIN);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: String(error?.message || error || 'bootstrap-failed') };
+  }
+}
+
 function runRcedit(rceditPath, targetExe) {
   const args = [targetExe, '--set-icon', ICON_PATH];
   for (const [key, value] of Object.entries(VERSION_STRINGS)) {
@@ -104,6 +149,11 @@ function runRcedit(rceditPath, targetExe) {
 function brand({ force = false } = {}) {
   if (process.platform !== 'win32') return { ok: true, skipped: 'not-windows' };
   if (!fs.existsSync(SOURCE_EXE)) return { ok: false, reason: 'electron-runtime-missing' };
+
+  // 图标或 rcedit 缺失只影响任务栏品牌化，欢迎页拦截仍要写入
+  const bootstrap = ensureBootstrapApp();
+  if (!bootstrap.ok) log(`写入欢迎页拦截器失败：${bootstrap.reason}`);
+
   if (!fs.existsSync(ICON_PATH)) return { ok: false, reason: 'app-icon-missing' };
 
   const sourceFingerprint = fileFingerprint(SOURCE_EXE);

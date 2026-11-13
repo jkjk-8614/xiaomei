@@ -10,7 +10,7 @@ const files = [
     'static/js/i18n/api-settings.js',
     'static/js/i18n/canvas.js',
     'static/js/i18n/smart-canvas.js',
-    'static/js/i18n/comfyui-settings.js',
+    'ComfyUI/web/js/i18n/comfyui-settings.js',
     'static/js/i18n.js',
 ];
 
@@ -58,12 +58,13 @@ const scanFiles = fs.readdirSync(path.join(root, 'static'))
     .map(name => path.join(root, 'static', name))
     .concat(fs.readdirSync(path.join(root, 'static/js'))
         .filter(name => name.endsWith('.js') && !name.startsWith('i18n.monolith-') && !name.startsWith('i18n.js.broken-'))
-        .map(name => path.join(root, 'static/js', name)));
+        .map(name => path.join(root, 'static/js', name)))
+    .concat(['comfyui-settings.html', 'js/comfyui-settings.js'].map(name => path.join(root, 'ComfyUI/web', name)));
 
 for(const file of scanFiles){
     const text = fs.readFileSync(file, 'utf8');
     for(const re of [
-        /data-i18n(?:-[a-z]+)?=["']([^"']+)["']/g,
+        /data-i18n(?:-(?:aria-label|[a-z]+))?=["']([^"']+)["']/g,
         /\btr\(\s*["']([^"']+)["']\s*\)/g,
         /\btrf\(\s*["']([^"']+)["']/g,
         /\btf\(\s*["']([^"']+)["']/g,

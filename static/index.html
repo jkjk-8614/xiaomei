@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="/static/images/app-icon.ico?v=2026.11.06" type="image/x-icon">
+    <link rel="icon" href="/static/images/app-icon.ico?v=1.0.21" type="image/x-icon">
     <title>小美画布</title>
     <style>
         html.studio-route-booting body {
@@ -18,15 +18,15 @@
             } catch(e) {}
         })();
     </script>
-    <script defer src="/static/vendor/js/tailwindcss-cdn.js?v=2026.11.06.1784161005"></script>
-    <script defer src="/static/js/xiaomei-shell-kernel.js?v=2026.11.09.8"></script>
-    <script defer src="/static/js/theme.js?v=2026.11.09.10"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.11.06.1792900345">
-    <script defer src="/static/js/i18n.js?v=2026.11.06.1793877008"></script>
-    <script src="/static/js/legacy-common.js?v=2026.11.06.1786170056"></script>
-<script defer src="/static/js/generation-notifications.js?v=2026.11.06.1787131165"></script>
+    <script defer src="/static/vendor/js/tailwindcss-cdn.js?v=1.0.21.1784161005"></script>
+    <script defer src="/static/js/xiaomei-shell-kernel.js?v=1.0.21.1794542393"></script>
+    <script defer src="/static/js/theme.js?v=1.0.21.1794196667"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=1.0.21.1794192428">
+    <script defer src="/static/js/i18n.js?v=1.0.21.1794545156"></script>
+    <script src="/static/js/legacy-common.js?v=1.0.21.1786170056"></script>
+<script defer src="/static/js/generation-notifications.js?v=1.0.21.1787131165"></script>
     <style>
-        @import url('/static/vendor/css/fonts.css?v=2026.11.06.1784161005');
+        @import url('/static/vendor/css/fonts.css?v=1.0.21.1784161005');
 
         /* 本地 Tailwind 工具类兜底：CDN 慢/未就绪时也能立刻给图标尺寸，避免首屏左侧栏空白 */
         .w-1\.5 { width: 0.375rem; }
@@ -1308,129 +1308,6 @@
             line-height:1.7;
         }
 
-        .update-modal-summary {
-            display:flex;
-            align-items:flex-start;
-            gap:10px;
-            margin-top:16px;
-            padding:12px;
-            border:1px solid #e5e7eb;
-            border-radius:8px;
-            background:#f8fafc;
-            color:#334155;
-            font-size:12px;
-            line-height:1.55;
-        }
-
-        .update-modal-summary strong {
-            display:block;
-            color:#111827;
-            margin-bottom:2px;
-            font-size:12px;
-        }
-
-        .update-modal-dot {
-            width:9px;
-            height:9px;
-            margin-top:4px;
-            border-radius:99px;
-            background:#94a3b8;
-            flex:0 0 auto;
-        }
-
-        .update-modal-summary.ok .update-modal-dot { background:#22c55e; }
-        .update-modal-summary.warn .update-modal-dot { background:#f59e0b; }
-        .update-modal-summary.fail .update-modal-dot { background:#ef4444; }
-
-        /* 更新弹窗：双卡片需要更宽的面板，避免左右布局被裁剪 */
-        #project-update-modal .studio-modal-panel { width:min(880px, 100%); max-height:min(840px, calc(100vh - 48px)); }
-        .update-notes-box { margin:2px 0 14px; padding:12px; border:1px solid #e5e7eb; border-radius:8px; background:#fbfdff; }
-        .update-notes-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
-        .update-notes-head strong { font-size:12px; color:#111827; font-weight:950; }
-        .update-notes-version { color:#64748b; font-size:11px; font-weight:800; white-space:nowrap; }
-        .update-notes-list { margin:0; padding:0 0 0 16px; display:grid; gap:6px; color:#334155; font-size:12px; line-height:1.55; }
-        .update-notes-empty { margin:0; color:#94a3b8; font-size:12px; line-height:1.55; }
-        .update-source-list { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; align-items:stretch; }
-        @media (max-width: 720px) { .update-source-list { grid-template-columns:1fr; } }
-        .update-source-card { width:100%; min-width:0; border:1px solid #e5e7eb; border-radius:10px; background:#fff; color:#111827; text-align:left; padding:12px; display:flex; flex-direction:column; gap:10px; cursor:pointer; transition:border-color .16s ease, box-shadow .16s ease, transform .16s ease, background .16s ease; }
-        .update-source-card:hover { transform:translateY(-1px); border-color:#cbd5e1; box-shadow:0 12px 28px rgba(15,23,42,.08); }
-        .update-source-card.active { border-color:#16a34a; box-shadow:0 0 0 2px rgba(22,163,74,.20); background:#f0fdf4; }
-        .update-source-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
-        .update-source-title { min-width:0; display:flex; flex-direction:column; gap:4px; }
-        .update-source-title strong { color:#111827; font-size:13px; line-height:1.2; font-weight:950; }
-        .update-source-title span { color:#64748b; font-size:11px; line-height:1.35; font-weight:700; }
-        .update-source-head-right { flex:0 0 auto; display:flex; align-items:center; gap:8px; }
-        .update-source-check { display:none; flex:0 0 auto; width:22px; height:22px; border-radius:999px; background:#16a34a; color:#fff; align-items:center; justify-content:center; }
-        .update-source-check svg { width:14px; height:14px; }
-        .update-source-card.active .update-source-check { display:flex; }
-        .update-source-badge { flex:0 0 auto; min-width:56px; height:24px; border-radius:999px; background:#f1f5f9; color:#64748b; display:flex; align-items:center; justify-content:center; padding:0 9px; font-size:10px; font-weight:900; }
-        .update-source-badge.ok { background:#16a34a; color:#fff; }
-        .update-source-badge.bad { background:#dc2626; color:#fff; }
-        .connectivity-list { display:grid; gap:8px; min-width:0; }
-
-        .connectivity-row {
-            display:grid;
-            grid-template-columns:12px minmax(0, 1fr) auto;
-            align-items:center;
-            gap:10px;
-            min-height:42px;
-            padding:9px 10px;
-            border:1px solid #eef2f7;
-            border-radius:8px;
-            background:#fff;
-        }
-        .connectivity-row > div { min-width:0; }
-
-        .connectivity-indicator {
-            width:9px;
-            height:9px;
-            border-radius:99px;
-            background:#94a3b8;
-        }
-
-        .connectivity-row.ok .connectivity-indicator { background:#22c55e; }
-        .connectivity-row.fail .connectivity-indicator { background:#ef4444; }
-        .connectivity-row.pending .connectivity-indicator {
-            background:#94a3b8;
-            animation: studio-pulse 1s ease-in-out infinite;
-        }
-
-        .connectivity-name {
-            font-size:12px;
-            font-weight:900;
-            color:#111827;
-            line-height:1.25;
-        }
-
-        .connectivity-url {
-            margin-top:3px;
-            max-width:100%;
-            overflow:hidden;
-            text-overflow:ellipsis;
-            white-space:nowrap;
-            font-size:10px;
-            color:#94a3b8;
-        }
-
-        .connectivity-status {
-            justify-self:end;
-            font-size:11px;
-            font-weight:900;
-            color:#64748b;
-            white-space:nowrap;
-        }
-        .connectivity-row.ok .connectivity-status { color:#16a34a; }
-        .connectivity-row.fail .connectivity-status { color:#ef4444; }
-
-        .connectivity-error {
-            grid-column:2 / 4;
-            margin-top:-4px;
-            color:#ef4444;
-            font-size:11px;
-            line-height:1.45;
-            word-break:break-word;
-        }
-
         .studio-modal-actions {
             display:flex;
             justify-content:flex-end;
@@ -1467,34 +1344,6 @@
             border-color:#cbd5e1;
         }
 
-        #connectivity-test-btn {
-            border-color:rgba(37,99,235,.24);
-            background:#eff6ff;
-            color:#1d4ed8;
-            transition:transform .16s ease, background-color .18s ease, border-color .18s ease, color .18s ease, box-shadow .18s ease;
-        }
-
-        #connectivity-test-btn:hover {
-            transform:translateY(-1px);
-            border-color:#2563eb;
-            background:#2563eb;
-            color:#fff;
-            box-shadow:0 10px 22px rgba(37,99,235,.20);
-        }
-
-        #connectivity-test-btn:hover svg {
-            transform:rotate(24deg);
-        }
-
-        #connectivity-test-btn:active {
-            transform:translateY(0);
-            box-shadow:0 5px 12px rgba(37,99,235,.16);
-        }
-
-        #connectivity-test-btn svg {
-            transition:transform .18s ease;
-        }
-
         .studio-modal-btn.primary {
             background:#111827;
             border-color:#111827;
@@ -1520,8 +1369,6 @@
         body.theme-dark .studio-modal-panel,
         html.theme-dark .studio-modal-close,
         body.theme-dark .studio-modal-close,
-        html.theme-dark .connectivity-row,
-        body.theme-dark .connectivity-row,
         html.theme-dark .studio-modal-actions,
         body.theme-dark .studio-modal-actions,
         html.theme-dark .studio-modal-btn,
@@ -1529,20 +1376,6 @@
             background:#1a1a1d;
             border-color:#2a2a2e;
             color:#f0f0f2;
-        }
-
-        html.theme-dark .update-source-card,
-        body.theme-dark .update-source-card {
-            background:#1a1a1d;
-            border-color:#2a2a2e;
-            color:#f0f0f2;
-        }
-
-        html.theme-dark .update-source-card.active,
-        body.theme-dark .update-source-card.active {
-            border-color:#22c55e;
-            box-shadow:0 0 0 2px rgba(34,197,94,.35);
-            background:rgba(34,197,94,.12);
         }
 
         html.theme-dark .studio-modal-head,
@@ -1553,47 +1386,7 @@
         }
 
         html.theme-dark .studio-modal-copy,
-        body.theme-dark .studio-modal-copy,
-        html.theme-dark .connectivity-status,
-        body.theme-dark .connectivity-status {
-            color:#8f9aab;
-        }
-
-        html.theme-dark .update-modal-summary,
-        body.theme-dark .update-modal-summary {
-            background:#0c0d10;
-            border-color:#2a2a2e;
-            color:#9aa6b8;
-        }
-
-        html.theme-dark .update-notes-box,
-        body.theme-dark .update-notes-box {
-            background:#0c0d10;
-            border-color:#2a2a2e;
-        }
-
-        html.theme-dark .update-modal-summary strong,
-        body.theme-dark .update-modal-summary strong,
-        html.theme-dark .update-notes-head strong,
-        body.theme-dark .update-notes-head strong,
-        html.theme-dark .update-source-title strong,
-        body.theme-dark .update-source-title strong,
-        html.theme-dark .connectivity-name,
-        body.theme-dark .connectivity-name {
-            color:#f0f0f2;
-        }
-
-        html.theme-dark .update-notes-list,
-        body.theme-dark .update-notes-list {
-            color:#cbd5e1;
-        }
-
-        html.theme-dark .update-notes-version,
-        body.theme-dark .update-notes-version,
-        html.theme-dark .update-notes-empty,
-        body.theme-dark .update-notes-empty,
-        html.theme-dark .update-source-title span,
-        body.theme-dark .update-source-title span {
+        body.theme-dark .studio-modal-copy {
             color:#8f9aab;
         }
 
@@ -1602,21 +1395,6 @@
             background:#2e2e33;
             border-color:#3a3a3f;
             color:#f0f0f2;
-        }
-
-        html.theme-dark #connectivity-test-btn,
-        body.theme-dark #connectivity-test-btn {
-            background:rgba(96,165,250,.12);
-            border-color:rgba(96,165,250,.34);
-            color:#93c5fd;
-        }
-
-        html.theme-dark #connectivity-test-btn:hover,
-        body.theme-dark #connectivity-test-btn:hover {
-            background:#60a5fa;
-            border-color:#60a5fa;
-            color:#07111f;
-            box-shadow:0 10px 24px rgba(96,165,250,.18);
         }
 
         html.theme-dark .studio-modal-btn.primary:hover,
@@ -1777,11 +1555,11 @@
             }
         }
     </style>
-    <link rel="stylesheet" href="/static/css/workspace-polish.css?v=2026.11.06.1789456340">
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.11.06.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.11.06.1792843621">
-    <script src="/static/js/image-clipboard.js?v=2026.11.06.1793781409"></script>
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.11.06.1790178173"></script>
+    <link rel="stylesheet" href="/static/css/workspace-polish.css?v=1.0.21.1789456340">
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=1.0.21.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=1.0.21.1794192428">
+    <script src="/static/js/image-clipboard.js?v=1.0.21.1794192428"></script>
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=1.0.21.1790178173"></script>
 </head>
 
 <body>
@@ -1869,7 +1647,7 @@
             </nav>
 
             <div class="side-actions">
-                <button class="side-pill" id="project-update-check-btn" onclick="checkForUpdates(true)" type="button" title="检查更新">
+                <button class="side-pill" id="project-update-check-btn" onclick="checkForUpdates()" type="button" title="检查更新">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M20 7v5h-5"></path><path d="M4 17v-5h5"></path><path d="M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 17.9 17"></path>
                     </svg>
@@ -1958,16 +1736,16 @@
                 </div>
             </div>
 
-                    <iframe id="frame-online" data-src="/static/comfyui.html?v=2026.11.06" class="active" scrolling="yes"></iframe>
+                    <iframe id="frame-online" data-src="/static/comfyui.html?v=1.0.21" class="active" scrolling="yes"></iframe>
         <div id="frame-gpt-chat" class="deepseek-route-placeholder" aria-hidden="true"></div>
-                <iframe id="frame-commerce-analysis" data-src="/static/commerce-analysis.html?v=2026.11.06.1793923643" scrolling="yes"></iframe>
-        <iframe id="frame-product-3d" data-src="/static/product-3d.html?v=2026.11.06.1793923644" scrolling="yes"></iframe>
-            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=2026.11.06.1793923643" scrolling="yes"></iframe>
-            <iframe id="frame-inspiration" data-src="/static/inspiration.html?v=2026.11.06.1793923644" scrolling="yes" title="灵感案例"></iframe>
-            <iframe id="frame-design-brain" data-src="/static/design-brain.html?v=2026.11.06.1793923643&batch-resolution=2026.10.25.1" scrolling="yes" title="设计大脑"></iframe>
-            <iframe id="frame-photocraft" data-src="/static/photocraft/index.html?v=2026.11.06.1793928990" allow="fullscreen; clipboard-read; clipboard-write" allowfullscreen scrolling="yes" title="PS 修图"></iframe>
+                <iframe id="frame-commerce-analysis" data-src="/static/commerce-analysis.html?v=1.0.21.1794546776" scrolling="yes"></iframe>
+        <iframe id="frame-product-3d" data-src="/static/product-3d.html?v=1.0.21.1794542393" scrolling="yes"></iframe>
+            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=1.0.21.1794546776" scrolling="yes"></iframe>
+            <iframe id="frame-inspiration" data-src="/static/inspiration.html?v=1.0.21.1794542393" scrolling="yes" title="灵感案例"></iframe>
+            <iframe id="frame-design-brain" data-src="/static/design-brain.html?v=1.0.21.1794546776&batch-resolution=2026.10.25.1" scrolling="yes" title="设计大脑"></iframe>
+            <iframe id="frame-photocraft" data-src="/static/photocraft/index.html?v=1.0.21.1794192428" allow="fullscreen; clipboard-read; clipboard-write" allowfullscreen scrolling="yes" title="PS 修图"></iframe>
             <div id="historyDrawerScrim" class="history-drawer-scrim" hidden onclick="closeHistoryDrawer()"></div>
-            <iframe id="frame-history" class="history-drawer-frame" data-src="/static/history.html?v=2026.11.06.1793923644&drawer=1&outpaint-redraw=2026.10.16.1&gif-download=2026.11.05.1" scrolling="yes" title="历史记录"></iframe>
+            <iframe id="frame-history" class="history-drawer-frame" data-src="/static/history.html?v=1.0.21.1794546776&drawer=1&outpaint-redraw=2026.10.16.1&gif-download=2026.11.05.1" scrolling="yes" title="历史记录"></iframe>
             <button id="historyDrawerClose" class="history-drawer-close" type="button" hidden onclick="closeHistoryDrawer()" aria-label="关闭历史记录">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
             </button>
@@ -1995,8 +1773,8 @@
         <div id="historyPreviewContextMenu" class="history-preview-context-menu" role="menu" aria-label="媒体操作" hidden>
             <button id="historyPreviewContextCopy" type="button" role="menuitem" onclick="copyHistoryPreviewFromContextMenu(event)"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>复制图片</span></button>
         </div>
-                <iframe id="frame-api-settings" data-src="/static/api-settings.html?v=2026.11.06.1793923643&web-search=3" scrolling="yes"></iframe>
-                <iframe id="frame-canvas" data-src="/static/canvas-list.html?v=2026.11.06.1793923643&image-model-picker=2026.09.27.3" scrolling="yes"></iframe>
+                <iframe id="frame-api-settings" data-src="/static/api-settings.html?v=1.0.21.1794546776&web-search=3" scrolling="yes"></iframe>
+                <iframe id="frame-canvas" data-src="/static/canvas-list.html?v=1.0.21.1794546776&image-model-picker=2026.09.27.3" scrolling="yes"></iframe>
 
                 <script>
                     /* 尽早启动上次页面，避免主窗口已显示但中央 iframe 仍是空白。 */
@@ -2089,78 +1867,6 @@
         </div>
     </div>
 
-    <div id="project-update-modal" class="studio-modal" hidden role="dialog" aria-modal="true" aria-labelledby="project-update-title">
-        <div class="studio-modal-panel">
-            <div class="studio-modal-head">
-                <div>
-                    <div class="studio-modal-kicker" data-i18n="update.available">发现更新</div>
-                    <h2 id="project-update-title" class="studio-modal-title">一键更新</h2>
-                </div>
-                <button class="studio-modal-close" type="button" onclick="closeProjectUpdateModal()" title="关闭" aria-label="关闭">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                </button>
-            </div>
-            <div class="studio-modal-body">
-                <p id="project-update-copy" class="studio-modal-copy"></p>
-                <div id="project-update-notes" class="update-notes-box" hidden>
-                    <div class="update-notes-head">
-                        <strong id="project-update-notes-title">本次更新内容</strong>
-                        <span id="project-update-notes-version" class="update-notes-version"></span>
-                    </div>
-                    <ol id="project-update-notes-list" class="update-notes-list"></ol>
-                    <p id="project-update-notes-empty" class="update-notes-empty" hidden>暂未获取到更新说明。</p>
-                </div>
-                <div id="update-source-list" class="update-source-list">
-                    <button id="update-source-github" class="update-source-card" type="button" data-update-source="github" onclick="setUpdateSource('github')">
-                        <div class="update-source-head">
-                            <div class="update-source-title">
-                                <strong>GitHub 下载源</strong>
-                                <span>GitHub API / raw 文件 / GitHub 网页，Google 仅作外网参考。</span>
-                            </div>
-                            <div class="update-source-head-right">
-                                <span class="update-source-check" aria-hidden="true">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                </span>
-                                <span class="update-source-badge">待测试</span>
-                            </div>
-                        </div>
-                        <div class="connectivity-list" data-connectivity-source="github"></div>
-                    </button>
-
-                </div>
-                <div id="project-update-summary" class="update-modal-summary warn">
-                    <span class="update-modal-dot" aria-hidden="true"></span>
-                    <div>
-                        <strong id="project-update-summary-title">建议先测试连通性</strong>
-                        <span id="project-update-summary-text"></span>
-                    </div>
-                </div>
-            </div>
-            <div class="studio-modal-actions">
-                <button id="connectivity-test-btn" class="studio-modal-btn" type="button" onclick="runUpdateConnectivityTest()">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
-                        <path d="M21 3v6h-6"></path>
-                    </svg>
-                    <span id="connectivity-test-text">测试连通性</span>
-                </button>
-                <button class="studio-modal-btn" type="button" onclick="closeProjectUpdateModal()">
-                    <span id="project-update-cancel-text">取消</span>
-                </button>
-                <button id="project-update-confirm-btn" class="studio-modal-btn primary" type="button" onclick="confirmProjectUpdate()">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
-                        <path d="M21 3v6h-6"></path>
-                    </svg>
-                    <span id="project-update-confirm-text">开始更新</span>
-                </button>
-            </div>
-        </div>
-    </div>
-
     <script>
         const CID = localStorage.getItem("client_id") || generateUUID();
         localStorage.setItem("client_id", CID);
@@ -2175,12 +1881,8 @@
         const PROMPT_CASE_PENDING_KEY = 'studio_pending_prompt_case';
         const PROMPT_CASE_PENDING_TTL = 10 * 60 * 1000;
         const PROMPT_CASE_OPEN_PENDING_KEY = 'studio_pending_prompt_case_open';
-        let appInfo = { version:'', version_url:'https://raw.githubusercontent.com/jkjk-8614/xiaomei/main/VERSION' };
-        let updateConnectivityResult = null;
-        let projectUpdateRunning = false;
-        let projectUpdateAbort = null;  // 当前更新请求的 AbortController，便于用户中途取消
-        let updateSource = 'github';
-        let projectUpdateNotes = null;
+        const officialDownloadPage = 'https://github.com/jkjk-8614/xiaomei/releases/latest';
+        let appVersion = '';
 
         function setSidebarPinned(pinned, options = {}) {
             const sidebar = document.getElementById('studioSidebar');
@@ -3498,622 +3200,17 @@
             });
         });
 
-        function versionParts(value) {
-            return String(value || '').match(/\d+/g)?.map(Number) || [];
+        function versionLabel(value) {
+            const version = String(value || '').trim().replace(/^v/i, '');
+            const internal = /^(\d+)\.0\.(\d+)$/.exec(version);
+            return internal ? 'v' + internal[1] + '.' + internal[2].padStart(2, '0') : 'v' + (version || '-');
         }
-
-        function compareVersions(a, b) {
-            const aa = versionParts(a);
-            const bb = versionParts(b);
-            const len = Math.max(aa.length, bb.length);
-            for(let i = 0; i < len; i++){
-                const diff = (aa[i] || 0) - (bb[i] || 0);
-                if(diff) return diff;
-            }
-            return String(a || '').trim() === String(b || '').trim() ? 0 : 1;
-        }
-
-        function compactVersion(value) {
-            const text = String(value || '').trim();
-            const parts = text.match(/\d+/g) || [];
-            if(parts.length >= 3) return `${parts[1]}.${parts[2]}`;
-            return text.replace(/^v/i, '') || '-';
-        }
-
-        function versionLabel(value, mode = 'full') {
-            const text = String(value || '').trim();
-            if(!text) return 'v-';
-            const desktopVersion = text.replace(/^v/i, '').match(/^(\d+)\.0\.(\d+)$/);
-            if(desktopVersion) return `v${desktopVersion[1]}.${desktopVersion[2].padStart(2, '0')}`;
-            return mode === 'compact' ? `v${compactVersion(text)}` : `v${text.replace(/^v/i, '')}`;
-        }
-
-        function setProjectVersionBadge(version) {
-            const badge = document.getElementById('project-version-badge');
-            if(!badge) return;
-            const full = versionLabel(version);
-            badge.replaceChildren();
-            if(version) {
-                const compactSpan = document.createElement('span');
-                compactSpan.className = 'project-version-compact';
-                compactSpan.textContent = versionLabel(version, 'compact');
-                const fullSpan = document.createElement('span');
-                fullSpan.className = 'project-version-full';
-                fullSpan.textContent = full;
-                badge.append(compactSpan, fullSpan);
-            } else {
-                badge.textContent = 'v-';
-            }
-            badge.title = window.StudioI18n?.lang?.() === 'en'
-                ? `Current version: ${full} · click to check for updates`
-                : `当前版本：${full} · 点击检测更新`;
-        }
-
-        function refreshUpdateButtonText() {
-            const btn = document.getElementById('update-now-btn');
-            const text = document.getElementById('update-now-text');
-            if(!btn || !text || !btn.classList.contains('show')) return;
-            const remoteVersion = btn.dataset.remoteVersion || '';
-            const isEn = window.StudioI18n?.lang?.() === 'en';
-            text.removeAttribute('data-i18n');
-            if(remoteVersion) {
-                const prefix = isEn ? 'Update to' : '更新到';
-                text.replaceChildren();
-                const prefixSpan = document.createElement('span');
-                prefixSpan.className = 'update-action-prefix';
-                prefixSpan.textContent = `${prefix} `;
-                const compactSpan = document.createElement('span');
-                compactSpan.className = 'update-version-compact';
-                compactSpan.textContent = versionLabel(remoteVersion, 'compact');
-                const fullSpan = document.createElement('span');
-                fullSpan.className = 'update-version-full';
-                fullSpan.textContent = versionLabel(remoteVersion);
-                text.append(prefixSpan, compactSpan, fullSpan);
-                btn.setAttribute('aria-label', `${prefix} ${versionLabel(remoteVersion)}`);
-            } else {
-                text.textContent = isEn ? 'Update' : '一键更新';
-                btn.setAttribute('aria-label', text.textContent);
-            }
-        }
-
-        function updateProjectUpdateTitle() {
-            const updateBtn = document.getElementById('update-now-btn');
-            setProjectVersionBadge(appInfo.version || updateBtn?.dataset.localVersion || '');
-            if(!updateBtn?.classList.contains('update-available')) return;
-            const remoteVersion = updateBtn.dataset.remoteVersion || '';
-            const isEn = window.StudioI18n?.lang?.() === 'en';
-            updateBtn.title = remoteVersion
-                ? (isEn ? `Update to ${versionLabel(remoteVersion)}` : `更新到 ${versionLabel(remoteVersion)}`)
-                : (isEn ? 'Update main.py and static files from GitHub' : '从 GitHub 更新 main.py 和 static 文件');
-            refreshUpdateButtonText();
-        }
-
-        function showUpdateNotice(localVersion, remoteVersion) {
-            const updateBtn = document.getElementById('update-now-btn');
-            if(!updateBtn) return;
-            updateBtn.classList.add('update-available', 'show');
-            updateBtn.dataset.localVersion = localVersion || '';
-            updateBtn.dataset.remoteVersion = remoteVersion || '';
-            updateProjectUpdateTitle();
-        }
-
-        function setProjectUpdateNotes(notes) {
-            projectUpdateNotes = notes && typeof notes === 'object' ? notes : null;
-            renderProjectUpdateNotes();
-        }
-
-        function renderProjectUpdateNotes() {
-            const box = document.getElementById('project-update-notes');
-            if(!box) return;
-            const titleEl = document.getElementById('project-update-notes-title');
-            const versionEl = document.getElementById('project-update-notes-version');
-            const list = document.getElementById('project-update-notes-list');
-            const empty = document.getElementById('project-update-notes-empty');
-            const isEn = window.StudioI18n?.lang?.() === 'en';
-            const notes = projectUpdateNotes || {};
-            const items = Array.isArray(notes.items) ? notes.items.filter(Boolean) : [];
-            if(titleEl) titleEl.textContent = isEn ? 'What changed' : '本次更新内容';
-            if(versionEl) versionEl.textContent = notes.version ? versionLabel(notes.version) : '';
-            if(list) {
-                list.replaceChildren();
-                items.slice(0, 8).forEach(item => {
-                    const text = typeof item === 'string' ? item : item.text;
-                    if(!text) return;
-                    const li = document.createElement('li');
-                    li.textContent = String(text);
-                    list.append(li);
-                });
-            }
-            const hasItems = !!(list && list.children.length);
-            if(empty) {
-                empty.hidden = hasItems;
-                empty.textContent = isEn ? 'No update notes were found for this version.' : '暂未获取到这个版本的更新说明。';
-            }
-            box.hidden = !(notes.version || hasItems);
-        }
-
-        function describeNetworkError(err, isEn){
-            const msg = String(err?.message || err || '');
-            const isNetwork = (err instanceof TypeError) || /Failed to fetch|NetworkError|ERR_|timed? ?out|超时|无法连接|GitHub|HTTP 4|HTTP 5/i.test(msg);
-            if(isNetwork){
-                return isEn
-                    ? 'Cannot reach the selected update source. Check your network, proxy, or DNS, then try again.'
-                    : '无法连接当前选择的更新源。请检查网络、代理或 DNS 后重试。';
-            }
-            return msg || (isEn ? 'Update failed' : '更新失败');
-        }
-
-        function updateUiText(zh, en) {
-            return window.StudioI18n?.lang?.() === 'en' ? en : zh;
-        }
-
-        function updateSourceLabel(source = updateSource) {
-            return 'GitHub';
-        }
-
-        function setUpdateSource(source) {
-            updateSource = 'github';
-            localStorage.setItem('studio_update_source', updateSource);
-            refreshProjectUpdateModalText();
-        }
-
-        function sourceConnectivityStats(source, results = []) {
-            const sourceItems = (results || []).filter(item => item.source === source);
-            const required = sourceItems.filter(item => item.required);
-            const okRequired = required.length ? required.every(item => item.ok) : false;
-            const okItems = sourceItems.filter(item => item.ok);
-            const avg = okItems.length
-                ? Math.round(okItems.reduce((sum, item) => sum + Number(item.elapsed_ms || 0), 0) / okItems.length)
-                : 999999;
-            return {source, ok:okRequired, avg, okItems:okItems.length, total:sourceItems.length};
-        }
-
-        function bestUpdateSourceFromConnectivity(data) {
-            const results = data?.results || [];
-            const github = sourceConnectivityStats('github', results);
-            if(github.ok) return 'github';
-            return updateSource;
-        }
-
-        function updateTargetLabel(name) {
-            const labels = {
-                'GitHub 更新列表': ['GitHub 更新列表', 'GitHub update API'],
-                'GitHub 版本文件': ['GitHub 版本文件', 'GitHub version file'],
-                'GitHub 主页': ['GitHub 主页', 'GitHub home page'],
-                'Google 连通性': ['Google 连通性', 'Google connectivity'],
-            };
-            const item = labels[name] || [name, name];
-            return window.StudioI18n?.lang?.() === 'en' ? item[1] : item[0];
-        }
-
-        function updateStatusLabel(item) {
-            if(item.pending) return updateUiText('检测中...', 'Testing...');
-            if(item.ok) return `${updateUiText('正常', 'OK')} · ${item.elapsed_ms || 0}ms`;
-            if(item.timed_out) return updateUiText('失败 · 超时', 'Failed · timeout');
-            if(item.status) return `HTTP ${item.status}`;
-            return updateUiText('失败', 'Failed');
-        }
-
-        function setUpdateSummary(kind, title, text) {
-            const box = document.getElementById('project-update-summary');
-            const titleEl = document.getElementById('project-update-summary-title');
-            const textEl = document.getElementById('project-update-summary-text');
-            if(box) {
-                box.classList.remove('ok', 'warn', 'fail');
-                box.classList.add(kind || 'warn');
-            }
-            if(titleEl) titleEl.textContent = title;
-            if(textEl) textEl.textContent = text;
-        }
-
-        function updateConnectivityTargets() {
-            const sources = appInfo.sources || {};
-            const github = sources.github || {};
-            return [
-                { name:'GitHub 更新列表', url:github.tree_url || appInfo.tree_url || 'https://api.github.com/repos/jkjk-8614/xiaomei/git/trees/main?recursive=1', source:'github', required:true },
-                { name:'GitHub 版本文件', url:github.version_url || appInfo.version_url || 'https://raw.githubusercontent.com/jkjk-8614/xiaomei/main/VERSION', source:'github', required:true },
-                { name:'GitHub 主页', url:'https://github.com/', source:'github' },
-                { name:'Google 连通性', url:'https://www.google.com/generate_204', source:'reference' },
-            ];
-        }
-
-        function renderConnectivityList(results = []) {
-            const allItems = results.length ? results : updateConnectivityTargets().map(item => ({...item, pending:false, untouched:true}));
-            const renderInto = (list, source) => {
-                if(!list) return;
-                list.replaceChildren();
-                const items = allItems.filter(item => item.source === source || (source === 'github' && item.source === 'reference'));
-                items.forEach(item => {
-                const row = document.createElement('div');
-                row.className = `connectivity-row ${item.pending ? 'pending' : item.untouched ? '' : item.ok ? 'ok' : 'fail'}`;
-                const indicator = document.createElement('span');
-                indicator.className = 'connectivity-indicator';
-                const meta = document.createElement('div');
-                const name = document.createElement('div');
-                name.className = 'connectivity-name';
-                name.textContent = updateTargetLabel(item.name);
-                const url = document.createElement('div');
-                url.className = 'connectivity-url';
-                url.textContent = item.url || '';
-                meta.append(name, url);
-                const status = document.createElement('div');
-                status.className = 'connectivity-status';
-                status.textContent = item.untouched ? updateUiText('待测试', 'Not tested') : updateStatusLabel(item);
-                row.append(indicator, meta, status);
-                if(item.error && !item.timed_out) {
-                    const error = document.createElement('div');
-                    error.className = 'connectivity-error';
-                    error.textContent = String(item.error).slice(0, 220);
-                    row.append(error);
-                }
-                list.append(row);
-            });
-            };
-            renderInto(document.querySelector('[data-connectivity-source="github"]'), 'github');
-        }
-
-        function refreshProjectUpdateModalText() {
-            const updateBtn = document.getElementById('update-now-btn');
-            const remoteVersion = updateBtn?.dataset.remoteVersion || '';
-            const localVersion = updateBtn?.dataset.localVersion || appInfo.version || '';
-            const sourceName = updateSourceLabel();
-            const title = remoteVersion
-                ? updateUiText(`更新到 ${versionLabel(remoteVersion)}`, `Update to ${versionLabel(remoteVersion)}`)
-                : updateUiText('一键更新', 'One-click update');
-            const titleEl = document.getElementById('project-update-title');
-            const copyEl = document.getElementById('project-update-copy');
-            const testText = document.getElementById('connectivity-test-text');
-            const cancelText = document.getElementById('project-update-cancel-text');
-            const confirmText = document.getElementById('project-update-confirm-text');
-            const closeBtn = document.querySelector('#project-update-modal .studio-modal-close');
-            if(titleEl) titleEl.textContent = title;
-            renderProjectUpdateNotes();
-            document.querySelectorAll('[data-update-source]').forEach(card => {
-                const source = card.dataset.updateSource || 'github';
-                const active = source === updateSource;
-                card.classList.toggle('active', active);
-                card.setAttribute('aria-pressed', active ? 'true' : 'false');
-                const badge = card.querySelector('.update-source-badge');
-                if(badge) {
-                    if(!updateConnectivityResult) {
-                        setSourceBadge(badge, '', updateUiText('待测试', 'Not tested'));
-                    } else {
-                        const stats = sourceConnectivityStats(source, updateConnectivityResult.results || []);
-                        setSourceBadge(badge, stats.ok ? 'ok' : 'bad',
-                            stats.ok ? updateUiText('可用', 'Available') : updateUiText('不可用', 'Unavailable'));
-                    }
-                }
-            });
-            if(copyEl) copyEl.textContent = updateUiText(
-                `将从 ${sourceName} 更新 main.py、VERSION 和 static 文件。更新前会自动备份，更新完成后后端会自动重启。当前 ${versionLabel(localVersion)}，最新 ${versionLabel(remoteVersion || localVersion)}。`,
-                `This updates main.py, VERSION, and static files from ${sourceName}. A backup is created first, then the backend restarts automatically. Current ${versionLabel(localVersion)}, latest ${versionLabel(remoteVersion || localVersion)}.`
-            );
-            if(testText) testText.textContent = updateConnectivityResult ? updateUiText('重新测试', 'Retest') : updateUiText('测试连通性', 'Test connectivity');
-            if(cancelText) cancelText.textContent = updateUiText('取消', 'Cancel');
-            if(confirmText && !projectUpdateRunning) confirmText.textContent = updateUiText('开始更新', 'Start update');
-            if(closeBtn) {
-                closeBtn.title = updateUiText('关闭', 'Close');
-                closeBtn.setAttribute('aria-label', closeBtn.title);
-            }
-            if(!updateConnectivityResult) {
-                setUpdateSummary(
-                    'warn',
-                    updateUiText('建议先测试连通性', 'Connectivity test recommended'),
-                    updateUiText(
-                        '测试会检查 GitHub 下载源的连通性。',
-                        'The test checks connectivity to the GitHub download source.'
-                    )
-                );
-            } else if(updateConnectivityResult.backend_missing) {
-                setUpdateSummary(
-                    'fail',
-                    updateUiText('需要重启后端', 'Backend restart required'),
-                    updateUiText(
-                        '当前页面已经更新，但后端仍是旧版本，所以找不到连通性测试接口。请重启服务后再试。',
-                        'The page is updated, but the backend is still the old version and cannot find the connectivity-test API. Restart the service and try again.'
-                    )
-                );
-            } else if((updateConnectivityResult.sources || {})[updateSource]?.ok || (updateSource === 'github' && updateConnectivityResult.ok)) {
-                const google = (updateConnectivityResult.results || []).find(item => item.name === 'Google 连通性');
-                const sourceResults = (updateConnectivityResult.results || []).filter(item => item.source === updateSource);
-                const fastest = sourceResults.filter(item => item.ok).sort((a, b) => (a.elapsed_ms || 999999) - (b.elapsed_ms || 999999))[0];
-                setUpdateSummary(
-                    google?.ok ? 'ok' : 'warn',
-                    updateUiText(`${sourceName} 下载源可用`, `${sourceName} source reachable`),
-                    fastest
-                        ? updateUiText(`${sourceName} 可访问，最快节点约 ${fastest.elapsed_ms || 0}ms，可以开始更新。`, `${sourceName} is reachable; fastest endpoint is about ${fastest.elapsed_ms || 0}ms.`)
-                        : updateUiText(`${sourceName} 更新节点可用，可以开始更新。`, `${sourceName} update endpoints are reachable.`)
-                );
-            } else {
-                setUpdateSummary(
-                    'fail',
-                    updateUiText(`${sourceName} 下载源不可用`, `${sourceName} source unreachable`),
-                    updateUiText(
-                        `当前网络无法访问 ${sourceName} 必需节点。请切换下载源，或检查代理、DNS 后重试。`,
-                        `This network cannot reach required ${sourceName} endpoints. Switch source, or check proxy/DNS and try again.`
-                    )
-                );
-            }
-            renderConnectivityList(updateConnectivityResult?.results || []);
-        }
-
-        function openProjectUpdateModal() {
-            const modal = document.getElementById('project-update-modal');
-            if(!modal) return;
-            updateConnectivityResult = null;
-            refreshProjectUpdateModalText();
-            modal.hidden = false;
-            document.getElementById('connectivity-test-btn')?.focus?.();
-        }
-
-        function closeProjectUpdateModal() {
-            // 更新进行中允许关闭：中止在途请求并恢复 UI，避免「卡在更新中、无法关闭」
-            if(projectUpdateRunning) {
-                try { projectUpdateAbort?.abort(); } catch(e) {}
-            }
-            const modal = document.getElementById('project-update-modal');
-            if(modal) modal.hidden = true;
-        }
-
-        document.getElementById('project-update-modal')?.addEventListener('click', event => {
-            if(event.target?.id === 'project-update-modal') closeProjectUpdateModal();
-        });
-
-        window.addEventListener('keydown', event => {
-            if(event.key === 'Escape') closeProjectUpdateModal();
-        });
-
-        async function runProjectUpdate() {
-            openProjectUpdateModal();
-        }
-
-        function computeConnectivitySources(results) {
-            const out = {};
-            for(const source of ['github']) {
-                const reqAll = (results || []).filter(it => it.source === source && it.required);
-                out[source] = {
-                    ok: reqAll.length > 0 && reqAll.every(it => it.ok),
-                    required: reqAll.map(it => it.name),
-                };
-            }
-            return out;
-        }
-
-        function setSourceBadge(badge, state, text) {
-            if(!badge) return;
-            badge.classList.remove('ok', 'bad');
-            if(state) badge.classList.add(state);
-            badge.textContent = text;
-        }
-
-        function renderSourceBadgesLive(results) {
-            document.querySelectorAll('[data-update-source]').forEach(card => {
-                const source = card.dataset.updateSource || 'github';
-                const badge = card.querySelector('.update-source-badge');
-                if(!badge) return;
-                const items = (results || []).filter(it => it.source === source);
-                if(!items.length) return;
-                const done = items.filter(it => !it.pending && !it.untouched);
-                if(done.length < items.length) {
-                    setSourceBadge(badge, '', updateUiText(`检测中 ${done.length}/${items.length}`, `${done.length}/${items.length}`));
-                    return;
-                }
-                const stats = sourceConnectivityStats(source, results);
-                setSourceBadge(badge, stats.ok ? 'ok' : 'bad',
-                    stats.ok ? updateUiText('可用', 'Available') : updateUiText('不可用', 'Unavailable'));
-            });
-        }
-
-        let connectivityTesting = false;
-        async function runUpdateConnectivityTest() {
-            if(connectivityTesting) return; // 防止重复点击导致状态错乱
-            const isEn = window.StudioI18n?.lang?.() === 'en';
-            const btn = document.getElementById('connectivity-test-btn');
-            const text = document.getElementById('connectivity-test-text');
-            connectivityTesting = true;
-            if(btn) btn.disabled = true;
-            if(text) text.textContent = isEn ? 'Testing...' : '检测中...';
-            updateConnectivityResult = null;
-
-            const targets = updateConnectivityTargets();
-            // 实时状态数组：先全部置为「检测中」，每条探测完成立即刷新对应行
-            const live = targets.map(item => ({...item, pending:true, untouched:false}));
-            let backendMissing = false;
-            const applyResult = (name, patch) => {
-                const i = live.findIndex(x => x.name === name);
-                if(i < 0) return;
-                live[i] = {...live[i], pending:false, untouched:false, ...patch};
-                renderConnectivityList(live);
-                renderSourceBadgesLive(live);
-            };
-
-            const probeOne = async (t) => {
-                // 客户端兜底超时：5s 探测 + 1s 网络余量，超时即报「超时」，不会永远卡在「检测中」
-                const ac = new AbortController();
-                const killer = setTimeout(() => ac.abort(), 6000);
-                try {
-                    const res = await fetch(`/api/update-connectivity/probe?name=${encodeURIComponent(t.name)}`, { cache:'no-store', signal:ac.signal });
-                    const data = await res.json().catch(() => ({}));
-                    // 旧后端没有单条探测接口 → 404 Not Found，标记后回退到整体接口
-                    if(res.status === 404 && (data.detail === 'Not Found' || data.detail === undefined)) {
-                        backendMissing = true;
-                        return;
-                    }
-                    if(res.ok) {
-                        applyResult(t.name, { ok:!!data.ok, status:data.status || 0, elapsed_ms:data.elapsed_ms || 0, error:data.error || '', timed_out:!!data.timed_out });
-                    } else {
-                        applyResult(t.name, { ok:false, error:data.detail || (isEn ? 'Failed' : '失败') });
-                    }
-                } catch(e) {
-                    if(e && e.name === 'AbortError') {
-                        applyResult(t.name, { ok:false, timed_out:true, error:isEn ? 'Timed out (over 5s)' : '连接超时（超过 5s）' });
-                    } else {
-                        applyResult(t.name, { ok:false, error:describeNetworkError(e, isEn) });
-                    }
-                } finally {
-                    clearTimeout(killer);
-                }
-            };
-
-            try {
-                setUpdateSummary('warn', isEn ? 'Testing connectivity' : '正在测试连通性', isEn ? 'Probing each endpoint — results stream in live.' : '正在逐条检测各节点，结果实时显示。');
-                renderConnectivityList(live);
-                renderSourceBadgesLive(live);
-                await Promise.all(targets.map(probeOne));
-
-                if(backendMissing) {
-                    // 兜底：尝试旧的整体接口
-                    try {
-                        const res = await fetch('/api/update-connectivity', { cache:'no-store' });
-                        const data = await res.json().catch(() => ({}));
-                        if(res.ok && Array.isArray(data.results)) {
-                            updateConnectivityResult = data;
-                            setUpdateSource(bestUpdateSourceFromConnectivity(data));
-                            return;
-                        }
-                    } catch(e) {}
-                    const message = isEn
-                        ? 'The backend has not loaded the new connectivity-test API yet. Restart the backend service, then test again.'
-                        : '后端还没有加载新的连通性测试接口。请重启服务后再测试。';
-                    updateConnectivityResult = {
-                        ok:false,
-                        backend_missing:true,
-                        results:targets.map(item => ({...item, ok:false, elapsed_ms:0, error:message })),
-                    };
-                    return;
-                }
-
-                const results = live.map(({pending, untouched, ...rest}) => rest);
-                const sources = computeConnectivitySources(results);
-                updateConnectivityResult = { results, sources, ok:sources.github.ok };
-                setUpdateSource(bestUpdateSourceFromConnectivity(updateConnectivityResult));
-            } finally {
-                connectivityTesting = false;
-                if(btn) btn.disabled = false;
-                refreshProjectUpdateModalText();
-            }
-        }
-
-        async function confirmProjectUpdate() {
-            const isEn = window.StudioI18n?.lang?.() === 'en';
-            const btn = document.getElementById('update-now-btn');
-            const text = document.getElementById('update-now-text');
-            const confirmBtn = document.getElementById('project-update-confirm-btn');
-            const confirmText = document.getElementById('project-update-confirm-text');
-            const testBtn = document.getElementById('connectivity-test-btn');
-            const oldText = text?.textContent || '';
-            projectUpdateRunning = true;
-            if(btn) btn.disabled = true;
-            if(confirmBtn) confirmBtn.disabled = true;
-            if(testBtn) testBtn.disabled = true;
-            if(text) text.textContent = isEn ? 'Updating...' : '更新中...';
-            if(confirmText) confirmText.textContent = isEn ? 'Updating...' : '更新中...';
-            const sourceName = updateSourceLabel();
-            setUpdateSummary('warn', isEn ? 'Updating' : '正在更新', isEn ? `Downloading files from ${sourceName} and creating a local backup.` : `正在从 ${sourceName} 下载文件，并创建本地备份。`);
-            // 客户端兜底超时：即使后端异常挂起，UI 也能恢复，不会永远停在「更新中」
-            const ac = new AbortController();
-            const killer = setTimeout(() => ac.abort(), 300000);
-            try {
-                const res = await fetch('/api/update-from-github', {
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify({ auto_restart:true, restart_delay:3, source:updateSource, fallback:true }),
-                    signal:ac.signal
-                });
-                const data = await res.json().catch(() => ({}));
-                if(!res.ok) throw new Error(data.detail || (isEn ? 'Update failed' : '更新失败'));
-                if(data.update_notes) setProjectUpdateNotes(data.update_notes);
-                const restarting = data.restart_scheduled;
-                const usedLabel = data.source_label || 'GitHub';
-                const fallbackNote = data.fallback_used
-                    ? (isEn
-                        ? ` (${sourceName} was unreachable, so it fell back to ${usedLabel})`
-                        : `（${sourceName} 不可用，已自动兜底切换到 ${usedLabel}）`)
-                    : '';
-                setUpdateSummary(
-                    'ok',
-                    isEn ? 'Update complete' : '更新完成',
-                    (restarting
-                        ? (isEn
-                            ? `Updated ${data.count || 0} files. The backend will restart in about 3 seconds; this page will reload when it returns.`
-                            : `已更新 ${data.count || 0} 个文件。后端将在约 3 秒后自动重启，本页面会在恢复后自动刷新。`)
-                        : (isEn
-                            ? `Updated ${data.count || 0} files. Please restart the backend, then refresh this page.`
-                            : `已更新 ${data.count || 0} 个文件。请重启后端，然后刷新页面。`)) + fallbackNote
-                );
-                const updateBtn = document.getElementById('update-now-btn');
-                updateBtn?.classList.remove('update-available');
-                btn?.classList.remove('show');
-                setProjectVersionBadge(data.version || updateBtn?.dataset.remoteVersion || appInfo.version);
-                if(restarting) waitForBackendAndReload();
-            } catch(e) {
-                const msg = (e && e.name === 'AbortError')
-                    ? (isEn ? 'Update timed out. Switch source or check your network, then retry.' : '更新超时。请切换下载源或检查网络后重试。')
-                    : describeNetworkError(e, isEn);
-                setUpdateSummary('fail', isEn ? 'Update failed' : '更新失败', msg);
-            } finally {
-                clearTimeout(killer);
-                projectUpdateRunning = false;
-                if(btn) btn.disabled = false;
-                if(confirmBtn) confirmBtn.disabled = false;
-                if(testBtn) testBtn.disabled = false;
-                if(text) text.textContent = oldText || (isEn ? 'Update' : '一键更新');
-                if(confirmText) confirmText.textContent = isEn ? 'Start update' : '开始更新';
-                refreshUpdateButtonText();
-            }
-        }
-        async function waitForBackendAndReload() {
-            const deadline = Date.now() + 90 * 1000;
-            await new Promise(r => setTimeout(r, 4000));
-            while(Date.now() < deadline) {
-                try {
-                    const r = await fetch('/api/app-info', { cache:'no-store' });
-                    if(r.ok) { location.reload(); return; }
-                } catch {}
-                await new Promise(r => setTimeout(r, 1500));
-            }
-        }
-        async function rollbackProjectUpdate() {
-            const isEn = window.StudioI18n?.lang?.() === 'en';
-            try {
-                const list = await fetch('/api/update-backups').then(r => r.json());
-                const backups = list.backups || [];
-                if(!backups.length){ alert(isEn ? 'No backups available.' : '没有可用的备份'); return; }
-                const lines = backups.slice(0, 8).map((b, i) => {
-                    const d = new Date((b.created_at || 0) * 1000);
-                    const ts = d.toLocaleString();
-                    return `${i + 1}. ${b.name}  (${b.file_count} files, ${ts})`;
-                });
-                const promptMsg = (isEn
-                    ? 'Select a backup to restore (enter the number):\n'
-                    : '选择要还原的备份（输入序号）：\n') + lines.join('\n');
-                const answer = prompt(promptMsg, '1');
-                const idx = Number(answer) - 1;
-                if(!(idx >= 0 && idx < backups.length)) return;
-                const target = backups[idx];
-                if(!confirm(isEn ? `Restore "${target.name}"? Backend will restart.` : `要还原 "${target.name}" 吗？后端会自动重启。`)) return;
-                const res = await fetch('/api/update-rollback', {
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify({ name:target.name, auto_restart:true, restart_delay:3 })
-                });
-                const data = await res.json().catch(() => ({}));
-                if(!res.ok) throw new Error(data.detail || (isEn ? 'Rollback failed' : '回滚失败'));
-                alert(isEn
-                    ? `Restored ${data.count || 0} files. Backend is restarting.`
-                    : `已还原 ${data.count || 0} 个文件。后端正在重启。`);
-                if(data.restart_scheduled) waitForBackendAndReload();
-            } catch(e) {
-                alert((isEn ? 'Rollback failed: ' : '回滚失败：') + describeNetworkError(e, isEn));
-            }
-        }
-        window.rollbackProjectUpdate = rollbackProjectUpdate;
 
         function renderAppUpdateStatus(result = {}) {
             const button = document.getElementById('project-update-check-btn');
             const text = document.getElementById('project-update-check-text');
             if(!button || !text) return;
-            const current = result.currentDisplayVersion || result.currentVersion || appInfo.version;
+            const current = result.currentDisplayVersion || result.currentVersion || appVersion;
             const available = result.status === 'available';
             text.textContent = available ? `更新到 ${versionLabel(result.displayVersion || result.version)}` : '检查更新';
             button.title = available ? text.textContent : `当前版本：${versionLabel(current)} · 检查更新`;
@@ -4124,102 +3221,61 @@
                 if(window.electronAPI?.getUpdateInfo) {
                     window.electronAPI.onUpdateStatus?.(renderAppUpdateStatus);
                     const info = await window.electronAPI.getUpdateInfo();
-                    appInfo.version = info?.displayVersion || info?.version || '';
+                    appVersion = info?.displayVersion || info?.version || '';
                     renderAppUpdateStatus(info?.result || {});
                 } else {
                     const info = await fetch('/api/app-info', { cache:'no-store' }).then(r => r.json());
-                    appInfo = {...appInfo, ...info};
+                    appVersion = info?.version || '';
                     renderAppUpdateStatus();
                 }
             } catch {}
         }
 
-        async function checkForUpdates(manual = false) {
+        async function checkForUpdates() {
             const button = document.getElementById('project-update-check-btn');
             if(button?.disabled) return;
-            if(window.electronAPI?.checkForUpdates) {
-                if(!manual) return;
-                if(button) button.disabled = true;
-                try {
-                    const result = await window.electronAPI.checkForUpdates({ manual:true });
-                    renderAppUpdateStatus(result);
-                    if(result?.status === 'current') alert(`已是最新版本（${versionLabel(result.currentDisplayVersion || appInfo.version)}）。`);
-                } catch {
-                    if(confirm('检查更新失败，请检查网络或系统代理后重试。是否打开官方下载页面？')) {
-                        window.open('https://github.com/jkjk-8614/xiaomei/releases/latest', '_blank', 'noopener,noreferrer');
-                    }
-                } finally {
-                    if(button) button.disabled = false;
-                }
-                return;
-            }
-            const isEn = window.StudioI18n?.lang?.() === 'en';
             if(button) button.disabled = true;
-            const badge = document.getElementById('project-version-badge');
-            if(manual && badge) badge.classList.add('checking');
+            const isEn = window.StudioI18n?.lang?.() === 'en';
             try {
-                const info = await fetch('/api/app-info', { cache:'no-store' }).then(r => r.json()).catch(() => ({}));
-                appInfo = {...appInfo, ...info};
-                let current = String(appInfo.version || '').trim();
-                setProjectVersionBadge(current);
-                let best = null;
-                let reachable = false;
-                let serverChecked = false;
-                // 优先走后端检测，沿用系统代理访问 GitHub。
-                try {
-                    const r = await fetch('/api/check-update', { cache:'no-store' });
-                    if(r.ok) {
-                        const d = await r.json();
-                        serverChecked = true;
-                        reachable = !!d.reachable;
-                        if(d.current) { current = String(d.current).trim(); setProjectVersionBadge(current); }
-                        if(d.latest?.version) best = {source:d.latest.source, version:d.latest.version, update_notes:d.latest.update_notes || d.update_notes || null};
+                if(window.electronAPI?.checkForUpdates) {
+                    const result = await window.electronAPI.checkForUpdates({manual:true});
+                    renderAppUpdateStatus(result);
+                    if(result?.status === 'current') {
+                        alert('已是最新版本（' + versionLabel(result.currentDisplayVersion || appVersion) + '）。');
                     }
-                } catch(e) {}
-                // 旧后端没有检测接口时，直接读取 GitHub 版本文件。
-                if(!serverChecked) {
-                    const sources = appInfo.sources || {};
-                    const candidates = [
-                        {source:'github', url:sources.github?.version_url || appInfo.version_url || ''},
-                    ].filter(item => item.url);
-                    for(const item of candidates) {
-                        try {
-                            const remoteText = await fetch(`${item.url}${item.url.includes('?') ? '&' : '?'}t=${Date.now()}`, { cache:'no-store' }).then(r => r.ok ? r.text() : '');
-                            const remote = String(remoteText || '').trim().split(/\r?\n/)[0].trim();
-                            if(remote){ reachable = true; if(!best || compareVersions(remote, best.version) > 0) best = {source:item.source, version:remote}; }
-                        } catch(e) {}
-                    }
+                    return;
                 }
-                const hasUpdate = !!(current && best?.version && compareVersions(best.version, current) > 0);
-                if(hasUpdate) {
-                    setProjectUpdateNotes(best.update_notes || null);
-                    showUpdateNotice(current, best.version);
+
+                const response = await fetch('/api/check-update', {
+                    cache:'no-store', signal:AbortSignal.timeout(10000)
+                });
+                const result = await response.json();
+                if(!response.ok || !result.reachable) throw new Error('Release check failed');
+                appVersion = result.current || appVersion;
+                renderAppUpdateStatus();
+                if(result.update_available && result.latest?.version) {
+                    const label = versionLabel(result.latest.version);
+                    const message = isEn
+                        ? 'Version ' + label + ' is available. Open the download page?'
+                        : '发现新版本 ' + label + '，是否打开发布页下载？';
+                    if(confirm(message)) window.open(officialDownloadPage, '_blank', 'noopener,noreferrer');
+                } else {
+                    const label = versionLabel(appVersion);
+                    alert(isEn ? 'You are on the latest version (' + label + ').' : '已是最新版本（' + label + '）。');
                 }
-                if(manual) {
-                    if(hasUpdate) {
-                        if(confirm(`发现新版本 ${versionLabel(best.version)}，是否打开发布页下载？`)) {
-                            window.open('https://github.com/jkjk-8614/xiaomei/releases/latest', '_blank', 'noopener,noreferrer');
-                        }
-                    } else if(reachable) {
-                        alert(isEn ? `You are on the latest version (${versionLabel(current)}).` : `已是最新版本（${versionLabel(current)}）。`);
-                    } else {
-                        if(confirm(isEn ? 'Could not reach GitHub. Check your network or proxy and retry. Open the official download page?' : '无法连接 GitHub 更新源，请检查网络或代理后重试。是否打开官方下载页面？')) {
-                            window.open('https://github.com/jkjk-8614/xiaomei/releases/latest', '_blank', 'noopener,noreferrer');
-                        }
-                    }
-                }
-            } catch(e) {
-                // 离线包里没有网络时保持安静，不影响本地使用。
-                if(manual) alert(isEn ? 'Update check failed.' : '检测更新失败。');
+            } catch {
+                const message = isEn
+                    ? 'Check your network or system proxy and retry. Open the official download page?'
+                    : '检查更新失败，请检查网络或系统代理后重试。是否打开官方下载页面？';
+                if(confirm(message)) window.open(officialDownloadPage, '_blank', 'noopener,noreferrer');
             } finally {
                 if(button) button.disabled = false;
-                if(badge) badge.classList.remove('checking');
             }
         }
 
     </script>
-    <link rel="stylesheet" href="/static/css/mcp-settings.css?v=2026.11.06.1789283121">
-    <script src="/static/js/mcp-settings.js?v=2026.11.06.1792660078"></script>
+    <link rel="stylesheet" href="/static/css/mcp-settings.css?v=1.0.21.1789283121">
+    <script src="/static/js/mcp-settings.js?v=1.0.21.1794192428"></script>
 </body>
 
 </html>

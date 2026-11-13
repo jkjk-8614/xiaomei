@@ -16,6 +16,7 @@ import tempfile
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import unquote
 
@@ -125,6 +126,7 @@ class AssetRegistry:
         self.path = os.path.abspath(path)
         self._lock = threading.RLock()
         self._data: Optional[Dict[str, Any]] = None
+        self._batch_dirty: Optional[bool] = None
 
     def _load_locked(self) -> Dict[str, Any]:
         if self._data is not None:
@@ -190,6 +192,9 @@ class AssetRegistry:
         data["url_index"] = index
 
     def _write_locked(self) -> None:
+        if self._batch_dirty is not None:
+            self._batch_dirty = True
+            return
         data = self._load_locked()
         data["updated_at"] = now_ms()
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
@@ -206,6 +211,26 @@ class AssetRegistry:
                     os.remove(temporary)
             except OSError:
                 pass
+
+    @contextmanager
+    def batch(self):
+        with self._lock:
+            if self._batch_dirty is not None:
+                yield
+                return
+            before = copy.deepcopy(self._load_locked())
+            self._batch_dirty = False
+            try:
+                yield
+                if self._batch_dirty:
+                    self._rebuild_url_index(self._load_locked())
+                    self._batch_dirty = None
+                    self._write_locked()
+            except BaseException:
+                self._data = before
+                raise
+            finally:
+                self._batch_dirty = None
 
     def get(self, asset_id: Any) -> Optional[Dict[str, Any]]:
         asset_id = str(asset_id or "").strip()
@@ -341,7 +366,10 @@ class AssetRegistry:
                     existing["updated_at"] = now_ms()
 
             if changed:
-                self._rebuild_url_index(data)
+                if self._batch_dirty is None:
+                    self._rebuild_url_index(data)
+                elif key:
+                    data["url_index"].setdefault(key, asset_id)
                 self._write_locked()
             return copy.deepcopy(existing)
 

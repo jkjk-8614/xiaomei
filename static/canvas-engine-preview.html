@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-xm-standalone>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>画布 · X6 引擎预览</title>
+    <!-- 只引样式，不引 smart-canvas.js：这个页面要证明新引擎能脱离旧画布独立启动。 -->
+    <link rel="stylesheet" href="/static/css/smart-canvas.css?v=1.0.21.1794542393">
+    <link rel="stylesheet" href="/static/css/canvas-engine-x6.css?v=1.0.21.1794542393">
+</head>
+<body class="engine-x6">
+    <div id="shell" class="shell">
+        <div id="xmGrayStage" class="xm-canvas-stage xm-gray-stage"></div>
+    </div>
+
+    <div id="xmPicker" class="xm-gray-badge" hidden>
+        <div class="xm-gray-badge-title">X6 引擎预览</div>
+        <div class="xm-gray-badge-name">选一份画布</div>
+        <div id="xmPickerList" class="xm-gray-badge-note">正在读取画布列表…</div>
+    </div>
+
+    <script src="/static/vendor/x6/x6.min.js?v=1.0.21.1794542393"></script>
+    <script src="/static/js/xiaomei-viewport-kernel.js?v=1.0.21.1794194822"></script>
+    <script src="/static/js/xiaomei-document-kernel.js?v=1.0.21.1794194822"></script>
+    <script src="/static/js/xiaomei-media-layout.js?v=1.0.21.1794542393"></script>
+    <script src="/static/js/canvas-engine-adapter.js?v=1.0.21.1794542393"></script>
+    <script src="/static/js/canvas-engine-interaction.js?v=1.0.21.1794542393"></script>
+    <script src="/static/js/canvas-engine-x6.js?v=1.0.21.1794542393"></script>
+    <script src="/static/js/canvas-engine-gray.js?v=1.0.21.1794542393"></script>
+    <script>
+    /* 没带 ?id 时不硬猜一份画布——列出来让用户自己点。
+       这只是预览页的便利，正式灰度页永远从地址里带 id。 */
+    (function () {
+        var gray = window.SmartCanvasEngineGray;
+        if (!gray || gray.canvasId()) return;
+
+        var picker = document.getElementById('xmPicker');
+        var list = document.getElementById('xmPickerList');
+        picker.hidden = false;
+        document.getElementById('xmGrayStage').style.display = 'none';
+
+        fetch('/api/canvases').then(function (response) {
+            return response.json();
+        }).then(function (payload) {
+            var items = (payload && payload.canvases) || [];
+            if (!items.length) { list.textContent = '还没有画布'; return; }
+            list.innerHTML = items.slice(0, 24).map(function (item) {
+                var id = encodeURIComponent(item.id || '');
+                return '<a class="xm-gray-badge-back" style="display:block;padding:2px 0" href="?id=' + id + '">'
+                    + String(item.title || item.id || '').replace(/[&<>"]/g, function (c) {
+                        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+                    }) + '</a>';
+            }).join('');
+        }).catch(function (error) {
+            list.textContent = '读取失败：' + (error && error.message ? error.message : error);
+        });
+    })();
+    </script>
+</body>
+</html>

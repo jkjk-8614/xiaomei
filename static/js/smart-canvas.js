@@ -1,3 +1,5 @@
+const { copyText:copyTextToClipboard } = XiaomeiCanvasEditorCore;
+const { read:responseErrorMessage } = XiaomeiApiErrors;
 const params = new URLSearchParams(location.search);
 const canvasId = params.get('id') || '';
 const sourceProjectId = params.get('project') || '';
@@ -86,56 +88,155 @@ const smartLogModal = document.getElementById('smartLogModal');
 const smartLogList = document.getElementById('smartLogList');
 const smartShortcutModal = document.getElementById('smartShortcutModal');
 const smartShortcutToggle = document.getElementById('smartShortcutToggle');
-const smartWorkflowToggle = document.getElementById('smartWorkflowToggle');
 const smartWorkflowTransferModal = document.getElementById('smartWorkflowTransferModal');
-const smartWorkflowTransferSub = document.getElementById('smartWorkflowTransferSub');
-const smartWorkflowExportMeta = document.getElementById('smartWorkflowExportMeta');
-const smartWorkflowSaveTemplateBtn = document.getElementById('smartWorkflowSaveTemplateBtn');
 const smartWorkflowImportInput = document.getElementById('smartWorkflowImportInput');
-const smartWorkflowImportDropZone = document.getElementById('smartWorkflowImportDropZone');
 const smartWorkflowLibrarySearch = document.getElementById('smartWorkflowLibrarySearch');
 const smartWorkflowLibraryCategory = document.getElementById('smartWorkflowLibraryCategory');
 const smartWorkflowRecentList = document.getElementById('smartWorkflowRecentList');
 const smartWorkflowFavoriteList = document.getElementById('smartWorkflowFavoriteList');
 const smartWorkflowLibraryCount = document.getElementById('smartWorkflowLibraryCount');
 const smartWorkflowLibraryEmpty = document.getElementById('smartWorkflowLibraryEmpty');
+const parameterControls = XiaomeiSmartParameterControls.create({
+    container:dynamicParams,
+    settings:() => settings,
+    set:setDynamicSetting,
+    render:renderDynamicParams,
+    commit({render:repaint=false}={}){
+        persistActiveSmartSettings();
+        if(repaint) renderDynamicParams();
+        scheduleSave();
+    },
+    closeBatchMenu:closeSmartBatchSelectMenu,
+    sizeScope:setSmartSizeScope,
+    async trustedSource(source){
+        if(source === 'cloud') await uploadCurrentSmartVideosToCloud();
+        else if(source === 'manual') await setCurrentSmartManualVideoUrl();
+    },
+    rhValue:key => {
+        const field = rhActiveFields().find(item => rhParamKey(item.nodeId, item.fieldName) === key);
+        return field ? rhParamValue(field) : settings.rhParams?.[key]?.value;
+    },
+    rhRandom:toggleSmartRhRandom,
+    error:toast
+});
+const workflowParams = XiaomeiSmartWorkflowParams.create({
+    container:dynamicParams,
+    label:tr,
+    rh:{
+        entries:runningHubEntries,
+        entryId:runningHubEntryId,
+        entryKey:runningHubEntryKey,
+        entryLabel:runningHubEntryLabel,
+        value:rhParamValue,
+        canRandomize:rhRandomEnabled,
+        randomActive:smartRhRandomActive,
+        modelControls:() => renderGenerationSettingsControl('', true) + renderCountVisualControl(),
+    },
+    comfy:{
+        kind:comfyFieldKind,
+        fieldLabel:comfyNodeFieldLabel,
+        value:comfyNodeParamValue,
+        checked:comfyNodeBooleanValue,
+        optionLabel:comfyOptionLabel,
+        mediaSlot:comfyNodeMediaSlotHtml,
+        canRandomize:comfyRandomEnabledField,
+        randomActive:(node, key) => smartComfyRandomActiveFor(node.runSettings, key),
+    },
+});
+const generationReferences = XiaomeiSmartGenerationReferences.create({
+    materialKey:referenceMaterialKey,
+    inputKey:inputRefKey,
+    blocked:isInputRefBlocked,
+    agentOutput:agentOutputImages,
+    agentInputs:promptNodeInputMediaForLLM,
+    isRender:isSmartAiRenderNode,
+    renderInputs:smartAiRenderInputReferences,
+    usesWorkflow:smartImageUsesWorkflowInput,
+    self:selfReferenceImagesForNode,
+    manual:manualReferenceImagesFor,
+    inputImages:inputImagesFor,
+    workflowImages:workflowInputImagesFor,
+    workflowNodes:workflowInputNodesFor
+});
+const smartNodeDrop = XiaomeiSmartNodeDrop.create({
+    nodes:() => nodes,
+    edges:() => canvas?.connections || [],
+    rect:nodeRect,
+    isGroup:isSmartGroupNode,
+    isImage:isSmartImageNode,
+    isHistory:isHistoryGroupNode,
+    groupOf:smartGroupContainingNode,
+    canEdit:node => collabCanEditNode(node.id, true),
+    canConnect:canAutoConnectDraggedNode,
+    connect:connectInputNode,
+    insert:insertLoopNodeIntoConnection,
+    join:addDraggedNodesToSmartGroup,
+    merge:mergeImageNodesIntoGroup,
+    midpoint(edge, from, to){
+        const slot = edge.input_slot || edge.inputSlot || '';
+        const start = nodeConnectionWorldPoint(from, 'out');
+        const end = nodeConnectionWorldPoint(to, 'in', null, slot);
+        const a = nodeRect(from), b = nodeRect(to);
+        return {
+            x:((start?.x ?? a.x + a.width) + (end?.x ?? b.x)) / 2,
+            y:((start?.y ?? a.y + a.height / 2) + (end?.y ?? b.y + b.height / 2)) / 2
+        };
+    },
+    saveMedia(node){
+        const entries = (node.images || []).filter(image => image?.url).map(image => ({
+            url:image.url, name:image.name || node.title || 'image'
+        }));
+        if(entries.length) localAssetSidebar.importUrls(entries).catch(error => toast(error.message || tr('smart.assetAddFail')));
+    }
+});
+const {bind:bindScrollableText} = XiaomeiSmartTextFields.create(document,
+    () => Boolean(resizeState || promptNodeView.resizing()));
+const smartLoopEditor = XiaomeiSmartLoopEditor.create({
+    escape:escapeHtml,
+    label:tr,
+    canEdit:node => collabCanEditNode(node.id),
+    changed(node, {fit=false, render:repaint=true}={}){
+        if(fit) fitSmartLoopNode(node);
+        scheduleSave();
+        if(repaint) render();
+    },
+    paired:smartLoopIsPaired,
+    splitLegacy:splitSmartPromptItems,
+    hasUpstreamPrompt:node => smartLoopInputPromptItems(node).length > 0,
+    defaultPrompt:smartLoopDefaultPromptText,
+    syncPaired:syncSmartLoopPairedSettings,
+    scroll:bindScrollableText
+});
+const smartWorkflowTransfer = XiaomeiSmartWorkflowTransfer.create({
+    canvas:() => canvas,
+    graph:() => ({
+        nodes:nodes.filter(node => node.id !== SMART_LOG_PREVIEW_NODE_ID),
+        connections:canvas?.connections || [],
+        selected:selectedNodeIds()
+    }),
+    serialize:(node, template) => template ? smartWorkflowTemplateNode(node) : serializableSmartNode(node),
+    id:uid,
+    point:viewportCenter,
+    editable:() => !sharedCanvasReadOnly,
+    allowImport:collabCanMutateCanvas,
+    libraryTarget:smartWorkflowLibraryTarget,
+    librarySaved(data){
+        setAssetLibraryFromResponse(data, {render:false});
+    },
+    beforeOpen:() => closeSmartCanvasFeaturePanels('workflow'),
+    onOpen(){
+        renderSmartWorkflowLibrary();
+        void refreshSmartWorkflowLibrary();
+    },
+    insert:insertSmartWorkflowNodes,
+    responseError:smartResponseErrorMessage,
+    status:toast,
+    icons:refreshIcons
+});
 const selectionBox = document.getElementById('selectionBox');
 const assetToggle = document.getElementById('assetToggle');
 const assetPanel = document.getElementById('assetPanel');
 const assetCloseBtn = document.getElementById('assetCloseBtn');
-const assetLibrarySelect = document.getElementById('assetLibrarySelect');
-const assetCategorySelect = document.getElementById('assetCategorySelect');
-const assetGrid = document.getElementById('assetGrid');
-const assetDropZone = document.getElementById('assetDropZone');
-const workflowEmpty = document.getElementById('workflowEmpty');
-const assetImageControls = document.getElementById('assetImageControls');
-const assetUrlControls = document.getElementById('assetUrlControls');
-const assetAddUrlBtn = document.getElementById('assetAddUrlBtn');
-const assetAddCategoryBtn = document.getElementById('assetAddCategoryBtn');
-const assetRenameCategoryBtn = document.getElementById('assetRenameCategoryBtn');
-const assetDialogBackdrop = document.getElementById('assetDialogBackdrop');
-const assetDialogTitle = document.getElementById('assetDialogTitle');
-const assetDialogInput = document.getElementById('assetDialogInput');
-const assetDialogCancel = document.getElementById('assetDialogCancel');
-const assetDialogOk = document.getElementById('assetDialogOk');
-const assetHoverPreview = document.getElementById('assetHoverPreview');
-const promptPresetPanel = document.getElementById('promptPresetPanel');
-const promptPresetClose = document.getElementById('promptPresetClose');
-const promptPresetStatus = document.getElementById('promptPresetStatus');
-const promptPresetSelect = document.getElementById('promptPresetSelect');
-const promptPresetName = document.getElementById('promptPresetName');
-const promptPresetText = document.getElementById('promptPresetText');
-const promptPresetApply = document.getElementById('promptPresetApply');
-const promptPresetDelete = document.getElementById('promptPresetDelete');
-const promptPresetNew = document.getElementById('promptPresetNew');
-const promptPresetSave = document.getElementById('promptPresetSave');
-const promptTemplatePanel = document.getElementById('promptTemplatePanel');
-const promptTemplateClose = document.getElementById('promptTemplateClose');
-const promptTemplateSearch = document.getElementById('promptTemplateSearch');
-const promptTemplateLibrarySelect = document.getElementById('promptTemplateLibrarySelect');
-const promptTemplateCats = document.getElementById('promptTemplateCats');
-const promptTemplateBody = document.getElementById('promptTemplateBody');
-const composerTemplateBtn = document.getElementById('composerTemplateBtn');
 const composerFindBtn = document.getElementById('composerFindBtn');
 const canvasCollabStatus = document.getElementById('canvasCollabStatus');
 const canvasCollabToggle = document.getElementById('canvasCollabToggle');
@@ -167,11 +268,8 @@ let isRKeyDown = false;
 let selectionJustFinished = false;
 let selectionJustFinishedTimer = null;
 let resizeState = null;
-let llmInstructionResizeState = null;
-let thumbDragState = null;
 let uploadTargetId = '';
 let pendingGroupUploadPoint = null;
-let mentionRange = null;
 let panState = null;
 let didPan = false;
 let panClickGuardUntil = 0;
@@ -181,10 +279,6 @@ let lastMouseWorldRaf = 0;
 let pendingLastMouseClient = null;
 let pendingPortCreate = null;
 let promptOptimizeDraft = null;
-let connectionEraseState = null;
-let connectionEraseTrailTimer = 0;
-let connectionEraseTrailRaf = 0;
-let connectionEraseModifierHeld = false;
 let saveTimer = null;
 let apiProviders = [];
 let smartConfigReady = false;
@@ -193,10 +287,7 @@ let comfyInstanceCount = 1;
 let assetLibrary = {categories:[]};
 let assetUrlLibrary = {items:[], updated_at:0};
 let assetLibraryOpen = false;
-let assetTab = 'image';
-let activeAssetCategoryId = '';
 let activeAssetLibraryId = '';
-let activeWorkflowAssetCategoryId = '';
 const SMART_WORKFLOW_LIBRARY_PREFS_KEY = 'smart_canvas_workflow_library_prefs_v1';
 const SMART_WORKFLOW_RECENTS_KEY = 'smart_canvas_workflow_recents_v1';
 let smartWorkflowLibraryQuery = '';
@@ -204,32 +295,10 @@ let smartWorkflowLibraryCategoryKey = '';
 let smartWorkflowRecentIds = [];
 let smartWorkflowImportingItemId = '';
 const LOCAL_ASSET_LIBRARY_ID = '__local_assets__';
-let localAssetLibrary = {items:[], tree:null};
-const pendingLocalAssetDeletes = new Set();
-let activeLocalAssetFolderId = '__root__';
-let mentionSource = 'input';
-let mentionAssetCategoryId = '';
 let assetLibraryUpdatedAt = 0;
 let assetLibraryRefreshTimer = null;
-let activeAssetSmartClassId = '';
-const ASSET_SMART_CATEGORY_PREFIX = '__smart_class__::';
 // 标签是素材的补充描述，不作为资产库下拉框里的独立分组展示。
-const ASSET_SMART_CLASS_HIDDEN_DIMENSIONS = new Set(['tags']);
-const PROMPT_PRESETS_KEY = 'smart_canvas_prompt_presets_v1';
 const PROMPT_OPTIMIZER_MODEL_KEY = 'smart_canvas_prompt_optimizer_model_v1';
-const PROMPT_TEMPLATE_GROUPS_KEY = 'smart_canvas_prompt_template_groups_v1';
-const PROMPT_TEMPLATE_OVERRIDES_KEY = 'smart_canvas_prompt_template_overrides_v1';
-let promptPresets = [];
-let builtinPromptTemplates = [];
-let promptLibraries = [];
-let activePromptLibraryId = 'system';
-let promptTemplateGroups = [];
-let promptTemplateOverrides = {hiddenBuiltinIds:[], editedBuiltins:{}};
-let promptTemplateCategory = 'all';
-let promptTemplateSelectedId = '';
-let promptTemplateEditing = false;
-let promptTemplateGroupEditMode = false;
-let promptPresetDeleteArmed = false;
 let promptCaseIndexByUrl = new Map();
 let promptCaseIndexLoadedAt = 0;
 let promptCaseSaveDialog = null;
@@ -247,9 +316,8 @@ const SMART_NODE_CLIPBOARD_STORAGE_KEY = 'smart_canvas_node_clipboard_v1';
 const SMART_NODE_CLIPBOARD_MARKER_PREFIX = 'x-smart-canvas-nodes:';
 const SMART_NODE_CLIPBOARD_MAX_AGE = 24 * 60 * 60 * 1000;
 let nodeClipboard = null;
-let imageClickTimer = null;
-let pendingImageClickSelection = null;
 let suppressImageClickUntil = 0;
+let smartMediaSelectionTimer = 0;
 let lastMouseWorld = null;
 let lastConfigRefreshAt = 0;
 let smartMinimapState = null;
@@ -269,12 +337,15 @@ let smartCascadeSilentSelection = false;
 let smartCascadeRunPath = null;
 let smartBackgroundRemovalBusy = false;
 const smartCascadeRuns = new Map();
+const smartCascadeWrites = new WeakMap();
 const smartBatchStopRequests = new Set();
 const smartBatchPromptProgress = new WeakMap();
 let smartLoopContext = null;
-let transientSmartCloudLinks = [];
-let runBtnCooldownToken = 0;
-let smartRunStateToken = 0;
+const {
+    isRemote:isRemoteMediaLink, isHttp:isHttpMediaLink, manualLinks:manualMediaLinks, withoutManualLinks:withoutManualMediaLinks,
+    findLink:findMediaLink, storeLink:storeMediaLink, createUploadSession:createMediaUploadSession,
+} = XiaomeiCanvasMediaLinks;
+let smartCloudScope;
 const activeSmartTaskPolls = new Map();
 const smartNodeRunTokens = new Map();
 const smartDependencyRuns = new Map();
@@ -284,7 +355,6 @@ let lastNodePasteAt = 0;
 let deferredComposerNodeId = '';
 let smartPendingPasteUploads = 0;
 let suppressNodeClickUntil = 0;
-let textSelectionGuard = null;
 const UNDO_LIMIT = 40;
 const undoStack = [];
 const redoStack = [];
@@ -395,12 +465,11 @@ function restoreSmartUndoSnapshot(snap){
     }
 }
 let comfyWorkflowCache = {};
+const comfyWorkflowLoads = new Map();
+const comfyWorkflowChanges = new Map();
 const comfyWorkflowNodeHydrating = new Set();
 const comfyWorkflowNodeHydrated = new Set();
 let cropState = null;
-let cropDrag = null;
-let cropAspectPreset = 'free';
-let cropAspectRatio = null;
 const OUTPAINT_RATIO_PRESETS = [
     {key:'auto', label:'自适应', ratio:null},
     {key:'1:1', label:'1:1', ratio:1},
@@ -426,78 +495,282 @@ let outpaintCountPreset = 1;
 let outpaintGenerationBusy = false;
 let outpaintEditorRunToken = 0;
 let outpaintModelSelection = {provider_id:'', model:''};
-let outpaintActiveEdges = new Set();
 let imageEditMode = 'crop';
 let imageEditModeTouched = false;
-let imageResizeScale = 0.5;
-let editDrawState = null;
-let editTextItems = [];
-let editTextSelectedId = '';
-let editTextDrag = null;
-let editTextDirty = false;
-let editTextInlineEditor = null;
-let editDrawUndoStack = [];
-let editDrawRedoStack = [];
-const EDIT_DRAW_HISTORY_MAX = 40;
-let brushTool = 'free';
-let brushLabelCounter = 1;
-let gridCustomMode = false;
-let gridCustomLines = [];
-let gridCustomOrientation = 'h';
-let gridCustomHistory = [];
-let gridCustomDrag = null;
-let gridOperationMode = 'split';
-let gridJoinLayout = null;
-let gridJoinDrag = null;
-let gridJoinImageCache = new Map();
-let gridJoinUserMoved = false;
-let gridJoinOutputSize = 2048;
-// 非空时表示当前宫格拼接的数据源是整个分组（聚合组内所有图片成员），而不是单个节点。
+let smartEditRevision = 0;
 let gridJoinGroupId = '';
-let imageEditZoom = 1.0;
-let imageEditBaseW = 0;
-let imageEditBaseH = 0;
-let previewZoom = 1.0;
-let previewPan = {x:0, y:0};
-let previewPanDrag = null;
-let previewCompareDrag = false;
-let previewComparePos = 50;
-let imageEditPanDrag = null;
-let previewNavState = {nodeId:'', index:0, count:0};
-const PANORAMA_RATIO_PRESETS = {
-    square:{w:1, h:1},
-    portrait:{w:2, h:3},
-    landscape:{w:3, h:2},
-    portrait43:{w:3, h:4},
-    landscape43:{w:4, h:3},
-    story:{w:9, h:16},
-    wide:{w:16, h:9},
-    ultrawide:{w:21, h:9},
-    ultratall:{w:9, h:21}
-};
-let panoramaState = {
-    enabled:false,
-    ratio:'wide',
-    customW:16,
-    customH:9,
-    fov:75,
-    yaw:0,
-    pitch:0,
-    drag:null,
-    three:null,
-    renderer:null,
-    scene:null,
-    camera:null,
-    sphere:null,
-    texture:null,
-    threeLoadPromise:null,
-    image:null,
-    ctx:null,
-    animationId:0,
-    loadedSrc:'',
-    loadToken:0
-};
-window.__smartCanvasPanoramaState = panoramaState;
+const smartImageEditor = XiaomeiSmartImageEditor.create({
+    state:() => cropState,
+    mode:() => imageEditMode,
+    current:currentEditImage,
+    owner:() => canvas,
+    visible:() => imageEditModal.classList.contains('open'),
+    exceedsFourK:exceedsFourKStandard,
+    outpaint:() => ({ratio:outpaintRatioInfo().ratio, scale:outpaintScalePreset}),
+    resizeDrawing:() => resizeEditDrawCanvas(),
+    refreshGrid:() => refreshGridSplitPreview(),
+    gridJoin:() => smartGrid.joining(),
+    zoomChanged:updateZoomLabel,
+    urls:item => [displayMediaUrl(item), proxiedMediaUrl(item), smartMediaPreviewUrl(item, 2048)],
+    loaded:onSmartEditSourceReady,
+    upload:(blob, name) => uploadCroppedBlob(blob, name),
+    error:toast,
+    filename:smartEditOutputName,
+    commit:commitSmartCropOrResize
+});
+const smartOutpaint = XiaomeiSmartOutpaint.create({
+    state:() => cropState,
+    current:currentEditImage,
+    ready:smartImageEditor.ready,
+    pixels:() => smartImageEditor.outpaintPixels(outpaintResolutionPreset),
+    settings:outpaintSettingsForSelection,
+    chooseModel:promptForOutpaintModel,
+    prompt:() => String(document.getElementById('outpaintPrompt')?.value || '').trim(),
+    error:toast,
+    reserve:reserveSmartOutpaint,
+    active:job => canvas === job.canvas && nodes.includes(job.node),
+    working:delta => { smartPendingPasteUploads = Math.max(0, smartPendingPasteUploads + delta); },
+    showCanvas(){ closeImageEditor(); render(); },
+    upload:(blob, name) => uploadCroppedBlob(blob, name),
+    attach:attachSmartOutpaint,
+    failed({node}, error){
+        markSmartNodeFailed(node, error?.message || '扩图底图生成失败');
+        render({nodeIds:[node.id]});
+    },
+    save:() => scheduleSave(),
+    run:runSmartOutpaint
+});
+const smartPanorama = XiaomeiSmartCanvasPanorama.create({
+    display:displayMediaUrl,
+    proxy:proxiedMediaUrl,
+    label:tr,
+    error:toast,
+    zoomChanged:updateZoomLabel
+});
+const smartOcr = XiaomeiSmartCanvasOcr.create({
+    modal:imageEditModal,
+    image:document.getElementById('cropImage'),
+    active:() => Boolean(cropState && imageEditMode === 'ocr' && imageEditModal.classList.contains('open')),
+    session:currentSmartEditSession,
+    ready:smartImageEditor.ready,
+    anchor:smartOcrAnchor,
+    providers:() => apiProviders || [],
+    editModels:smartOcrImageModels,
+    upload:uploadCroppedBlob,
+    publish:publishSmartOcrEdit,
+    error:toast,
+    icons:refreshIcons,
+});
+const smartConnectionEraser = XiaomeiSmartConnectionEraser.create({
+    world, surface:shell,
+    current:() => canvas,
+    mapper:createClientToWorldMapper,
+    canEdit:() => collabCanMutateCanvas(true),
+    beforeStart() {
+        closeCreateMenu();
+        didPan = false;
+        panState = null;
+        shell.classList.remove('panning');
+        setSmartCanvasPanningMediaMode(false);
+    },
+    remove:removeSmartConnections,
+});
+const smartThumbnailDrag = XiaomeiSmartThumbnailDrag.create({
+    current:() => canvas,
+    node:id => nodes.find(node => node.id === id),
+    card:id => world.querySelector(`.image-node[data-id="${CSS.escape(id)}"]`),
+    isGroup:isSmartGroupNode,
+    canEdit:node => collabCanEditNode(node.id, true),
+    cancelSelectionPaint:cancelSmartMediaSelectionPaint,
+    reorder:reorderSmartThumbnails,
+    detach:detachSmartThumbnail,
+});
+const smartThumbnails = XiaomeiSmartCanvasThumbnails.create({
+    original: smartOriginalMediaUrl,
+    display: displayMediaUrl,
+    escape: escapeHtml,
+    imported: source => smartImportedPreviews.get(source),
+    managed: smartIsManagedMediaUrl,
+    node: id => nodes.find(node => node.id === id),
+    kind: mediaKindForItem,
+    remove: deleteImage,
+    rename: renameSmartNodeImage,
+    hideTimer: hideRunTimerForNode,
+    clickSuppressed: () => Date.now() < suppressImageClickUntil,
+    suppressClick: suppressSmartImageClicks,
+    revealOutput: showLinkPortForUploadedImage,
+    modifySelection: applyModifiedNodeSelection,
+    beginDrag: smartThumbnailDrag.begin,
+    select: selectSmartMedia,
+    preview(cardId, media) {
+        focusSmartMedia(cardId, media);
+        openImagePreviewSmart(media.nodeId, media.index);
+    },
+});
+const {
+    previewUrl: smartMediaPreviewUrl,
+    imageHtml: smartPreviewImgHtml,
+    videoHtml: smartVideoPreviewHtml,
+    playerHtml: smartVideoPlayerHtml,
+    isPreviewImage: isSmartPreviewImage,
+    bindThumbnails: bindSmartPreviewImageFallbacks,
+} = smartThumbnails;
+const promptNodeView = XiaomeiSmartPromptNode.create({
+    world,
+    scope:() => canvas,
+    node:id => nodes.find(node => node.id === id),
+    label:tr,
+    prepare:preserveLegacyPromptInstruction,
+    templateOpen:id => smartPromptLibrary.nodeId() === id,
+    showTemplate:node => smartPromptLibrary.show('node', node.id, node.promptPresetId ? 'mine:' + node.promptPresetId : ''),
+    skillsLibrary:agentSkillLibraryHtml,
+    skillsChips:agentSkillChipsHtml,
+    bindSkills:bindNodeSkillControls,
+    thumbnails:node => smartNodeInputThumbsHtml(promptNodeInputImages(node), {removable:true,nodeId:node.id}),
+    upstream:promptNodeUpstreamPromptItems,
+    providerOptions:chatProviderOptions,
+    modelOptions:chatModelOptions,
+    resolveProvider:resolveChatProviderId,
+    resolveModel:resolveChatModel,
+    waiting:id => Boolean(smartDependencyRuns.get(id)?.waiting),
+    busy:smartNodeInFlight,
+    readOnly:() => sharedCanvasReadOnly,
+    run:runPromptLLMNode,
+    bindFind:bindPromptNodeFindControls,
+    findOpen:id => promptFindState?.nodeId === id,
+    closeFind:closePromptNodeFind,
+    scrollText:bindScrollableText,
+    outputEdited:refreshPromptOutputDependents,
+    expandedHeight:promptNodeExpandedHeight,
+    minHeight:promptNodeMinHeight,
+    layout:promptNodeLayoutSize,
+    rect:nodeRect,
+    scale:() => safeScale(viewport.scale),
+    pushTargets:resizePushTargets,
+    pushResize:applyResizePush,
+    lock:collabAcquireNodeLock,
+    unlock:id => collabReleaseLocks([id]),
+    capture:capturePendingUndo,
+    commit:commitPendingUndo,
+    discard:discardPendingUndo,
+    paint:render,
+    save:scheduleSave,
+});
+const promptExecution = XiaomeiSmartPromptExecution.create({
+    scope:() => canvas,
+    node:id => nodes.find(node => node.id === id),
+    prepare:preserveLegacyPromptInstruction,
+    message:promptNodeLLMInputText,
+    configReady:() => smartConfigReady,
+    model(node) {
+        const provider = node.llmProvider || resolveChatProviderId();
+        return {provider, model:node.llmModel || resolveChatModel('', provider)};
+    },
+    isAvailable:(provider, model) => chatApiProviders().some(item =>
+        item.id === provider && (item.chat_models || []).includes(model)),
+    references:promptNodeInputMediaForLLM,
+    media:smartLlmRequestMedia,
+    system:promptNodeSystemText,
+    signature:smartDependencySignature,
+    responseError:responseErrorMessage,
+    get cancelled() { return SMART_AGENT_CANCELLED; },
+    label:tr,
+    now:nowMs,
+    error:toast,
+    paint:render,
+    save:scheduleSave,
+    outputChanged:promptNodeView.syncOutput,
+});
+const agentExecution = XiaomeiSmartAgentExecution.create({
+    scope:() => canvas,
+    node:id => nodes.find(node => node.id === id),
+    message:node => [agentNodeUpstreamText(node), String(node.userPrompt || '').trim()].filter(Boolean).join('\n\n'),
+    configReady:() => smartConfigReady,
+    model(node) {
+        const provider = node.agentProvider || resolveAgentProviderId();
+        return {provider, model:node.agentModel || resolveAgentModel('', provider)};
+    },
+    available:(provider, model) => agentChatProviders().some(item =>
+        item.id === provider && (item.chat_models || []).includes(model)),
+    references:promptNodeInputMediaForLLM,
+    media:smartLlmRequestMedia,
+    system:node => (String(node.systemPrompt || '').trim() + nodeSkillPrompt(node)).trim(),
+    signature:smartDependencySignature,
+    responseError:response => smartResponseErrorMessage(response, '智能对话运行失败'),
+    get cancelled() { return SMART_AGENT_CANCELLED; },
+    now:nowMs,
+    paint:render,
+    save:scheduleSave,
+    outputChanged:syncSmartLoopDetailTextInputs,
+});
+const promptContent = XiaomeiSmartPromptContent.create(promptInput, {
+    scope:() => activeComposerSubject,
+    kind:mediaKindForItem,
+    media:mentionTokenMediaHtml,
+    bindMedia:bindSmartPreviewImageFallbacks,
+});
+const {
+    parts:collectPromptParts,
+    remember:saveMentionRange,
+    caretToEnd:setPromptCaretToEnd,
+    insertText:insertPlainTextIntoPrompt,
+    insertReference:insertMentionToken,
+    referenceHtml:mentionTokenHtml,
+} = promptContent;
+const originalPromptTextFromParts = XiaomeiSmartPromptContent.originalText;
+const promptMentionMenu = XiaomeiSmartPromptMentions.create(promptInput, mentionPicker, {
+    content:promptContent,
+    subject:() => activeComposerSubject === selectedNode() ? activeComposerSubject : null,
+    inputs:inputMentionCandidateImages,
+    libraries:assetLibraries,
+    urlItems:() => Array.isArray(assetUrlLibrary?.items) ? assetUrlLibrary.items : [],
+    libraryId:() => activeAssetLibraryId,
+    defaultLibraryId:() => assetLibrary.active_library_id,
+    selectLibrary:id => { activeAssetLibraryId = id; },
+    assetKind:assetMediaKind,
+    kind:mediaKindForItem,
+    label:tr,
+    thumbnail:item => isVideoMediaItem(item) ? smartVideoPreviewHtml(item, 256, 'alt=""') : smartPreviewImgHtml(item, 256, 'alt=""'),
+    bindMedia:bindSmartPreviewImageFallbacks,
+    icons:refreshIcons,
+    closed() {
+        const node = selectedNode();
+        if(node && node === activeComposerSubject) renderInputThumbsRow(node);
+    },
+});
+const closeMentionPicker = promptMentionMenu.close;
+const smartPreview = XiaomeiSmartCanvasPreview.create({
+    panorama:smartPanorama,
+    label:tr,
+    error:toast,
+    current:currentEditImage,
+    node:id => nodes.find(node => node.id === id),
+    open:() => imageEditModal.classList.contains('open'),
+    visible:() => imageEditMode === 'preview' && imageEditModal.classList.contains('open'),
+    openEditor:(id, index) => openImageEditor(id, index),
+    showPreview:() => setImageEditMode('preview'),
+    kind:mediaKindForItem,
+    display:displayMediaUrl,
+    original:smartOriginalMediaUrl,
+    thumbnailUrl:item => smartMediaPreviewUrl(item, 512),
+    largeThumbnailUrl:item => smartMediaPreviewUrl(item, 2048),
+    isVideoUrl:outputUrlLooksVideo,
+    icons:refreshIcons,
+    thumbnail:item => smartPreviewImgHtml(item.url, 256, 'alt=""'),
+    bindThumbnails:bindSmartPreviewImageFallbacks,
+    name:imageNameLabel,
+    sources:smartPreviewReferences,
+    sideLabel:n => smartCompareTextf('smart.compareNodeImageLabel', '图 {n}', {n}),
+    compareHint:() => smartCompareText('smart.compareNodePreviewHint', '拖动中间滑块调整对比位置'),
+    zoomChanged:updateZoomLabel,
+    recordSize(nodeId, index, width, height){
+        const {node, index:currentIndex} = currentEditImage();
+        const item = node?.id === nodeId && currentIndex === index ? node.images?.[index] : null;
+        if(!item || (item.natural_w && item.natural_h)) return;
+        Object.assign(item, {natural_w:width, natural_h:height});
+        scheduleSave();
+    }
+});
 let viewport = {x:0, y:0, scale:1};
 // 世界层保留完整画布数据，但 DOM 只保留视口附近的节点。缓冲区按屏幕像素
 // 定义，缩放时自动换算成世界坐标，避免固定世界距离在远景时渲染过多节点。
@@ -689,54 +962,6 @@ function smartCompareText(key, fallback){
 function smartCompareTextf(key, fallback, values={}){
     return Object.entries(values).reduce((text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), smartCompareText(key, fallback));
 }
-function copyTextWithCopyEvent(value){
-    return XiaomeiCanvasEditorCore.copyTextWithCopyEvent(value);
-}
-function copyTextWithTextarea(value){
-    let ta = null;
-    try {
-        ta = document.createElement('textarea');
-        ta.value = value;
-        ta.setAttribute('readonly', '');
-        ta.style.position = 'fixed';
-        ta.style.left = '-9999px';
-        ta.style.top = '0';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.focus({preventScroll:true});
-        ta.select();
-        ta.setSelectionRange(0, ta.value.length);
-        return document.execCommand('copy');
-    } catch(_) {
-        return false;
-    } finally {
-        ta?.remove();
-    }
-}
-async function clipboardMatchesText(value){
-    try {
-        if(navigator.clipboard?.readText && window.isSecureContext){
-            return (await navigator.clipboard.readText()) === value;
-        }
-    } catch(_) {}
-    return null;
-}
-async function copyTextToClipboard(text){
-    const value = String(text || '');
-    if(!value) return false;
-    if(copyTextWithCopyEvent(value) || copyTextWithTextarea(value)){
-        const verified = await clipboardMatchesText(value);
-        return verified !== false;
-    }
-    try {
-        if(navigator.clipboard?.writeText && window.isSecureContext !== false){
-            await navigator.clipboard.writeText(value);
-            const verified = await clipboardMatchesText(value);
-            return verified !== false;
-        }
-    } catch(_) {}
-    return false;
-}
 function refreshIcons(){ if(window.lucide) lucide.createIcons(); }
 function uid(prefix){ return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`; }
 function escapeHtml(str){ return String(str == null ? '' : str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])); }
@@ -762,107 +987,6 @@ function rememberSmartImportedPreview(original, preview){
         releaseSmartImportedPreview(smartImportedPreviews.get(oldest));
         smartImportedPreviews.delete(oldest);
     }
-}
-function smartMediaPreviewUrl(itemOrUrl, size=512){
-    const raw = smartOriginalMediaUrl(itemOrUrl);
-    if(smartImportedPreviews.has(raw)) return smartImportedPreviews.get(raw);
-    const displayItem = typeof itemOrUrl === 'object' && itemOrUrl ? {...itemOrUrl, url:raw} : raw;
-    const displayUrl = displayMediaUrl(displayItem);
-    if(!raw || raw.startsWith('data:') || raw.startsWith('blob:')) return displayUrl;
-    // 画布节点通常使用 /api/storage-files/ 下的原图（4K/5K），直接把原图
-    // 放进被缩放的 world 会让浏览器在滚轮期间反复解码/栅格化。媒体预览接口
-    // 同样支持 storage-files，节点显示用缩略图即可，data-original-src 仍保留原图。
-    if(!raw.startsWith('/output/') && !raw.startsWith('/assets/') && !raw.startsWith('/api/storage-files/')) return displayUrl;
-    if(!/\.(png|jpe?g|webp|gif|bmp|avif|tiff?|mp4|webm|mov|m4v|avi|mkv)(\?|#|$)/i.test(raw)) return displayUrl;
-    const width = Math.max(64, Math.min(2048, Math.round(Number(size) || 512)));
-    return `/api/media-preview?w=${width}&url=${encodeURIComponent(raw)}`;
-}
-function smartPreviewImgHtml(itemOrUrl, size=512, attrs=''){
-    const original = smartOriginalMediaUrl(itemOrUrl);
-    const preview = smartMediaPreviewUrl(itemOrUrl, size);
-    // 画布内容位于 transform 容器内，浏览器可能永远不触发其中图片的 lazy 加载，
-    // 于是缩略图槽位存在但图片保持空白。需要懒加载的列表由调用方显式传入。
-    const defaults = /\bdecoding\s*=/i.test(attrs) ? '' : 'decoding="async"';
-    return `<img src="${escapeHtml(preview)}" data-preview-src="${escapeAttr(preview)}" data-original-src="${escapeAttr(original)}"${defaults ? ` ${defaults}` : ''}${attrs ? ` ${attrs}` : ''}>`;
-}
-function smartVideoPreviewHtml(itemOrUrl, size=512, attrs=''){
-    const original = smartOriginalMediaUrl(itemOrUrl);
-    const preview = smartMediaPreviewUrl(itemOrUrl, size);
-    const defaults = /\bdecoding\s*=/i.test(attrs) ? '' : 'decoding="async"';
-    return `<img src="${escapeHtml(preview)}" data-preview-src="${escapeAttr(preview)}" data-original-src="${escapeAttr(original)}" data-url="${escapeAttr(original)}" data-preview-kind="video"${defaults ? ` ${defaults}` : ''}${attrs ? ` ${attrs}` : ''}>`;
-}
-function smartVideoFallbackHtml(url, attrs=''){
-    const original = smartOriginalMediaUrl(url);
-    const src = displayMediaUrl({url:original});
-    return `<video src="${escapeHtml(src)}" data-url="${escapeAttr(original)}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"${attrs ? ` ${attrs}` : ''}></video>`;
-}
-function smartVideoPlayerHtml(url, attrs=''){
-    const original = smartOriginalMediaUrl(url);
-    const safe = escapeHtml(displayMediaUrl({url:original}));
-    return `<video src="${safe}" data-url="${escapeAttr(original)}" data-inline-video-active="1" controls autoplay playsinline preload="metadata" disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"${attrs ? ` ${attrs}` : ''}></video>`;
-}
-function smartActivateVideoPreview(target){
-    const root = target?.closest?.('.media-video-card,.video-thumb,.image-wrap,.thumb-item') || target?.parentElement || null;
-    const img = target?.matches?.('img[data-preview-kind="video"]') ? target : root?.querySelector?.('img[data-preview-kind="video"]');
-    if(!img){
-        const fallback = target?.matches?.('video[data-url]') ? target : root?.querySelector?.('video[data-url]');
-        if(fallback){
-            fallback.controls = true;
-            fallback.muted = false;
-            fallback.play?.().catch(() => {});
-            return true;
-        }
-        return false;
-    }
-    const original = smartOriginalMediaUrl(img.dataset.originalSrc || img.dataset.url || img.getAttribute('src') || '');
-    if(!original) return false;
-    const itemEl = target?.closest?.('[data-image-index]') || root?.closest?.('[data-image-index]') || root;
-    const nodeEl = target?.closest?.('.image-node') || root?.closest?.('.image-node');
-    const node = nodes.find(n => n.id === nodeEl?.dataset.id);
-    const imageIndex = Number(itemEl?.dataset?.imageIndex ?? 0);
-    const image = node?.images?.[imageIndex];
-    if(image) image._inlineVideoActive = true;
-    const tpl = document.createElement('template');
-    tpl.innerHTML = smartVideoPlayerHtml(original);
-    const video = tpl.content.firstElementChild;
-    if(!video) return false;
-    img.replaceWith(video);
-    video.parentElement?.querySelector?.('.smart-video-play')?.style?.setProperty('display', 'none');
-    video.addEventListener('ended', () => {
-        if(image) image._inlineVideoActive = true;
-        video.dataset.inlineVideoActive = '1';
-    });
-    video.play?.().catch(() => {});
-    return true;
-}
-function isSmartPreviewImage(img){
-    return img?.tagName?.toLowerCase?.() === 'img'
-        && img.dataset?.previewSrc
-        && img.dataset?.originalSrc
-        && img.dataset.previewSrc !== img.dataset.originalSrc
-        && img.getAttribute('src') !== img.dataset.originalSrc;
-}
-function bindSmartPreviewImageFallbacks(root=document){
-    root.querySelectorAll?.('img[data-preview-src][data-original-src]:not([data-preview-fallback-bound])').forEach(img => {
-        img.dataset.previewFallbackBound = '1';
-        img.addEventListener('error', () => {
-            const original = img.dataset.originalSrc || '';
-            if(img.dataset.previewKind === 'video'){
-                const tpl = document.createElement('template');
-                tpl.innerHTML = smartVideoFallbackHtml(original, img.dataset.videoFallbackAttrs || '');
-                img.replaceWith(tpl.content.firstElementChild);
-                return;
-            }
-            // 画布和素材库中的本地文件可能是几十 MB 的超高像素图。缩略图
-            // 服务失败时不要回退到原图，否则一次错误就会触发整张原图下载和解码。
-            if(smartIsManagedMediaUrl(original)){
-                img.dataset.previewFailed = '1';
-                img.removeAttribute('src');
-                return;
-            }
-            if(original && img.getAttribute('src') !== original) img.src = original;
-        });
-    });
 }
 let smartCanvasPanningMedia = false;
 let smartCanvasResolutionTimer = 0;
@@ -987,7 +1111,7 @@ function settingsForStorage(source=settings){
     if(Object.prototype.hasOwnProperty.call(clean, 'background')) clean.background = normalizeSmartBackground(clean.background);
     // 兼容旧画布和旧浏览器偏好中的同步值；画布图片任务统一走异步轮询。
     clean.requestMode = 'async';
-    clean.videoTempShLinks = (clean.videoTempShLinks || []).filter(item => item?.manual === true);
+    clean.videoTempShLinks = manualMediaLinks(clean.videoTempShLinks);
     // 扩图底图定位只属于当前一次请求；绝不能跟随节点、全局设置或最近设置
     // 进入下一次普通生图。
     delete clean.outpaintPreserve;
@@ -1105,56 +1229,6 @@ function canvasForStorage(){
     });
     return clean;
 }
-function apiErrorMessage(data, fallback='请求失败'){
-    if(!data) return fallback;
-    if(typeof data === 'string') return data || fallback;
-    const detail = data.detail ?? data.error ?? data.message;
-    if(typeof detail === 'string') return detail || fallback;
-    if(Array.isArray(detail)){
-        const messages = detail.map(item => {
-            if(typeof item === 'string') return item;
-            const loc = Array.isArray(item?.loc) ? item.loc.filter(x => x !== 'body').join('.') : '';
-            const msg = item?.msg || item?.message || JSON.stringify(item);
-            return loc ? `${loc}: ${msg}` : msg;
-        }).filter(Boolean);
-        return messages.join('\n') || fallback;
-    }
-    if(detail && typeof detail === 'object') return detail.message || detail.msg || JSON.stringify(detail);
-    try {
-        return JSON.stringify(data);
-    } catch(e) {
-        return fallback;
-    }
-}
-async function responseErrorMessage(response, fallback='请求失败'){
-    try {
-        const data = await response.clone().json();
-        return apiErrorMessage(data, fallback);
-    } catch(e) {
-        try {
-            const text = await response.text();
-            return text || fallback;
-        } catch(_) {
-            return fallback;
-        }
-    }
-}
-function downloadBlob(blob, filename){
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename || 'smart-canvas-workflow.json';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 800);
-}
-function smartWorkflowFilename(ext='json'){
-    const title = (canvas?.title || document.getElementById('smartTitle')?.textContent || 'smart-canvas').trim();
-    const safe = title.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '-').slice(0, 48) || 'smart-canvas';
-    const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
-    return `${safe}-workflow-${stamp}.${ext}`;
-}
 function clearSmartNodeTransientRunState(node, options={}){
     if(!node) return node;
     node.running = false;
@@ -1227,26 +1301,9 @@ function smartWorkflowTemplateNode(node){
     delete copy.colorError;
     delete copy.colorErrorSignature;
     delete copy.timelineOutput;
+    if(Array.isArray(copy.collapsedNodes)) copy.collapsedNodes = copy.collapsedNodes.map(smartWorkflowTemplateNode);
     if(isSmartGenerationNode(copy)) copy.images = [];
     return copy;
-}
-function selectedSmartWorkflowPayload(options={}){
-    const ids = selectedNodeIds();
-    const idSet = new Set(ids);
-    const serialize = options.template ? smartWorkflowTemplateNode : serializableSmartNode;
-    const selectedNodes = nodes.filter(node => idSet.has(node.id)).map(serialize);
-    const selectedSet = new Set(selectedNodes.map(node => node.id));
-    const selectedConnections = (canvas?.connections || [])
-        .filter(conn => selectedSet.has(conn.from) && selectedSet.has(conn.to))
-        .map(conn => JSON.parse(JSON.stringify(conn)));
-    return {
-        format:'infinite-smart-canvas-workflow',
-        version:1,
-        canvas_type:'smart',
-        exported_at:Date.now(),
-        nodes:selectedNodes,
-        connections:selectedConnections
-    };
 }
 function smartWorkflowLibraryTarget(){
     const libraries = assetLibraries().filter(lib => lib && lib.id !== LOCAL_ASSET_LIBRARY_ID);
@@ -1254,92 +1311,6 @@ function smartWorkflowLibraryTarget(){
     if(!library) library = libraries.find(lib => (lib.categories || []).some(cat => cat.type === 'workflow')) || libraries[0];
     const category = (library?.categories || []).find(cat => cat.type === 'workflow');
     return {libraryId:library?.id || '', categoryId:category?.id || ''};
-}
-function smartWorkflowTemplateName(){
-    const title = String(canvas?.title || document.getElementById('smartTitle')?.textContent || '小美画布').trim();
-    return `${title.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || '小美画布'}模板`;
-}
-function setSmartWorkflowTemplateState(state='idle', text='收藏模板'){
-    if(!smartWorkflowSaveTemplateBtn) return;
-    smartWorkflowSaveTemplateBtn.disabled = state === 'busy';
-    smartWorkflowSaveTemplateBtn.classList.toggle('busy', state === 'busy');
-    smartWorkflowSaveTemplateBtn.classList.toggle('success', state === 'success');
-    const icon = state === 'busy' ? 'loader-2' : state === 'success' ? 'check' : 'bookmark-plus';
-    smartWorkflowSaveTemplateBtn.innerHTML = `<i data-lucide="${icon}"></i><span>${escapeHtml(text)}</span>`;
-    refreshIcons();
-}
-async function saveSelectedSmartWorkflowTemplate(){
-    if(!canvas) return;
-    if(sharedCanvasReadOnly){
-        toast('当前画布为只读，无法收藏模板');
-        return;
-    }
-    const payload = selectedSmartWorkflowPayload({template:true});
-    if(!payload.nodes.length){
-        updateSmartWorkflowTransferMeta();
-        toast('未选择节点，请先选中要收藏的组件');
-        return;
-    }
-    const target = smartWorkflowLibraryTarget();
-    if(!target.libraryId){ toast('暂无可用的收藏库'); return; }
-    const workflowResourceCount = window.XiaomeiWorkflowPreview?.resourceCount?.(payload) || 0;
-    let choice;
-    try {
-        choice = await window.XiaomeiWorkflowSaveDialog?.open?.({
-            name:smartWorkflowTemplateName(),
-            libraryId:target.libraryId,
-            categoryId:target.categoryId,
-            workflow:payload,
-            nodeCount:payload.nodes.length,
-            connectionCount:payload.connections.length,
-            resourceCount:workflowResourceCount,
-            includeResources:true
-        });
-    } catch(err) {
-        if(String(err?.message || '') !== '已取消收藏') toast(err.message || '无法打开收藏设置');
-        return;
-    }
-    try {
-        setSmartWorkflowTemplateState('busy', '收藏中...');
-        if(smartWorkflowExportMeta){
-            smartWorkflowExportMeta.classList.remove('success');
-            smartWorkflowExportMeta.classList.add('busy');
-            smartWorkflowExportMeta.textContent = '正在保存模板...';
-        }
-        if(!assetLibrary?.libraries?.length) await loadAssetLibrary();
-        const name = choice.name;
-        const filename = `${name.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 80) || 'xiaomei-template'}.zip`;
-        const res = await fetch('/api/canvas-workflows/export-to-library', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({...payload, include_resources:choice.includeResources, filename, name, description:choice.description || '', library_id:choice.libraryId, category_id:choice.categoryId})
-        });
-        if(!res.ok) throw new Error(await responseErrorMessage(res, '收藏工作流模板失败'));
-        const data = await res.json();
-        setAssetLibraryFromResponse(data, {render:false});
-        renderSmartWorkflowLibrary();
-        if(smartWorkflowExportMeta){
-            smartWorkflowExportMeta.classList.remove('busy');
-            smartWorkflowExportMeta.classList.add('success');
-            smartWorkflowExportMeta.textContent = `已收藏模板：${data.item?.name || name}`;
-        }
-        setSmartWorkflowTemplateState('success', '已收藏');
-        toast(`已收藏工作流模板：${data.item?.name || name}`);
-        setTimeout(() => {
-            setSmartWorkflowTemplateState('idle');
-            if(smartWorkflowTransferModal?.classList.contains('open')) updateSmartWorkflowTransferMeta();
-        }, 1800);
-    } catch(err) {
-        smartWorkflowExportMeta?.classList.remove('busy', 'success');
-        setSmartWorkflowTemplateState('idle');
-        toast(err.message || '收藏工作流模板失败');
-    }
-}
-function normalizeImportedSmartWorkflow(data){
-    if(Array.isArray(data)) return {nodes:data, connections:[]};
-    if(Array.isArray(data?.nodes)) return {nodes:data.nodes, connections:Array.isArray(data.connections) ? data.connections : []};
-    if(Array.isArray(data?.workflow?.nodes)) return {nodes:data.workflow.nodes, connections:Array.isArray(data.workflow.connections) ? data.workflow.connections : []};
-    return {nodes:[], connections:[]};
 }
 function loadSmartWorkflowLibraryPreferences(){
     try {
@@ -1426,130 +1397,17 @@ function rememberSmartWorkflowRecent(itemId){
     smartWorkflowRecentIds = [itemId, ...smartWorkflowRecentIds.filter(id => id !== itemId)].slice(0, 5);
     try { localStorage.setItem(SMART_WORKFLOW_RECENTS_KEY, JSON.stringify(smartWorkflowRecentIds)); } catch(_) {}
 }
-function openSmartWorkflowTransferModal(){
-    if(!canvas){ toast('请先打开画布'); return; }
-    closeSmartCanvasFeaturePanels('workflow');
-    updateSmartWorkflowTransferMeta();
-    smartWorkflowTransferModal?.classList.add('open');
-    smartWorkflowToggle?.classList.add('active');
-    renderSmartWorkflowLibrary();
-    void refreshSmartWorkflowLibrary();
-    refreshIcons();
-}
-function closeSmartWorkflowTransferModal(){
-    smartWorkflowTransferModal?.classList.remove('open');
-    smartWorkflowToggle?.classList.remove('active');
-    smartWorkflowImportDropZone?.classList.remove('drag-over');
-}
-function updateSmartWorkflowTransferMeta(){
-    const payload = selectedSmartWorkflowPayload();
-    const nodeCount = payload.nodes.length;
-    const connCount = payload.connections.length;
-    if(smartWorkflowSaveTemplateBtn) smartWorkflowSaveTemplateBtn.hidden = sharedCanvasReadOnly;
-    smartWorkflowExportMeta?.classList.remove('busy', 'success');
-    if(smartWorkflowExportMeta) smartWorkflowExportMeta.textContent = nodeCount ? `已选择 ${nodeCount} 个节点，${connCount} 条连线` : '未选择节点，请先选中要导出的组件';
-    if(smartWorkflowTransferSub) smartWorkflowTransferSub.textContent = '从收藏模板快速添加，或导入 JSON / ZIP';
-}
-async function exportSelectedSmartWorkflow(includeResources=false){
-    if(!canvas) return;
-    const payload = selectedSmartWorkflowPayload();
-    if(!payload.nodes.length){
-        updateSmartWorkflowTransferMeta();
-        toast('未选择节点，请先选中要导出的组件');
-        return;
-    }
-    try {
-        if(!includeResources){
-            downloadBlob(new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'}), smartWorkflowFilename('json'));
-            toast('已导出智能画布工作流 JSON');
-            return;
-        }
-        if(smartWorkflowExportMeta){
-            smartWorkflowExportMeta.classList.add('busy');
-            smartWorkflowExportMeta.textContent = '正在打包资源...';
-        }
-        const filename = smartWorkflowFilename('zip');
-        const res = await fetch('/api/canvas-workflows/export', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({...payload, include_resources:true, filename})
-        });
-        if(!res.ok) throw new Error(await responseErrorMessage(res, '导出工作流失败'));
-        downloadBlob(await res.blob(), filename);
-        if(smartWorkflowExportMeta){
-            smartWorkflowExportMeta.classList.remove('busy');
-            smartWorkflowExportMeta.classList.add('success');
-            smartWorkflowExportMeta.textContent = `已导出 ${payload.nodes.length} 个节点，包含可找到的本地资源`;
-        }
-        toast('已导出包含资源的智能画布工作流包');
-        setTimeout(() => {
-            if(smartWorkflowTransferModal?.classList.contains('open')) updateSmartWorkflowTransferMeta();
-        }, 1600);
-    } catch(err) {
-        smartWorkflowExportMeta?.classList.remove('busy', 'success');
-        toast(err.message || '导出工作流失败');
-    }
-}
-function insertSmartWorkflowIntoCanvas(imported){
-    const srcNodes = (imported.nodes || []).filter(Boolean);
-    const srcConnections = (imported.connections || []).filter(Boolean);
-    if(!canvas || !srcNodes.length) throw new Error('工作流中没有可导入的节点');
+function insertSmartWorkflowNodes(bundle){
     pushUndo();
-    const minX = Math.min(...srcNodes.map(n => Number(n.x || 0)));
-    const minY = Math.min(...srcNodes.map(n => Number(n.y || 0)));
-    const target = viewportCenter();
-    const dx = target.x - minX;
-    const dy = target.y - minY;
-    const idMap = new Map();
-    const newNodes = srcNodes.map(source => {
-        const copy = serializableSmartNode(source);
-        const oldId = copy.id || uid(copy.type || 'smart');
-        copy.id = uid(copy.type || 'smart');
-        copy.x = Number(copy.x || 0) + dx;
-        copy.y = Number(copy.y || 0) + dy;
-        copy.created_at = copy.created_at || Date.now();
-        idMap.set(oldId, copy.id);
-        return normalizeLegacySmartNode(copy);
-    }).filter(Boolean);
-    newNodes.forEach(copy => {
-        if(Array.isArray(copy.inputNodeIds)) copy.inputNodeIds = copy.inputNodeIds.map(id => idMap.get(id)).filter(Boolean);
-        if(Array.isArray(copy.inputRefOrder)) copy.inputRefOrder = remapSmartInputRefOrder(copy.inputRefOrder, idMap);
-        if(copy.sourceNodeId) copy.sourceNodeId = idMap.get(copy.sourceNodeId) || '';
-    });
-    const newConnections = srcConnections
-        .map(conn => ({...JSON.parse(JSON.stringify(conn)), from:idMap.get(conn.from), to:idMap.get(conn.to)}))
-        .filter(conn => conn.from && conn.to);
-    nodes.push(...newNodes);
-    canvas.connections = [...(canvas.connections || []), ...newConnections];
-    selectedIds = newNodes.length > 1 ? newNodes.map(node => node.id) : [];
-    selectedId = newNodes.length === 1 ? newNodes[0].id : '';
+    const inserted = bundle.nodes;
+    nodes.push(...inserted);
+    canvas.connections = [...(canvas.connections || []), ...bundle.connections];
+    selectedIds = inserted.length > 1 ? inserted.map(node => node.id) : [];
+    selectedId = inserted.length === 1 ? inserted[0].id : '';
     selectedImage = {nodeId:'', index:-1};
     activeComposerSubject = null;
     render();
     scheduleSave();
-    toast(`已添加到画布：${newNodes.length} 个节点`);
-}
-async function importSmartWorkflowFile(file, options={}){
-    if(!canvas || !file) return false;
-    try {
-        if(smartWorkflowTransferSub) smartWorkflowTransferSub.textContent = '正在导入工作流...';
-        const form = new FormData();
-        form.append('file', file);
-        const res = await fetch('/api/canvas-workflows/import', {method:'POST', body:form});
-        if(!res.ok) throw new Error(await responseErrorMessage(res, '导入工作流失败'));
-        const data = await res.json();
-        insertSmartWorkflowIntoCanvas(normalizeImportedSmartWorkflow(data));
-        if(options.itemId){
-            rememberSmartWorkflowRecent(options.itemId);
-            renderSmartWorkflowLibrary();
-        }
-        closeSmartWorkflowTransferModal();
-        return true;
-    } catch(err) {
-        if(smartWorkflowTransferModal?.classList.contains('open')) updateSmartWorkflowTransferMeta();
-        toast(err.message || '导入工作流失败');
-        return false;
-    }
 }
 async function importSmartWorkflowAsset(itemId){
     if(smartWorkflowImportingItemId) return false;
@@ -1559,18 +1417,12 @@ async function importSmartWorkflowAsset(itemId){
     smartWorkflowImportingItemId = itemId;
     renderSmartWorkflowLibrary();
     try {
-        const response = await fetch(item.url);
-        if(!response.ok) throw new Error('工作流文件读取失败');
-        const blob = await response.blob();
-        const extension = item.format === 'json' || String(item.url || '').toLowerCase().split('?')[0].endsWith('.json') ? '.json' : '.zip';
-        const baseName = String(item.name || 'workflow').replace(/\.(json|zip)$/i, '');
-        const file = new File([blob], `${baseName}${extension}`, {type:blob.type || (extension === '.json' ? 'application/json' : 'application/zip')});
-        const imported = await importSmartWorkflowFile(file, {itemId});
-        if(imported && assetLibraryOpen) toggleAssetLibrary(false);
+        const imported = await smartWorkflowTransfer.importAsset(item);
+        if(imported){
+            rememberSmartWorkflowRecent(itemId);
+            if(assetLibraryOpen) toggleAssetLibrary(false);
+        }
         return imported;
-    } catch(err) {
-        toast(err.message || '工作流插入失败');
-        return false;
     } finally {
         smartWorkflowImportingItemId = '';
         renderSmartWorkflowLibrary();
@@ -1717,14 +1569,6 @@ function isSmartTextStackNode(node){
 }
 function isSmartComfyWorkflowNode(node){
     return Boolean(node && node.type === SMART_COMFY_WORKFLOW_NODE_TYPE);
-}
-function comfyNodeOwnsVisibleParams(node){
-    return isSmartComfyWorkflowNode(node)
-        && !(node.images || []).length
-        && !node.pending
-        && !node.queued
-        && !node.running
-        && !node.runError;
 }
 function comfyWorkflowNodeStatusText(node){
     if(node?.workflowReadiness?.can_run === true || node?.workflowStatus === 'ready') return '可运行';
@@ -1943,7 +1787,7 @@ function openComfyNodeWorkflowPicker(node, trigger, onChoose){
         if(!option) return;
         const name = option.dataset.comfyPickerValue;
         closeComfyNodeWorkflowPicker(true);
-        if(name !== node.workflowRef) onChoose(name);
+        onChoose(name);
     });
     panel.addEventListener('keydown', event => {
         event.stopPropagation();
@@ -1977,54 +1821,6 @@ document.addEventListener('pointerdown', event => {
 }, true);
 window.addEventListener('resize', () => closeComfyNodeWorkflowPicker());
 window.addEventListener('blur', () => closeComfyNodeWorkflowPicker());
-function comfyNodeFieldHtml(node, field){
-    const kind = comfyFieldKind(field);
-    const id = String(field?.id || '').trim();
-    if(!id) return '';
-    const label = comfyNodeFieldLabel(field);
-    const value = comfyNodeParamValue(node, field);
-    const required = field?.required === true;
-    if(['image','video','audio'].includes(kind)){
-        const icon = kind === 'video' ? 'film' : kind === 'audio' ? 'volume-2' : 'image';
-        return `<div class="comfy-node-field comfy-node-media-field ${required ? 'required' : ''}">
-            <div class="comfy-node-field-label"><span><i data-lucide="${icon}"></i>${escapeHtml(label)}</span><small>${required ? '需要连接' : '可选输入'}</small></div>
-            ${comfyNodeMediaSlotHtml(node, field, kind)}
-        </div>`;
-    }
-    if(kind === 'prompt' || field?.type === 'textarea'){
-        const savedHeight = Number(node.comfyFieldHeights?.[id]);
-        const height = Number.isFinite(savedHeight) ? Math.max(96, Math.round(savedHeight)) : 128;
-        return `<label class="comfy-node-field comfy-node-prompt-field">
-            <span class="comfy-node-field-label"><span><i data-lucide="text-quote"></i>${escapeHtml(label)}</span><small>主要参数</small></span>
-            <textarea data-comfy-node-param="${escapeAttr(id)}" style="height:${height}px" placeholder="${escapeAttr(label)}">${escapeHtml(value)}</textarea>
-        </label>`;
-    }
-    if(field?.type === 'boolean'){
-        const checked = comfyNodeBooleanValue(value);
-        return `<label class="comfy-node-field comfy-node-toggle-field">
-            <span class="comfy-node-field-label"><span><i data-lucide="toggle-right"></i>${escapeHtml(label)}</span><small>开关</small></span>
-            <input type="checkbox" data-comfy-node-bool="${escapeAttr(id)}" ${checked ? 'checked' : ''}><span class="comfy-node-switch" aria-hidden="true"><span></span></span>
-        </label>`;
-    }
-    if(field?.type === 'dropdown'){
-        const options = Array.isArray(field.options) ? field.options : [];
-        return `<label class="comfy-node-field comfy-node-select-field">
-            <span class="comfy-node-field-label"><span><i data-lucide="list-filter"></i>${escapeHtml(label)}</span><small>选项</small></span>
-            <select data-comfy-node-param="${escapeAttr(id)}">${options.map(option => `<option value="${escapeAttr(option)}" ${String(option) === String(value) ? 'selected' : ''}>${escapeHtml(comfyOptionLabel(field, option))}</option>`).join('') || `<option value="">暂无选项</option>`}</select>
-        </label>`;
-    }
-    const numeric = field?.type === 'number' || field?.type === 'slider';
-    const min = field?.min !== undefined && field?.min !== null ? ` min="${escapeAttr(field.min)}"` : '';
-    const max = field?.max !== undefined && field?.max !== null ? ` max="${escapeAttr(field.max)}"` : '';
-    const step = field?.step !== undefined && field?.step !== null ? ` step="${escapeAttr(field.step)}"` : '';
-    const random = numeric && comfyRandomEnabledField(field);
-    const activeRandom = smartComfyRandomActiveFor(node?.runSettings || {}, id);
-    const randomTitle = activeRandom ? '自动随机：每次运行更换数值，点击固定' : '固定数值：点击开启每次运行随机';
-    return `<label class="comfy-node-field ${numeric ? 'comfy-node-number-field' : ''}">
-        <span class="comfy-node-field-label"><span><i data-lucide="${numeric ? 'sliders-horizontal' : 'type'}"></i>${escapeHtml(label)}</span><small>${numeric ? (field?.type === 'slider' ? '滑块' : '数值') : '文本'}</small></span>
-        <span class="comfy-node-input-wrap"><input type="${numeric ? 'number' : 'text'}" data-comfy-node-param="${escapeAttr(id)}" value="${escapeAttr(value)}"${min}${max}${step}>${random ? `<button type="button" class="comfy-node-dice ${activeRandom ? 'active' : ''}" data-comfy-node-random="${escapeAttr(id)}" title="${randomTitle}" aria-label="${escapeAttr(label + '：' + randomTitle)}" aria-pressed="${activeRandom}"><i data-lucide="dice-5"></i></button>` : ''}</span>
-    </label>`;
-}
 function ensureComfyNodeParamDefaults(node, fields){
     if(!isSmartComfyWorkflowNode(node)) return;
     node.runSettings = node.runSettings && typeof node.runSettings === 'object' ? node.runSettings : {};
@@ -2065,7 +1861,10 @@ function normalizeSmartComfyWorkflowNode(node){
     node.workflowAppId = String(node.workflowAppId || node.runSettings?.comfyAppId || '').trim();
     node.workflowTitle = String(node.workflowTitle || node.title || node.workflowRef.replace(/\.json$/i, '') || 'ComfyUI 工作流').trim();
     node.title = node.workflowTitle;
-    node.workflowFields = Array.isArray(node.workflowFields) ? node.workflowFields : [];
+    if(!Array.isArray(node.workflowFields)){
+        const savedFields = node.runSettings?.comfyWorkflowFields;
+        node.workflowFields = Array.isArray(savedFields) ? savedFields : [];
+    }
     node.workflowReadiness = node.workflowReadiness && typeof node.workflowReadiness === 'object' ? node.workflowReadiness : {};
     node.workflowStatus = String(node.workflowStatus || (node.workflowReadiness.can_run ? 'ready' : 'needs_preparation')).trim();
     if(node.comfyNodeLayoutVersion !== 2){
@@ -2520,37 +2319,6 @@ function toast(text, duration=1800){
     clearTimeout(toast._timer);
     toast._timer = setTimeout(() => el.classList.remove('show'), duration);
 }
-let generationCompleteSoundAt = 0;
-function playGenerationCompleteSound(){
-    const now = Date.now();
-    if(now - generationCompleteSoundAt < 1200) return;
-    generationCompleteSoundAt = now;
-    try {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if(!AudioCtx) return;
-        const ctx = playGenerationCompleteSound._ctx || (playGenerationCompleteSound._ctx = new AudioCtx());
-        const play = () => {
-            const start = ctx.currentTime + 0.015;
-            [
-                {freq:660, at:0, duration:0.12},
-                {freq:880, at:0.12, duration:0.16}
-            ].forEach(tone => {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(tone.freq, start + tone.at);
-                gain.gain.setValueAtTime(0.0001, start + tone.at);
-                gain.gain.exponentialRampToValueAtTime(0.075, start + tone.at + 0.018);
-                gain.gain.exponentialRampToValueAtTime(0.0001, start + tone.at + tone.duration);
-                osc.connect(gain).connect(ctx.destination);
-                osc.start(start + tone.at);
-                osc.stop(start + tone.at + tone.duration + 0.02);
-            });
-        };
-        if(ctx.state === 'suspended') ctx.resume().then(play).catch(() => {});
-        else play();
-    } catch(e) {}
-}
 async function ensureGenerationNotificationPermission(){
     const notifier = window.XiaomeiGenerationNotifications;
     if(!notifier?.requestPermission) return false;
@@ -2578,30 +2346,38 @@ window.addEventListener('message', handleSmartGenerationNoticeClick);
 function selectedNode(){ return nodes.find(n => n.id === selectedId) || null; }
 function clearSelection(){
     savePromptDraftForCurrent();
-    clearImageClickTimer();
+    cancelSmartMediaSelectionPaint();
     clearLinkPortProximity();
     selectedId = '';
     selectedIds = [];
     selectedImage = {nodeId:'', index:-1};
 }
-function clearImageClickTimer(){
-    if(imageClickTimer){
-        clearTimeout(imageClickTimer);
-        imageClickTimer = null;
-    }
-    pendingImageClickSelection = null;
+function suppressSmartImageClicks(){
+    cancelSmartMediaSelectionPaint();
+    suppressImageClickUntil = Date.now() + 260;
 }
-function flushPendingImageClickSelection(){
-    if(!imageClickTimer || !pendingImageClickSelection) return false;
-    const pending = pendingImageClickSelection;
-    clearImageClickTimer();
-    selectedId = pending.nodeId || '';
+function cancelSmartMediaSelectionPaint(){
+    clearTimeout(smartMediaSelectionTimer);
+    smartMediaSelectionTimer = 0;
+}
+function focusSmartMedia(cardId, media){
+    cancelSmartMediaSelectionPaint();
+    selectedId = cardId;
     selectedIds = [];
-    selectedImage = {
-        nodeId:pending.imageNodeId || pending.nodeId || '',
-        index:Number(pending.imageIndex ?? -1)
-    };
-    return true;
+    selectedImage = {nodeId:media.nodeId, index:media.index};
+}
+function selectSmartMedia(cardId, media){
+    focusSmartMedia(cardId, media);
+    const documentAtClick = canvas;
+    // Keep the card stable between the two mouse presses of a double-click.
+    smartMediaSelectionTimer = setTimeout(() => {
+        smartMediaSelectionTimer = 0;
+        if(canvas !== documentAtClick || selectedId !== cardId || selectedImage.nodeId !== media.nodeId || selectedImage.index !== media.index) return;
+        hideRunTimerForNode(nodes.find(node => node.id === cardId));
+        if(smartCascadeAnyRunning()) smartCascadeSilentSelection = false;
+        syncSelectionUi();
+        scheduleComposerUpdate(180);
+    }, sharedCanvasMode ? 0 : 220);
 }
 let smartSelectionUiNodeIds = new Set();
 let smartSelectionUiImage = {nodeId:'', index:-1};
@@ -2698,9 +2474,6 @@ function ensureSharedEditorInitialSelection(){
 }
 function applyModifiedNodeSelection(id, event){
     if(!id || !(event?.shiftKey || event?.ctrlKey || event?.metaKey)) return false;
-    // 图片单击为了兼容双击预览会延迟提交；Shift 加选必须先提交这次单击，
-    // 否则用户快速从图2切到图3时，延迟回调会把多选结果覆盖回图2。
-    flushPendingImageClickSelection();
     const current = selectedNodeIds().filter(nodeId => nodes.some(node => node.id === nodeId));
     let next;
     if(event.ctrlKey || event.metaKey){
@@ -2731,8 +2504,6 @@ function selectedNodeIdsForDelete(){
     if(selectionState){
         const point = selectionState.lastScreen || selectionState.startScreen;
         finishSelection({clientX:point.x, clientY:point.y});
-    }else{
-        flushPendingImageClickSelection();
     }
     return selectedNodeIds().filter(id => nodes.some(node => node?.id === id));
 }
@@ -3613,172 +3384,86 @@ function smartGroupImageForStandaloneNode(image){
     delete next[SMART_GROUP_ORIGIN_NODE_KEY];
     return next;
 }
-// 解组必须先展开容器端点，再删除分组。新分组有来源记录时精确还原；旧画布没有记录时，
-// 把容器的每条边分配给全部拆出节点，至少保留原分组聚合输入/输出的完整语义。
-function restoreConnectionsAfterUngroup(groupId, createdNodes=[], memberIds=[], originIds=[], originConnections=[]){
-    if(!canvas) return;
-    const currentConnections = Array.isArray(canvas.connections) ? canvas.connections : [];
-    const deletionTombstonesBeforeUngroup = new Set(smartConnectionDeletionTombstones);
-    rememberSmartConnectionDeletions(currentConnections.filter(connection => connection.from === groupId || connection.to === groupId));
-    const nodeIds = new Set(nodes.map(node => node.id));
-    const createdIds = createdNodes.map(node => node?.id).filter(id => id && nodeIds.has(id));
-    const releasedMemberIds = (memberIds || []).filter(id => id && nodeIds.has(id));
-    const aggregateReplacementIds = createdIds.length ? createdIds : releasedMemberIds;
-    const replacementsByOrigin = new Map();
-    createdNodes.forEach((node, index) => {
-        const originId = String(originIds[index] || '');
-        if(!originId || !node?.id) return;
-        if(!replacementsByOrigin.has(originId)) replacementsByOrigin.set(originId, []);
-        replacementsByOrigin.get(originId).push(node.id);
-    });
-
-    const rememberedOrigins = uniqueSmartConnections(originConnections);
-    const restored = [];
-    const accountedGroupConnections = new Set();
-    rememberedOrigins.forEach(connection => {
-        const fromMapped = replacementsByOrigin.get(String(connection.from || '')) || [];
-        const toMapped = replacementsByOrigin.get(String(connection.to || '')) || [];
-        const fromIds = fromMapped.length
-            ? fromMapped
-            : (connection.from !== groupId && nodeIds.has(connection.from) ? [connection.from] : []);
-        const toIds = toMapped.length
-            ? toMapped
-            : (connection.to !== groupId && nodeIds.has(connection.to) ? [connection.to] : []);
-        const collapsedFrom = fromMapped.length ? groupId : connection.from;
-        const collapsedTo = toMapped.length ? groupId : connection.to;
-        // 用户如果已经断开了“来源 → 分组”或“分组 → 目标”，解组时不能
-        // 用保存的原始边把它悄悄恢复回来。
-        if(deletionTombstonesBeforeUngroup.has(smartConnectionIdentity(connection, collapsedFrom, collapsedTo))) return;
-        let restoredAny = false;
-        fromIds.forEach(from => toIds.forEach(to => {
-            if(!from || !to || from === to) return;
-            restored.push({...connection, from, to});
-            restoredAny = true;
-        }));
-        if(restoredAny){
-            accountedGroupConnections.add(smartConnectionIdentity(connection, collapsedFrom, collapsedTo));
-        }
-        // Older nested groups can retain an origin record whose source/target
-        // node was deleted later. It cannot be restored, but its surviving
-        // container edge is still the same edge and must not be fanned out to
-        // every newly-created image during the legacy fallback below.
-        if(!fromIds.length && connection.to !== groupId && nodeIds.has(connection.to)){
-            accountedGroupConnections.add(smartConnectionIdentity(connection, groupId, connection.to));
-        }
-        if(!toIds.length && connection.from !== groupId && nodeIds.has(connection.from)){
-            accountedGroupConnections.add(smartConnectionIdentity(connection, connection.from, groupId));
-        }
-    });
-
-    const fallback = [];
-    // A group with origin records has a precision restore path. If one of
-    // those records is stale, inventing a Cartesian product of all members
-    // and all container edges creates the extra lines users see after ungroup.
-    // The fan-out fallback remains for legacy groups that have no origin data.
-    if(!rememberedOrigins.length) currentConnections.forEach(connection => {
-        if(connection.from !== groupId && connection.to !== groupId) return;
-        if(accountedGroupConnections.has(smartConnectionIdentity(connection))) return;
-        const fromIds = connection.from === groupId ? aggregateReplacementIds : [connection.from];
-        const toIds = connection.to === groupId ? aggregateReplacementIds : [connection.to];
-        fromIds.forEach(from => toIds.forEach(to => {
-            if(!from || !to || from === to || !nodeIds.has(from) || !nodeIds.has(to)) return;
-            fallback.push({...connection, from, to});
-        }));
-    });
-
-    const addedConnections = uniqueSmartConnections([...restored, ...fallback]);
-    clearSmartConnectionDeletionTombstones(addedConnections);
-    canvas.connections = uniqueSmartConnections([
-        ...currentConnections.filter(connection => connection.from !== groupId && connection.to !== groupId),
-        ...addedConnections
-    ]);
-    const retiredIds = new Set([groupId]);
-    replacementsByOrigin.forEach((_, originId) => {
-        if(!nodeIds.has(originId)) retiredIds.add(originId);
-    });
-    nodes.forEach(node => {
-        if(Array.isArray(node.inputNodeIds)){
-            node.inputNodeIds = node.inputNodeIds.filter(inputId => !retiredIds.has(inputId));
-        }
-    });
-    addedConnections.forEach(connection => {
-        if((connection.kind || 'flow') !== 'input') return;
-        const target = nodes.find(node => node.id === connection.to);
-        if(!target) return;
-        target.inputNodeIds = Array.from(new Set([...(target.inputNodeIds || []), connection.from]));
-    });
-}
-// 把指向 fromId 的连线/输入引用改接到 toId（吸收图片入组后保留“来源 → 分组”的连线），并去重去自环。
+const smartGroupGraph = XiaomeiSmartGroups.createGraph({
+    keyOf:smartConnectionIdentity,
+    unique:uniqueSmartConnections
+});
 function rerouteSmartConnections(fromId, toId){
     if(canvas){
-        const rerouted = (canvas.connections || []).filter(connection => connection.from === fromId || connection.to === fromId);
-        rememberSmartConnectionDeletions(rerouted);
-        canvas.connections = (canvas.connections || []).map(c => {
-            let conn = c;
-            if(c.from === fromId) conn = {...conn, from:toId};
-            if(c.to === fromId) conn = {...conn, to:toId};
-            return conn;
-        }).filter((c, i, arr) => c.from !== c.to && arr.findIndex(x => (
-            x.from === c.from
-            && x.to === c.to
-            && (x.kind || 'flow') === (c.kind || 'flow')
-            && String(x.input_slot || x.inputSlot || '') === String(c.input_slot || c.inputSlot || '')
-        )) === i);
+        const result = smartGroupGraph.reroute(canvas.connections || [], fromId, toId);
+        rememberSmartConnectionDeletions(result.removed);
+        canvas.connections = result.edges;
     }
-    nodes.forEach(n => {
-        if(Array.isArray(n.inputNodeIds)) n.inputNodeIds = Array.from(new Set(n.inputNodeIds.map(id => id === fromId ? toId : id).filter(id => id !== n.id)));
-    });
+    for(const node of nodes){
+        if(!Array.isArray(node.inputNodeIds) || !node.inputNodeIds.includes(fromId)) continue;
+        const next = new Set(node.inputNodeIds.map(id => id === fromId ? toId : id));
+        next.delete(node.id);
+        node.inputNodeIds = [...next];
+    }
 }
-// 把一张图片节点的图片吸收进分组（收进卡片内的缩略图网格），然后删除该图片节点。
+function removeSmartGroupContainer(nodeId){
+    nodes = nodes.filter(node => node.id !== nodeId);
+    for(const container of nodes){
+        if(isSmartGroupNode(container) && Array.isArray(container.items) && container.items.includes(nodeId)){
+            container.items = container.items.filter(id => id !== nodeId);
+        }
+    }
+}
 function absorbImageNodeIntoSmartGroup(group, child){
-    const add = (child.images || []).map(img => smartGroupImageForAbsorption(img, child.id));
-    if(!add.length) return false;
+    if(!Array.isArray(child.images) || !child.images.length) return false;
+    const returning = child.detachedFromNodeId === group.id;
+    const images = [...(group.images || [])];
+    const added = child.images.map(image => returning
+        ? stripImageGenerationMeta({...image})
+        : smartGroupImageForAbsorption(image, child.id));
+    const oldIndex = Number(child.detachedFromImageIndex);
+    const position = returning && Number.isInteger(oldIndex)
+        ? Math.max(0, Math.min(images.length, oldIndex))
+        : images.length;
     rememberSmartGroupConnections(group, child);
-    group.images = [...(group.images || []), ...add];
-    // 清掉显式尺寸，让缩略图网格按图片数自动整理排列（“放入图片自动整理”）。
-    delete group.w; delete group.h;
+    images.splice(position, 0, ...added);
+    group.images = images;
+    delete group.w;
+    delete group.h;
     rerouteSmartConnections(child.id, group.id);
-    nodes = nodes.filter(n => n.id !== child.id);
-    nodes.forEach(g => { if(isSmartGroupNode(g) && Array.isArray(g.items)) g.items = g.items.filter(id => id !== child.id); });
+    removeSmartGroupContainer(child.id);
     return true;
 }
 function addNodeToSmartGroup(group, child){
-    if(!isSmartGroupNode(group) || !child || child.id === group.id) return false;
-    const items = Array.isArray(group.items) ? group.items.slice() : [];
+    if(!isSmartGroupNode(group) || !child || group.id === child.id || isSmartDrawingBoardNode(child)) return false;
+    if(isSmartImageNode(child)) return absorbImageNodeIntoSmartGroup(group, child);
+    const items = new Set(Array.isArray(group.items) ? group.items : []);
     const zoom = smartGroupZoom(group);
-    if(isSmartGroupNode(child)){
-        // 把一个分组拖进另一个分组：吸收它的图片到本组网格，把它的非图片成员并入本组，然后删除被拖分组本体。
-        const mergedImages = (child.images || []).map(img => stripImageGenerationMeta({...img}));
-        mergeSmartGroupConnectionOrigins(group, child);
-        group.images = [...(group.images || []), ...mergedImages];
-        if(mergedImages.length){ delete group.w; delete group.h; }
-        const childMemberIds = smartGroupMembers(child)
-            .map(m => m.id)
-            .filter(id => id !== group.id && !items.includes(id));
-        group.items = [...items, ...childMemberIds];
-        childMemberIds.forEach(id => {
-            const m = nodes.find(n => n.id === id);
-            if(m) scaleSmartGroupMemberToZoom(group, m, zoom);
-        });
-        rerouteSmartConnections(child.id, group.id);
-        nodes = nodes.filter(n => n.id !== child.id);
-        nodes.forEach(g => { if(isSmartGroupNode(g) && Array.isArray(g.items)) g.items = g.items.filter(id => id !== child.id); });
+    if(!isSmartGroupNode(child)){
+        if(items.has(child.id)) return false;
+        rememberSmartGroupMemberSize(child);
+        items.add(child.id);
+        group.items = [...items];
+        scaleSmartGroupMemberToZoom(group, child, zoom);
         return true;
     }
-    // 图片节点：收进卡片内的缩略图网格（不再作为画布上的独立节点）。
-    if(isSmartDrawingBoardNode(child)) return false;
-    if(isSmartImageNode(child)) return absorbImageNodeIntoSmartGroup(group, child);
-    // 提示词 / 循环：仍作为画布上的成员节点。
-    if(items.includes(child.id)) return false;
-    rememberSmartGroupMemberSize(child);
-    group.items = [...items, child.id];
-    scaleSmartGroupMemberToZoom(group, child, zoom);
+    mergeSmartGroupConnectionOrigins(group, child);
+    if(Array.isArray(child.images) && child.images.length){
+        group.images = [...(group.images || []), ...child.images.map(image => stripImageGenerationMeta({...image}))];
+        delete group.w;
+        delete group.h;
+    }
+    for(const member of smartGroupMembers(child)){
+        if(items.has(member.id) || member.id === group.id) continue;
+        items.add(member.id);
+        scaleSmartGroupMemberToZoom(group, member, zoom);
+    }
+    group.items = [...items];
+    rerouteSmartConnections(child.id, group.id);
+    removeSmartGroupContainer(child.id);
     return true;
 }
-// 找到把某个节点作为成员的智能分组（用于双击组内图片时按整组左右切换）。
 function smartGroupContainingNode(nodeId){
     if(!nodeId) return null;
-    return nodes.find(n => isSmartGroupNode(n) && Array.isArray(n.items) && n.items.includes(nodeId)) || null;
+    for(const group of nodes){
+        if(isSmartGroupNode(group) && Array.isArray(group.items) && group.items.includes(nodeId)) return group;
+    }
+    return null;
 }
 // 节点所属的“分组作用域”ID：成员返回其分组，分组本体返回自身，否则空。
 // 用于连线合并/隐藏：同一作用域内部的连线属于分组内部关系，无需画出。
@@ -3798,15 +3483,7 @@ function smartGroupImageRefs(group){
         const item = imageForDisplay(img);
         if(item?.url) refs.push({nodeId:group.id, index, source:img, item});
     });
-    const members = smartGroupMembers(group)
-        .filter(isSmartImageNode)
-        .slice()
-        .sort((a, b) => {
-            const ra = nodeRect(a), rb = nodeRect(b);
-            const dy = (Number(ra.y) || 0) - (Number(rb.y) || 0);
-            if(Math.abs(dy) > 24) return dy;
-            return (Number(ra.x) || 0) - (Number(rb.x) || 0);
-        });
+    const members = XiaomeiSmartGroupLayout.readingOrder(smartGroupMembers(group).filter(isSmartImageNode));
     members.forEach(node => {
         (node.images || []).forEach((img, index) => {
             const item = imageForDisplay(img);
@@ -3828,197 +3505,57 @@ function smartBackgroundRemovalItemsForNode(node){
         .filter(ref => ref.item?.url && mediaKindForItem(ref.item) === 'image');
 }
 function smartGroupThumbLayout(node){
-    const refs = smartGroupImageRefs(node).filter(ref => ref.item?.url);
+    const refs = smartGroupImageRefs(node);
     if(!refs.length) return null;
     const compactMembers = smartGroupCompactMembers(node);
+    const images = refs.map(({item}) => item);
+    const scale = mediaNodeDefaultScale({type:'smart-image', images, scale:node.scale});
     const count = refs.length + compactMembers.length;
-    const items = refs.map(ref => ref.item);
-    const explicitW = Number(node?.w);
-    const explicitH = Number(node?.h);
-    const hasExplicit = Number.isFinite(explicitW) && explicitW >= SMART_GROUP_MIN_WIDTH
-        && Number.isFinite(explicitH) && explicitH >= SMART_GROUP_MIN_HEIGHT;
-    const scale = mediaNodeDefaultScale({type:'smart-image', images:items, scale:node?.scale});
-    const summarySpace = 28;
-    const outerPad = 32;
-    if(count === 1){
-        if(hasExplicit){
-            return {
-                refs,
-                compactMembers,
-                cols:1,
-                rows:1,
-                visibleRows:1,
-                width:Math.round(explicitW),
-                height:Math.round(explicitH),
-                thumb:Math.round(96 * scale),
-                single:true,
-                innerW:Math.max(24, Math.round(explicitW - outerPad)),
-                innerH:Math.max(24, Math.round(explicitH - outerPad - summarySpace))
-            };
-        }
-        const single = singleImageLayout(refs[0].item, {}, scale);
-        return {
-            refs,
-            compactMembers,
-            ...single,
-            width:Math.max(SMART_GROUP_MIN_WIDTH, Math.round(single.width + outerPad)),
-            height:Math.max(SMART_GROUP_MIN_HEIGHT, Math.round(single.height + outerPad + summarySpace)),
-            innerW:single.width,
-            innerH:single.height
-        };
-    }
-    const gap = 8;
-    const maxVisibleRows = compactMembers.length ? count : SMART_GROUP_MAX_VISIBLE_ROWS;
-    const imageAspect = compactMembers.length ? 0 : imageGridAspect(node, items);
-    if(imageAspect > 0){
-        const cols = count <= 4 ? 2 : Math.min(4, Math.max(2, Math.ceil(Math.sqrt(count))));
-        const rows = Math.ceil(count / cols);
-        const visibleRows = Math.min(maxVisibleRows, rows);
-        let thumbW = imageAspect >= 1 ? Math.round(MEDIA_GROUP_THUMB_BASE * scale) : Math.max(28, Math.round(MEDIA_GROUP_THUMB_BASE * scale * imageAspect));
-        let thumbH = imageAspect >= 1 ? Math.max(28, Math.round(MEDIA_GROUP_THUMB_BASE * scale / imageAspect)) : Math.round(MEDIA_GROUP_THUMB_BASE * scale);
-        if(hasExplicit){
-            const availableW = Math.max(56, explicitW - outerPad);
-            const availableH = Math.max(56, explicitH - outerPad - summarySpace);
-            const maxW = Math.max(28, (availableW - (cols - 1) * gap) / cols);
-            const maxH = Math.max(28, (availableH - (visibleRows - 1) * gap) / visibleRows);
-            const fit = Math.min(maxW / Math.max(1, thumbW), maxH / Math.max(1, thumbH));
-            thumbW = Math.max(28, Math.floor(thumbW * fit));
-            thumbH = Math.max(28, Math.floor(thumbH * fit));
-        }
-        const gridW = cols * thumbW + (cols - 1) * gap;
-        const gridH = visibleRows * thumbH + (visibleRows - 1) * gap;
-        return {
-            refs,
-            compactMembers,
-            cols,
-            rows,
-            visibleRows,
-            thumb:thumbH,
-            thumbW,
-            thumbH,
-            width:Math.round(gridW + outerPad),
-            height:Math.round(gridH + outerPad + summarySpace)
-        };
-    }
-    if(hasExplicit){
-        const fitted = groupImageGridLayout(count, Math.max(72, explicitW - outerPad), Math.max(56, explicitH - outerPad - summarySpace), 100000, 0, gap, maxVisibleRows);
-        return {...fitted, refs, compactMembers, width:Math.round(explicitW), height:Math.round(explicitH)};
-    }
-    const thumb = Math.round(MEDIA_GROUP_THUMB_BASE * scale);
-    const cell = thumb + gap;
-    const cols = Math.min(4, Math.max(2, Math.ceil(Math.sqrt(count))));
-    const rows = Math.ceil(count / cols);
-    const visibleRows = Math.min(maxVisibleRows, rows);
-    const gridW = cols * thumb + (cols - 1) * gap;
-    const gridH = visibleRows * cell - gap;
-    return {
-        refs,
-        compactMembers,
-        cols,
-        rows,
-        visibleRows,
-        thumb,
-        width:Math.max(SMART_GROUP_MIN_WIDTH, Math.round(gridW + outerPad)),
-        height:Math.max(SMART_GROUP_MIN_HEIGHT, Math.round(gridH + outerPad + summarySpace))
-    };
+    const layout = XiaomeiSmartGroupLayout.thumbnails({
+        count,
+        width:Number(node.w),
+        height:Number(node.h),
+        minWidth:SMART_GROUP_MIN_WIDTH,
+        minHeight:SMART_GROUP_MIN_HEIGHT,
+        aspect:count > 1 && !compactMembers.length ? imageGridAspect(node, images) : 0,
+        scale,
+        baseThumb:MEDIA_GROUP_THUMB_BASE,
+        maxRows:compactMembers.length ? count : SMART_GROUP_MAX_VISIBLE_ROWS,
+        single:() => singleImageLayout(images[0], {}, scale)
+    });
+    return {...layout, refs, compactMembers};
 }
-const SMART_GROUP_ARRANGE_PADDING = 18;
-const SMART_GROUP_ARRANGE_GAP = 16;
-const SMART_GROUP_ARRANGE_HEADER = 44;
-// 把分组内的成员整理成整齐的网格（先行后列保持当前阅读顺序），列数尽量接近正方形，
-// 每个成员在所属单元格内居中；最后把分组框尺寸收敛到正好包住所有成员。
-function arrangeSmartGroupMembers(group, options={}){
+function arrangeSmartGroupMembers(group, {skipUndo=false, syncDom=false}={}){
     if(!isSmartGroupNode(group)) return false;
-    const hasThumbImages = smartGroupImageRefs(group).some(ref => ref.item?.url);
-    if(hasThumbImages){
-        const compactMembers = smartGroupCompactMembers(group);
-        if(!options.skipUndo) pushUndo();
-        const layout = smartGroupThumbLayout(group);
-        if(!layout) return true;
-        const refs = layout.refs || [];
-        const thumb = Math.max(28, Math.round(Number(layout.thumb) || 96));
-        const gap = 8;
-        const cols = Math.max(1, Number(layout.cols) || 1);
-        const gridW = cols * thumb + Math.max(0, cols - 1) * gap;
-        const contentW = Math.max(0, Math.round(Number(layout.width) || SMART_GROUP_DEFAULT_WIDTH) - 32);
-        const originX = (Number(group.x) || 0) + 16 + Math.max(0, Math.round((contentW - gridW) / 2));
-        const originY = (Number(group.y) || 0) + 16 + 28;
-        group.w = Math.max(SMART_GROUP_MIN_WIDTH, Math.round(Number(layout.width) || SMART_GROUP_DEFAULT_WIDTH));
-        group.h = Math.max(SMART_GROUP_MIN_HEIGHT, Math.round(Number(layout.height) || SMART_GROUP_DEFAULT_HEIGHT));
-        const ordered = compactMembers.slice().sort((a, b) => {
-            const ra = nodeRect(a), rb = nodeRect(b);
-            const dy = (Number(ra.y) || 0) - (Number(rb.y) || 0);
-            if(Math.abs(dy) > 24) return dy;
-            return (Number(ra.x) || 0) - (Number(rb.x) || 0);
-        });
-        ordered.forEach((member, memberIndex) => {
-            const index = refs.length + memberIndex;
-            const col = index % cols;
-            const row = Math.floor(index / cols);
-            member.x = Math.round(originX + col * (thumb + gap));
-            member.y = Math.round(originY + row * (thumb + gap));
+    const layout = smartGroupThumbLayout(group);
+    const ordered = XiaomeiSmartGroupLayout.readingOrder(layout ? layout.compactMembers : smartGroupMembers(group));
+    if(!layout && !ordered.length) return false;
+    if(!skipUndo) pushUndo();
+
+    if(layout){
+        group.w = Math.max(SMART_GROUP_MIN_WIDTH, layout.width);
+        group.h = Math.max(SMART_GROUP_MIN_HEIGHT, layout.height);
+        const positions = XiaomeiSmartGroupLayout.compactPositions(group, layout, layout.refs.length, ordered.length);
+        ordered.forEach((member, index) => {
             rememberSmartGroupMemberSize(member);
-            member.w = thumb;
-            member.h = thumb;
-            member.scale = 1;
+            Object.assign(member, positions[index]);
         });
-        if(group._memberZoom !== undefined) group._memberZoom = 1;
-        if(options.syncDom) syncSmartGroupMemberElements(group);
-        return true;
+    } else {
+        const sizes = ordered.map(member => {
+            if(isSmartImageNode(member)){
+                delete member.w;
+                delete member.h;
+            }
+            const {width, height} = nodeRect(member);
+            return {width:Math.max(40, Number(width) || 120), height:Math.max(40, Number(height) || 120)};
+        });
+        const packed = XiaomeiSmartGroupLayout.tileMembers(group, sizes);
+        ordered.forEach((member, index) => Object.assign(member, packed.positions[index]));
+        group.w = Math.max(SMART_GROUP_MIN_WIDTH, Math.round(packed.width));
+        group.h = Math.max(SMART_GROUP_MIN_HEIGHT, Math.round(packed.height));
     }
-    const members = smartGroupMembers(group);
-    if(!members.length) return false;
-    if(!options.skipUndo) pushUndo();
-    const ordered = members.slice().sort((a, b) => {
-        const ra = nodeRect(a), rb = nodeRect(b);
-        const dy = (Number(ra.y) || 0) - (Number(rb.y) || 0);
-        if(Math.abs(dy) > 24) return dy;
-        return (Number(ra.x) || 0) - (Number(rb.x) || 0);
-    });
-    // 归一化图片成员尺寸：清掉入组缩放写入的 w/h，回到自然尺寸。否则反复拖出/拖入会越缩越小，
-    // 且“整理”无法恢复——这是用户反馈的“拖出再拖入图片变小、整理也救不回来”的根因。
-    ordered.forEach(node => {
-        if(isSmartImageNode(node)){
-            delete node.w;
-            delete node.h;
-        }
-    });
-    const sizes = ordered.map(node => {
-        const r = nodeRect(node);
-        return {node, w:Math.max(40, Number(r.width) || 120), h:Math.max(40, Number(r.height) || 120)};
-    });
-    const count = sizes.length;
-    const pad = SMART_GROUP_ARRANGE_PADDING;
-    const gap = SMART_GROUP_ARRANGE_GAP;
-    const headerH = SMART_GROUP_ARRANGE_HEADER;
-    const cols = Math.max(1, Math.min(count, Math.round(Math.sqrt(count)) || 1));
-    const rows = Math.ceil(count / cols);
-    const colW = new Array(cols).fill(0);
-    const rowH = new Array(rows).fill(0);
-    sizes.forEach((s, i) => {
-        const c = i % cols, r = Math.floor(i / cols);
-        colW[c] = Math.max(colW[c], s.w);
-        rowH[r] = Math.max(rowH[r], s.h);
-    });
-    const colX = [];
-    let accX = 0;
-    for(let c = 0; c < cols; c++){ colX[c] = accX; accX += colW[c] + gap; }
-    const rowY = [];
-    let accY = 0;
-    for(let r = 0; r < rows; r++){ rowY[r] = accY; accY += rowH[r] + gap; }
-    const originX = (Number(group.x) || 0) + pad;
-    const originY = (Number(group.y) || 0) + headerH + pad;
-    sizes.forEach((s, i) => {
-        const c = i % cols, r = Math.floor(i / cols);
-        s.node.x = Math.round(originX + colX[c] + (colW[c] - s.w) / 2);
-        s.node.y = Math.round(originY + rowY[r] + (rowH[r] - s.h) / 2);
-    });
-    const totalW = colW.reduce((a, b) => a + b, 0) + gap * (cols - 1) + pad * 2;
-    const totalH = rowH.reduce((a, b) => a + b, 0) + gap * (rows - 1) + pad * 2 + headerH;
-    group.w = Math.max(SMART_GROUP_MIN_WIDTH, Math.round(totalW));
-    group.h = Math.max(SMART_GROUP_MIN_HEIGHT, Math.round(totalH));
-    // 成员已回到自然尺寸，分组缩放基准随之归零，避免后续再缩放时跳变。
     if(group._memberZoom !== undefined) group._memberZoom = 1;
+    if(layout && syncDom) syncSmartGroupMemberElements(group);
     return true;
 }
 function mediaLayoutSize(img){
@@ -4209,45 +3746,6 @@ function smartTextStackLayout(node){
     const height = metrics.reduce((sum, item) => sum + item.height, 0) + Math.max(0, metrics.length - 1) * gap + pad * 2;
     return {cols:1, rows:metrics.length, width, height, thumb:96, single:true, stackItems:items, stackMetrics:metrics, stackGap:gap, stackPad:pad};
 }
-function groupImageGridLayout(count, explicitW, explicitH, maxThumb, pad=32, gap=8, maxVisibleRows=MEDIA_GROUP_MAX_VISIBLE_ROWS){
-    let best = null;
-    for(let cols = 1; cols <= count; cols++){
-        const rows = Math.ceil(count / cols);
-        const visibleRows = Math.min(Math.max(1, maxVisibleRows), rows);
-        const availableW = explicitW - pad - (cols - 1) * gap;
-        const availableH = explicitH - pad - (visibleRows - 1) * gap;
-        if(availableW <= 0 || availableH <= 0) continue;
-        const rawThumb = Math.floor(Math.min(availableW / cols, availableH / visibleRows));
-        const fittedThumb = Math.max(28, Math.min(maxThumb, rawThumb));
-        const fits = rawThumb >= 28;
-        const usedW = cols * fittedThumb + (cols - 1) * gap + pad;
-        const usedH = visibleRows * fittedThumb + (visibleRows - 1) * gap + pad;
-        const spareW = Math.max(0, explicitW - usedW);
-        const spareH = Math.max(0, explicitH - usedH);
-        const atMax = fittedThumb >= maxThumb;
-        const score = [
-            fits ? 1 : 0,
-            fittedThumb,
-            atMax ? cols : 0,
-            -(spareW + spareH * 0.35),
-            -rows
-        ];
-        let better = !best;
-        if(best){
-            for(let i = 0; i < score.length; i++){
-                if(score[i] === best.score[i]) continue;
-                better = score[i] > best.score[i];
-                break;
-            }
-        }
-        if(better){
-            best = {cols, rows, visibleRows, thumb:fittedThumb, score};
-        }
-    }
-    const fallbackCols = Math.min(count, 2);
-    const fallbackRows = Math.ceil(count / fallbackCols);
-    return best || {cols:fallbackCols, rows:fallbackRows, visibleRows:Math.min(MEDIA_GROUP_MAX_VISIBLE_ROWS, fallbackRows), thumb:28};
-}
 function smartNodeInputThumbRows(count){
     return count ? 1 : 0;
 }
@@ -4290,15 +3788,7 @@ function smartNodeInputThumbsHtml(images, opts={}){
     }).join('');
     return `<div class="smart-node-input-thumbs">${items}</div>`;
 }
-const PROMPT_LLM_INSTRUCTION_DEFAULT_H = 58;
-const PROMPT_LLM_INSTRUCTION_MIN_H = 40;
-const PROMPT_LLM_INSTRUCTION_MAX_H = 400;
 const PROMPT_NODE_COLLAPSED_HEIGHT = 86;
-function promptLlmInstructionHeight(node){
-    const h = Number(node?.llmInstructionHeight);
-    if(!Number.isFinite(h)) return PROMPT_LLM_INSTRUCTION_DEFAULT_H;
-    return Math.max(PROMPT_LLM_INSTRUCTION_MIN_H, Math.min(PROMPT_LLM_INSTRUCTION_MAX_H, Math.round(h)));
-}
 function promptNodePromptItems(node){
     const text = String(node?.text || '').trim();
     return text ? [text] : [];
@@ -4378,6 +3868,10 @@ function promptNodeLLMInputText(node, ctx=smartLoopContext){
     const instruction = String(node?.llmInstruction || '').trim();
     return [upstream, instruction].filter(Boolean).join('\n\n');
 }
+function promptNodeSystemText(node){
+    const system = node.llmSystemEnabled ? String(node.llmSystemPrompt || '').trim() : '';
+    return (system + nodeSkillPrompt(node)).trim();
+}
 function preserveLegacyPromptInstruction(node){
     if(node?.type !== 'smart-prompt' || node.promptInstructionInitialized === true) return;
     if(!String(node.llmInstruction || '').trim() && !node.promptRunAt){
@@ -4387,7 +3881,8 @@ function preserveLegacyPromptInstruction(node){
     node.promptInstructionInitialized = true;
 }
 function promptNodeExpandedHeight(node){
-    const extra = Math.max(0, promptLlmInstructionHeight(node) - PROMPT_LLM_INSTRUCTION_DEFAULT_H);
+    const {instructionHeight, instructionDefault} = XiaomeiSmartPromptNode;
+    const extra = Math.max(0, instructionHeight(node) - instructionDefault);
     const upstreamExtra = node?.llmEnabled && promptNodeUpstreamPromptItems(node).length ? 74 : 0;
     return (node?.llmSystemEnabled ? 560 : 490) + smartNodeInputThumbsHeight(promptNodeInputImages(node)) + extra + upstreamExtra;
 }
@@ -4422,36 +3917,6 @@ function agentNodeLayoutSize(node){
     const width = Number.isFinite(explicitW) && explicitW > 24 ? explicitW : SMART_AGENT_DEFAULT_WIDTH;
     const height = Number.isFinite(explicitH) && explicitH > 24 ? explicitH : SMART_AGENT_DEFAULT_HEIGHT;
     return {width:Math.round(width), height:Math.round(height)};
-}
-// 智能分组的图片网格布局：跟多图节点一致，但可见排数上限为 4（超过出现滚动），且缩略图无放大上限
-//（用户拉大分组时图片随之变大，不再封顶在原始尺寸）。
-function smartGroupImageGridLayout(node){
-    const images = (node?.images || []).filter(img => img?.url);
-    const count = images.length;
-    const s = mediaNodeDefaultScale(node);
-    if(count === 1){
-        const single = singleImageLayout(images[0], node, s);
-        const explicitW = Number(node?.w), explicitH = Number(node?.h);
-        const hasExplicit = Number.isFinite(explicitW) && explicitW > 24 && Number.isFinite(explicitH) && explicitH > 24;
-        // 容器有 16px 内边距（PAD=32）；无显式尺寸时把外框放大 PAD，以包住图片，避免“分组比图片还小”。
-        return hasExplicit ? single : {...single, width:single.width + 32, height:single.height + 32};
-    }
-    const baseThumb = Math.round(MEDIA_GROUP_THUMB_BASE * s);
-    const cell = baseThumb + 8;
-    const PAD = 32;
-    const explicitW = Number(node?.w);
-    const explicitH = Number(node?.h);
-    const cols = Math.min(4, Math.max(2, Math.ceil(Math.sqrt(count))));
-    const rows = Math.ceil(count / cols);
-    const visibleRows = Math.min(SMART_GROUP_MAX_VISIBLE_ROWS, rows);
-    if(Number.isFinite(explicitW) && explicitW > 40 && Number.isFinite(explicitH) && explicitH > 40){
-        // 用户拉伸过分组：按显式尺寸拟合，maxThumb 给一个极大值以解除“放大不超过原始”的限制。
-        const fitted = groupImageGridLayout(count, explicitW, explicitH, 100000, PAD, 8, SMART_GROUP_MAX_VISIBLE_ROWS);
-        return {cols:fitted.cols, rows:fitted.rows, visibleRows:fitted.visibleRows, width:Math.round(explicitW), height:fitted.visibleRows * (fitted.thumb + 8) - 8 + PAD, thumb:fitted.thumb};
-    }
-    const width = Math.max(Math.round(226 * s), cols * cell + PAD);
-    const height = visibleRows * cell - 8 + PAD;
-    return {cols, rows, visibleRows, width, height, thumb:baseThumb};
 }
 function imageGridAspect(node, images=[]){
     const aliases = {
@@ -4687,7 +4152,7 @@ function imageLayout(images, scale=1, node=null){
         return {cols,rows,visibleRows,width:cols*thumbW+(cols-1)*8+PAD,height:visibleRows*thumbH+(visibleRows-1)*8+PAD,thumb:thumbH,thumbW,thumbH};
     }
     if(node?.manualSize === true && Number.isFinite(explicitW) && explicitW > 40 && Number.isFinite(explicitH) && explicitH > 40){
-        const fitted = groupImageGridLayout(count, explicitW, explicitH, thumb, PAD, 8);
+        const fitted = XiaomeiSmartGroupLayout.squareGrid(count, explicitW, explicitH, {maxThumb:thumb, maxRows:MEDIA_GROUP_MAX_VISIBLE_ROWS, padding:PAD});
         return {cols:fitted.cols, rows:fitted.rows, visibleRows:fitted.visibleRows, width:Math.round(explicitW), height:fitted.visibleRows * (fitted.thumb + 8) - 8 + PAD, thumb:fitted.thumb};
     }
     const width = Math.max(Math.round(226*s), cols * cell + PAD);
@@ -5137,7 +4602,7 @@ function applyViewport(options={}){
             hidePaintInputRefHover();
         }
     }
-    scheduleOcrPanelPosition();
+    smartOcr.schedule();
     if(options.scheduleMinimap !== false) scheduleMinimapViewportRender();
     // 没有远程成员时不需要在每个平移/缩放帧重新计算协作者光标。
     if(collabConnected && collabMembers.size > 1) renderCollabCursors();
@@ -5765,19 +5230,12 @@ function selectedRunningHubRef(sourceSettings=settings){
     const all = runningHubAllEntries();
     sourceSettings = sourceSettings || settings;
     const parsed = parseRunningHubEntryKey(sourceSettings.rhConfigKey || '');
-    let ref = parsed ? all.find(item => item.kind === parsed.kind && item.id === parsed.id) : null;
-    if(!ref && all.length) ref = all[0];
+    const ref = parsed ? all.find(item => item.kind === parsed.kind && item.id === parsed.id) || parsed : all[0];
     if(ref && sourceSettings === settings) settings.rhConfigKey = runningHubEntryKey(ref.kind, ref.id);
     return ref || null;
 }
 function rhEntryFields(entry){
     return Array.isArray(entry?.fields) ? entry.fields : [];
-}
-function rhWorkflowJsonFromSources(...sources){
-    for(const source of sources){
-        if(source && typeof source === 'object' && Object.keys(source).length) return source;
-    }
-    return {};
 }
 function rhCurrentKind(sourceSettings=settings){
     return selectedRunningHubRef(sourceSettings)?.kind || 'app';
@@ -5790,21 +5248,19 @@ function runningHubModelApiSettings(sourceSettings=settings){
     const model = runningHubSelectedModel(sourceSettings);
     return {...(sourceSettings || settings), engine:'api', apiKind:'image', provider_id:'runninghub', model};
 }
-function rhUsableFields(fields){
-    const list = Array.isArray(fields) ? fields : [];
-    if(!list.length) return [];
-    const enabled = list.filter(f => f.enabled === true);
-    return enabled.length ? enabled : list;
-}
 function rhActiveFields(sourceSettings=settings){
+    sourceSettings = sourceSettings || settings;
     const ref = selectedRunningHubRef(sourceSettings);
     let fields = rhEntryFields(ref?.entry);
     if(ref?.kind === 'workflow'){
         const cached = runningHubWorkflowCache[ref.id];
         if(Array.isArray(cached?.fields) && cached.fields.length) fields = cached.fields;
     }
-    fields = rhUsableFields(fields);
-    return sortRunningHubFields(fields);
+    if(!fields.length){
+        const saved = ref?.kind === 'workflow' ? sourceSettings.rhWorkflowInfo : sourceSettings.rhAppInfo;
+        fields = saved?.nodeInfoList || [];
+    }
+    return orderedRhFields(fields);
 }
 function runningHubRunNeedsPrompt(sourceSettings=settings){
     if((sourceSettings || settings).engine !== 'runninghub') return true;
@@ -5828,19 +5284,6 @@ function smartRunNeedsPrompt(sourceSettings=settings, refs=[]){
             && !String(sourceSettings.comfyParams?.[field.id] ?? field.default ?? '').trim());
     }
     return true;
-}
-function sortRunningHubFields(fields){
-    return [...(fields || [])].sort((a, b) => {
-        const ak = rhFieldKind(a), bk = rhFieldKind(b);
-        if(ak === 'image' && bk === 'image'){
-            const ao = Number(a.imageOrder) || 9999;
-            const bo = Number(b.imageOrder) || 9999;
-            if(ao !== bo) return ao - bo;
-        }
-        if(ak === 'image' && bk !== 'image') return -1;
-        if(ak !== 'image' && bk === 'image') return 1;
-        return String(a.nodeId || '').localeCompare(String(b.nodeId || ''), undefined, {numeric:true}) || String(a.fieldName || '').localeCompare(String(b.fieldName || ''));
-    });
 }
 function chatApiProviders(){
     return (apiProviders || []).filter(p => {
@@ -6026,6 +5469,9 @@ function isScnetVideoProvider(providerId){
 function isMiniMaxH3VideoModel(model){
     return /^minimax[-_\s]*h3(?:$|[-_\s])/i.test(String(model || '').trim());
 }
+function isMuseVideoModel(model){
+    return /^muse[-_\s]*video(?:$|[-_\s])/i.test(String(model || '').trim());
+}
 function usesVideoModelSettings(){
     return is6789VideoProvider(settings.videoProvider)
         || isMiniMaxH3VideoModel(settings.videoModel)
@@ -6061,6 +5507,8 @@ function scnetVideoOptions(model){
 }
 function seedance6789DurationOptions(model){
     const value = String(model || '').trim().toLowerCase();
+    // Muse 每条固定约 10 秒，上游不接受其它时长。
+    if(isMuseVideoModel(value)) return [10];
     if(/(?:^|[^a-z0-9])seedance[ _-]*2[._-]5(?![0-9])/.test(value)){
         if(/线路\s*1$/.test(value)) return Array.from({length:27}, (_, index) => index + 4);
         if(/[（(]\s*满血版\s*[）)]$/.test(value)) return Array.from({length:21}, (_, index) => index + 10);
@@ -6072,7 +5520,9 @@ function seedance6789DurationOptions(model){
 }
 function video6789Options(model){
     const h3 = isMiniMaxH3VideoModel(model);
-    const ratios = ['16:9','9:16','1:1','4:3','3:4','21:9'];
+    const muse = isMuseVideoModel(model);
+    // Muse 不支持 21:9，但支持竖版 3:2 / 2:3。
+    const ratios = muse ? ['16:9','9:16','1:1','4:3','3:4','3:2','2:3'] : ['16:9','9:16','1:1','4:3','3:4','21:9'];
     if(h3) ratios.push('3:2','2:3');
     return {
         durations:h3 ? Array.from({length:11}, (_, index) => index + 5) : seedance6789DurationOptions(model),
@@ -6295,12 +5745,6 @@ function renderVideoToggleControl(key, label){
     const on = !!settings[key];
     return `<button type="button" class="setting-check ${on ? 'active' : ''}" data-toggle-param="${escapeHtml(key)}"><span class="check-box"></span><span>${escapeHtml(label)}</span></button>`;
 }
-function renderTempShUploadControl(){
-    return `<button type="button" class="smart-pill cloud-upload-pill" data-temp-sh-upload-video title="上传当前输入图片或视频到云端直链"><i data-lucide="upload-cloud"></i><span>上传云端</span></button>`;
-}
-function renderManualVideoUrlControl(){
-    return `<button type="button" class="smart-pill manual-video-url-pill" data-manual-video-url title="手动输入媒体 URL"><i data-lucide="link"></i><span>输入网址</span></button>`;
-}
 // 可信素材模式：打开后可选择素材来源——素材库认证链接 / 自行上传云端 / 自行输入网址。
 function renderVideoTrustedAssetControl(){
     const on = !!settings.videoTrustedAsset;
@@ -6338,8 +5782,16 @@ function apiImageSize(ratioValue, resolutionValue, customRatioValue='', customSi
         const longSide = RES_LONG_SIDE[resolutionKey] || 1024;
         if(parsed){
             const pixelLimit = RES_PIXEL_LIMIT[resolutionKey] || (longSide * longSide);
-            const rawWidth = parsed >= 1 ? longSide : Math.min(longSide * parsed, Math.sqrt(pixelLimit * parsed));
-            const rawHeight = parsed >= 1 ? Math.min(longSide / parsed, Math.sqrt(pixelLimit / parsed)) : longSide;
+            let rawWidth = parsed >= 1 ? longSide : longSide * parsed;
+            let rawHeight = parsed >= 1 ? longSide / parsed : longSide;
+            // 像素上限必须同时缩放宽高，不能只截断其中一边，否则“适配输入”
+            // 会在 4K 下把 3:4 原图算成 2:3 等错误画幅，生成结果随之变形。
+            const pixels = rawWidth * rawHeight;
+            if(pixels > pixelLimit){
+                const scale = Math.sqrt(pixelLimit / pixels);
+                rawWidth *= scale;
+                rawHeight *= scale;
+            }
             const width = Math.floor(rawWidth / 16) * 16;
             const height = Math.floor(rawHeight / 16) * 16;
             return `${Math.max(64, width)}x${Math.max(64, height)}`;
@@ -6413,19 +5865,28 @@ async function ensureComfyWorkflow(name){
     if(!name) return null;
     const cached = comfyWorkflowCache[name];
     if(cached && !cached._canvasFallback) return cached;
-    const data = await fetch(`/api/workflows/${encodeURIComponent(name)}`).then(r => r.ok ? r.json() : null).catch(() => null);
-    if(data) comfyWorkflowCache[name] = data;
-    return data || cached || null;
+    if(comfyWorkflowLoads.has(name)) return comfyWorkflowLoads.get(name);
+    const pending = fetch(`/api/workflows/${encodeURIComponent(name)}`)
+        .then(response => response.ok ? response.json() : null)
+        .catch(() => null)
+        .then(data => {
+            if(data) comfyWorkflowCache[name] = data;
+            return data || cached || null;
+        })
+        .finally(() => comfyWorkflowLoads.delete(name));
+    comfyWorkflowLoads.set(name, pending);
+    return pending;
 }
-function currentComfyFields(){
-    return comfyWorkflowCache[settings.comfyWorkflow]?.config?.fields
-        || settings.comfyWorkflowFields
-        || [];
+function beginComfyWorkflowChange(nodeId){
+    const change = {nodeId, canvasId:canvas?.id};
+    comfyWorkflowChanges.set(nodeId, change);
+    return change;
 }
-function comfyParamValue(field){
-    settings.comfyParams = settings.comfyParams || {};
-    if(settings.comfyParams[field.id] !== undefined) return settings.comfyParams[field.id];
-    return field.default ?? (field.type === 'boolean' ? false : (field.type === 'number' || field.type === 'slider' ? 0 : ''));
+function currentComfyWorkflowChange(change){
+    return canvas?.id === change.canvasId && comfyWorkflowChanges.get(change.nodeId) === change;
+}
+function finishComfyWorkflowChange(change){
+    if(comfyWorkflowChanges.get(change.nodeId) === change) comfyWorkflowChanges.delete(change.nodeId);
 }
 const COMFY_OPTION_LABELS = Object.freeze({
     upscaling_mode:{
@@ -6549,98 +6010,10 @@ async function refreshSavedComfyWorkflowFields(){
 function updateProviderModels(){
     renderDynamicParams();
     if(imageEditMode === 'outpaint' && imageEditModal?.classList.contains('open')) syncOutpaintControls();
-    if(imageEditMode === 'ocr' && imageEditModal?.classList.contains('open')) { syncOcrModelOptions(); syncOcrRecognitionModelOptions(); }
+    if(imageEditMode === 'ocr' && imageEditModal?.classList.contains('open')) smartOcr.syncModels();
     if(imageEditMode === 'smart-edit' && imageEditModal?.classList.contains('open')) window.syncSmartEditModelControls?.();
 }
-let dynamicParamsRefreshTimer = 0;
-let dynamicParamsRefreshIdle = 0;
-let dynamicParamsRefreshSeq = 0;
-function scheduleDynamicParamsRefresh(delay=120){
-    if(dynamicParamsRefreshTimer){
-        clearTimeout(dynamicParamsRefreshTimer);
-        dynamicParamsRefreshTimer = 0;
-    }
-    if(dynamicParamsRefreshIdle && window.cancelIdleCallback){
-        window.cancelIdleCallback(dynamicParamsRefreshIdle);
-        dynamicParamsRefreshIdle = 0;
-    }
-    const seq = ++dynamicParamsRefreshSeq;
-    const run = () => {
-        dynamicParamsRefreshTimer = 0;
-        dynamicParamsRefreshIdle = 0;
-        if(seq !== dynamicParamsRefreshSeq) return;
-        renderDynamicParams();
-    };
-    if(window.requestIdleCallback){
-        dynamicParamsRefreshIdle = window.requestIdleCallback(run, {timeout:Math.max(180, Number(delay) + 260)});
-    } else {
-        dynamicParamsRefreshTimer = setTimeout(run, Math.max(0, Number(delay) || 0));
-    }
-}
-function controlTypeKey(el){
-    return el ? Array.from(el.classList).find(c => c !== 'smart-control' && c.endsWith('-control')) || '' : '';
-}
-// 记住重渲染前哪个控件的弹层是打开的：pinned=点击药丸锁定，interacting=悬浮打开后点了里面的参数。
-// 重渲染会重建 DOM、丢掉这两个状态，所以渲染后要按原样恢复，否则点一下就收起来了。
-function openControlState(){
-    const el = dynamicParams?.querySelector('.smart-control.pinned, .smart-control.interacting');
-    const key = controlTypeKey(el);
-    if(!key) return null;
-    return { key, pinned: el.classList.contains('pinned'), interacting: el.classList.contains('interacting') };
-}
-function restoreOpenControl(state){
-    if(!state) return;
-    const match = dynamicParams?.querySelector(`.smart-control.${state.key}`);
-    if(!match) return;
-    if(state.pinned) match.classList.add('pinned');
-    if(state.interacting) match.classList.add('interacting');
-    if(match.classList.contains('image-model-control')){
-        match.querySelector('.image-model-trigger')?.setAttribute('aria-expanded', state.pinned ? 'true' : 'false');
-    }
-    if(match.classList.contains('generation-settings-control')){
-        match.querySelector('.generation-settings-trigger')?.setAttribute('aria-expanded', state.pinned ? 'true' : 'false');
-    }
-    if(match.classList.contains('video-generation-settings-control')){
-        match.querySelector('.video-generation-settings-trigger')?.setAttribute('aria-expanded', state.pinned ? 'true' : 'false');
-    }
-    if(match.classList.contains('video-options-control')){
-        match.querySelector('.video-options-trigger')?.setAttribute('aria-expanded', state.pinned ? 'true' : 'false');
-    }
-}
-function dynamicParamsScrollSnapshot(){
-    if(!dynamicParams) return null;
-    return {
-        top:dynamicParams.scrollTop || 0,
-        left:dynamicParams.scrollLeft || 0,
-        sizePickers:[...dynamicParams.querySelectorAll('.size-picker-control')].map(ctrl => ({
-            key:controlTypeKey(ctrl),
-            lists:[...ctrl.querySelectorAll('.size-picker-list')].map(list => ({top:list.scrollTop || 0, left:list.scrollLeft || 0}))
-        }))
-    };
-}
-function restoreDynamicParamsScroll(snapshot){
-    if(!snapshot || !dynamicParams) return;
-    const apply = () => {
-        dynamicParams.scrollTop = snapshot.top || 0;
-        dynamicParams.scrollLeft = snapshot.left || 0;
-        const used = new Set();
-        (snapshot.sizePickers || []).forEach(item => {
-            const pickers = [...dynamicParams.querySelectorAll('.size-picker-control')];
-            const index = pickers.findIndex((ctrl, i) => !used.has(i) && (!item.key || controlTypeKey(ctrl) === item.key));
-            if(index < 0) return;
-            used.add(index);
-            const lists = pickers[index].querySelectorAll('.size-picker-list');
-            (item.lists || []).forEach((pos, listIndex) => {
-                const list = lists[listIndex];
-                if(!list) return;
-                list.scrollTop = pos.top || 0;
-                list.scrollLeft = pos.left || 0;
-            });
-        });
-    };
-    apply();
-    requestAnimationFrame(apply);
-}
+function scheduleDynamicParamsRefresh(delay=120){ parameterControls.scheduleRefresh(delay); }
 function renderWorkflowSourceControl(){
     const currentEngine = ['api','volcengine','comfy','runninghub'].includes(String(settings.engine || '').toLowerCase())
         ? String(settings.engine).toLowerCase()
@@ -6666,11 +6039,9 @@ function renderDynamicParams(){
     if(!dynamicParams) return;
     // 模型列表未返回时不能用空列表覆盖画布中保存的模型选择。
     if(!sharedCanvasMode && !smartConfigReady) return;
-    const keepOpen = openControlState();
-    const scrollState = dynamicParamsScrollSnapshot();
+    const previousControls = parameterControls.snapshot();
     const subject = activeSettingsSubject();
     const dedicatedComfy = isSmartComfyWorkflowNode(subject);
-    const comfyNodeOwnsParams = comfyNodeOwnsVisibleParams(subject);
     // ComfyUI 参数只属于专用工作流节点；普通生图节点使用在线 API。
     if(!dedicatedComfy && settings.engine === 'comfy') settings = apiSettingsOutsideComfyNode();
     settings = apiOnlySettings(settings);
@@ -6687,15 +6058,12 @@ function renderDynamicParams(){
         else renderVolcengineParams();
     }
     else if(settings.engine === 'runninghub') renderRunningHubParams();
-    else if(comfyNodeOwnsParams) dynamicParams.innerHTML = renderComfyNodeParamsNote();
-    else renderComfyParams();
+    else dynamicParams.replaceChildren();
     if(!dedicatedComfy && settings.engine !== 'api'){
         if(dynamicParams.innerHTML) dynamicParams.insertAdjacentHTML('afterbegin', renderWorkflowSourceControl());
         else dynamicParams.innerHTML = renderWorkflowSourceControl();
     }
-    bindDynamicParams();
-    restoreOpenControl(keepOpen);
-    restoreDynamicParamsScroll(scrollState);
+    parameterControls.restore(previousControls);
     updatePromptPlaceholder();
     persistActiveSmartSettings();
     if(composer?.classList?.contains('open')){
@@ -6822,166 +6190,12 @@ function renderVolcengineVideoParams(){
 }
 function renderRunningHubParams(){
     const ref = selectedRunningHubRef();
-    const fields = rhActiveFields();
-    settings.rhPayment = settings.rhPayment === 'wallet' ? 'wallet' : 'free';
-    settings.rhParams = settings.rhParams || {};
-    settings.rhRandomActive = settings.rhRandomActive || {};
-    if(!ref){
-        dynamicParams.innerHTML = `<div class="muted-note">${escapeHtml(tr('smart.rhNeedConfig'))}</div>`;
-        return;
-    }
-    if(ref.kind === 'model'){
+    if(ref?.kind === 'model'){
         settings.provider_id = 'runninghub';
         settings.model = ref.id;
         normalizeApiSizeSettings('');
-        dynamicParams.innerHTML = `
-            ${renderRhConfigControl(ref)}
-            ${renderGenerationSettingsControl('', true)}
-            ${renderCountVisualControl()}
-        `;
-        return;
     }
-    const mediaFields = fields.filter(f => ['image','video','audio'].includes(rhFieldRole(f))).length;
-    const promptFields = fields.filter(f => rhFieldRole(f) === 'prompt').length;
-    dynamicParams.innerHTML = `
-        ${renderRhConfigControl(ref)}
-        ${renderRhPaymentControl()}
-        ${renderRhMachineControl()}
-        <div class="rh-mini-summary">${escapeHtml(mediaFields)} 素材 · ${escapeHtml(promptFields)} 提示词</div>
-        ${fields.length ? fields.filter(f => !['image','video','audio','prompt'].includes(rhFieldRole(f))).map(renderRhSettingField).join('') : `<div class="muted-note">${escapeHtml(tr('smart.rhNeedFields'))}</div>`}
-    `;
-}
-function renderRhConfigControl(ref){
-    const models = runningHubEntries('model');
-    const apps = runningHubEntries('app');
-    const workflows = runningHubEntries('workflow');
-    const selected = ref ? runningHubEntryKey(ref.kind, ref.id) : '';
-    const groupHtml = (kind, entries, label) => entries.length ? `
-        <div class="model-list-label rh-list-label">${escapeHtml(label)}<span class="count">${entries.length}</span></div>
-        ${entries.map(entry => {
-            const id = runningHubEntryId(entry, kind);
-            const key = runningHubEntryKey(kind, id);
-            const icon = kind === 'workflow' ? 'workflow' : kind === 'model' ? 'box' : 'sparkles';
-            return `<button type="button" class="direct-option rh-entry-option ${key === selected ? 'active' : ''}" data-smart-param="rhConfigKey" data-smart-value="${escapeHtml(key)}"><i data-lucide="${icon}"></i><span>${escapeHtml(runningHubEntryLabel(entry, kind))}</span></button>`;
-        }).join('')}
-    ` : '';
-    return `<div class="smart-control rh-config-control">
-        <button class="smart-pill" type="button"><i data-lucide="workflow"></i><span class="sub">${escapeHtml(ref ? runningHubEntryLabel(ref.entry, ref.kind) : tr('smart.rhConfig'))}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-        <div class="smart-popover compact-popover rh-picker-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.rhConfig'))}</div>
-            <div class="model-list rh-config-list">
-                ${groupHtml('model', models, '模型 API')}${groupHtml('app', apps, 'AI 应用')}${groupHtml('workflow', workflows, '工作流') || ''}
-            </div>
-        </div>
-    </div>`;
-}
-function renderRhPaymentControl(){
-    const value = settings.rhPayment === 'wallet' ? 'wallet' : 'free';
-    const labels = {free:tr('smart.rhFreeKey'), wallet:tr('smart.rhWalletKey')};
-    return `<div class="smart-control rh-payment-control">
-        <button class="smart-pill" type="button"><i data-lucide="key-round"></i><span>${escapeHtml(labels[value])}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-        <div class="smart-popover compact-popover rh-picker-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.rhKey'))}</div>
-            <div class="model-list">
-                ${Object.entries(labels).map(([key, label]) => `<button type="button" class="direct-option ${key === value ? 'active' : ''}" data-smart-param="rhPayment" data-smart-value="${escapeHtml(key)}"><span>${escapeHtml(label)}</span></button>`).join('')}
-            </div>
-        </div>
-    </div>`;
-}
-function renderRhMachineControl(){
-    const value = ['default','plus','ultra'].includes(String(settings.rhInstanceType || '').toLowerCase())
-        ? String(settings.rhInstanceType).toLowerCase()
-        : 'default';
-    settings.rhInstanceType = value;
-    const labels = {default:'24G', plus:'48G', ultra:'84G'};
-    return `<div class="smart-control rh-machine-control">
-        <button class="smart-pill" type="button"><i data-lucide="cpu"></i><span>${escapeHtml(labels[value])}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-        <div class="smart-popover compact-popover rh-picker-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.rhMachine'))}</div>
-            <div class="model-list">
-                ${Object.entries(labels).map(([key, label]) => `<button type="button" class="direct-option ${key === value ? 'active' : ''}" data-smart-param="rhInstanceType" data-smart-value="${escapeHtml(key)}"><span>${escapeHtml(label)}</span></button>`).join('')}
-            </div>
-        </div>
-    </div>`;
-}
-function renderComfyParams(){
-    settings.comfyMode = ['text','enhance','edit','custom'].includes(settings.comfyMode) ? settings.comfyMode : 'text';
-    const modeOptions = [
-        ['text', tr('canvas.comfyModeText') || '文生图'],
-        ['enhance', tr('canvas.comfyModeEnhance') || '图片增强'],
-        ['edit', tr('canvas.comfyModeEdit') || '图片编辑'],
-        ['custom', tr('canvas.comfyModeCustom') || '自定义']
-    ];
-    if(settings.comfyMode === 'custom'){
-        if(!settings.comfyWorkflow) settings.comfyWorkflow = comfyWorkflows[0]?.name || '';
-        if(settings.comfyWorkflow && (!comfyWorkflowCache[settings.comfyWorkflow] || comfyWorkflowCache[settings.comfyWorkflow]._canvasFallback)) ensureComfyWorkflow(settings.comfyWorkflow).then(renderDynamicParams);
-    }
-    let html = '';
-    if(settings.comfyMode === 'text'){
-        html += `<div class="num-compact"><span class="num-label">${escapeHtml(tr('smart.width'))}</span><input type="number" data-param="width" value="${Number(settings.width || 1024)}"></div>
-            <div class="num-compact"><span class="num-label">${escapeHtml(tr('smart.height'))}</span><input type="number" data-param="height" value="${Number(settings.height || 1024)}"></div>`;
-    } else if(settings.comfyMode === 'enhance'){
-        html += `<div class="num-compact"><span class="num-label">${escapeHtml(tr('smart.strength'))}</span><input type="number" min="0.1" max="1" step="0.05" data-param="enhanceStrength" value="${Number(settings.enhanceStrength ?? 0.5)}"></div>
-            <button type="button" class="setting-check ${settings.enhanceUpscale ? 'active' : ''}" data-toggle-param="enhanceUpscale"><span class="check-box"></span><span>${escapeHtml(tr('smart.superResolution'))}</span></button>
-            ${settings.enhanceUpscale ? renderUpscalePill('enhanceUpscaleRes', Number(settings.enhanceUpscaleRes || 2048)) : ''}`;
-    } else if(settings.comfyMode === 'edit'){
-        html += `<button type="button" class="setting-check ${settings.editUpscale ? 'active' : ''}" data-toggle-param="editUpscale"><span class="check-box"></span><span>${escapeHtml(tr('smart.superResolution'))}</span></button>
-            ${settings.editUpscale ? renderUpscalePill('editUpscaleRes', Number(settings.editUpscaleRes || 2048)) : ''}`;
-    } else {
-        const wf = comfyWorkflowCache[settings.comfyWorkflow] || {
-            config:{title:settings.comfyWorkflowTitle || settings.comfyWorkflow || '', fields:settings.comfyWorkflowFields || []}
-        };
-        const fields = (wf?.config?.fields || []).filter(f => comfyFieldKind(f) === 'setting');
-        html += renderComfyWorkflowControl();
-        html += fields.length ? fields.map(renderComfySettingField).join('') : (settings.comfyWorkflow ? '' : `<div class="muted-note">${escapeHtml(tr('smart.noWorkflow'))}</div>`);
-    }
-    dynamicParams.innerHTML = `
-        <div class="smart-control comfy-mode-control">
-            <button class="smart-pill" type="button"><i data-lucide="workflow"></i><span>${escapeHtml(modeOptions.find(([v]) => v === settings.comfyMode)?.[1] || 'ComfyUI')}</span></button>
-            <div class="smart-popover compact-popover">
-                <div class="smart-popover-title">${escapeHtml(tr('smart.comfyMode'))}</div>
-                <div class="model-list">
-                    ${modeOptions.map(([value, label]) => `<button type="button" class="direct-option ${value === settings.comfyMode ? 'active' : ''}" data-smart-param="comfyMode" data-smart-value="${escapeHtml(value)}"><span>${escapeHtml(label)}</span></button>`).join('')}
-                </div>
-            </div>
-        </div>
-        ${html}
-    `;
-}
-function renderComfyNodeParamsNote(){
-    return `<div class="workflow-params-note" role="status"><i data-lucide="panel-top"></i><span>参数已在上方工作流节点中设置</span></div>`;
-}
-function renderUpscalePill(paramKey, current){
-    const opts = [2048, 4096];
-    const labels = {2048:'2X / 2048', 4096:'4X / 4096'};
-    return `<div class="smart-control upscale-control">
-        <button class="smart-pill" type="button"><i data-lucide="maximize-2"></i><span>${escapeHtml(labels[current] || `${current}px`)}</span></button>
-        <div class="smart-popover compact-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.upscaleTarget'))}</div>
-            <div class="model-list">
-                ${opts.map(v => `<button type="button" class="direct-option ${v === current ? 'active' : ''}" data-smart-param="${escapeHtml(paramKey)}" data-smart-value="${v}"><span>${escapeHtml(labels[v])}</span></button>`).join('')}
-            </div>
-        </div>
-    </div>`;
-}
-function renderComfyWorkflowControl(){
-    const selected = String(settings.comfyWorkflow || '').trim();
-    if(!comfyWorkflows.length && !selected) return `<div class="muted-note">${escapeHtml(tr('smart.noWorkflow'))}</div>`;
-    const current = comfyWorkflows.find(w => w.name === selected)
-        || (selected ? {name:selected, title:settings.comfyWorkflowTitle || selected.replace('.json','')} : comfyWorkflows[0]);
-    const label = current?.title || (current?.name || '').replace('.json','') || tr('smart.workflow');
-    const options = comfyWorkflows.some(w => w.name === selected) || !selected
-        ? comfyWorkflows
-        : [{name:selected, title:label}, ...comfyWorkflows];
-    return `<div class="smart-control workflow-control">
-        <button class="smart-pill" type="button"><i data-lucide="layers"></i><span class="sub">${escapeHtml(label)}</span></button>
-        <div class="smart-popover compact-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.workflow'))}</div>
-            <div class="model-list">
-                ${options.map(w => `<button type="button" class="direct-option ${w.name === settings.comfyWorkflow ? 'active' : ''}" data-smart-param="comfyWorkflow" data-smart-value="${escapeHtml(w.name)}"><span>${escapeHtml(w.title || w.name.replace('.json',''))}</span></button>`).join('')}
-            </div>
-        </div>
-    </div>`;
+    workflowParams.renderRunningHub(settings, ref, rhActiveFields());
 }
 function renderSizeControls(prefix='', includeSource=false){
     const ratioKey = prefix ? `${prefix}Ratio` : 'ratio';
@@ -7490,113 +6704,15 @@ function renderCustomSizeControls(prefix=''){
     return `<input type="number" data-param="${wKey}" value="${escapeHtml(settings[wKey] || '')}" placeholder="宽度">
             <input type="number" data-param="${hKey}" value="${escapeHtml(settings[hKey] || '')}" placeholder="高度">`;
 }
-function renderComfySettingField(field){
-    const value = comfyParamValue(field);
-    const label = field.name || field.input || field.id;
-    if(field.type === 'boolean') return `<button type="button" class="setting-check ${value ? 'active' : ''}" data-comfy-bool="${escapeHtml(field.id)}"><span class="check-box"></span><span>${escapeHtml(label)}</span></button>`;
-    if(field.type === 'dropdown'){
-        const opts = field.options || [];
-        const curLabel = comfyOptionLabel(field, value || opts[0] || label);
-        return `<div class="smart-control comfy-dropdown-control" title="${escapeHtml(label)}">
-            <button class="smart-pill" type="button"><span class="sub">${escapeHtml(curLabel)}</span></button>
-            <div class="smart-popover compact-popover">
-                <div class="smart-popover-title">${escapeHtml(label)}</div>
-                <div class="model-list">
-                    ${opts.map(o => `<button type="button" class="direct-option ${String(o) === String(value) ? 'active' : ''}" data-comfy-pick="${escapeHtml(field.id)}" data-comfy-value="${escapeHtml(o)}"><span>${escapeHtml(comfyOptionLabel(field, o))}</span></button>`).join('') || `<div class="muted-note">${escapeHtml(tr('smart.noOption'))}</div>`}
-                </div>
-            </div>
-        </div>`;
-    }
-    if(field.type === 'textarea') return `<textarea class="wide" data-comfy-param="${escapeHtml(field.id)}" placeholder="${escapeHtml(label)}" style="width:160px">${escapeHtml(value)}</textarea>`;
-    const type = (field.type === 'number' || field.type === 'slider') ? 'number' : 'text';
-    const min = field.min !== undefined ? ` min="${escapeHtml(field.min)}"` : '';
-    const max = field.max !== undefined ? ` max="${escapeHtml(field.max)}"` : '';
-    const step = field.step !== undefined ? ` step="${escapeHtml(field.step)}"` : '';
-    const isNumeric = type === 'number';
-    const inputHtml = `<input type="${type}" data-comfy-param="${escapeHtml(field.id)}" value="${escapeHtml(value)}"${min}${max}${step}>`;
-    if(isNumeric && comfyRandomEnabledField(field)){
-        const active = smartComfyRandomActive(field.id);
-        return `<div class="num-with-dice" title="${escapeHtml(label)}">
-            <span class="num-label">${escapeHtml(label)}</span>
-            ${inputHtml}
-            <button type="button" class="dice-btn ${active ? 'active' : ''}" data-comfy-random="${escapeHtml(field.id)}" title="${escapeHtml(active ? tr('smart.diceOn') : tr('smart.diceOff'))}"><i data-lucide="dice-5"></i></button>
-        </div>`;
-    }
-    if(isNumeric){
-        return `<div class="num-compact" title="${escapeHtml(label)}"><span class="num-label">${escapeHtml(label)}</span>${inputHtml}</div>`;
-    }
-    return `<div class="num-compact" title="${escapeHtml(label)}"><span class="num-label">${escapeHtml(label)}</span>${inputHtml}</div>`;
-}
-const RH_KNOWN_FIELD_OPTIONS = {
-    aspectRatio:['1:1','16:9','9:16','4:3','3:4','4:5','5:4','3:2','2:3','21:9','9:21'],
-    aspect_ratio:['1:1','16:9','9:16','4:3','3:4','4:5','5:4','3:2','2:3','21:9','9:21'],
-    ratio:['1:1','16:9','9:16','21:9','9:21','4:3','3:4','4:5','5:4','3:2','2:3'],
-    resolution:['1k','2k','4k','8k'],
-    size:['512','768','1024','1280','1536','2048'],
-    quality:['low','medium','high','best'],
-    scheduler:['normal','karras','exponential','sgm_uniform','simple','ddim_uniform'],
-    sampler:['euler','euler_ancestral','heun','dpm_2','dpm_2_ancestral','lms','dpmpp_2m','dpmpp_sde','ddim','uni_pc']
-};
-function rhParamKey(nodeId, fieldName){
-    return `${nodeId ?? ''}::${fieldName ?? ''}`;
-}
-function rhFieldKind(field){
-    const type = String(field?.fieldType || '').trim().toUpperCase();
-    if(type === 'IMAGE') return 'image';
-    if(type === 'VIDEO') return 'video';
-    if(type === 'AUDIO') return 'audio';
-    if(type === 'SLIDER') return 'slider';
-    if(['NUMBER','FLOAT','INTEGER','INT'].includes(type)) return 'number';
-    if(['BOOLEAN','BOOL'].includes(type)) return 'boolean';
-    const key = `${field?.fieldName || ''} ${field?.fieldValue || ''}`.toLowerCase();
-    if(/\b(image|img|mask|photo|picture)\b/.test(key) || /\.(png|jpe?g|webp|gif|bmp)(\?|$)/i.test(key)) return 'image';
-    if(/\b(video|movie|mp4)\b/.test(key) || /\.(mp4|webm|mov|m4v|mkv)(\?|$)/i.test(key)) return 'video';
-    if(/\b(audio|sound|music|voice)\b/.test(key) || /\.(mp3|wav|ogg|m4a|flac|aac)(\?|$)/i.test(key)) return 'audio';
-    return 'text';
-}
-function rhFieldRole(field){
-    const kind = rhFieldKind(field);
-    if(['image','video','audio','number','slider','boolean'].includes(kind)) return kind;
-    const text = `${field?.fieldName || ''} ${field?.label || ''} ${field?.group || ''}`.toLowerCase();
-    if(/prompt|positive|negative|text|caption|description|关键词|提示词|正向|负向/.test(text)) return 'prompt';
-    return 'text';
-}
-function rhExtractFieldOptions(field){
-    const candidates = [field?.fieldData, field?.options, field?.list, field?.values, field?.enum, field?.choices, field?.items, field?.selectOptions, field?.dropdown];
-    for(const candidate of candidates){
-        if(!Array.isArray(candidate) || !candidate.length) continue;
-        if(candidate.every(x => ['string','number'].includes(typeof x))) return candidate.map(String);
-        if(candidate.every(x => x && typeof x === 'object' && ('value' in x || 'label' in x || 'name' in x))){
-            return candidate.map(x => x.value ?? x.label ?? x.name).filter(v => v !== undefined && v !== null).map(String);
-        }
-    }
-    const name = String(field?.fieldName || '').trim();
-    if(name){
-        if(RH_KNOWN_FIELD_OPTIONS[name]) return RH_KNOWN_FIELD_OPTIONS[name].map(String);
-        const hit = Object.keys(RH_KNOWN_FIELD_OPTIONS).find(k => k.toLowerCase() === name.toLowerCase());
-        if(hit) return RH_KNOWN_FIELD_OPTIONS[hit].map(String);
-    }
-    return null;
-}
-function rhDefaultValue(field){
-    let value = field?.fieldValue;
-    if(Array.isArray(value)) value = value[0];
-    if(value === undefined || value === null || typeof value === 'object') return '';
-    return String(value);
-}
-function rhIsWorkflowLinkValue(value){
-    return Array.isArray(value) && value.length === 2 && typeof value[0] === 'string' && Number.isInteger(value[1]);
-}
+const {
+    keyOf:rhParamKey, fieldKind:rhFieldRole, defaultValue:rhDefaultValue,
+    orderedFields:orderedRhFields, bindFields:bindRhFields, pruneInputs:pruneRhInputs, uploadUrl:rhUploadUrl,
+} = XiaomeiRunningHubInputs;
 function rhRandomEnabled(field){
-    return rhFieldKind(field) === 'number' && field?.random_enabled === true;
+    return field?.random_enabled === true && rhFieldRole(field) === 'number';
 }
 function smartRhRandomActive(key){
-    return smartRhRandomActiveFor(settings, key);
-}
-function smartRhRandomActiveFor(sourceSettings=settings, key){
-    sourceSettings = sourceSettings || settings;
-    sourceSettings.rhRandomActive = sourceSettings.rhRandomActive || {};
-    return sourceSettings.rhRandomActive[key] !== false;
+    return settings.rhRandomActive?.[key] !== false;
 }
 function toggleSmartRhRandom(key){
     const field = rhActiveFields().find(f => rhParamKey(f.nodeId, f.fieldName) === key);
@@ -7617,32 +6733,13 @@ function smartRhRandomValue(field){
         type:'number'
     });
 }
-function rhParamValue(field, media=null, sourceSettings=settings, fields=null, randomValues=smartRhRandomValues){
-    sourceSettings = sourceSettings || settings;
-    sourceSettings.rhParams = sourceSettings.rhParams || {};
+function rhParamValue(field, sourceSettings=settings, randomValues=smartRhRandomValues, prompt=''){
     const key = rhParamKey(field.nodeId, field.fieldName);
-    const param = sourceSettings.rhParams[key];
-    const kind = rhFieldKind(field);
-    if(['image','video','audio'].includes(kind)){
-        const idx = rhFieldIndexes(fields || rhActiveFields(sourceSettings))[key] || 0;
-        const up = media?.[kind]?.[idx]?.url || '';
-        if(rhCurrentKind(sourceSettings) === 'workflow' && kind === 'image' && field.required !== true && !up) return '';
-        return up || param?.value || rhDefaultValue(field);
+    if(rhRandomEnabled(field) && sourceSettings.rhRandomActive?.[key] !== false){
+        return randomValues[key] ??= smartRhRandomValue(field);
     }
-    if(rhRandomEnabled(field) && smartRhRandomActiveFor(sourceSettings, key)){
-        if(randomValues[key] === undefined) randomValues[key] = smartRhRandomValue(field);
-        return randomValues[key];
-    }
-    if(rhFieldRole(field) === 'prompt') return param?.value ?? (media?.prompt || rhDefaultValue(field));
-    return param?.value ?? rhDefaultValue(field);
-}
-function rhUserParamValue(field){
-    settings.rhParams = settings.rhParams || {};
-    const key = rhParamKey(field.nodeId, field.fieldName);
-    return settings.rhParams[key]?.value ?? '';
-}
-function rhPromptPlaceholder(field){
-    return rhDefaultValue(field) || field?.label || field?.fieldName || tr('smart.promptPlaceholder');
+    const saved = sourceSettings.rhParams?.[key]?.value;
+    return saved ?? ((rhFieldRole(field) === 'prompt' && prompt) || rhDefaultValue(field));
 }
 function rhDefaultPromptSuggestion(){
     if(settings.engine !== 'runninghub') return '';
@@ -7662,17 +6759,6 @@ function updatePromptPlaceholder(){
     const suggestion = rhDefaultPromptSuggestion();
     promptInput.dataset.placeholder = suggestion || tr('smart.promptPlaceholder');
 }
-function rhFieldIndexes(fields){
-    const counters = {image:0, video:0, audio:0};
-    const map = {};
-    sortRunningHubFields(fields).forEach(field => {
-        const kind = rhFieldKind(field);
-        if(['image','video','audio'].includes(kind)){
-            map[rhParamKey(field.nodeId, field.fieldName)] = counters[kind]++;
-        }
-    });
-    return map;
-}
 async function ensureRunningHubWorkflow(workflowId){
     workflowId = String(workflowId || '').trim();
     if(!workflowId) return null;
@@ -7686,17 +6772,14 @@ async function ensureRunningHubWorkflow(workflowId){
     runningHubWorkflowCache[workflowId] = data.workflow || null;
     return runningHubWorkflowCache[workflowId];
 }
-async function currentRunningHubWorkflowConfig(sourceSettings=settings){
-    const ref = selectedRunningHubRef(sourceSettings);
-    if(ref?.kind !== 'workflow') return null;
+async function currentRunningHubWorkflowConfig(ref, sourceSettings){
     const cached = await ensureRunningHubWorkflow(ref.id).catch(() => null);
+    const entry = ref.entry;
+    const inline = sourceSettings.rhWorkflowInfo;
+    const graphs = [cached?.workflowJson, entry?.workflowJson, entry?.raw?.workflowJson, entry?.raw?.prompt, inline?.workflowJson];
     return {
-        ...(ref.entry || {}),
-        ...(cached || {}),
-        workflowId:ref.id,
-        fields:Array.isArray(cached?.fields) && cached.fields.length ? cached.fields : rhEntryFields(ref.entry),
-        optionalImageMode:ref.entry?.optionalImageMode || cached?.optionalImageMode || 'prune-workflow',
-        workflowJson:rhWorkflowJsonFromSources(cached?.workflowJson, ref.entry?.workflowJson, ref.entry?.raw?.workflowJson, ref.entry?.raw?.prompt)
+        optionalImageMode:entry?.optionalImageMode || cached?.optionalImageMode || inline?.optionalImageMode,
+        workflowJson:graphs.find(graph => graph && typeof graph === 'object' && Object.keys(graph).length),
     };
 }
 function rhMediaForRun(prompt, refs){
@@ -7709,318 +6792,170 @@ function rhMediaForRun(prompt, refs){
         prompt:String(prompt || '').trim()
     };
 }
-function tempShUploadedUrlFor(url, sourceSettings=settings){
-    const source = String(url || '');
-    const manualLinks = ((sourceSettings || settings).videoTempShLinks || []).filter(item => item?.manual === true);
-    const links = [...(transientSmartCloudLinks || []), ...manualLinks];
-    const match = links.find(item =>
-        item?.url && (item?.source === source || item?.originalLocalUrl === source || item?.url === source)
-    );
-    return match?.url || url;
-}
 function mediaRefSourceUrl(ref){
     return localDisplayUrlForMediaItem(ref) || ref?.sourceUrl || ref?.originalLocalUrl || ref?.url || '';
 }
-function applyUploadedUrlsToSmartRefs(refs, sourceSettings=settings){
-    return (refs || []).map(ref => {
-        if(!ref?.url) return ref;
-        const sourceUrl = mediaRefSourceUrl(ref);
-        const url = tempShUploadedUrlFor(sourceUrl, sourceSettings);
-        return url && url !== ref.url ? {...ref, url, originalLocalUrl:ref.originalLocalUrl || ref.url} : ref;
-    });
+function manualSmartMediaLinks(sourceSettings=settings){
+    return manualMediaLinks((sourceSettings || settings).videoTempShLinks).filter(link => link.url);
 }
 function manualSmartVideoLink(sourceSettings=settings){
-    return ((sourceSettings || settings).videoTempShLinks || []).find(item => item?.manual === true && item?.url) || null;
+    return manualSmartMediaLinks(sourceSettings)[0] || null;
 }
-function manualSmartMediaLinks(sourceSettings=settings){
-    return ((sourceSettings || settings).videoTempShLinks || []).filter(item => item?.manual === true && item?.url);
+function activeSmartCloudSession(){
+    const id = canvas?.id;
+    if(!smartCloudScope || smartCloudScope.id !== id){
+        smartCloudScope = {id, session:createMediaUploadSession(uploadSmartCloudMedia)};
+    }
+    return smartCloudScope.session;
 }
-function renderedInputMediaRefs(){
-    if(!inputThumbsRow) return [];
-    return [...inputThumbsRow.querySelectorAll('.input-thumb')].map((el, index) => ({
-        url:el.dataset.url || '',
-        sourceUrl:el.dataset.sourceUrl || el.dataset.url || '',
-        nodeId:el.dataset.nodeId || '',
-        imageIndex:Number.isFinite(Number(el.dataset.imageIndex)) ? Number(el.dataset.imageIndex) : index,
-        name:tr('smart.inputNum').replace('{n}', String(index + 1)),
-        role:`image_${index + 1}`
-    })).filter(ref => ref.url);
+function currentVideoMediaRefs(node){
+    const thumbnails = [...(inputThumbsRow?.querySelectorAll('.input-thumb') || [])];
+    const refs = thumbnails.length
+        ? thumbnails.map(({dataset}) => ({url:dataset.url, sourceUrl:dataset.sourceUrl, kind:dataset.mediaKind}))
+        : (buildPromptRequest(node, null, true, smartLoopContext).refs || []);
+    return refs.filter(ref => ref?.url && ['image','video'].includes(mediaKindForItem(ref)));
 }
-function currentSmartMediaRefs(node){
-    if(!node) return [];
-    const request = buildPromptRequest(node, null, true, smartLoopContext);
-    return (request.refs || []).filter(ref => ref?.url && ['image','video'].includes(mediaKindForItem(ref)));
-}
-function currentUploadMediaRefs(node){
-    const rendered = renderedInputMediaRefs();
-    if(rendered.length) return rendered;
-    return currentSmartMediaRefs(node);
-}
-function currentSmartMediaLinks(node=null){
-    return currentUploadMediaRefs(node || activeSettingsSubject()).map(ref => {
-        const sourceUrl = mediaRefSourceUrl(ref);
-        const uploaded = tempShUploadedUrlFor(sourceUrl);
-        return uploaded && uploaded !== sourceUrl ? uploaded : '';
-    }).filter(Boolean);
-}
-function clearManualSmartVideoUrl(){
-    settings.videoTempShLinks = (settings.videoTempShLinks || []).filter(item => item?.manual !== true);
-}
-function splitManualMediaUrls(text){
-    return String(text || '')
-        .split(/[\s,，]+/)
-        .map(url => url.trim())
-        .filter(Boolean);
-}
-async function uploadMediaRefToCloud(ref){
-    const kind = mediaKindForItem(ref);
-    const sourceUrl = mediaRefSourceUrl(ref);
-    if(!sourceUrl) throw new Error('没有可上传的媒体');
-    const existing = tempShUploadedUrlFor(sourceUrl);
-    if(existing && existing !== sourceUrl) return existing;
-    if(/^https?:\/\//i.test(sourceUrl)) return sourceUrl;
+async function uploadSmartCloudMedia(source){
     const response = await fetch('/api/cloud-video/upload', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({url:sourceUrl, service:'auto'})
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({url:source, service:'auto'}),
     });
     if(!response.ok) throw new Error(await smartResponseErrorMessage(response, '云端上传失败'));
-    const data = await response.json();
-    const uploadedUrl = data.url || '';
-    if(!uploadedUrl) throw new Error('云端没有返回链接');
-    transientSmartCloudLinks = [
-        ...(transientSmartCloudLinks || []).filter(item => item?.source !== sourceUrl),
-        {source:sourceUrl, url:uploadedUrl, expires:data.expires || '3 days', kind}
-    ];
-    return uploadedUrl;
-}
-function applyManualVideoUrlToSmartRef(ref, manualUrl){
-    if(!manualUrl) return;
-    const sourceUrl = mediaRefSourceUrl(ref) || manualUrl;
-    settings.videoTempShLinks = [
-        ...(settings.videoTempShLinks || []).filter(item => item?.source !== sourceUrl),
-        {source:sourceUrl, url:manualUrl, manual:true}
-    ];
+    const {url} = await response.json();
+    if(!isHttpMediaLink(url)) throw new Error('云端没有返回链接');
+    return url;
 }
 async function setCurrentSmartManualVideoUrl(){
     const node = activeSettingsSubject();
     if(!node) return '';
+    const owner = canvas?.id;
     savePromptDraftForCurrent();
-    const refs = currentUploadMediaRefs(node);
-    const firstLocal = refs.find(ref => ref?.url && !isRemoteVideoReferenceUrl(ref.url));
-    const firstAny = firstLocal || refs[0] || null;
-    const linkedUrls = currentSmartMediaLinks(node);
-    const currentLinks = linkedUrls.length ? linkedUrls : (firstAny ? [tempShUploadedUrlFor(mediaRefSourceUrl(firstAny))] : []);
-    const value = await openAssetNameDialog({
+    const refs = currentVideoMediaRefs(node);
+    const session = activeSmartCloudSession();
+    const manual = manualSmartMediaLinks();
+    const linkFor = source => session.urlFor(source) || findMediaLink(manual, source)?.url;
+    const sources = refs.map(mediaRefSourceUrl);
+    const previous = sources.map(linkFor).filter(Boolean);
+    const preferred = sources.find(source => !isRemoteMediaLink(source)) || sources[0];
+    const value = await localAssetSidebar.askName({
         title:refs.length > 1 ? `输入 ${refs.length} 个媒体网址 / 火山素材 URI` : '输入媒体网址 / 火山素材 URI',
-        value:currentLinks.filter(isRemoteVideoReferenceUrl).join('\n'),
+        value:(previous.length ? previous : [preferred]).filter(isRemoteMediaLink).join('\n'),
         placeholder:refs.length > 1 ? '每行一个链接，按图1/图2顺序对应' : 'https://example.com/media 或 asset://asset-xxx',
         cancelValue:null,
-        multiline:refs.length > 1
+        multiline:refs.length > 1,
     });
-    if(value === null) return '';
-    const urls = splitManualMediaUrls(value);
-    if(!urls.length){
-        clearManualSmartVideoUrl();
-        persistActiveSmartSettings();
-        scheduleSave();
-        render();
-        toast('已清除手动网址');
-        return '';
-    }
-    const invalid = urls.find(url => !isRemoteVideoReferenceUrl(url));
-    if(invalid){
+    if(value === null || canvas?.id !== owner || activeSettingsSubject()?.id !== node.id) return '';
+
+    const urls = String(value || '').split(/[\s,，]+/).filter(Boolean);
+    if(urls.some(url => !isRemoteMediaLink(url))){
         toast('请输入 http/https 媒体网址或 asset:// 火山素材 URI');
         return '';
     }
-    clearManualSmartVideoUrl();
-    const targets = refs.length ? refs : [firstAny].filter(Boolean);
-    urls.forEach((url, index) => {
-        const target = targets[index] || targets[targets.length - 1] || {url};
-        applyManualVideoUrlToSmartRef(target, url);
-    });
+    let links = withoutManualMediaLinks(settings.videoTempShLinks);
+    for(const [index, url] of urls.entries()){
+        const source = sources[index] || sources.at(-1) || url;
+        links = storeMediaLink(links, {source, url, manual:true});
+    }
+    settings.videoTempShLinks = links;
     persistActiveSmartSettings();
     scheduleSave();
     render();
-    toast(`已设置 ${urls.length} 个媒体网址`);
+    toast(urls.length ? `已设置 ${urls.length} 个媒体网址` : '已清除手动网址');
     return urls[0] || '';
 }
 async function uploadCurrentSmartVideosToCloud(){
     const node = activeSettingsSubject();
     if(!node) return [];
     savePromptDraftForCurrent();
-    const refs = currentUploadMediaRefs(node);
-    const localRefs = refs.filter(ref => {
-        const sourceUrl = ref?.sourceUrl || ref?.originalLocalUrl || ref?.url || '';
-        if(!sourceUrl) return false;
-        const uploaded = tempShUploadedUrlFor(sourceUrl);
-        return uploaded !== sourceUrl || !isRemoteVideoReferenceUrl(sourceUrl);
-    });
-    if(!localRefs.length){
+    const session = activeSmartCloudSession();
+    const manual = manualSmartMediaLinks();
+    const references = currentVideoMediaRefs(node).map(mediaRefSourceUrl).filter(Boolean);
+    const candidates = references.map(source => ({source, cached:session.urlFor(source) || findMediaLink(manual, source)?.url}))
+        .filter(({source, cached}) => cached && cached !== source || !isRemoteMediaLink(source));
+    if(!candidates.length){
         toast('当前输入图片或视频已是云端链接');
         return [];
     }
-    const btn = dynamicParams?.querySelector('[data-trusted-source="cloud"]') || inputThumbsRow?.querySelector('[data-temp-sh-upload-video]');
-    if(btn) btn.disabled = true;
-    toast(`正在上传 ${localRefs.length} 个媒体文件到云端...`);
+    const button = dynamicParams?.querySelector('[data-trusted-source="cloud"]');
+    if(button) button.disabled = true;
+    toast(`正在上传 ${candidates.length} 个媒体文件到云端...`);
     try {
         const urls = [];
-        for(const ref of localRefs){
-            urls.push(await uploadMediaRefToCloud(ref));
+        for(const {source, cached} of candidates){
+            urls.push(cached || await session.stage(source));
         }
         toast(`云端上传完成：${urls.length} 个媒体文件`);
         return urls;
     } finally {
-        if(btn) btn.disabled = false;
+        if(button) button.disabled = false;
     }
 }
-function rhRequiredLabel(field){
-    return field?.label || field?.fieldName || `#${field?.nodeId || ''}`;
+async function requestRunningHub(path, message, body){
+    const response = await fetch(path, body === undefined ? undefined : {
+        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body),
+    });
+    const reply = await response.json();
+    if(!response.ok || reply.success === false) throw new Error(reply.detail || reply.error || tr(message));
+    return reply;
 }
-function rhPruneWorkflowForMissingFields(workflowJson, missingFields){
-    if(!workflowJson || typeof workflowJson !== 'object' || !missingFields?.length) return null;
-    const workflow = JSON.parse(JSON.stringify(workflowJson));
-    const removeIds = new Set();
-    missingFields.forEach(field => {
-        const node = workflow[String(field.nodeId)];
-        if(node?.inputs && Object.prototype.hasOwnProperty.call(node.inputs, field.fieldName)){
-            delete node.inputs[field.fieldName];
+
+async function buildRunningHubInputs(fields, media, sourceSettings, workflow){
+    const useWallet = sourceSettings.rhPayment === 'wallet';
+    const prune = workflow && (workflow.optionalImageMode || 'prune-workflow') === 'prune-workflow';
+    const missing = [];
+    const ready = [];
+    const randomValues = {};
+    for(const {field, kind, isMedia, linked, key} of bindRhFields(fields, media)){
+        if(workflow && kind === 'image' && !linked){
+            if(field.required !== true){
+                missing.push(field);
+                continue;
+            }
+            if(prune){
+                const label = field.label || field.fieldName || `#${field.nodeId || ''}`;
+                throw new Error(`RunningHub 工作流缺少必选图片：${label}`);
+            }
         }
-        if(node && (!node.inputs || !Object.keys(node.inputs).length)){
-            removeIds.add(String(field.nodeId));
+        if(workflow && field.sourceFromUpstream === false && !isMedia) continue;
+        let value;
+        if(isMedia){
+            value = linked || sourceSettings.rhParams?.[key]?.value || rhDefaultValue(field);
+        } else {
+            value = rhParamValue(field, sourceSettings, randomValues, media.prompt);
+            if(kind === 'prompt' && !String(value || '').trim()) value = rhDefaultValue(field);
+            if((kind === 'number' || kind === 'slider') && String(value ?? '').trim() && !Number.isNaN(Number(value))){
+                value = Number(value);
+            }
         }
-    });
-    removeIds.forEach(id => delete workflow[id]);
-    Object.values(workflow).forEach(node => {
-        if(!node?.inputs || typeof node.inputs !== 'object') return;
-        Object.entries(node.inputs).forEach(([name, value]) => {
-            if(rhIsWorkflowLinkValue(value) && removeIds.has(String(value[0]))) delete node.inputs[name];
-        });
-    });
-    return workflow;
-}
-async function rhBuildWorkflowRequestExtras(media, nodeInfoList, sourceSettings=settings){
-    const config = await currentRunningHubWorkflowConfig(sourceSettings);
-    if(!config || (config.optionalImageMode || 'prune-workflow') !== 'prune-workflow') return {};
-    const fields = rhActiveFields(sourceSettings);
-    const indexes = rhFieldIndexes(fields);
-    const missingOptional = [];
-    for(const field of fields){
-        if(rhFieldKind(field) !== 'image') continue;
-        const key = rhParamKey(field.nodeId, field.fieldName);
-        const idx = indexes[key] || 0;
-        const hasInput = Boolean(media.image?.[idx]?.url);
-        if(field.required === true && !hasInput) throw new Error(`RunningHub 工作流缺少必选图片：${rhRequiredLabel(field)}`);
-        if(field.required !== true && !hasInput) missingOptional.push(field);
+        ready.push({field, value, isMedia});
     }
-    if(!missingOptional.length) return {};
-    missingOptional.forEach(field => {
-        const key = rhParamKey(field.nodeId, field.fieldName);
-        const idx = nodeInfoList.findIndex(item => rhParamKey(item.nodeId, item.fieldName) === key);
-        if(idx >= 0) nodeInfoList.splice(idx, 1);
-    });
-    const workflow = rhPruneWorkflowForMissingFields(config.workflowJson || {}, missingOptional);
-    return workflow ? {workflow} : {};
-}
-async function rhUploadValueIfNeeded(value, sourceSettings=settings){
-    const text = String(value || '').trim();
-    if(!text) return '';
-    if(!/^https?:\/\//i.test(text) && !text.startsWith('/output/') && !text.startsWith('/assets/')) return text;
-    const res = await fetch('/api/runninghub/upload-asset', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({url:text, useWallet:(sourceSettings || settings).rhPayment === 'wallet'})
-    });
-    const data = await res.json();
-    if(!res.ok || data.success === false) throw new Error(data.detail || data.error || tr('smart.rhUploadFailed'));
-    return data.data?.fileName || text;
-}
-async function rhBuildNodeInfoList(media, sourceSettings=settings, randomValues=smartRhRandomValues){
-    const fields = rhActiveFields(sourceSettings);
-    const result = [];
-    const indexes = rhFieldIndexes(fields);
-    const mode = rhCurrentKind(sourceSettings);
-    for(const field of fields){
-        const kind = rhFieldKind(field);
-        const key = rhParamKey(field.nodeId, field.fieldName);
-        if(mode === 'workflow' && field.sourceFromUpstream === false && !['image','video','audio'].includes(kind)) continue;
-        if(mode === 'workflow' && kind === 'image'){
-            const idx = indexes[key] || 0;
-            if(field.required !== true && !media.image?.[idx]?.url) continue;
+    const nodeInfoList = [];
+    for(const {field, value, isMedia} of ready){
+        let fieldValue = value;
+        if(isMedia){
+            fieldValue = String(value || '').trim();
+            const url = rhUploadUrl(fieldValue);
+            if(url){
+                const reply = await requestRunningHub('/api/runninghub/upload-asset', 'smart.rhUploadFailed', {url, useWallet});
+                fieldValue = reply.data?.fileName || fieldValue;
+            }
         }
-        let value = rhParamValue(field, media, sourceSettings, fields, randomValues);
-        if(rhFieldRole(field) === 'prompt' && !String(value || '').trim()) value = rhDefaultValue(field);
-        if(['image','video','audio'].includes(kind)) value = await rhUploadValueIfNeeded(value, sourceSettings);
-        if(['number','slider'].includes(kind) && String(value ?? '').trim() !== '' && !Number.isNaN(Number(value))) value = Number(value);
-        result.push({nodeId:field.nodeId, fieldName:field.fieldName, fieldValue:value});
+        nodeInfoList.push({nodeId:field.nodeId, fieldName:field.fieldName, fieldValue});
     }
-    return result;
-}
-function renderRhSettingField(field){
-    const key = rhParamKey(field.nodeId, field.fieldName);
-    const kind = rhFieldRole(field);
-    const label = field.label || field.fieldName || 'Field';
-    const value = rhParamValue(field, null);
-    const options = rhExtractFieldOptions(field);
-    if(kind === 'boolean'){
-        const active = String(value).toLowerCase() === 'true';
-        return `<button type="button" class="setting-check ${active ? 'active' : ''}" data-rh-bool="${escapeHtml(key)}"><span class="check-box"></span><span>${escapeHtml(label)}</span></button>`;
+    const body = {nodeInfoList, useWallet};
+    if(prune && missing.length){
+        body.workflow = pruneRhInputs(workflow.workflowJson || {}, missing, {keepLinkedNodes:true});
     }
-    if(kind === 'slider'){
-        const min = Number.isFinite(Number(field.min)) ? Number(field.min) : 0;
-        const max = Number.isFinite(Number(field.max)) && Number(field.max) > min ? Number(field.max) : 1;
-        const step = Number.isFinite(Number(field.step)) && Number(field.step) > 0 ? Number(field.step) : 0.01;
-        const numericValue = Number.isFinite(Number(value)) ? Number(value) : min;
-        return `<div class="smart-control rh-slider-control" title="${escapeHtml(label)}">
-            <button class="smart-pill" type="button"><span class="sub">${escapeHtml(label)}</span><span class="rh-slider-pill-value">${escapeHtml(numericValue)}</span></button>
-            <div class="smart-popover compact-popover rh-picker-popover rh-param-popover rh-slider-popover">
-                <div class="smart-popover-title"><span>${escapeHtml(label)}</span><span class="rh-slider-value">${escapeHtml(numericValue)}</span></div>
-                <input type="range" class="smart-range rh-slider-input" data-rh-param="${escapeHtml(key)}" data-rh-type="slider" min="${escapeHtml(min)}" max="${escapeHtml(max)}" step="${escapeHtml(step)}" value="${escapeHtml(numericValue)}">
-            </div>
-        </div>`;
-    }
-    if(options?.length){
-        const curLabel = String(value || options[0] || label);
-        return `<div class="smart-control rh-dropdown-control" title="${escapeHtml(label)}">
-            <button class="smart-pill" type="button"><span class="sub">${escapeHtml(curLabel)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-            <div class="smart-popover compact-popover rh-picker-popover rh-param-popover">
-                <div class="smart-popover-title">${escapeHtml(label)}</div>
-                <div class="model-list rh-param-list">
-                    ${options.map(o => `<button type="button" class="direct-option ${String(o) === String(value) ? 'active' : ''}" data-rh-pick="${escapeHtml(key)}" data-rh-value="${escapeHtml(o)}"><span>${escapeHtml(o)}</span></button>`).join('') || `<div class="muted-note">${escapeHtml(tr('smart.noOption'))}</div>`}
-                </div>
-            </div>
-        </div>`;
-    }
-    const type = kind === 'number' ? 'number' : 'text';
-    const inputHtml = `<input type="${type}" data-rh-param="${escapeHtml(key)}" value="${escapeHtml(value)}">`;
-    if(kind === 'number' && rhRandomEnabled(field)){
-        const active = smartRhRandomActive(key);
-        return `<div class="num-with-dice" title="${escapeHtml(label)}">
-            <span class="num-label">${escapeHtml(label)}</span>
-            ${inputHtml}
-            <button type="button" class="dice-btn ${active ? 'active' : ''}" data-rh-random="${escapeHtml(key)}" title="${escapeHtml(active ? tr('smart.diceOn') : tr('smart.diceOff'))}"><i data-lucide="dice-5"></i></button>
-        </div>`;
-    }
-    return `<div class="num-compact ${type === 'text' ? 'rh-text-param' : ''}" title="${escapeHtml(label)}"><span class="num-label">${escapeHtml(label)}</span>${inputHtml}</div>`;
+    return body;
 }
 function comfyRandomEnabledField(field){
     if(!['number','slider'].includes(field?.type)) return false;
     const seedField = [field.input, field.name].some(value => /(?:^|[^a-z])seed(?:$|[^a-z])|种子/i.test(String(value || '')));
     return seedField || (field.type === 'number' && field.random_enabled === true);
 }
-function smartComfyRandomActive(fieldId){
-    return smartComfyRandomActiveFor(settings, fieldId);
-}
 function smartComfyRandomActiveFor(source, fieldId){
     const active = source?.comfyRandomActive || {};
     return active[fieldId] !== false;
-}
-function toggleSmartComfyRandom(fieldId){
-    settings.comfyRandomActive = settings.comfyRandomActive || {};
-    settings.comfyRandomActive[fieldId] = !smartComfyRandomActive(fieldId);
-    persistActiveSmartSettings();
-    renderDynamicParams();
-    scheduleSave();
 }
 function smartComfyRandomValue(field){
     const isFloat = Number(field.step) > 0 && Number(field.step) < 1;
@@ -8111,35 +7046,6 @@ function setDynamicSetting(key, value){
         const subject = activeSettingsSubject();
         if(subject) delete subject.outpaintSize;
     }
-    if(key === 'comfyWorkflow') {
-        settings.comfyParams = {};
-        const subject = activeSettingsSubject();
-        const entry = (comfyWorkflows || []).find(item => item?.name === settings.comfyWorkflow);
-        if(isSmartComfyWorkflowNode(subject)){
-            subject.workflowRef = settings.comfyWorkflow;
-            subject.workflowTitle = String(entry?.title || settings.comfyWorkflow || 'ComfyUI 工作流').trim();
-            subject.title = subject.workflowTitle;
-            subject.workflowFields = Array.isArray(entry?.fields) ? JSON.parse(JSON.stringify(entry.fields)) : (subject.workflowFields || []);
-            subject.workflowStatus = entry?.readiness?.can_run === true ? 'ready' : (subject.workflowStatus || 'needs_preparation');
-            settings.comfyWorkflowTitle = subject.workflowTitle;
-            settings.comfyWorkflowFields = subject.workflowFields;
-            normalizeSmartComfyWorkflowNode(subject);
-        }
-        ensureComfyWorkflow(settings.comfyWorkflow).then(data => {
-            const config = data?.config && typeof data.config === 'object' ? data.config : {};
-            const fields = Array.isArray(config.fields) ? JSON.parse(JSON.stringify(config.fields)) : [];
-            if(isSmartComfyWorkflowNode(subject) && subject.workflowRef === settings.comfyWorkflow){
-                if(fields.length) subject.workflowFields = fields;
-                if(config.title) subject.workflowTitle = String(config.title).trim();
-                subject.title = subject.workflowTitle || subject.title;
-                settings.comfyWorkflowTitle = subject.workflowTitle;
-                settings.comfyWorkflowFields = subject.workflowFields || [];
-                normalizeSmartComfyWorkflowNode(subject);
-            }
-            renderDynamicParams();
-            render();
-        }).catch(() => renderDynamicParams());
-    }
     if(key === 'rhConfigKey'){
         settings.rhParams = {};
         settings.rhRandomActive = {};
@@ -8152,325 +7058,26 @@ function setDynamicSetting(key, value){
         window.dispatchEvent(new CustomEvent('smart-canvas-generation-settings-change', {detail:{settings:cloneSmartSettings(settings)}}));
     }
 }
-function closeAllSmartPopovers(){
-    closeSmartBatchSelectMenu();
-    document.querySelectorAll('.smart-control').forEach(c => {
-        c.classList.remove('pinned', 'interacting');
-        // 悬停/焦点本身也会打开弹层；关闭时记录一次性屏蔽状态，
-        // 否则鼠标仍停在控件内会让刚关闭的弹层立即重新出现。
-        c.classList.add('popover-dismissed');
-    });
-    document.querySelectorAll('.generation-settings-trigger[aria-expanded="true"], .video-generation-settings-trigger[aria-expanded="true"], .video-options-trigger[aria-expanded="true"]').forEach(trigger => trigger.setAttribute('aria-expanded', 'false'));
-    document.querySelectorAll('.image-model-trigger[aria-expanded="true"]').forEach(trigger => trigger.setAttribute('aria-expanded', 'false'));
-}
-// 悬浮打开弹层后点了里面的参数：标记 interacting，让它熬过重渲染不收起；鼠标真正离开该控件时才关闭。
-function markControlInteracting(el){
-    const ctrl = el?.closest?.('.smart-control');
-    if(ctrl){
-        ctrl.classList.remove('popover-dismissed');
-        if(!ctrl.classList.contains('pinned')) ctrl.classList.add('interacting');
+function setSmartSizeScope(prefix, scope){
+    const resolution = prefix ? prefix + 'Resolution' : 'resolution';
+    const ratio = prefix ? prefix + 'Ratio' : 'ratio';
+    if(scope === 'auto'){
+        const supported = !prefix && settings.engine === 'api' && settings.apiKind !== 'video' && isGptImageAutoSizeModel(settings.model);
+        if(!supported) return;
+        settings[resolution] = 'auto';
+        settings[ratio] ||= 'square';
+    } else if(scope === 'custom'){
+        seedCustomRatioPicker(prefix);
+    } else {
+        if(!['1k','2k','4k'].includes(settings[resolution])) settings[resolution] = sizePickerDefaultResolution(prefix);
+        if(!settings[ratio] || settings[ratio] === 'custom') settings[ratio] = 'square';
     }
+    persistActiveSmartSettings();
+    rememberRecentSmartSettings(settings, activeSettingsSubject());
+    renderDynamicParams();
+    scheduleSave();
 }
-function bindDynamicParams(){
-    if(dynamicParams.dataset.generationSettingsKeysBound !== '1'){
-        dynamicParams.dataset.generationSettingsKeysBound = '1';
-        dynamicParams.addEventListener('keydown', event => {
-            if(event.key !== 'Escape') return;
-            const control = event.target.closest?.('.generation-settings-control, .video-generation-settings-control, .video-options-control, .image-model-control')
-                || dynamicParams.querySelector('.generation-settings-control.pinned, .video-generation-settings-control.pinned, .video-options-control.pinned, .image-model-control.pinned');
-            if(!control) return;
-            event.preventDefault();
-            event.stopPropagation();
-            control.classList.remove('pinned', 'interacting');
-            control.classList.add('popover-dismissed');
-            const trigger = control.querySelector('.generation-settings-trigger, .video-generation-settings-trigger, .video-options-trigger, .image-model-trigger');
-            trigger?.setAttribute('aria-expanded', 'false');
-            trigger?.focus({preventScroll:true});
-        });
-    }
-    dynamicParams.querySelectorAll('.smart-control').forEach(ctrl => {
-        ctrl.onmouseenter = () => ctrl.classList.remove('popover-dismissed');
-        if(ctrl.classList.contains('image-model-control')){
-            ctrl.onmouseenter = () => {
-                ctrl.classList.remove('popover-dismissed');
-                ctrl.querySelector('.image-model-trigger')?.setAttribute('aria-expanded', 'true');
-            };
-        }
-        // 悬浮态的多选：鼠标移出整个控件（含上方弹层，弹层是 DOM 子节点）才解除，途中点参数不收起。
-        ctrl.onmouseleave = () => {
-            ctrl.classList.remove('interacting');
-            if(ctrl.classList.contains('image-model-control') && !ctrl.classList.contains('pinned')){
-                ctrl.querySelector('.image-model-trigger')?.setAttribute('aria-expanded', 'false');
-            }
-            if((ctrl.classList.contains('generation-settings-control') || ctrl.classList.contains('video-generation-settings-control') || ctrl.classList.contains('video-options-control')) && !ctrl.classList.contains('pinned')){
-                ctrl.querySelector('.generation-settings-trigger, .video-generation-settings-trigger, .video-options-trigger')?.setAttribute('aria-expanded', 'false');
-            }
-        };
-    });
-    dynamicParams.querySelectorAll('.smart-control > .smart-pill').forEach(pill => {
-        pill.onclick = event => {
-            event.preventDefault();
-            event.stopPropagation();
-            const ctrl = pill.parentElement;
-            const wasPinned = ctrl.classList.contains('pinned');
-            closeAllSmartPopovers();
-            if(wasPinned){
-                // 关闭后鼠标通常仍停在按钮上；保留屏蔽标记，避免 :hover/:focus-within 立即重开。
-                ctrl.classList.add('popover-dismissed');
-            } else {
-                ctrl.classList.remove('popover-dismissed');
-                ctrl.classList.add('pinned');
-            }
-            if(ctrl.classList.contains('generation-settings-control') || ctrl.classList.contains('video-generation-settings-control') || ctrl.classList.contains('video-options-control')) pill.setAttribute('aria-expanded', wasPinned ? 'false' : 'true');
-            if(ctrl.classList.contains('image-model-control')) pill.setAttribute('aria-expanded', wasPinned ? 'false' : 'true');
-        };
-    });
-    dynamicParams.querySelectorAll('.generation-settings-close').forEach(button => {
-        button.onclick = event => {
-            event.preventDefault();
-            event.stopPropagation();
-            const control = button.closest('.generation-settings-control');
-            control?.classList.remove('pinned', 'interacting');
-            control?.classList.add('popover-dismissed');
-            control?.querySelector('.generation-settings-trigger')?.setAttribute('aria-expanded', 'false');
-        };
-    });
-    dynamicParams.querySelectorAll('[data-smart-param]').forEach(btn => {
-        btn.onclick = event => {
-            event.preventDefault();
-            event.stopPropagation();
-            markControlInteracting(btn);
-            setDynamicSetting(btn.dataset.smartParam, btn.dataset.smartValue);
-            if(btn.dataset.smartParam === 'videoDuration') renderDynamicParams();
-        };
-    });
-    dynamicParams.querySelectorAll('[data-size-scope]').forEach(btn => {
-        btn.onclick = event => {
-            event.preventDefault();
-            event.stopPropagation();
-            markControlInteracting(btn);
-            const prefix = btn.dataset.sizePrefix || '';
-            const scope = btn.dataset.sizeScope;
-            const resKey = prefix ? `${prefix}Resolution` : 'resolution';
-            const ratioKey = prefix ? `${prefix}Ratio` : 'ratio';
-            const allowAuto = !prefix && settings.engine === 'api' && settings.apiKind !== 'video' && isGptImageAutoSizeModel(settings.model);
-            if(scope === 'auto'){
-                if(!allowAuto) return;
-                settings[resKey] = 'auto';
-                if(!settings[ratioKey]) settings[ratioKey] = 'square';
-            } else if(scope === 'custom'){
-                seedCustomRatioPicker(prefix);
-            } else {
-                settings[resKey] = ['1k','2k','4k'].includes(settings[resKey]) ? settings[resKey] : sizePickerDefaultResolution(prefix);
-                if(!settings[ratioKey] || settings[ratioKey] === 'custom') settings[ratioKey] = 'square';
-            }
-            persistActiveSmartSettings();
-            rememberRecentSmartSettings(settings, activeSettingsSubject());
-            renderDynamicParams();
-            scheduleSave();
-        };
-    });
-    dynamicParams.querySelectorAll('[data-param]').forEach(input => {
-        input.onclick = event => event.stopPropagation();
-        input.oninput = input.onchange = event => {
-            event?.stopPropagation?.();
-            setDynamicSetting(input.dataset.param, input.value);
-            if(input.dataset.param === 'videoDuration' && event?.type === 'change') renderDynamicParams();
-        };
-    });
-    dynamicParams.querySelectorAll('[data-video-duration-range]').forEach(input => {
-        const output = input.closest('.video-generation-section')?.querySelector('[data-video-duration-value]');
-        input.oninput = event => {
-            event?.stopPropagation?.();
-            if(output) output.textContent = input.value;
-            setDynamicSetting(input.dataset.param, input.value);
-            const section = input.closest('.video-generation-section');
-            section?.querySelectorAll('[data-smart-param="videoDuration"]').forEach(button => {
-                const delta = Number(button.dataset.videoDurationStep);
-                button.dataset.smartValue = String(Number(input.value) + delta * Number(input.step));
-                button.disabled = delta < 0 ? Number(input.value) <= Number(input.min) : Number(input.value) >= Number(input.max);
-            });
-        };
-        input.onchange = event => {
-            event?.stopPropagation?.();
-            setDynamicSetting(input.dataset.param, input.value);
-            renderDynamicParams();
-        };
-    });
-    dynamicParams.querySelectorAll('[data-video-bool]').forEach(button => {
-        button.onclick = event => {
-            event.preventDefault();
-            event.stopPropagation();
-            markControlInteracting(button);
-            setDynamicSetting(button.dataset.videoBool, button.dataset.videoBoolValue === '1');
-        };
-    });
-    dynamicParams.querySelectorAll('[data-video-mode]').forEach(button => {
-        button.onclick = event => {
-            event.preventDefault();
-            event.stopPropagation();
-            markControlInteracting(button);
-            settings.videoMode = button.dataset.videoMode;
-            normalizeSmartVideoModeSettings(settings, false);
-            persistActiveSmartSettings();
-            rememberRecentSmartSettings(settings, activeSettingsSubject());
-            renderDynamicParams();
-            scheduleSave();
-        };
-    });
-    dynamicParams.querySelectorAll('[data-toggle-param]').forEach(btn => {
-        btn.onclick = event => {
-            event.preventDefault();
-            event.stopPropagation();
-            markControlInteracting(btn);
-            settings[btn.dataset.toggleParam] = !settings[btn.dataset.toggleParam];
-            if(btn.dataset.toggleParam === 'videoMultimodal') settings._videoMultimodalUserSet = true;
-            if(btn.dataset.toggleParam === 'videoMultimodal' && settings.videoMultimodal) settings.videoUseFrameRoles = false;
-            normalizeSmartVideoModeSettings(settings, btn.dataset.toggleParam === 'videoUseFrameRoles');
-            persistActiveSmartSettings();
-            renderDynamicParams();
-            scheduleSave();
-        };
-    });
-    dynamicParams.querySelectorAll('[data-trusted-source]').forEach(btn => {
-        btn.onclick = async event => {
-            event.preventDefault();
-            event.stopPropagation();
-            const src = btn.dataset.trustedSource;
-            settings.videoTrustedSource = ['library','cloud','manual'].includes(src) ? src : 'library';
-            persistActiveSmartSettings();
-            renderDynamicParams();
-            scheduleSave();
-            try {
-                if(src === 'cloud') await uploadCurrentSmartVideosToCloud();
-                else if(src === 'manual') await setCurrentSmartManualVideoUrl();
-            } catch(e) {
-                toast((e.message || '操作失败').slice(0, 180));
-            }
-        };
-    });
-    dynamicParams.querySelectorAll('[data-comfy-bool]').forEach(btn => {
-        btn.onclick = event => {
-            event.preventDefault();
-            event.stopPropagation();
-            settings.comfyParams = settings.comfyParams || {};
-            const id = btn.dataset.comfyBool;
-            const field = currentComfyFields().find(f => f.id === id);
-            settings.comfyParams[id] = !Boolean(settings.comfyParams[id] ?? field?.default ?? false);
-            persistActiveSmartSettings();
-            renderDynamicParams();
-            scheduleSave();
-        };
-    });
-    dynamicParams.querySelectorAll('[data-comfy-param]').forEach(input => {
-        input.onclick = event => event.stopPropagation();
-        input.oninput = input.onchange = event => {
-            event?.stopPropagation?.();
-            settings.comfyParams = settings.comfyParams || {};
-            const field = currentComfyFields().find(f => f.id === input.dataset.comfyParam);
-            if(field?.type === 'number' || field?.type === 'slider') settings.comfyParams[input.dataset.comfyParam] = Number(input.value) || 0;
-            else settings.comfyParams[input.dataset.comfyParam] = input.value;
-            persistActiveSmartSettings();
-            scheduleSave();
-        };
-    });
-    dynamicParams.querySelectorAll('[data-comfy-pick]').forEach(btn => {
-        btn.onclick = event => {
-            event.preventDefault();
-            event.stopPropagation();
-            settings.comfyParams = settings.comfyParams || {};
-            const fieldId = btn.dataset.comfyPick;
-            const value = btn.dataset.comfyValue;
-            const field = currentComfyFields().find(item => item.id === fieldId);
-            settings.comfyParams[fieldId] = value;
-            const popover = btn.closest('.smart-popover');
-            const control = btn.closest('.smart-control');
-            const pillSub = control?.querySelector('.smart-pill .sub');
-            if(pillSub) pillSub.textContent = comfyOptionLabel(field, value);
-            if(popover){
-                popover.querySelectorAll(`[data-comfy-pick="${fieldId}"]`).forEach(b => b.classList.toggle('active', b.dataset.comfyValue === value));
-            }
-            closeAllSmartPopovers();
-            persistActiveSmartSettings();
-            scheduleSave();
-        };
-    });
-    dynamicParams.querySelectorAll('[data-comfy-random]').forEach(btn => {
-        btn.onclick = event => {
-            event.preventDefault();
-            event.stopPropagation();
-            toggleSmartComfyRandom(btn.dataset.comfyRandom);
-        };
-    });
-    dynamicParams.querySelectorAll('[data-rh-bool]').forEach(btn => {
-        btn.onclick = event => {
-            event.preventDefault();
-            event.stopPropagation();
-            settings.rhParams = settings.rhParams || {};
-            const key = btn.dataset.rhBool;
-            const field = rhActiveFields().find(f => rhParamKey(f.nodeId, f.fieldName) === key);
-            const cur = settings.rhParams[key] || {};
-            const on = String(rhParamValue(field, null)).toLowerCase() === 'true';
-            settings.rhParams[key] = {...cur, value:String(!on)};
-            persistActiveSmartSettings();
-            renderDynamicParams();
-            scheduleSave();
-        };
-    });
-    dynamicParams.querySelectorAll('[data-rh-param]').forEach(input => {
-        input.onclick = event => event.stopPropagation();
-        input.oninput = input.onchange = event => {
-            event?.stopPropagation?.();
-            const key = input.dataset.rhParam;
-            settings.rhParams = settings.rhParams || {};
-            const cur = settings.rhParams[key] || {};
-            settings.rhParams[key] = {...cur, value:input.value};
-            const control = input.closest('.smart-control');
-            const valueText = control?.querySelector('.rh-slider-value');
-            const pillValue = control?.querySelector('.rh-slider-pill-value');
-            if(valueText) valueText.textContent = input.value;
-            if(pillValue) pillValue.textContent = input.value;
-            persistActiveSmartSettings();
-            scheduleSave();
-        };
-        if(input.dataset.rhType === 'slider'){
-            input.onpointerup = () => input.blur();
-            input.onmouseleave = () => {
-                if(!input.closest('.smart-control')?.matches(':hover')) input.blur();
-            };
-        }
-    });
-    dynamicParams.querySelectorAll('[data-rh-pick]').forEach(btn => {
-        btn.onclick = event => {
-            event.preventDefault();
-            event.stopPropagation();
-            const key = btn.dataset.rhPick;
-            const value = btn.dataset.rhValue;
-            settings.rhParams = settings.rhParams || {};
-            const cur = settings.rhParams[key] || {};
-            settings.rhParams[key] = {...cur, value};
-            const popover = btn.closest('.smart-popover');
-            const control = btn.closest('.smart-control');
-            const pillSub = control?.querySelector('.smart-pill .sub');
-            if(pillSub) pillSub.textContent = value;
-            if(popover){
-                popover.querySelectorAll('[data-rh-pick]').forEach(b => {
-                    if(b.dataset.rhPick === key) b.classList.toggle('active', b.dataset.rhValue === value);
-                });
-            }
-            closeAllSmartPopovers();
-            persistActiveSmartSettings();
-            scheduleSave();
-        };
-    });
-    dynamicParams.querySelectorAll('[data-rh-random]').forEach(btn => {
-        btn.onclick = event => {
-            event.preventDefault();
-            event.stopPropagation();
-            toggleSmartRhRandom(btn.dataset.rhRandom);
-        };
-    });
-}
+function closeAllSmartPopovers(){ parameterControls.dismiss(); }
 async function loadConfig(){
     try {
         const cfg = await fetch('/api/config', {cache:'no-store'}).then(r => r.json());
@@ -8517,825 +7124,85 @@ async function refreshSmartConfigFromSettings(){
         render();
     }
 }
-function loadPromptPresets(){
-    try {
-        const list = JSON.parse(localStorage.getItem(PROMPT_PRESETS_KEY) || '[]');
-        promptPresets = Array.isArray(list) ? list.filter(p => p?.id && typeof p.text === 'string') : [];
-    } catch(e) {
-        promptPresets = [];
-    }
-}
-function savePromptPresets(){
-    localStorage.setItem(PROMPT_PRESETS_KEY, JSON.stringify(promptPresets));
-}
-function defaultPromptTemplateGroups(){
-    return [
-        {id:'view', name:tr('smart.tplCatView')},
-        {id:'storyboard', name:tr('smart.tplCatStoryboard')},
-        {id:'character', name:tr('smart.tplCatCharacter')},
-        {id:'product', name:tr('smart.tplCatProduct')},
-        {id:'lighting', name:tr('smart.tplCatLighting')},
-        {id:'mine', name:tr('smart.tplCatMine')}
-    ];
-}
-function loadPromptTemplateGroups(){
-    try {
-        const list = JSON.parse(localStorage.getItem(PROMPT_TEMPLATE_GROUPS_KEY) || '[]');
-        const valid = Array.isArray(list) ? list.filter(g => g?.id && g?.name) : [];
-        const defaults = defaultPromptTemplateGroups();
-        promptTemplateGroups = defaults.map(group => valid.find(g => g.id === group.id) || group);
-        valid.filter(g => !promptTemplateGroups.some(x => x.id === g.id)).forEach(g => promptTemplateGroups.push(g));
-    } catch(e) {
-        promptTemplateGroups = defaultPromptTemplateGroups();
-    }
-}
-function savePromptTemplateGroups(){
-    localStorage.setItem(PROMPT_TEMPLATE_GROUPS_KEY, JSON.stringify(promptTemplateGroups));
-}
-function loadPromptTemplateOverrides(){
-    try {
-        const data = JSON.parse(localStorage.getItem(PROMPT_TEMPLATE_OVERRIDES_KEY) || '{}');
-        promptTemplateOverrides = {
-            hiddenBuiltinIds:Array.isArray(data.hiddenBuiltinIds) ? data.hiddenBuiltinIds : [],
-            editedBuiltins:data.editedBuiltins && typeof data.editedBuiltins === 'object' ? data.editedBuiltins : {}
-        };
-    } catch(e) {
-        promptTemplateOverrides = {hiddenBuiltinIds:[], editedBuiltins:{}};
-    }
-}
-function savePromptTemplateOverrides(){
-    localStorage.setItem(PROMPT_TEMPLATE_OVERRIDES_KEY, JSON.stringify(promptTemplateOverrides));
-}
-async function loadPromptTemplates(){
-    try {
-        const data = await fetch('/api/prompt-libraries').then(r => r.ok ? r.json() : {library:{libraries:[]}});
-        promptLibraries = Array.isArray(data.library?.libraries) ? data.library.libraries : [];
-        if(!promptLibraries.length) {
-            const fallback = await fetch('/api/smart-canvas/prompt-templates').then(r => r.ok ? r.json() : {templates:[]});
-            builtinPromptTemplates = Array.isArray(fallback.templates) ? fallback.templates.filter(t => t?.id && t?.positive) : [];
-            promptLibraries = [{id:'system', name:'系统提示词库', readonly:true, items:builtinPromptTemplates}];
+const smartPromptLibrary = XiaomeiSmartPromptLibrary.create({
+    shell,
+    label:tr,
+    english:() => window.StudioI18n?.lang?.() === 'en',
+    id:uid,
+    icons:refreshIcons,
+    notice:toast,
+    redraw:render,
+    save:scheduleSave,
+    composerNodeId:() => activeComposerNode()?.id || selectedNode()?.id || '',
+    opened({kind, nodeId}){
+        if(kind !== 'composer' && nodeId){
+            selectedId = nodeId;
+            selectedIds = [];
+            selectedImage = {nodeId:'', index:-1};
+        }
+        render();
+    },
+    sourceText({kind, nodeId}){
+        if(kind === 'composer') return promptPlainText();
+        const node = nodes.find(item => item.id === nodeId);
+        if(kind === 'agent') return String(node?.systemPrompt || '').trim();
+        const systemPrompt = node?.type === 'smart-prompt' && node.llmEnabled && node.llmSystemEnabled;
+        return String((systemPrompt ? node.llmSystemPrompt : node?.text) || '').trim();
+    },
+    apply({kind, nodeId}, template, text){
+        if(kind === 'composer'){
+            setPromptText(text);
+            delete promptInput.dataset.preserveDraftOnce;
+            savePromptDraftForCurrent();
+            renderInputThumbsRow(selectedNode());
+            return true;
+        }
+        const node = nodes.find(item => item.id === nodeId);
+        if(!node) return false;
+        if(kind === 'agent' && node.type === 'smart-agent'){
+            node.systemPrompt = text;
+            node.agentPromptTemplateId = template.id;
+            toast('提示词模板已应用到 Agent 元提示词');
+            return true;
+        }
+        node.promptPresetId = template.builtin ? '' : template.preset?.id || template.id;
+        if(node.type === 'smart-prompt'){
+            if(!node.llmEnabled){
+                preserveLegacyPromptInstruction(node);
+                node.llmProvider = resolveChatProviderId(node.llmProvider || '');
+                node.llmModel = resolveChatModel(node.llmModel || '', node.llmProvider);
+            }
+            Object.assign(node, {llmEnabled:true, llmSystemEnabled:true, llmSystemPrompt:text});
+            node.h = Math.max(Number(node.h) || 0, promptNodeExpandedHeight(node));
+            node.w = Math.max(Number(node.w) || 0, 430);
         } else {
-            const system = promptLibraries.find(lib => lib.id === 'system') || promptLibraries[0];
-            builtinPromptTemplates = Array.isArray(system?.items) ? system.items.filter(t => t?.id && t?.positive) : [];
+            node.text = text;
         }
-        if(!promptLibraries.some(lib => lib.id === activePromptLibraryId)) activePromptLibraryId = promptLibraries[0]?.id || 'system';
-        renderPromptLibrarySelect();
-    } catch(e) {
-        builtinPromptTemplates = [];
-        promptLibraries = [];
-    }
-}
-function activePromptLibrary(){
-    return promptLibraries.find(lib => lib.id === activePromptLibraryId) || promptLibraries[0] || {id:'system', name:'系统提示词库', readonly:true, items:builtinPromptTemplates};
-}
-function renderPromptLibrarySelect(){
-    if(!promptTemplateLibrarySelect) return;
-    promptTemplateLibrarySelect.innerHTML = promptLibraries.map(lib => `<option value="${escapeAttr(lib.id)}" ${lib.id === activePromptLibraryId ? 'selected' : ''}>${escapeHtml(lib.name || '提示词库')}</option>`).join('');
-}
-function promptTemplateItems(){
-    const activeLibrary = activePromptLibrary();
-    if(activeLibrary.id !== 'system'){
-        return (activeLibrary.items || []).filter(t => t?.id && t?.positive).map(t => ({
-            ...t,
-            sourceId:t.id,
-            builtin:false,
-            remote:true,
-            libraryId:activeLibrary.id
-        }));
-    }
-    // 系统库的条目同样走后端（/api/prompt-libraries），与素材库管理共用一套数据。
-    // 这样画布里修改/删除系统提示词会实时同步，不再依赖各端不互通的 localStorage 覆盖。
-    // 仍保留 builtin:true 用于“内置”标签与完整提示词（含负向/参数）的展示。
-    const source = Array.isArray(activeLibrary.items) && activeLibrary.items.length ? activeLibrary.items : builtinPromptTemplates;
-    const builtins = source
-        .filter(t => t?.id && t?.positive)
-        .map(t => ({...t, sourceId:t.id, builtin:true, remote:true, libraryId:'system'}));
-    const mine = promptPresets.map(p => ({
-        id:`mine:${p.id}`,
-        sourceId:p.id,
-        name:p.name || tr('smart.promptPresetUnnamed'),
-        // 系统库分组以后端为准（custom=“我的”），本地旧预设归到 custom 分组下展示，避免无对应标签。
-        category:(p.category && p.category !== 'mine') ? p.category : 'custom',
-        scene:'我的提示词预设',
-        positive:p.text || '',
-        negative:'',
-        params:{},
-        builtin:false
-    }));
-    return [...builtins, ...mine];
-}
-function promptTemplateText(template, mode='positive'){
-    const positive = String(template?.positive || '').trim();
-    if(mode === 'positive' || !template?.builtin) return positive;
-    const negative = String(template?.negative || '').trim();
-    const params = Object.entries(template?.params || {})
-        .map(([key, value]) => `${key}: ${value}`)
-        .join('\n');
-    return [positive, negative ? `Negative prompt:\n${negative}` : '', params ? `Params:\n${params}` : ''].filter(Boolean).join('\n\n');
-}
-function promptTemplateName(template){
-    if(window.StudioI18n?.lang?.() === 'en' && template?.name_en) return template.name_en;
-    return template?.name || '';
-}
-function promptTemplateScene(template){
-    if(window.StudioI18n?.lang?.() === 'en' && template?.scene_en) return template.scene_en;
-    return template?.scene || '';
-}
-function promptTemplateSearchText(template){
-    return [
-        template?.name,
-        template?.name_en,
-        template?.scene,
-        template?.scene_en,
-        template?.positive,
-        template?.negative
-    ].join(' ').toLowerCase();
-}
-function activePromptTemplateGroups(){
-    const lib = activePromptLibrary();
-    // 系统库的分组也以后端 categories 为准，与素材库管理共用同一份分组数据（可重命名/删除并同步）。
-    const fromLib = Array.isArray(lib?.categories) ? lib.categories.filter(c => c?.id && c?.name) : [];
-    if(fromLib.length) return fromLib;
-    if(!lib || lib.id === 'system') return promptTemplateGroups;
-    return [];
-}
-function promptTemplateCategoryLabel(category){
-    if(category === 'all') return tr('smart.tplAll');
-    // 分组名优先以后端 categories 为准（含内置分组重命名），保证两端显示一致。
-    const fromGroups = activePromptTemplateGroups().find(g => g.id === category)?.name;
-    if(fromGroups) return fromGroups;
-    const builtin = {
-        view:tr('smart.tplCatView'),
-        storyboard:tr('smart.tplCatStoryboard'),
-        character:tr('smart.tplCatCharacter'),
-        product:tr('smart.tplCatProduct'),
-        lighting:tr('smart.tplCatLighting'),
-        custom:tr('smart.tplCatMine'),
-        mine:tr('smart.tplCatMine')
-    };
-    return builtin[category] || promptTemplateGroups.find(g => g.id === category)?.name || category;
-}
-function promptTemplateSelectedItem(){
-    return promptTemplateItems().find(item => item.id === promptTemplateSelectedId) || promptTemplateItems()[0] || null;
-}
-function currentPromptPreset(id){
-    return promptPresets.find(p => p.id === id) || null;
-}
-function defaultPromptPresetName(text){
-    return (String(text || '').trim().split(/\r?\n/)[0] || tr('smart.promptPresetDefault')).slice(0, 28);
-}
-function promptPresetPanelNode(){
-    return nodes.find(n => n.id === promptPresetPanel?.dataset.nodeId) || null;
-}
-function setPromptPresetStatus(text='', tone=''){
-    if(!promptPresetStatus) return;
-    promptPresetStatus.textContent = text;
-    promptPresetStatus.classList.toggle('warn', tone === 'warn');
-    promptPresetStatus.classList.toggle('ok', tone === 'ok');
-}
-function resetPromptPresetDeleteState(){
-    promptPresetDeleteArmed = false;
-    if(promptPresetDelete){
-        promptPresetDelete.textContent = tr('common.delete');
-        promptPresetDelete.classList.remove('confirm-danger');
-    }
-}
-function createPromptPresetFromNode(node, {openPanel=true, openTemplatePanel=false}={}){
-    const text = String(node?.text || '').trim();
-    if(!text){ toast(tr('smart.promptPresetEmpty')); return null; }
-    const preset = {id:uid('preset'), name:defaultPromptPresetName(text), text, createdAt:Date.now(), updatedAt:Date.now()};
-    promptPresets.unshift(preset);
-    savePromptPresets();
-    if(node) node.promptPresetId = preset.id;
-    render();
-    scheduleSave();
-    if(openPanel) openPromptPresetPanel(node?.id || '', preset.id, {status:tr('smart.promptPresetSavedNew'), tone:'ok'});
-    if(openTemplatePanel) {
-        promptTemplateCategory = 'mine';
-        promptTemplateSelectedId = `mine:${preset.id}`;
-        promptTemplateEditing = true;
-        openPromptTemplatePanel(node?.id || '', promptTemplateSelectedId);
-    }
-    return preset;
-}
-function createPromptPresetFromComposer(){
-    const text = promptPlainText();
-    if(!text){ toast(tr('smart.promptPresetEmpty')); return null; }
-    const preset = {id:uid('preset'), name:defaultPromptPresetName(text), text, category:'mine', createdAt:Date.now(), updatedAt:Date.now()};
-    promptPresets.unshift(preset);
-    savePromptPresets();
-    savePromptDraftForCurrent();
-    scheduleSave();
-    return preset;
-}
-function savePromptNodeAsPreset(node){
-    createPromptPresetFromNode(node);
-}
-function renderPromptPresetPanel(selectedId='', message=''){
-    if(!promptPresetSelect) return;
-    resetPromptPresetDeleteState();
-    promptPresetSelect.innerHTML = promptPresets.length
-        ? promptPresets.map(p => `<option value="${escapeHtml(p.id)}" ${p.id === selectedId ? 'selected' : ''}>${escapeHtml(p.name || tr('smart.promptPresetUnnamed'))}</option>`).join('')
-        : `<option value="">${escapeHtml(tr('smart.promptPresetNone'))}</option>`;
-    const preset = currentPromptPreset(selectedId) || promptPresets[0] || null;
-    if(preset && promptPresetSelect.value !== preset.id) promptPresetSelect.value = preset.id;
-    promptPresetName.value = preset?.name || '';
-    promptPresetText.value = preset?.text || '';
-    const hasPreset = Boolean(preset);
-    const nodeHasText = Boolean(String(promptPresetPanelNode()?.text || '').trim());
-    promptPresetApply.disabled = !hasPreset;
-    promptPresetDelete.disabled = !hasPreset;
-    promptPresetSave.disabled = !hasPreset;
-    if(promptPresetNew) promptPresetNew.disabled = !nodeHasText;
-    setPromptPresetStatus(message || (hasPreset ? tr('smart.promptPresetPanelHint') : tr('smart.promptPresetPanelEmpty')));
-}
-function openPromptPresetPanel(nodeId='', presetId='', options={}){
-    if(!promptPresetPanel) return;
-    promptPresetPanel.dataset.nodeId = nodeId || '';
-    const node = nodes.find(n => n.id === nodeId);
-    const preferred = presetId || node?.promptPresetId || promptPresets[0]?.id || '';
-    renderPromptPresetPanel(preferred, options.status || '');
-    if(options.tone) setPromptPresetStatus(options.status || '', options.tone);
-    const nodeEl = nodeId ? world.querySelector(`.image-node[data-id="${CSS.escape(nodeId)}"]`) : null;
-    const rect = nodeEl?.getBoundingClientRect();
-    const shellRect = shell.getBoundingClientRect();
-    const maxLeft = Math.max(18, shellRect.width - 410);
-    const maxTop = Math.max(18, shellRect.height - 330);
-    const left = rect ? Math.min(maxLeft, Math.max(18, rect.right - shellRect.left + 12)) : 80;
-    const top = rect ? Math.min(maxTop, Math.max(18, rect.top - shellRect.top)) : 80;
-    promptPresetPanel.style.left = `${left}px`;
-    promptPresetPanel.style.top = `${top}px`;
-    promptPresetPanel.classList.add('open');
-    refreshIcons();
-}
-function closePromptPresetPanel(){
-    promptPresetPanel?.classList.remove('open');
-    resetPromptPresetDeleteState();
-}
-function promptTemplateScrollSnapshot(){
-    if(!promptTemplatePanel) return null;
-    return {
-        panelTop:promptTemplatePanel.scrollTop || 0,
-        tabLeft:promptTemplatePanel.querySelector('.prompt-template-tabs')?.scrollLeft || 0,
-        listTop:promptTemplatePanel.querySelector('.prompt-template-list')?.scrollTop || 0,
-        detailTop:promptTemplatePanel.querySelector('.prompt-template-preview-content')?.scrollTop || 0
-    };
-}
-function restorePromptTemplateScroll(snapshot){
-    if(!snapshot || !promptTemplatePanel) return;
-    requestAnimationFrame(() => {
-        promptTemplatePanel.scrollTop = snapshot.panelTop || 0;
-        const tabs = promptTemplatePanel.querySelector('.prompt-template-tabs');
-        const list = promptTemplatePanel.querySelector('.prompt-template-list');
-        const detail = promptTemplatePanel.querySelector('.prompt-template-preview-content');
-        if(tabs) tabs.scrollLeft = snapshot.tabLeft || 0;
-        if(list) list.scrollTop = snapshot.listTop || 0;
-        if(detail) detail.scrollTop = snapshot.detailTop || 0;
-    });
-}
-function renderPromptTemplatePanel(options={}){
-    if(!promptTemplatePanel || !promptTemplateBody || !promptTemplateCats) return;
-    renderPromptLibrarySelect();
-    const scrollSnapshot = options.preserveScroll === false ? null : promptTemplateScrollSnapshot();
-    const query = String(promptTemplateSearch?.value || '').trim().toLowerCase();
-    const allTemplates = promptTemplateItems();
-    const activeGroups = activePromptTemplateGroups();
-    // 防御：若当前分类筛选不属于当前词库（例如刚切换词库或分类已被删除），回到“全部”，避免列表被过滤为空。
-    if(promptTemplateCategory !== 'all' && !activeGroups.some(g => g.id === promptTemplateCategory)) promptTemplateCategory = 'all';
-    const categories = [{id:'all', name:tr('smart.tplAll')}, ...activeGroups.map(group => ({...group, name:promptTemplateCategoryLabel(group.id)}))];
-    const groupCounts = allTemplates.reduce((map, item) => {
-        map[item.category || 'mine'] = (map[item.category || 'mine'] || 0) + 1;
-        return map;
-    }, {all:allTemplates.length});
-    promptTemplateCats.innerHTML = promptTemplateGroupEditMode ? `
-        <div class="prompt-template-group-panel">
-            <div class="prompt-template-group-title">
-                <div>
-                    <strong>${escapeHtml(tr('smart.tplGroupManage'))}</strong>
-                    <span>${escapeHtml(tr('smart.tplGroupHint'))}</span>
-                </div>
-                <div class="prompt-template-group-tools">
-                    <button type="button" data-template-cat-new><i data-lucide="plus"></i><span>${escapeHtml(tr('smart.tplAdd'))}</span></button>
-                    <button type="button" class="primary" data-template-group-edit><i data-lucide="check"></i><span>${escapeHtml(tr('smart.tplDone'))}</span></button>
-                </div>
-            </div>
-            <div class="prompt-template-group-list">
-                ${activeGroups.map(group => `
-                    <div class="prompt-template-group-row has-delete">
-                        <button type="button" class="group-name ${group.id === promptTemplateCategory ? 'active' : ''}" data-template-cat="${escapeHtml(group.id)}">
-                            <span>${escapeHtml(promptTemplateCategoryLabel(group.id))}</span>
-                            <small>${groupCounts[group.id] || 0}</small>
-                        </button>
-                        <button type="button" class="group-tool" data-template-cat-edit="${escapeHtml(group.id)}" title="${escapeAttr(tr('smart.tplRename'))}"><i data-lucide="pencil"></i></button>
-                        <button type="button" class="group-tool danger" data-template-cat-delete="${escapeHtml(group.id)}" title="${escapeAttr(tr('common.delete'))}"><i data-lucide="trash-2"></i></button>
-                    </div>
-                `).join('')}
-            </div>
-        </div>
-    ` : `
-        <div class="prompt-template-nav">
-            <div class="prompt-template-tabs">
-                ${categories.map(cat => `
-                    <button type="button" class="${cat.id === promptTemplateCategory ? 'active' : ''}" data-template-cat="${escapeHtml(cat.id)}">
-                        <span>${escapeHtml(cat.name)}</span>
-                        <small>${groupCounts[cat.id] || 0}</small>
-                    </button>
-                `).join('')}
-            </div>
-            <button type="button" class="prompt-template-manage-groups" data-template-group-edit><i data-lucide="settings-2"></i><span>${escapeHtml(tr('smart.tplManageGroups'))}</span></button>
-        </div>
-    `;
-    const items = allTemplates.filter(item => {
-        if(promptTemplateCategory !== 'all' && item.category !== promptTemplateCategory) return false;
-        if(!query) return true;
-        return promptTemplateSearchText(item).includes(query);
-    });
-    if(items.length && !items.some(item => item.id === promptTemplateSelectedId)) promptTemplateSelectedId = items[0].id;
-    const selected = items.find(item => item.id === promptTemplateSelectedId) || items[0] || null;
-    const selectedPreset = selected?.builtin || selected?.remote
-        ? {id:selected.id, name:selected.name || '', text:selected.positive || '', category:selected.category || 'storyboard', builtin:Boolean(selected.builtin)}
-        : (selected ? currentPromptPreset(selected.sourceId) : null);
-    const target = promptTemplatePanel.dataset.target || 'node';
-    const node = nodes.find(n => n.id === promptTemplatePanel.dataset.nodeId);
-    const activeLibrary = activePromptLibrary();
-    // 系统库 readonly=false，其条目也可编辑/删除（经后端持久化），因此只看 readonly。
-    const canEditCurrentLibrary = !activeLibrary.readonly;
-    const editMode = Boolean(promptTemplateEditing && selectedPreset);
-    promptTemplateBody.innerHTML = `
-        <div class="prompt-template-list">
-            <div class="prompt-template-list-tools">
-                <button type="button" data-template-save-current><i data-lucide="bookmark-plus"></i><span>${escapeHtml(tr('smart.tplSaveCurrent'))}</span></button>
-                <button type="button" data-template-new><i data-lucide="file-plus-2"></i><span>${escapeHtml(tr('smart.tplNewTemplate'))}</span></button>
-            </div>
-            ${items.length ? items.map(item => `<button type="button" class="prompt-template-card ${item.id === selected?.id ? 'active' : ''}" data-template-id="${escapeHtml(item.id)}">
-                <span class="prompt-template-card-top">
-                    <span class="prompt-template-name">${escapeHtml(promptTemplateName(item))}</span>
-                    <span class="prompt-template-source">${escapeHtml(item.builtin ? tr('smart.tplBuiltin') : tr('smart.tplMine'))}</span>
-                </span>
-                <span class="prompt-template-scene">${escapeHtml(promptTemplateScene(item) || item.positive || '')}</span>
-                <span class="prompt-template-tag">${escapeHtml(promptTemplateCategoryLabel(item.category || 'mine'))}</span>
-            </button>`).join('') : `<div class="prompt-template-list-empty">${escapeHtml(tr('smart.tplNoMatches'))}</div>`}
-        </div>
-        <div class="prompt-template-detail">
-            ${selected ? `
-                <div class="prompt-template-detail-head">
-                    <div>
-                        <strong>${escapeHtml(promptTemplateName(selected) || '')}</strong>
-                        <span>${escapeHtml(promptTemplateCategoryLabel(selected.category || ''))} · ${escapeHtml(selected.builtin ? tr('smart.tplBuiltinTemplate') : tr('smart.tplMineTemplate'))}</span>
-                    </div>
-                    ${editMode ? '' : `
-                        <div class="prompt-template-icon-actions">
-                            <button type="button" ${!canEditCurrentLibrary ? 'disabled' : ''} data-template-edit title="${escapeAttr(tr('smart.tplEditTemplate'))}"><i data-lucide="pencil"></i><span>${escapeHtml(tr('common.edit'))}</span></button>
-                            <button type="button" ${!canEditCurrentLibrary ? 'disabled' : ''} class="danger" data-template-delete title="${escapeAttr(tr('smart.tplDeleteTemplate'))}"><i data-lucide="trash-2"></i><span>${escapeHtml(tr('common.delete'))}</span></button>
-                        </div>
-                    `}
-                </div>
-            ${editMode ? `
-                <div class="prompt-template-edit-fields">
-                    <label>${escapeHtml(tr('smart.tplName'))}</label>
-                    <input data-template-edit-name value="${escapeAttr(selectedPreset.name || '')}" placeholder="${escapeAttr(tr('smart.tplName'))}">
-                    <label>${escapeHtml(tr('smart.tplGroup'))}</label>
-                    <select data-template-edit-category>
-                        ${activeGroups.map(group => `<option value="${escapeAttr(group.id)}" ${group.id === (selectedPreset.category || selected?.category || 'mine') ? 'selected' : ''}>${escapeHtml(promptTemplateCategoryLabel(group.id))}</option>`).join('')}
-                    </select>
-                    <label>${escapeHtml(tr('smart.tplContent'))}</label>
-                    <textarea data-template-edit-text placeholder="${escapeAttr(tr('smart.tplContent'))}">${escapeHtml(selectedPreset.text || '')}</textarea>
-                </div>
-            ` : `
-                <div class="prompt-template-preview-content">
-                <div class="prompt-template-section">
-                    <label>${escapeHtml(tr('smart.tplPositive'))}</label>
-                    <p>${escapeHtml(selected?.positive || '')}</p>
-                </div>
-                ${selected?.negative ? `<div class="prompt-template-section">
-                    <label>${escapeHtml(tr('smart.tplNegative'))}</label>
-                    <p>${escapeHtml(selected.negative)}</p>
-                </div>` : ''}
-                ${Object.keys(selected?.params || {}).length ? `<div class="prompt-template-section">
-                    <label>${escapeHtml(tr('smart.tplParams'))}</label>
-                    <p>${escapeHtml(Object.entries(selected.params).map(([k,v]) => `${k}: ${v}`).join('\n'))}</p>
-                </div>` : ''}
-                </div>
-            `}
-            <div class="prompt-template-actions">
-                ${editMode ? `
-                    <button type="button" data-template-edit-cancel><i data-lucide="x"></i><span>${escapeHtml(tr('common.cancel'))}</span></button>
-                    <button type="button" class="danger" data-template-delete><i data-lucide="trash-2"></i><span>${escapeHtml(tr('common.delete'))}</span></button>
-                    <button type="button" class="primary" data-template-edit-save><i data-lucide="save"></i><span>${escapeHtml(tr('common.save'))}</span></button>
-                ` : `
-                    <button type="button" data-template-apply="positive"><i data-lucide="corner-down-left"></i><span>${escapeHtml(tr('smart.tplApplyPositive'))}</span></button>
-                    <button type="button" class="primary" data-template-apply="full"><i data-lucide="wand-sparkles"></i><span>${escapeHtml(tr('smart.tplApplyFull'))}</span></button>
-                `}
-            </div>
-            ` : `<div class="prompt-template-empty">${escapeHtml(tr('smart.tplPickOrCreate'))}</div>`}
-        </div>
-    `;
-    refreshIcons();
-    restorePromptTemplateScroll(scrollSnapshot);
-}
-function activePromptTemplateNodeId(){
-    return promptTemplatePanel?.classList?.contains('open') && promptTemplatePanel.dataset.target !== 'composer' ? (promptTemplatePanel.dataset.nodeId || '') : '';
-}
-function syncComposerTemplateButton(){
-    if(!composerTemplateBtn || !promptTemplatePanel) return;
-    const active = promptTemplatePanel.classList.contains('open') && promptTemplatePanel.dataset.target === 'composer';
-    composerTemplateBtn.classList.toggle('active', active);
-    composerTemplateBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
-}
-async function openPromptTemplatePanel(nodeId='', templateId='', options={}){
-    if(!promptTemplatePanel) return;
-    const target = options.target === 'composer'
-        ? 'composer'
-        : (options.target === 'agent' ? 'agent' : 'node');
-    promptTemplatePanel.dataset.target = target;
-    promptTemplatePanel.dataset.nodeId = nodeId || '';
-    if(promptTemplatePanel.parentElement !== shell) shell.appendChild(promptTemplatePanel);
-    if(templateId) promptTemplateSelectedId = templateId;
-    promptTemplatePanel.classList.add('open');
-    // 每次打开都从后端拉取最新提示词库，确保素材库管理里的新增/修改/删除实时反映到画布（同根同源）。
-    try { await loadPromptTemplates(); } catch(e){}
-    if(!promptTemplateSelectedId || !promptTemplateItems().some(it => it.id === promptTemplateSelectedId)){
-        promptTemplateSelectedId = promptTemplateItems()[0]?.id || '';
-    }
-    renderPromptTemplatePanel();
-    if((target === 'node' || target === 'agent') && nodeId){
-        selectedId = nodeId;
-        selectedIds = [];
-        selectedImage = {nodeId:'', index:-1};
-    }
-    render();
-    syncComposerTemplateButton();
-    promptTemplateSearch?.focus();
-}
-function closePromptTemplatePanel(){
-    promptTemplatePanel?.classList.remove('open');
-    syncComposerTemplateButton();
-    render();
-}
-function applyPromptTemplateToNode(mode='positive'){
-    const template = promptTemplateItems().find(item => item.id === promptTemplateSelectedId);
-    if(!template) return;
-    if(promptTemplatePanel?.dataset.target === 'composer'){
-        const text = promptTemplateText(template, mode);
-        setPromptText(text);
-        delete promptInput.dataset.preserveDraftOnce;
-        savePromptDraftForCurrent();
-        renderInputThumbsRow(selectedNode());
-        closePromptTemplatePanel();
-        scheduleSave();
-        return;
-    }
-    const node = nodes.find(n => n.id === promptTemplatePanel?.dataset.nodeId);
-    if(!node) return;
-    if(promptTemplatePanel?.dataset.target === 'agent' && node.type === 'smart-agent'){
-        node.systemPrompt = promptTemplateText(template, mode);
-        node.agentPromptTemplateId = template.id || '';
-        closePromptTemplatePanel();
+        return true;
+    },
+    presetChanged(id, text){
+        for(const node of nodes){
+            if(node.promptPresetId !== id) continue;
+            if(text === undefined) node.promptPresetId = '';
+            else node.text = text;
+        }
         render();
         scheduleSave();
-        toast('提示词模板已应用到 Agent 元提示词');
-        return;
     }
-    if(node.type === 'smart-prompt'){
-        if(!node.llmEnabled){
-            preserveLegacyPromptInstruction(node);
-            node.llmProvider = resolveChatProviderId(node.llmProvider || '');
-            node.llmModel = resolveChatModel(node.llmModel || '', node.llmProvider);
-        }
-        node.llmEnabled = true;
-        node.llmSystemEnabled = true;
-        node.llmSystemPrompt = promptTemplateText(template, mode);
-        node.promptPresetId = template.builtin ? '' : template.sourceId || '';
-        node.h = Math.max(Number(node.h) || 0, promptNodeExpandedHeight(node));
-        node.w = Math.max(Number(node.w) || 0, 430);
-        closePromptTemplatePanel();
-        render();
-        scheduleSave();
-        return;
-    }
-    node.text = promptTemplateText(template, mode);
-    node.promptPresetId = template.builtin ? '' : template.sourceId || '';
-    closePromptTemplatePanel();
-    render();
-    scheduleSave();
-}
-async function saveCurrentPromptAsTemplate(){
-    const library = activePromptLibrary();
-    // 系统库 readonly=false，也允许新增条目（走后端，与素材库管理同步）。
-    if(library.readonly){ toast('请选择可编辑的提示词库'); return; }
-    const targetNode = nodes.find(n => n.id === promptTemplatePanel?.dataset.nodeId);
-    const text = promptTemplatePanel?.dataset.target === 'composer'
-        ? promptPlainText()
-        : (promptTemplatePanel?.dataset.target === 'agent'
-            ? String(targetNode?.systemPrompt || '').trim()
-            : String(targetNode?.type === 'smart-prompt' && targetNode.llmEnabled && targetNode.llmSystemEnabled
-                ? (targetNode.llmSystemPrompt || '')
-                : (targetNode?.text || '')).trim());
-    if(!text){ toast(tr('smart.promptPresetEmpty')); return; }
-    try {
-        const data = await fetch('/api/prompt-libraries/items', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({library_id:library.id, name:defaultPromptPresetName(text), category:promptTemplateCategory === 'all' ? 'custom' : promptTemplateCategory, positive:text, scene:'我的提示词预设'})
-        }).then(async r => {
-            if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || '保存失败');
-            return r.json();
-        });
-        promptLibraries = data.library?.libraries || promptLibraries;
-        activePromptLibraryId = library.id;
-        promptTemplateCategory = data.item?.category || 'custom';
-        promptTemplateSelectedId = data.item?.id || '';
-        promptTemplateEditing = true;
-        renderPromptTemplatePanel({preserveScroll:false});
-    } catch(err) {
-        toast(err.message || '保存失败');
-    }
-}
-async function createBlankPromptTemplate(){
-    const library = activePromptLibrary();
-    // 系统库 readonly=false，也允许新建空白条目（走后端，与素材库管理同步）。
-    if(library.readonly){ toast('请选择可编辑的提示词库'); return; }
-    const category = promptTemplateCategory && promptTemplateCategory !== 'all' ? promptTemplateCategory : 'custom';
-    try {
-        const data = await fetch('/api/prompt-libraries/items', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({library_id:library.id, name:tr('smart.tplNewTemplateName'), category, positive:'新提示词', scene:'我的提示词预设'})
-        }).then(async r => {
-            if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || '创建失败');
-            return r.json();
-        });
-        promptLibraries = data.library?.libraries || promptLibraries;
-        activePromptLibraryId = library.id;
-        promptTemplateCategory = category;
-        promptTemplateSelectedId = data.item?.id || '';
-        promptTemplateEditing = true;
-        renderPromptTemplatePanel({preserveScroll:false});
-    } catch(err) {
-        toast(err.message || '创建失败');
-    }
-}
-async function savePromptTemplateEdit(){
-    const item = promptTemplateSelectedItem();
-    if(!item) return;
-    const name = promptTemplatePanel.querySelector('[data-template-edit-name]')?.value?.trim() || '';
-    const text = promptTemplatePanel.querySelector('[data-template-edit-text]')?.value?.trim() || '';
-    const category = promptTemplatePanel.querySelector('[data-template-edit-category]')?.value || 'mine';
-    if(!name || !text){ toast(tr('smart.tplRequired')); return; }
-    if(item.remote){
-        try {
-            const data = await fetch(`/api/prompt-libraries/items/${encodeURIComponent(item.id)}`, {
-                method:'PATCH',
-                headers:{'Content-Type':'application/json'},
-                body:JSON.stringify({library_id:item.libraryId || activePromptLibrary().id, name, category, positive:text, scene:item.scene || '', negative:item.negative || ''})
-            }).then(async r => {
-                if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || '保存失败');
-                return r.json();
-            });
-            promptLibraries = data.library?.libraries || promptLibraries;
-            promptTemplateSelectedId = data.item?.id || item.id;
-        } catch(err) {
-            toast(err.message || '保存失败');
-            return;
-        }
-    } else if(item.builtin){
-        promptTemplateOverrides.editedBuiltins = promptTemplateOverrides.editedBuiltins || {};
-        promptTemplateOverrides.editedBuiltins[item.id] = {
-            ...(promptTemplateOverrides.editedBuiltins[item.id] || {}),
-            name,
-            positive:text,
-            category
-        };
-        savePromptTemplateOverrides();
-    } else {
-        const preset = currentPromptPreset(item.sourceId);
-        if(!preset) return;
-        const idx = promptPresets.findIndex(p => p.id === preset.id);
-        if(idx >= 0) promptPresets[idx] = {...promptPresets[idx], name, text, category, updatedAt:Date.now()};
-        savePromptPresets();
-        nodes.forEach(node => { if(node.promptPresetId === preset.id) node.text = text; });
-    }
-    promptTemplateEditing = false;
-    renderPromptTemplatePanel();
-    render();
-    scheduleSave();
-}
-async function deletePromptTemplate(){
-    const item = promptTemplateSelectedItem();
-    if(!item) return;
-    if(item.remote){
-        try {
-            const data = await fetch(`/api/prompt-libraries/items/${encodeURIComponent(item.id)}`, {method:'DELETE'}).then(async r => {
-                if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || '删除失败');
-                return r.json();
-            });
-            promptLibraries = data.library?.libraries || promptLibraries;
-        } catch(err) {
-            toast(err.message || '删除失败');
-            return;
-        }
-    } else if(item.builtin){
-        promptTemplateOverrides.hiddenBuiltinIds = [...new Set([...(promptTemplateOverrides.hiddenBuiltinIds || []), item.id])];
-        savePromptTemplateOverrides();
-    } else {
-        promptPresets = promptPresets.filter(p => p.id !== item.sourceId);
-        nodes.forEach(node => { if(node.promptPresetId === item.sourceId) node.promptPresetId = ''; });
-        savePromptPresets();
-    }
-    promptTemplateSelectedId = '';
-    promptTemplateEditing = false;
-    renderPromptTemplatePanel({preserveScroll:false});
-    render();
-    scheduleSave();
-}
-async function createPromptTemplateGroup(){
-    const name = window.prompt(tr('smart.tplNewGroupPrompt'), tr('smart.tplNewGroupDefault'));
-    if(!String(name || '').trim()) return;
-    const lib = activePromptLibrary();
-    // 系统库（readonly=false）也走后端新增分组，与素材库管理同步。
-    if(lib && !lib.readonly){
-        try {
-            const data = await fetch('/api/prompt-libraries/categories', {
-                method:'POST', headers:{'Content-Type':'application/json'},
-                body:JSON.stringify({name:String(name).trim().slice(0, 24), library_id:lib.id})
-            }).then(async r => { if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || '新增分组失败'); return r.json(); });
-            promptLibraries = data.library?.libraries || promptLibraries;
-            promptTemplateCategory = data.category?.id || promptTemplateCategory;
-            renderPromptTemplatePanel({preserveScroll:false});
-        } catch(err){ if(typeof setStatus === 'function') setStatus(err.message || '新增分组失败'); }
-        return;
-    }
-    const group = {id:uid('tpl_group'), name:String(name).trim().slice(0, 24)};
-    promptTemplateGroups.push(group);
-    savePromptTemplateGroups();
-    promptTemplateCategory = group.id;
-    renderPromptTemplatePanel({preserveScroll:false});
-}
-async function renamePromptTemplateGroup(groupId){
-    const lib = activePromptLibrary();
-    const group = activePromptTemplateGroups().find(g => g.id === groupId);
-    if(!group) return;
-    const name = window.prompt(tr('smart.tplGroupNamePrompt'), group.name || '');
-    if(!String(name || '').trim()) return;
-    // 系统库的内置分组也走后端重命名（后端已放开内置分组限制），两端同步。
-    if(lib && !lib.readonly){
-        try {
-            const data = await fetch(`/api/prompt-libraries/categories/${encodeURIComponent(groupId)}`, {
-                method:'PATCH', headers:{'Content-Type':'application/json'},
-                body:JSON.stringify({name:String(name).trim().slice(0, 24), library_id:lib.id})
-            }).then(async r => { if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || '重命名失败'); return r.json(); });
-            promptLibraries = data.library?.libraries || promptLibraries;
-            renderPromptTemplatePanel();
-        } catch(err){ if(typeof setStatus === 'function') setStatus(err.message || '重命名失败'); }
-        return;
-    }
-    group.name = String(name).trim().slice(0, 24);
-    savePromptTemplateGroups();
-    renderPromptTemplatePanel();
-}
-async function deletePromptTemplateGroup(groupId){
-    const lib = activePromptLibrary();
-    // 系统库的内置分组也走后端删除（后端已放开限制并把孤立条目改挂到剩余分组），两端同步。
-    if(lib && !lib.readonly){
-        if(!window.confirm(tr('smart.tplDeleteGroupConfirm'))) return;
-        try {
-            const data = await fetch(`/api/prompt-libraries/categories/${encodeURIComponent(groupId)}`, {method:'DELETE'})
-                .then(async r => { if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || '删除失败'); return r.json(); });
-            promptLibraries = data.library?.libraries || promptLibraries;
-            if(promptTemplateCategory === groupId) promptTemplateCategory = 'all';
-            renderPromptTemplatePanel({preserveScroll:false});
-        } catch(err){ if(typeof setStatus === 'function') setStatus(err.message || '删除失败'); }
-        return;
-    }
-    if(!window.confirm(tr('smart.tplDeleteGroupConfirm'))) return;
-    promptTemplateGroups = promptTemplateGroups.filter(g => g.id !== groupId);
-    promptPresets = promptPresets.map(p => p.category === groupId ? {...p, category:'mine'} : p);
-    Object.entries(promptTemplateOverrides.editedBuiltins || {}).forEach(([id, item]) => {
-        if(item?.category === groupId) promptTemplateOverrides.editedBuiltins[id] = {...item, category:'mine'};
-    });
-    if(promptTemplateCategory === groupId) promptTemplateCategory = 'all';
-    savePromptTemplateGroups();
-    savePromptPresets();
-    savePromptTemplateOverrides();
-    renderPromptTemplatePanel({preserveScroll:false});
-}
-function editPromptPresetForNode(node){
-    openPromptTemplatePanel(node?.id || '', node?.promptPresetId ? `mine:${node.promptPresetId}` : '');
-}
-function assetCategories(type='image'){
-    const library = activeAssetLibrary();
-    return (library?.categories || assetLibrary.categories || []).filter(cat => (cat.type || 'image') === type);
-}
-function assetSmartClassKey(entry){
-    if(!entry?.dimension || !entry?.tag) return '';
-    return `${String(entry.dimension)}::${String(entry.tag)}`;
-}
-function assetSmartClassOptionId(entry){
-    const key = assetSmartClassKey(entry);
-    return key ? `${ASSET_SMART_CATEGORY_PREFIX}${key}` : '';
-}
-function parseAssetSmartClassId(id=''){
-    const value = String(id || '');
-    if(!value.startsWith(ASSET_SMART_CATEGORY_PREFIX)) return null;
-    const raw = value.slice(ASSET_SMART_CATEGORY_PREFIX.length);
-    const index = raw.indexOf('::');
-    if(index < 0) return null;
-    return {dimension:raw.slice(0, index), tag:raw.slice(index + 2)};
-}
-function assetSmartClassEntries(){
-    const groups = new Map();
-    assetCategories('image').forEach(cat => {
-        (cat.items || []).forEach(item => {
-            const flat = Array.isArray(item?.classification?.flat) ? item.classification.flat : [];
-            flat.forEach(entry => {
-                if(ASSET_SMART_CLASS_HIDDEN_DIMENSIONS.has(String(entry?.dimension || ''))) return;
-                const key = assetSmartClassKey(entry);
-                if(!key) return;
-                const prev = groups.get(key) || {
-                    id:assetSmartClassOptionId(entry),
-                    dimension:String(entry.dimension || ''),
-                    label:String(entry.label || entry.dimension || '分类'),
-                    tag:String(entry.tag || ''),
-                    count:0
-                };
-                prev.count += 1;
-                groups.set(key, prev);
-            });
-        });
-    });
-    return [...groups.values()].sort((a, b) => {
-        if(a.label !== b.label) return a.label.localeCompare(b.label, 'zh-CN');
-        return b.count - a.count || a.tag.localeCompare(b.tag, 'zh-CN');
-    });
-}
-function itemsForAssetSmartClass(optionId=''){
-    const parsed = parseAssetSmartClassId(optionId);
-    if(!parsed) return [];
-    return assetCategories('image').flatMap(cat => cat.items || []).filter(item => {
-        const flat = Array.isArray(item?.classification?.flat) ? item.classification.flat : [];
-        return flat.some(entry => String(entry.dimension || '') === parsed.dimension && String(entry.tag || '') === parsed.tag);
-    });
-}
-function workflowAssetCategories(){
-    return assetCategories('workflow');
-}
+});
 function assetLibraries(){
     return Array.isArray(assetLibrary.libraries) && assetLibrary.libraries.length ? assetLibrary.libraries : [{id:'default', name:'默认资产库', categories:assetLibrary.categories || []}];
 }
-function localAssetFolderCategories(){
-    return XiaomeiShellKernel.folderRows(localAssetLibrary.tree, localAssetLibrary.items);
-}
-function assetLibraryIsLocal(){
-    return activeAssetLibraryId === LOCAL_ASSET_LIBRARY_ID;
-}
-function currentAssetSourceLibraries(){
-    // 画布资产面板只展示本地素材；收藏库中的远程图片和工作流仍由各自的
-    // 管理入口、工作流面板和提及选择器使用，不混入这里的图片网格。
-    return [{id:LOCAL_ASSET_LIBRARY_ID, name:'本地素材', categories:localAssetFolderCategories(), readonly:true, source:'local'}];
-}
-function activeAssetLibrary(){
-    if(assetLibraryIsLocal()) return currentAssetSourceLibraries().find(lib => lib.id === LOCAL_ASSET_LIBRARY_ID);
-    const libs = assetLibraries();
-    return libs.find(lib => lib.id === activeAssetLibraryId) || libs[0] || null;
-}
-function activeAssetCategory(){
-    const cats = assetCategories('image');
-    if(parseAssetSmartClassId(activeAssetCategoryId)) return null;
-    if(!cats.length) return null;
-    return cats.find(cat => cat.id === activeAssetCategoryId) || cats[0];
-}
-function activeWorkflowAssetCategory(){
-    const cats = workflowAssetCategories();
-    if(!cats.length) return null;
-    return cats.find(cat => cat.id === activeWorkflowAssetCategoryId) || cats[0];
-}
-function currentAssetTabIsWorkflow(){
-    return assetTab === 'workflow';
-}
-function currentAssetTabCategories(){
-    return currentAssetTabIsWorkflow() ? workflowAssetCategories() : assetCategories('image');
-}
-function activeAssetTabCategory(){
-    return currentAssetTabIsWorkflow() ? activeWorkflowAssetCategory() : activeAssetCategory();
-}
-function setActiveAssetTabCategory(categoryId=''){
-    if(currentAssetTabIsWorkflow()) activeWorkflowAssetCategoryId = categoryId || '';
-    else activeAssetCategoryId = categoryId || '';
-}
 async function loadAssetLibrary(){
     try {
-        const [data, localData, urlData] = await Promise.all([
-            fetch('/api/asset-library').then(r => r.json()),
-            fetch('/api/local-assets').then(r => r.ok ? r.json() : {items:[], tree:null}).catch(() => ({items:[], tree:null})),
-            fetch('/api/asset-url-library').then(r => r.ok ? r.json() : {library:{items:[]}}).catch(() => ({library:{items:[]}}))
+        const [data, urlData] = await Promise.all([
+            fetch('/api/asset-library').then(response => response.json()),
+            fetch('/api/asset-url-library').then(response => response.ok ? response.json() : null).catch(() => null),
+            localAssetSidebar.reload().catch(() => null),
         ]);
-        localAssetLibrary = {items:Array.isArray(localData.items) ? localData.items : [], tree:localData.tree || null};
-        assetUrlLibrary = urlData?.library && Array.isArray(urlData.library.items)
-            ? urlData.library
-            : {items:[], updated_at:0};
+        if(Array.isArray(urlData?.library?.items)) assetUrlLibrary = urlData.library;
         setAssetLibraryFromResponse(data, {render:false});
-        renderAssetLibrary();
-    } catch(e) {
+    } catch(error) {
         toast(tr('smart.assetLoadFail'));
     }
 }
@@ -9343,7 +7210,7 @@ function refreshAssetLibrarySoon(delay=120){
     clearTimeout(assetLibraryRefreshTimer);
     assetLibraryRefreshTimer = setTimeout(async () => {
         await loadAssetLibrary();
-        if(mentionPicker?.classList?.contains('open') && mentionSource === 'asset') renderMentionPicker('asset');
+        promptMentionMenu.refreshAssets();
     }, delay);
 }
 function handleAssetLibraryUpdatedMessage(data={}){
@@ -9517,17 +7384,14 @@ function clearCompletedNodeBusyStates(){
     if(clearCompletedSourceBusyStates()) changed = true;
     return changed;
 }
+function recoverInterruptedSmartTextRun(node){
+    if(window.SmartExpertWorkflow?.is(node)) return false;
+    return promptExecution.recover(node) || agentExecution.recover(node);
+}
 function clearInterruptedSmartNodeStates(){
     let changed = false;
     (nodes || []).forEach(node => {
-        if(window.SmartExpertWorkflow?.is(node)) return;
-        if(node?.type === 'smart-agent' && node.running){
-            node.running = false;
-            node.runFinishedAt = nowMs();
-            node.runElapsedMs = Math.max(0, node.runFinishedAt - Number(node.runStartedAt || node.runFinishedAt));
-            node.runError = String(node.outputText || '').trim()
-                ? '上一次 Agent 请求已中断，已保留此前输出；请重新运行'
-                : '上一次 Agent 请求已中断，请重新运行';
+        if(recoverInterruptedSmartTextRun(node)){
             changed = true;
             return;
         }
@@ -9555,15 +7419,17 @@ function successfulRecentComfyLogOutputs(sourceNodeId='', withinMs=30 * 60 * 100
         .sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0));
     const scoped = sourceNodeId ? logs.filter(log => log.nodeId === sourceNodeId) : logs;
     const usable = scoped.length ? scoped : logs.filter(log => !log.nodeId);
-    return usable.flatMap(log => (log.outputs || []).map(url => ({url, createdAt:log.createdAt, nodeId:log.nodeId}))).filter(item => item.url);
+    return usable.flatMap(log => (log.outputs || []).map(smartLogOutputItem)
+        .filter(item => typeof item?.url === 'string').map(item => ({...item, createdAt:Number(log.createdAt) || 0})));
 }
 function recoverStuckOutputsFromLogs(){
     const used = usedCanvasOutputUrls();
+    const active = node => smartCascadeWrites.has(node) || smartCascadeIsLoopRunning(node.loopSourceId);
     let changed = false;
     const completedLogs = (canvas?.logs || [])
         .filter(log => log?.status === 'success' && log.nodeId && (log.outputs || []).length)
         .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
-    (nodes || []).filter(node => isSmartImageNode(node) && !isHistoryGroupNode(node)
+    (nodes || []).filter(node => isSmartImageNode(node) && !isHistoryGroupNode(node) && !active(node)
         && (node.pending || node.running || node.queued)
         && !smartPendingTasks(node).length).forEach(node => {
         const startedAt = Number(node.runStartedAt || 0);
@@ -9581,17 +7447,20 @@ function recoverStuckOutputsFromLogs(){
         changed = true;
     });
     const slots = (nodes || [])
-        .filter(node => node && isSmartImageNode(node) && !isHistoryGroupNode(node))
+        .filter(node => node && isSmartImageNode(node) && !isHistoryGroupNode(node) && !active(node))
         .filter(node => (node.loopSourceId || node.loopRootId || Number.isFinite(Number(node.loopSlotIndex))) && !smartNodeHasDisplayResult(node))
         .filter(node => (node.pending || node.running || node.queued) && !smartPendingTasks(node).length)
         .sort((a, b) => (Number(a.loopSlotIndex || 0) - Number(b.loopSlotIndex || 0)) || (Number(a.y || 0) - Number(b.y || 0)));
     slots.forEach(slot => {
         const sourceId = slot.loopRootId || slot.sourceNodeId || '';
-        const output = successfulRecentComfyLogOutputs(sourceId).find(item => !used.has(item.url));
+        const started = Number(slot.runStartedAt) || 0;
+        const output = successfulRecentComfyLogOutputs(sourceId).find(item => item.createdAt >= started && !used.has(item.url));
         if(!output) return;
-        const kind = mediaKindForUrls([output.url], 'image');
+        const kind = mediaKindForUrls([output], output.kind || 'image');
         const ext = kind === 'video' ? 'mp4' : kind === 'audio' ? 'mp3' : kind === 'text' ? 'txt' : 'png';
-        slot.images = [stripImageGenerationMeta({url:output.url, name:`comfy-recovered-${Number(slot.loopSlotIndex || 0) + 1}.${ext}`, kind, generatedResult:true})];
+        slot.images = [stripImageGenerationMeta(copyMediaSizeFields(output, {
+            url:output.url, name:output.name || `comfy-recovered-${Number(slot.loopSlotIndex || 0) + 1}.${ext}`, kind, generatedResult:true,
+        }))];
         markSmartNodeComplete(slot);
         if(kind) slot.outputKind = kind;
         slot.title = slot.title || 'Image';
@@ -10207,6 +8076,7 @@ function collabNodeDiff(storageNodes){
 }
 function collabReplaceWithServerCanvas(serverCanvas){
     if(!serverCanvas || !canvas) return;
+    stopReplacedCanvasDependencies();
     canvas = {...canvas, ...serverCanvas};
     const serverConnections = Array.isArray(serverCanvas.connections) ? serverCanvas.connections : [];
     canvas.logs = Array.isArray(serverCanvas.logs) ? serverCanvas.logs : [];
@@ -10226,12 +8096,13 @@ function collabReplaceWithServerCanvas(serverCanvas){
     applyViewport();
     collabCaptureSnapshot(canvas, nodes);
     const restoredLegacyAgentTextStacks = restoreLegacyAgentTextStacks();
+    const interruptedTextRuns = !sharedCanvasMode && nodes.reduce((changed, node) => recoverInterruptedSmartTextRun(node) || changed, false);
     render();
     if(!sharedCanvasMode){
         resumeSmartPendingTasks();
         resumeJimengPendingNodes();
     }
-    if(restoredLegacyAgentTextStacks && !sharedCanvasReadOnly) scheduleSave();
+    if((restoredLegacyAgentTextStacks || interruptedTextRuns) && !sharedCanvasReadOnly) scheduleSave();
 }
 function collabConflictSummary(node){
     if(!node) return '（节点已删除）';
@@ -10271,6 +8142,7 @@ function resolveCollabConflict(choice){
         });
         localDeleted.forEach(id => byId.delete(String(id)));
         nodes = preserveSmartBatchPromptRequests([...byId.values()]);
+        if(!sharedCanvasMode) nodes.forEach(recoverInterruptedSmartTextRun);
         canvas.nodes = nodes;
         closeCollabConflictDialog();
         render();
@@ -10308,21 +8180,11 @@ function setAssetLibraryFromResponse(data, options={}){
     assetLibrary = data.library || assetLibrary;
     assetLibraryUpdatedAt = Number(assetLibrary.updated_at || assetLibraryUpdatedAt || 0);
     const libs = assetLibraries();
-    if(!activeAssetLibraryId) activeAssetLibraryId = assetLibrary.active_library_id || libs[0]?.id || '';
-    if(activeAssetLibraryId && activeAssetLibraryId !== LOCAL_ASSET_LIBRARY_ID && !libs.some(lib => lib.id === activeAssetLibraryId)) activeAssetLibraryId = libs[0]?.id || '';
-    const cats = assetCategories('image');
-    if(activeAssetCategoryId && !cats.some(cat => cat.id === activeAssetCategoryId)) activeAssetCategoryId = '';
-    if(!activeAssetCategoryId) activeAssetCategoryId = activeAssetCategory()?.id || '';
-    const workflowCats = workflowAssetCategories();
-    if(activeWorkflowAssetCategoryId && !workflowCats.some(cat => cat.id === activeWorkflowAssetCategoryId)) activeWorkflowAssetCategoryId = '';
-    if(!activeWorkflowAssetCategoryId) activeWorkflowAssetCategoryId = activeWorkflowAssetCategory()?.id || '';
-    if(mentionAssetCategoryId && !cats.some(cat => cat.id === mentionAssetCategoryId)) mentionAssetCategoryId = '';
-    if(!mentionAssetCategoryId) mentionAssetCategoryId = activeAssetCategoryId;
-    if(options.render !== false) {
-        renderAssetLibrary();
-        if(mentionPicker?.classList?.contains('open') && mentionSource === 'asset') renderMentionPicker('asset');
+    if(!libs.some(library => library.id === activeAssetLibraryId)){
+        activeAssetLibraryId = libs.find(library => library.id === assetLibrary.active_library_id)?.id || libs[0]?.id || '';
     }
-    if(smartWorkflowTransferModal?.classList.contains('open')) renderSmartWorkflowLibrary();
+    if(options.render !== false) promptMentionMenu.refreshAssets();
+    if(smartWorkflowTransfer.isOpen()) renderSmartWorkflowLibrary();
 }
 function toggleAssetLibrary(open=!assetLibraryOpen){
     if(!assetPanel || !assetToggle) return;
@@ -10332,23 +8194,10 @@ function toggleAssetLibrary(open=!assetLibraryOpen){
     assetPanel.classList.toggle('open', assetLibraryOpen);
     assetToggle?.classList.toggle('active', assetLibraryOpen);
     if(assetLibraryOpen){
-        // 每次打开都从本地素材开始，避免沿用提及选择器或旧版本留下的远程库。
-        assetTab = 'image';
-        activeAssetLibraryId = LOCAL_ASSET_LIBRARY_ID;
-        activeAssetCategoryId = '';
-        activeWorkflowAssetCategoryId = '';
-        mentionAssetCategoryId = '';
+        localAssetSidebar.render('__root__');
         loadAssetLibrary();
     }
     render();
-}
-function assetCategoryForMention(){
-    const cats = assetCategories('image');
-    if(!cats.length) return null;
-    return cats.find(cat => cat.id === mentionAssetCategoryId)
-        || cats.find(cat => cat.id === activeAssetCategoryId)
-        || cats.find(cat => (cat.items || []).length)
-        || cats[0];
 }
 function assetMediaKind(item){
     return XiaomeiShellKernel.mediaKind(item);
@@ -10365,539 +8214,47 @@ function assetNodeImageFromItem(item, fallbackName='asset'){
     if(item?.asset_uris && typeof item.asset_uris === 'object') image.asset_uris = {...item.asset_uris};
     return image;
 }
-function assetThumbHtml(item){
-    const url = escapeAttr(item.url || '');
-    const thumb = item.thumbnail || item.thumb || item.preview || item.url || '';
-    const kind = assetMediaKind(item);
-    if(String(item.url || '').trim().toLowerCase().startsWith('asset://')){
-        return `<div class="asset-thumb-wrap media-thumb asset-url-opaque asset-thumb"><i data-lucide="link-2"></i><span>asset://</span></div>`;
-    }
-    if(kind === 'video'){
-        return `<div class="asset-thumb-wrap">${smartVideoPreviewHtml(item, 256, 'class="asset-thumb" loading="lazy" decoding="async" alt=""')}<span class="asset-video-badge"><i data-lucide="film"></i>VIDEO</span></div>`;
-    }
-    if(kind === 'audio'){
-        return `<div class="asset-thumb-wrap media-thumb audio-thumb asset-thumb"><i data-lucide="file-audio"></i><span>${escapeHtml(item.name || 'Audio')}</span></div>`;
-    }
-    if(kind === 'workflow'){
-        return `<div class="asset-thumb-wrap media-thumb workflow-thumb asset-thumb"><i data-lucide="workflow"></i><span>${escapeHtml(item.name || 'Workflow')}</span></div>`;
-    }
-    // 网格缩略图用较小尺寸 + 懒加载/异步解码：素材多时滚动不再一次性加载解码全部图片。
-    return smartPreviewImgHtml({...item, url:thumb}, 256, 'class="asset-thumb" loading="lazy" decoding="async" alt=""');
-}
-function renderAssetLibrary(){
-    if(!assetPanel || !assetGrid || !assetCategorySelect) return;
-    document.querySelectorAll('[data-asset-tab]').forEach(btn => btn.classList.toggle('active', btn.dataset.assetTab === assetTab));
-    const libs = currentAssetSourceLibraries();
-    if(!activeAssetLibraryId || !libs.some(lib => lib.id === activeAssetLibraryId)) activeAssetLibraryId = LOCAL_ASSET_LIBRARY_ID;
-    if(assetLibrarySelect){
-        assetLibrarySelect.innerHTML = libs.map(lib => `<option value="${escapeHtml(lib.id)}" ${lib.id === activeAssetLibraryId ? 'selected' : ''}>${escapeHtml(lib.name || '资产库')}</option>`).join('');
-    }
-    const imageMode = assetTab === 'image';
-    const workflowMode = assetTab === 'workflow';
-    const urlMode = assetTab === 'url';
-    assetImageControls.style.display = (imageMode || workflowMode) ? 'block' : 'none';
-    if(assetUrlControls) assetUrlControls.style.display = urlMode ? 'grid' : 'none';
-    const localMode = assetLibraryIsLocal();
-    assetDropZone.style.display = imageMode ? 'flex' : 'none';
-    assetGrid.style.display = (imageMode || workflowMode || urlMode) ? 'grid' : 'none';
-    assetCategorySelect.disabled = urlMode;
-    workflowEmpty.style.display = 'none';
-    if(!imageMode && !workflowMode && !urlMode){ refreshIcons(); return; }
-    if(urlMode){
-        if(assetAddCategoryBtn) assetAddCategoryBtn.disabled = true;
-        if(assetRenameCategoryBtn) assetRenameCategoryBtn.disabled = true;
-        const urlItems = Array.isArray(assetUrlLibrary.items) ? assetUrlLibrary.items : [];
-        assetGrid.innerHTML = urlItems.length ? urlItems.map(item => `
-            <div class="asset-item asset-url-item" draggable="true" data-asset-id="${escapeHtml(item.id)}" data-url="${escapeHtml(item.url)}" data-name="${escapeHtml(item.name || item.url || 'URL素材')}" data-kind="${escapeHtml(assetMediaKind(item))}">
-                ${assetThumbHtml(item)}
-                <div class="asset-meta">
-                    <span class="asset-name" title="${escapeHtml(item.name || item.url || '')}">${escapeHtml(item.name || item.url || 'URL素材')}</span>
-                    <button class="asset-mini-btn" type="button" data-rename-url-asset="${escapeHtml(item.id)}" title="重命名"><i data-lucide="pencil"></i></button>
-                    <button class="asset-mini-btn" type="button" data-delete-url-asset="${escapeHtml(item.id)}" title="删除"><i data-lucide="trash-2"></i></button>
-                </div>
-            </div>
-        `).join('') : '<div class="asset-empty">暂无公网 URL 素材，点击上方按钮添加</div>';
-        bindAssetItemEvents();
-        bindSmartPreviewImageFallbacks(assetGrid);
-        refreshIcons();
-        return;
-    }
-    const baseCats = workflowMode ? workflowAssetCategories() : assetCategories('image');
-    const smartClassCats = imageMode && !localMode ? assetSmartClassEntries().map(entry => ({
-        ...entry,
-        id:entry.id,
-        name:`${entry.label} / ${entry.tag} (${entry.count})`,
-        type:'image',
-        smartClass:true,
-        items:[]
-    })) : [];
-    const cats = workflowMode ? baseCats : [...baseCats, ...smartClassCats];
-    const activeCatId = workflowMode ? activeWorkflowAssetCategoryId : activeAssetCategoryId;
-    if(workflowMode && !cats.some(cat => cat.id === activeWorkflowAssetCategoryId)) activeWorkflowAssetCategoryId = cats[0]?.id || '';
-    if(imageMode && !cats.some(cat => cat.id === activeAssetCategoryId)) activeAssetCategoryId = cats[0]?.id || '';
-    assetCategorySelect.innerHTML = cats.map(cat => `<option value="${escapeHtml(cat.id)}" ${cat.id === (workflowMode ? activeWorkflowAssetCategoryId : activeAssetCategoryId) ? 'selected' : ''}>${escapeHtml(cat.name || (workflowMode ? '工作流' : tr('smart.assetFolder')))}</option>`).join('');
-    const cat = workflowMode ? activeWorkflowAssetCategory() : activeAssetCategory();
-    const smartClass = imageMode ? parseAssetSmartClassId(activeAssetCategoryId) : null;
-    const items = (smartClass ? itemsForAssetSmartClass(activeAssetCategoryId) : (cat?.items || []))
-        .filter(item => !localMode || !pendingLocalAssetDeletes.has(item.id));
-    if(assetAddCategoryBtn) assetAddCategoryBtn.disabled = Boolean(smartClass);
-    if(assetRenameCategoryBtn) assetRenameCategoryBtn.disabled = !cat || Boolean(smartClass) || (localMode && (cat.id === '__root__' || !cat.id));
-    assetGrid.innerHTML = items.length ? items.map(item => `
-        <div class="asset-item ${workflowMode ? 'workflow-asset-item' : ''}" draggable="${workflowMode ? 'false' : 'true'}" data-asset-id="${escapeHtml(item.id)}" data-url="${escapeHtml(item.url)}" data-name="${escapeHtml(item.name || 'asset')}" data-kind="${escapeHtml(assetMediaKind(item))}">
-            ${assetThumbHtml(item)}
-            <div class="asset-meta">
-                <span class="asset-name" ${localMode ? `data-rename-local-asset="${escapeHtml(item.id)}"` : ''} title="${escapeHtml(item.name || '')}">${escapeHtml(item.name || 'asset')}</span>
-                ${workflowMode
-                    ? `<button class="asset-mini-btn" type="button" data-workflow-insert="${escapeHtml(item.id)}" title="插入画布"><i data-lucide="corner-down-left"></i></button>
-                       <button class="asset-mini-btn" type="button" data-rename-workflow-asset="${escapeHtml(item.id)}" title="${escapeHtml(tr('smart.assetRename'))}"><i data-lucide="pencil"></i></button>
-                       <button class="asset-mini-btn" type="button" data-delete-workflow-asset="${escapeHtml(item.id)}" title="${escapeHtml(tr('common.delete'))}"><i data-lucide="trash-2"></i></button>`
-                    : localMode ? `<button class="asset-mini-btn" type="button" data-rename-local-asset="${escapeHtml(item.id)}" title="${escapeHtml(tr('smart.assetRename'))}"><i data-lucide="pencil"></i></button>
-                       <button class="asset-mini-btn" type="button" data-delete-local-asset="${escapeHtml(item.id)}" title="${escapeHtml(tr('common.delete'))}"><i data-lucide="trash-2"></i></button>` : `<button class="asset-mini-btn" type="button" data-rename-asset="${escapeHtml(item.id)}" title="${escapeHtml(tr('smart.assetRename'))}"><i data-lucide="pencil"></i></button>
-                       <button class="asset-mini-btn" type="button" data-delete-asset="${escapeHtml(item.id)}" title="${escapeHtml(tr('common.delete'))}"><i data-lucide="trash-2"></i></button>`}
-            </div>
-        </div>
-    `).join('') : `<div class="asset-empty">${escapeHtml(localMode ? '暂无本地素材，拖入图片即可保存' : (smartClass ? '这个智能分类下暂无素材' : (workflowMode ? '暂无工作流资产' : tr('smart.assetEmpty'))))}</div>`;
-    if(workflowMode) bindWorkflowAssetItemEvents();
-    else bindAssetItemEvents();
-    bindSmartPreviewImageFallbacks(assetGrid);
-    refreshIcons();
-}
-function openAssetNameDialog({title='', value='', placeholder='', cancelValue='', multiline=false }={}){
-    if(!assetDialogBackdrop || !assetDialogInput || !assetDialogOk || !assetDialogCancel) return Promise.resolve(cancelValue);
-    return new Promise(resolve => {
-        assetDialogTitle.textContent = title || tr('smart.assetRename');
-        assetDialogInput.value = value || '';
-        assetDialogInput.placeholder = placeholder || '';
-        assetDialogInput.classList.toggle('is-multiline', Boolean(multiline));
-        assetDialogInput.rows = multiline ? 5 : 1;
-        assetDialogBackdrop.hidden = false;
-        assetDialogBackdrop.classList.add('open');
-        assetDialogInput.focus();
-        assetDialogInput.select();
-        const cleanup = result => {
-            assetDialogBackdrop.classList.remove('open');
-            assetDialogBackdrop.hidden = true;
-            assetDialogOk.onclick = null;
-            assetDialogCancel.onclick = null;
-            assetDialogInput.onkeydown = null;
-            assetDialogBackdrop.onmousedown = null;
-            assetDialogInput.classList.remove('is-multiline');
-            assetDialogInput.rows = 1;
-            resolve(result);
-        };
-        assetDialogOk.onclick = () => cleanup(assetDialogInput.value.trim());
-        assetDialogCancel.onclick = () => cleanup(cancelValue);
-        assetDialogInput.onkeydown = event => {
-            if(event.key === 'Enter' && !multiline) cleanup(assetDialogInput.value.trim());
-            if(event.key === 'Enter' && multiline && (event.ctrlKey || event.metaKey)) cleanup(assetDialogInput.value.trim());
-            if(event.key === 'Escape') cleanup(cancelValue);
-        };
-        assetDialogBackdrop.onmousedown = event => {
-            if(event.target === assetDialogBackdrop) cleanup(cancelValue);
-        };
-    });
-}
-let assetHoverTimer = 0;
-function positionAssetHoverPreview(event){
-    if(!assetHoverPreview || assetHoverPreview.hidden || assetHoverPreview.style.display === 'none') return;
-    const pad = 14;
-    const w = assetHoverPreview.offsetWidth || 260;
-    const h = assetHoverPreview.offsetHeight || 300;
-    let left = event.clientX - w - 16;
-    if(left < pad) left = event.clientX + 16;
-    left = Math.max(pad, Math.min(window.innerWidth - w - pad, left));
-    const top = Math.max(pad, Math.min(window.innerHeight - h - pad, event.clientY + 12));
-    assetHoverPreview.style.left = `${left}px`;
-    assetHoverPreview.style.top = `${top}px`;
-}
-function showAssetHoverPreview(event, item){
-    if(!assetHoverPreview || !item?.url) return;
-    let media = assetHoverPreview.querySelector('img,video');
-    const name = assetHoverPreview.querySelector('.asset-hover-name');
-    const kind = assetMediaKind(item);
-    if(kind === 'video' && media?.tagName?.toLowerCase() !== 'video'){
-        media?.replaceWith(document.createElement('video'));
-        media = assetHoverPreview.querySelector('video');
-    } else if(kind !== 'video' && media?.tagName?.toLowerCase() !== 'img'){
-        media?.replaceWith(document.createElement('img'));
-        media = assetHoverPreview.querySelector('img');
-    }
-    if(kind === 'video'){
-        media.muted = true;
-        media.loop = true;
-        media.playsInline = true;
-        media.preload = 'metadata';
-        media.controls = false;
-        media.disablePictureInPicture = true;
-        media.setAttribute('disablepictureinpicture', '');
-        media.setAttribute('controlslist', 'nodownload noplaybackrate noremoteplayback');
-        media.src = item.url;
-        media.play?.().catch(() => {});
-    } else {
-        // 用预览代理（缩放图）而非原图，悬浮预览更快、不卡。
-        media.loading = 'lazy';
-        media.decoding = 'async';
-        media.src = smartMediaPreviewUrl(item, 768);
-        media.alt = 'asset preview';
-    }
-    name.textContent = item.name || 'asset';
-    assetHoverPreview.hidden = false;
-    assetHoverPreview.style.display = 'block';
-    positionAssetHoverPreview(event);
-}
-function hideAssetHoverPreview(){
-    if(!assetHoverPreview) return;
-    assetHoverPreview.style.display = 'none';
-    assetHoverPreview.hidden = true;
-    const media = assetHoverPreview.querySelector('img,video');
-    media?.pause?.();
-    media?.removeAttribute('src');
-    media?.load?.();
-}
-function beginAssetInlineRename(assetId){
-    const item = (activeAssetCategory()?.items || []).find(x => x.id === assetId)
-        || (activeWorkflowAssetCategory()?.items || []).find(x => x.id === assetId);
-    const card = [...assetGrid.querySelectorAll('.asset-item')].find(el => el.dataset.assetId === assetId);
-    const nameEl = card?.querySelector('.asset-name');
-    if(!item || !card || !nameEl || card.querySelector('.asset-rename-input')) return;
-    hideAssetHoverPreview();
-    const previousName = item.name || 'asset';
-    const previousDraggable = card.draggable;
-    const input = document.createElement('input');
-    input.className = 'asset-rename-input';
-    input.type = 'text';
-    input.value = previousName;
-    input.setAttribute('aria-label', tr('smart.assetRename'));
-    card.draggable = false;
-    nameEl.replaceWith(input);
-    input.focus();
-    input.select();
-    let done = false;
-    const restore = () => {
-        if(input.isConnected) input.replaceWith(nameEl);
-        card.draggable = previousDraggable;
-    };
-    const finish = async save => {
-        if(done) return;
-        done = true;
-        const name = input.value.trim();
-        if(!save || !name || name === previousName){
-            restore();
-            return;
+const localAssetSidebar = XiaomeiSmartLocalAssets.create({
+    kind:assetMediaKind,
+    label:tr,
+    toReference:assetNodeImageFromItem,
+    thumbnail(item){
+        const url = item.thumbnail || item.thumb || item.preview || item.url || '';
+        return smartPreviewImgHtml({...item, url}, 256, 'class="asset-thumb" loading="lazy" decoding="async" alt=""');
+    },
+    preview:item => smartMediaPreviewUrl({url:item.url, kind:assetMediaKind(item)}, 768),
+    acceptFile:isSupportedUploadFile,
+    responseError:smartResponseErrorMessage,
+    nameFromUrl:smartImageNameFromUrl,
+    hasDropData:hasSmartImageDropData,
+    resolveDrop:resolveSmartImageDropPayload,
+    importPaths:importSmartLocalImages,
+    clearCanvasDrop(){
+        shell?.classList.remove('smart-drop-active');
+        clearMediaDropHighlight();
+    },
+    relocated:refreshRenamedLocalAsset,
+    notify:message => toast(message || tr('smart.assetAddFail')),
+    fallbacks:bindSmartPreviewImageFallbacks,
+    icons:refreshIcons,
+});
+function refreshRenamedLocalAsset(previous, updated, oldPath){
+    const escapedPath = String(oldPath).split('/').map(encodeURIComponent).join('/');
+    const earlierUrls = new Set([previous.url, '/assets/uploads/' + escapedPath]);
+    let changed = false;
+    for(const node of nodes){
+        for(const image of node.images || []){
+            if(!image?.url || !earlierUrls.has(image.url)) continue;
+            image.url = updated.url;
+            if(updated.name) image.name = updated.name;
+            copyMediaSizeFields(updated, image);
+            changed = true;
         }
-        input.disabled = true;
-        try {
-            if(assetLibraryIsLocal() || item.file){
-                const data = await fetch('/api/local-assets/items', {
-                    method:'PATCH',
-                    headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify({path:item.file || item.id, name})
-                }).then(async r => {
-                    if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || '重命名失败');
-                    return r.json();
-                });
-                localAssetLibrary = {items:Array.isArray(data.items) ? data.items : localAssetLibrary.items, tree:data.tree || localAssetLibrary.tree};
-                activeAssetCategoryId = data.item?.folder || activeAssetCategoryId;
-                if(data.old_path && data.item?.url){
-                    const oldUrl = `/assets/uploads/${String(data.old_path).split('/').map(encodeURIComponent).join('/')}`;
-                    nodes.forEach(node => (node.images || []).forEach(img => {
-                        if(img?.url !== oldUrl) return;
-                        img.url = data.item.url;
-                        img.name = data.item.name || img.name;
-                        copyMediaSizeFields(data.item, img);
-                    }));
-                    scheduleSave();
-                }
-                renderAssetLibrary();
-                render();
-                toast('已重命名本地素材，反推提示词和分类索引已同步');
-            } else {
-                const data = await fetch(`/api/asset-library/items/${encodeURIComponent(assetId)}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name})}).then(r => r.json());
-                setAssetLibraryFromResponse(data);
-            }
-        } catch(err){
-            restore();
-            toast(err.message || tr('smart.assetAddFail'));
-        }
-    };
-    input.addEventListener('keydown', event => {
-        event.stopPropagation();
-        if(event.key === 'Enter'){
-            event.preventDefault();
-            finish(true);
-        } else if(event.key === 'Escape'){
-            event.preventDefault();
-            finish(false);
-        }
-    });
-    input.addEventListener('pointerdown', event => event.stopPropagation());
-    input.addEventListener('mousedown', event => event.stopPropagation());
-    input.addEventListener('click', event => event.stopPropagation());
-    input.addEventListener('blur', () => finish(true));
-}
-async function renameAssetUrlFromPanel(itemId){
-    const item = (assetUrlLibrary.items || []).find(entry => entry.id === itemId);
-    if(!item) return;
-    const name = await openAssetNameDialog({title:'重命名 URL 素材', value:item.name || item.url || ''});
-    if(!name || name === item.name) return;
-    try {
-        const response = await fetch(`/api/asset-url-library/items/${encodeURIComponent(itemId)}`, {
-            method:'PATCH',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({url:item.url, name, kind:item.kind || 'image', note:item.note || ''})
-        });
-        const data = await response.json().catch(() => ({}));
-        if(!response.ok) throw new Error(data.detail || 'URL 素材重命名失败');
-        assetUrlLibrary = data.library || assetUrlLibrary;
-        renderAssetLibrary();
-    } catch(err){
-        toast(err.message || 'URL 素材重命名失败');
     }
-}
-async function addUrlToUrlAssetLibrary(){
-    const url = await openAssetNameDialog({title:'添加公网 URL 素材', value:'https://', placeholder:'https://example.com/image.png'});
-    if(!url || url === 'https://') return;
-    try {
-        const response = await fetch('/api/asset-url-library/items', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({url, kind:'image'})
-        });
-        const data = await response.json().catch(() => ({}));
-        if(!response.ok) throw new Error(data.detail || '公网 URL 保存失败');
-        assetUrlLibrary = data.library || assetUrlLibrary;
-        assetTab = 'url';
-        renderAssetLibrary();
-        toast('已保存公网 URL 素材');
-    } catch(err){
-        toast(err.message || '公网 URL 保存失败');
+    if(changed){
+        render();
+        scheduleSave();
     }
-}
-function bindAssetItemEvents(){
-    assetGrid.querySelectorAll('.asset-item').forEach(el => {
-        const thumb = el.querySelector('.asset-thumb');
-        // 悬浮预览延迟显示：滚动时缩略图会从光标下快速划过、连发 mouseenter，立即加载大图会卡。延迟后只在
-        // 光标真正停留时才加载预览，滚动划过不触发。
-        thumb?.addEventListener('mouseenter', e => {
-            clearTimeout(assetHoverTimer);
-            const data = {url:el.dataset.url, name:el.dataset.name, kind:el.dataset.kind};
-            const cx = e.clientX, cy = e.clientY;
-            assetHoverTimer = setTimeout(() => showAssetHoverPreview({clientX:cx, clientY:cy}, data), 160);
-        });
-        thumb?.addEventListener('mousemove', e => positionAssetHoverPreview(e));
-        thumb?.addEventListener('mouseleave', () => { clearTimeout(assetHoverTimer); hideAssetHoverPreview(); });
-        el.addEventListener('dragstart', e => {
-            hideAssetHoverPreview();
-            e.dataTransfer.effectAllowed = 'copy';
-            const item = assetTab === 'url'
-                ? (assetUrlLibrary.items || []).find(x => x.id === el.dataset.assetId)
-                : (activeAssetCategory()?.items || []).find(x => x.id === el.dataset.assetId);
-            e.dataTransfer.setData('application/x-smart-asset', JSON.stringify(assetNodeImageFromItem(item || {url:el.dataset.url, name:el.dataset.name, kind:el.dataset.kind})));
-            e.dataTransfer.setData('text/plain', el.dataset.url || '');
-        });
-    });
-    assetGrid.querySelectorAll('[data-rename-asset]').forEach(btn => {
-        btn.onclick = async e => {
-            e.preventDefault(); e.stopPropagation();
-            beginAssetInlineRename(btn.dataset.renameAsset);
-        };
-    });
-    assetGrid.querySelectorAll('[data-rename-local-asset]').forEach(btn => {
-        btn.onclick = async e => {
-            e.preventDefault(); e.stopPropagation();
-            beginAssetInlineRename(btn.dataset.renameLocalAsset || '');
-        };
-    });
-    assetGrid.querySelectorAll('[data-delete-local-asset]').forEach(btn => {
-        btn.onclick = async e => {
-            e.preventDefault(); e.stopPropagation();
-            await deleteLocalAssetFromPanel(btn.dataset.deleteLocalAsset || '', btn.closest('.asset-item'));
-        };
-    });
-    assetGrid.querySelectorAll('[data-delete-asset]').forEach(btn => {
-        btn.onclick = async e => {
-            e.preventDefault(); e.stopPropagation();
-            btn.disabled = true;
-            try {
-                const response = await fetch(`/api/asset-library/items/${encodeURIComponent(btn.dataset.deleteAsset)}`, {method:'DELETE'});
-                const data = await response.json().catch(() => ({}));
-                if(!response.ok) throw new Error(data.detail || '素材无法移入回收站');
-                setAssetLibraryFromResponse(data);
-            } catch(err){
-                btn.disabled = false;
-                toast(err.message || tr('smart.assetAddFail'));
-            }
-        };
-    });
-    assetGrid.querySelectorAll('[data-rename-url-asset]').forEach(btn => {
-        btn.onclick = async e => {
-            e.preventDefault(); e.stopPropagation();
-            await renameAssetUrlFromPanel(btn.dataset.renameUrlAsset || '');
-        };
-    });
-    assetGrid.querySelectorAll('[data-delete-url-asset]').forEach(btn => {
-        btn.onclick = async e => {
-            e.preventDefault(); e.stopPropagation();
-            btn.disabled = true;
-            try {
-                const response = await fetch(`/api/asset-url-library/items/${encodeURIComponent(btn.dataset.deleteUrlAsset || '')}`, {method:'DELETE'});
-                const data = await response.json().catch(() => ({}));
-                if(!response.ok) throw new Error(data.detail || '公网 URL 删除失败');
-                assetUrlLibrary = data.library || assetUrlLibrary;
-                renderAssetLibrary();
-            } catch(err){
-                btn.disabled = false;
-                toast(err.message || '公网 URL 删除失败');
-            }
-        };
-    });
-}
-function bindWorkflowAssetItemEvents(){
-    assetGrid.querySelectorAll('[data-workflow-insert]').forEach(btn => {
-        btn.onclick = async e => {
-            e.preventDefault();
-            e.stopPropagation();
-            btn.disabled = true;
-            await importSmartWorkflowAsset(btn.dataset.workflowInsert || '');
-            btn.disabled = false;
-        };
-    });
-    assetGrid.querySelectorAll('[data-rename-workflow-asset]').forEach(btn => {
-        btn.onclick = async e => {
-            e.preventDefault();
-            e.stopPropagation();
-            beginAssetInlineRename(btn.dataset.renameWorkflowAsset);
-        };
-    });
-    assetGrid.querySelectorAll('[data-delete-workflow-asset]').forEach(btn => {
-        btn.onclick = async e => {
-            e.preventDefault();
-            e.stopPropagation();
-            const item = (activeWorkflowAssetCategory()?.items || []).find(x => x.id === btn.dataset.deleteWorkflowAsset);
-            if(!item) return;
-            btn.disabled = true;
-            try {
-                const response = await fetch(`/api/asset-library/items/${encodeURIComponent(item.id)}`, {method:'DELETE'});
-                const data = await response.json().catch(() => ({}));
-                if(!response.ok) throw new Error(data.detail || '工作流无法移入回收站');
-                setAssetLibraryFromResponse(data);
-            } catch(err){
-                btn.disabled = false;
-                toast(err.message || tr('smart.assetAddFail'));
-            }
-        };
-    });
-}
-async function addUrlToAssetLibrary(url, name=''){
-    if(assetLibraryIsLocal()) return addUrlToLocalAssetLibrary(url, name);
-    const cat = activeAssetCategory();
-    if(!cat){ toast(tr('smart.assetNoFolder')); return; }
-    const data = await fetch('/api/asset-library/items', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(XiaomeiShellKernel.assetBatch('save', {libraryId:activeAssetLibraryId, categoryId:cat.id, url, name}))}).then(async r => {
-        if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || tr('smart.assetAddFail'));
-        return r.json();
-    });
-    setAssetLibraryFromResponse(data);
-    toast(tr('smart.assetSaved'));
-}
-function localAssetFolderPath(){
-    const cat = activeAssetCategory();
-    return cat && cat.id !== '__root__' ? (cat.id || '') : '';
-}
-function setLocalAssetLibraryFromResponse(data){
-    localAssetLibrary = {items:Array.isArray(data.items) ? data.items : localAssetLibrary.items, tree:data.tree || localAssetLibrary.tree};
-}
-async function addFilesToLocalAssetLibrary(files=[]){
-    const supported = [...(files || [])].filter(isSupportedUploadFile);
-    if(!supported.length) return [];
-    const form = new FormData();
-    form.append('folder', localAssetFolderPath());
-    supported.forEach(file => form.append('files', file, file.name || 'media'));
-    const data = await fetch('/api/local-assets/upload', {method:'POST', body:form}).then(async r => {
-        if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || tr('smart.assetAddFail'));
-        return r.json();
-    });
-    const localData = await fetch('/api/local-assets').then(r => r.ok ? r.json() : {items:[], tree:null});
-    setLocalAssetLibraryFromResponse(localData);
-    renderAssetLibrary();
-    toast(`已保存 ${data.files?.length || 0} 个本地素材`);
-    return data.files || [];
-}
-async function addLocalPathsToLocalAssetLibrary(paths=[]){
-    const imported = await importSmartLocalImages(paths);
-    return addUrlItemsToLocalAssetLibrary(imported.map(item => ({url:item.url, name:item.name || smartImageNameFromUrl(item.url)})));
-}
-async function addUrlItemsToLocalAssetLibrary(items=[]){
-    const list = (items || []).filter(item => item?.url);
-    if(!list.length) return [];
-    const data = await fetch('/api/local-assets/import-urls', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(XiaomeiShellKernel.assetBatch('import', {folder:localAssetFolderPath(), items:list.map(item => ({url:item.url, name:item.name || smartImageNameFromUrl(item.url)}))}))
-    }).then(async r => {
-        if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || tr('smart.assetAddFail'));
-        return r.json();
-    });
-    const localData = await fetch('/api/local-assets').then(async r => {
-        if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || tr('smart.assetLoadFail'));
-        return r.json();
-    });
-    setLocalAssetLibraryFromResponse(localData);
-    renderAssetLibrary();
-    if((data.count || 0) !== list.length){
-        const reason = (data.items || []).find(item => !item.ok)?.error;
-        throw new Error(reason || `仅保存了 ${data.count || 0}/${list.length} 个本地素材`);
-    }
-    toast(`已保存 ${data.count || 0} 个本地素材`);
-    return data.files || [];
-}
-async function addUrlToLocalAssetLibrary(url, name=''){
-    return addUrlItemsToLocalAssetLibrary([{url, name:name || smartImageNameFromUrl(url)}]);
-}
-function removeLocalAssetFromLibrary(itemId){
-    const matches = item => item.id === itemId || item.file === itemId;
-    localAssetLibrary.items = (localAssetLibrary.items || []).filter(item => !matches(item));
-    const removeFromTree = node => {
-        if(!node) return 0;
-        const before = (node.items || []).length;
-        node.items = (node.items || []).filter(item => !matches(item));
-        const removed = before - node.items.length + (node.children || []).reduce((total, child) => total + removeFromTree(child), 0);
-        if(removed) node.count = Math.max(0, (node.count || 0) - removed);
-        return removed;
-    };
-    removeFromTree(localAssetLibrary.tree);
-}
-async function deleteLocalAssetFromPanel(itemId, card=null){
-    const item = (activeAssetCategory()?.items || []).find(x => x.id === itemId)
-        || (localAssetLibrary.items || []).find(x => x.id === itemId || x.file === itemId);
-    if(!item || pendingLocalAssetDeletes.has(item.id)) return;
-    pendingLocalAssetDeletes.add(item.id);
-    hideAssetHoverPreview();
-    card?.remove();
-    if(!assetGrid.querySelector('.asset-item')) renderAssetLibrary();
-    try {
-        const data = await fetch('/api/local-assets/delete', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({names:[item.file || item.id]})
-        }).then(async r => {
-            if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || '删除失败');
-            return r.json();
-        });
-        if(!data.deleted?.includes(item.file || item.id)) throw new Error('未找到要移入回收站的本地素材');
-        removeLocalAssetFromLibrary(item.id);
-        pendingLocalAssetDeletes.delete(item.id);
-        renderAssetLibrary();
-        toast('本地素材已移入回收站');
-    } catch(err){
-        pendingLocalAssetDeletes.delete(item.id);
-        renderAssetLibrary();
-        toast(err.message || '删除失败');
-    }
-}
-function canvasImageDragPayload(node, index=0){
-    const img = node?.images?.[index];
-    if(!img?.url) return null;
-    return {url:img.url, name:img.name || node.title || 'image'};
 }
 // 迁移旧数据：早期把图片节点作为成员（items[]）放进分组的画布，统一把这些图片吸收进 group.images，
 // 让它们显示为卡片内的缩略图网格（新模型）。一次性、幂等。
@@ -10962,6 +8319,7 @@ async function loadCanvas(){
         const res = await fetch(`/api/canvases/${encodeURIComponent(canvasId)}`);
         if(!res.ok) return;
         const data = await res.json();
+        stopReplacedCanvasDependencies();
         canvas = data.canvas;
         rememberCanvasListProject(canvas.project || 'default');
         canvasUsesConnections = Object.prototype.hasOwnProperty.call(canvas || {}, 'connections');
@@ -11676,68 +9034,53 @@ function pasteNodes(options={}){
 }
 // 跨页"素材库 → 画布"剪贴板：素材库管理页把所选素材写进这个 localStorage key，
 // 画布里按 Ctrl+V 读取并批量生成图片节点（网格平铺），用完即清空（一次性）。
-const SMART_CANVAS_ASSET_INBOX_KEY = 'smart_canvas_asset_inbox';
 const SMART_CANVAS_WORKFLOW_INBOX_KEY = 'smart_canvas_workflow_inbox_v1';
 function readSmartWorkflowInbox(){
     try {
         const data = JSON.parse(localStorage.getItem(SMART_CANVAS_WORKFLOW_INBOX_KEY) || 'null');
         const url = String(data?.url || '').trim();
-        if(!url || (data.ts && Date.now() - Number(data.ts) > 30 * 60 * 1000)) return null;
-        return {url, name:String(data.name || '工作流').trim() || '工作流'};
+        const ts = Number(data?.ts) || 0;
+        if(!url || (ts && Date.now() - ts > 30 * 60 * 1000)) return null;
+        return {url, name:String(data.name || '工作流').trim() || '工作流', ts};
     } catch(e){ return null; }
 }
 async function importSmartWorkflowFromInbox(payload=null){
     const item = payload?.url ? payload : readSmartWorkflowInbox();
-    if(!item?.url) return false;
+    if(!item?.url || !await smartWorkflowTransfer.importAsset(item)) return false;
     try {
-        const response = await fetch(item.url);
-        if(!response.ok) throw new Error('工作流文件读取失败');
-        const blob = await response.blob();
-        const name = String(item.name || 'workflow');
-        const filename = /\.(json|zip)$/i.test(name) ? name : `${name}.zip`;
-        await importSmartWorkflowFile(new File([blob], filename, {type:blob.type || 'application/zip'}));
-        try { localStorage.removeItem(SMART_CANVAS_WORKFLOW_INBOX_KEY); } catch(e) {}
-        return true;
-    } catch(err){
-        toast(err.message || '工作流插入失败');
-        return false;
-    }
-}
-function readAssetInbox(){
-    try {
-        const data = JSON.parse(localStorage.getItem(SMART_CANVAS_ASSET_INBOX_KEY) || 'null');
-        const items = Array.isArray(data?.items) ? data.items.filter(it => it && it.url) : [];
-        if(!items.length) return null;
-        if(data.ts && (Date.now() - Number(data.ts)) > 30 * 60 * 1000) return null; // 30 分钟内有效
-        return items;
-    } catch(e){ return null; }
+        const queued = readSmartWorkflowInbox();
+        if(queued?.url === item.url && queued.ts === (Number(item.ts) || 0)){
+            localStorage.removeItem(SMART_CANVAS_WORKFLOW_INBOX_KEY);
+        }
+    } catch(_) {}
+    return true;
 }
 function pasteAssetsFromInbox(){
-    const items = readAssetInbox();
-    if(!items) return false;
+    const inbox = XiaomeiCanvasAssetInbox.read();
+    if(!inbox) return false;
+    if(!collabCanMutateCanvas()) return true;
+    const {items} = inbox;
     const center = lastMouseWorld || viewportCenter();
-    const cell = 260; // 网格间距（世界坐标）
-    const cols = Math.max(1, Math.min(items.length, Math.ceil(Math.sqrt(items.length))));
-    const rows = Math.ceil(items.length / cols);
-    const startX = center.x - (cols - 1) * cell / 2;
-    const startY = center.y - (rows - 1) * cell / 2;
+    const columns = Math.ceil(Math.sqrt(items.length));
+    const rows = Math.ceil(items.length / columns);
+    const spacing = 260;
+    const left = center.x - spacing * (columns - 1) / 2;
+    const top = center.y - spacing * (rows - 1) / 2;
     pushUndo();
-    const created = [];
-    items.forEach((it, i) => {
-        const r = Math.floor(i / cols), c = i % cols;
-        const p = {x: startX + c * cell, y: startY + r * cell};
-        const node = createImageNodeAt(p, [assetNodeImageFromItem(it)], {skipUndo:true, select:false});
-        if(node) created.push(node.id);
-    });
-    selectedId = created.length === 1 ? created[0] : '';
-    selectedIds = created.length > 1 ? created : [];
+    const ids = items.map((item, index) => {
+        const point = {x:left + spacing * (index % columns), y:top + spacing * Math.floor(index / columns)};
+        return createImageNodeAt(point, [assetNodeImageFromItem(item)],
+            {skipUndo:true, skipRender:true, skipSave:true, select:false})?.id;
+    }).filter(Boolean);
+    selectedId = ids.length === 1 ? ids[0] : '';
+    selectedIds = ids.length > 1 ? ids : [];
     selectedImage = {nodeId:'', index:-1};
     deferredComposerNodeId = selectedId;
     lastNodePasteAt = Date.now();
-    try { localStorage.removeItem(SMART_CANVAS_ASSET_INBOX_KEY); } catch(e){}
+    XiaomeiCanvasAssetInbox.consume(inbox);
     render();
     scheduleSave();
-    toast(`已粘贴 ${created.length} 个素材到画布`);
+    toast(`已粘贴 ${ids.length} 个素材到画布`);
     return true;
 }
 function duplicateForAltDrag(node, preserveConnections=true){
@@ -11786,10 +9129,6 @@ function duplicateForAltDrag(node, preserveConnections=true){
     render();
     scheduleSave();
     return dragCopy;
-}
-function shellPoint(event, cachedRect=null){
-    const rect = cachedRect || shell.getBoundingClientRect();
-    return {x:event.clientX - rect.left, y:event.clientY - rect.top};
 }
 function connectionFocusIndices(connections=[], selectedIds=[]){
     const selected = new Set((selectedIds || []).filter(Boolean));
@@ -12223,7 +9562,7 @@ function moveNodeElementsDuringDrag(){
     markInteractionDirtyNodes(groupItems.map(item => item.id));
     const active = selectedNode();
     if(active && groupItems.some(item => item.id === active.id)) positionComposerForNode(active);
-    scheduleOcrPanelPosition();
+    smartOcr.schedule();
     scheduleInteractionLayerRefresh();
 }
 let resizeDomUpdateRaf = 0;
@@ -12246,70 +9585,17 @@ function updateNodeElementDuringResize(node){
         render();
         return;
     }
-    const imgs = isSmartGroupNode(node) ? smartGroupImageRefs(node).map(ref => ref.item) : (node.images || []);
-    const layout = imageLayout(imgs, nodeScale(node), node);
-    el.style.width = `${layout.width}px`;
-    el.style.height = `${layout.height}px`;
-    const body = el.querySelector('.node-body');
-    if(body){
-        if(node.type === 'smart-agent'){
-            body.style.width = '100%';
-            body.style.height = '100%';
-            body.style.minHeight = '0';
-            const card = body.querySelector('.agent-node-card');
-            if(card){
-                card.style.width = '100%';
-                card.style.height = '100%';
-                card.style.minHeight = '0';
-            }
-        }
-        const loadingSingle = body.querySelector('.loading-cell.single');
-        if(loadingSingle){
-            loadingSingle.style.width = `${layout.width}px`;
-            loadingSingle.style.height = `${layout.height}px`;
-        }
-        const loadingGrid = body.querySelector('.loading-skeleton');
-        if(loadingGrid){
-            const count = Math.max(1, imgs.length + Math.max(Number(node.pending) || 0, smartPendingTasks(node).length));
-            const cols = Math.min(4, Math.max(2, Math.ceil(Math.sqrt(count))));
-            const rows = Math.ceil(count / cols);
-            loadingGrid.style.width = `${layout.width}px`;
-            loadingGrid.style.height = `${layout.height}px`;
-            loadingGrid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
-            loadingGrid.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
-        }
-        const maxVisibleRows = isSmartGroupNode(node)
-            ? (smartGroupCompactMembers(node).length ? Number(layout.rows || 1) : SMART_GROUP_MAX_VISIBLE_ROWS)
-            : MEDIA_GROUP_MAX_VISIBLE_ROWS;
-        const grid = body.querySelector('.thumb-grid');
-        if(grid){
-            grid.style.setProperty('--thumb-cols', layout.cols);
-            grid.style.setProperty('--thumb-size', `${layout.thumb}px`);
-            grid.style.setProperty('--thumb-w', `${layout.thumbW || layout.thumb}px`);
-            grid.style.setProperty('--thumb-h', `${layout.thumbH || layout.thumb}px`);
-            const visibleRows = Math.max(1, Math.min(maxVisibleRows, Number(layout.visibleRows || layout.rows || 1)));
-            const maxHeight = visibleRows * Number(layout.thumbH || layout.thumb || 96) + Math.max(0, visibleRows - 1) * 8;
-            grid.style.setProperty('--thumb-max-height', `${maxHeight}px`);
-            grid.querySelectorAll('.thumb-item').forEach((itemEl, index) => {
-                applyThumbDisplaySizeToElement(itemEl, imgs[index], layout.thumb);
-            });
-        }
-        const wrap = body.querySelector('.image-wrap');
-        if(wrap){
-            // 分组单图卡片含 16px 内边距（PAD=32），图片按内边距内的尺寸显示，避免溢出边框。
-            const wrapW = isSmartGroupNode(node) ? Math.max(24, Number(layout.innerW || 0) || (Number(layout.width) - 32)) : layout.width;
-            const wrapH = isSmartGroupNode(node) ? Math.max(24, Number(layout.innerH || 0) || (Number(layout.height) - 60)) : layout.height;
-            wrap.style.setProperty('--node-img-w', `${wrapW}px`);
-            wrap.style.setProperty('--node-img-h', `${wrapH}px`);
-        }
-        const media = body.querySelector('.node-img');
-        if(media){
-            const mediaW = isSmartGroupNode(node) ? Math.max(24, Number(layout.innerW || 0) || (Number(layout.width) - 32)) : layout.width;
-            const mediaH = isSmartGroupNode(node) ? Math.max(24, Number(layout.innerH || 0) || (Number(layout.height) - 60)) : layout.height;
-            media.style.width = `${mediaW}px`;
-            media.style.height = `${mediaH}px`;
-        }
-    }
+    const grouped = isSmartGroupNode(node);
+    const images = grouped ? smartGroupImageRefs(node).map(ref => ref.item) : (node.images || []);
+    const layout = imageLayout(images, nodeScale(node), node);
+    const visibleRows = grouped
+        ? (smartGroupCompactMembers(node).length ? Number(layout.rows || 1) : SMART_GROUP_MAX_VISIBLE_ROWS)
+        : MEDIA_GROUP_MAX_VISIBLE_ROWS;
+    XiaomeiSmartNodeMedia.patchSize(el, layout, {
+        agent:node.type === 'smart-agent', grouped, images, visibleRows,
+        pending:Math.max(Number(node.pending) || 0, smartPendingTasks(node).length),
+        updateThumbnail:applyThumbDisplaySizeToElement
+    });
     if(isSmartAiRenderNode(node)) syncSmartAiRenderPortPositions(el);
     const active = selectedNode();
     if(active?.id === node.id) positionComposerForNode(active);
@@ -12428,7 +9714,7 @@ function resultMediaUrls(result){
     const seen = new Set();
     return urls.map(item => {
         const url = typeof item === 'string' ? item : item?.url || item?.path || '';
-        if(!url) return null;
+        if(typeof url !== 'string' || !url) return null;
         return typeof item === 'object' ? {...item, url} : url;
     }).filter(item => {
         const url = typeof item === 'string' ? item : item?.url || '';
@@ -12457,14 +9743,18 @@ function looksLikeImageMediaUrl(url){
 function videoRefsOnly(refs){
     return (refs || []).filter(ref => ref?.url && mediaKindForItem(ref) === 'video' && !looksLikeImageMediaUrl(ref.url));
 }
-function isRemoteVideoReferenceUrl(url){
-    return /^https?:\/\//i.test(String(url || '')) || /^asset:\/\//i.test(String(url || ''));
-}
 function audioRefsOnly(refs){
     return (refs || []).filter(ref => ref?.url && mediaKindForItem(ref) === 'audio');
 }
 function documentRefsOnly(refs){
     return (refs || []).filter(ref => ref?.url && (isFileMediaItem(ref) || isTextMediaItem(ref)));
+}
+function smartLlmRequestMedia(refs){
+    return {
+        images:imageRefsOnly(refs).map(item => item.url),
+        videos:videoRefsOnly(refs).map(item => item.url),
+        attachments:documentRefsOnly(refs).map(item => ({url:item.url, name:item.name || ''})),
+    };
 }
 function documentStatusText(item){
     return String(item?.document?.message || '').replace('；文档内图片请另行上传', '；Agent 识图需将文档内图片另行上传');
@@ -12697,100 +9987,6 @@ function singleMediaHtml(img, w, h){
     if(isVideoMediaItem(img)) return `<div class="node-img media-card media-video-card" style="width:${w}px;height:${h}px">${isInlineVideoActive(img) ? smartVideoPlayerHtml(img.url || '') : `${smartVideoPreviewHtml(img, 512, 'alt=""')}<button class="smart-video-play" type="button" title="播放"><i data-lucide="play"></i></button>`}</div>`;
     return smartPreviewImgHtml(img, 512, `class="node-img" loading="eager" draggable="false" style="width:${w}px;height:${h}px"`);
 }
-function smartNodeHasLiveMedia(node){
-    return Boolean(!node?.pending && ((node?.images || []).some(img => img?.url)
-        || (smartLoopIsPaired(node) && smartLoopDetailPaintNodes(node).some(paint => nonPreviewOutputImages(paint.images || []).length))));
-}
-function mediaSignaturePartFromElement(itemEl){
-    if(itemEl?.dataset?.mediaSignature) return itemEl.dataset.mediaSignature;
-    const media = itemEl?.querySelector?.('video,audio,img');
-    if(media){
-        const tag = media.tagName.toLowerCase();
-        const kind = tag === 'video' ? 'video' : tag === 'audio' ? 'audio' : 'image';
-        const url = media.dataset?.url || media.dataset?.originalSrc || media.getAttribute('src') || '';
-        return `${kind}:${url}`;
-    }
-    const audioThumb = itemEl?.querySelector?.('.audio-thumb[data-media-url]');
-    if(audioThumb) return `audio:${audioThumb.dataset.mediaUrl || ''}`;
-    return '';
-}
-function captureMediaPlaybackState(media){
-    if(!media) return null;
-    return {
-        currentTime:Number.isFinite(media.currentTime) ? media.currentTime : 0,
-        paused:Boolean(media.paused),
-        playbackRate:Number.isFinite(media.playbackRate) ? media.playbackRate : 1,
-        muted:Boolean(media.muted),
-        volume:Number.isFinite(media.volume) ? media.volume : 1
-    };
-}
-function restoreMediaPlaybackState(media, state){
-    if(!media || !state) return;
-    try { media.playbackRate = state.playbackRate || 1; } catch(e) {}
-    try { media.muted = state.muted; } catch(e) {}
-    try { media.volume = state.volume; } catch(e) {}
-    const applyTime = () => {
-        if(Number.isFinite(state.currentTime) && state.currentTime > 0 && Math.abs((media.currentTime || 0) - state.currentTime) > 0.2){
-            try { media.currentTime = state.currentTime; } catch(e) {}
-        }
-        if(!state.paused && typeof media.play === 'function'){
-            const playPromise = media.play();
-            if(playPromise?.catch) playPromise.catch(() => {});
-        }
-    };
-    if(media.readyState >= 1) applyTime();
-    else media.addEventListener('loadedmetadata', applyTime, {once:true});
-}
-function transplantSmartMediaElements(oldNodeEl, newNodeEl){
-    const oldItems = [...(oldNodeEl?.querySelectorAll?.('.thumb-item,.image-wrap,.batch-screen-media') || [])];
-    const newItems = [...(newNodeEl?.querySelectorAll?.('.thumb-item,.image-wrap,.batch-screen-media') || [])];
-    oldItems.forEach((oldItem, index) => {
-        const oldMedia = oldItem.querySelector('video,audio,img.node-img,.thumb-item > img,.media-thumb img,.batch-screen-media img');
-        if(!oldMedia) return;
-        const selector = oldMedia.tagName.toLowerCase();
-        const oldUrl = oldMedia.dataset?.url || oldMedia.dataset?.originalSrc || oldMedia.getAttribute('src') || '';
-        const oldSignature = oldItem.dataset?.mediaSignature || `${selector}:${oldUrl}`;
-        const newItem = newItems.find(item => item.dataset?.mediaSignature === oldSignature)
-            || newItems.find(item => item.querySelector?.(selector)?.dataset?.url === oldUrl)
-            || newItems.find(item => item.querySelector?.(selector)?.dataset?.originalSrc === oldUrl)
-            || newItems.find(item => item.querySelector?.(selector)?.getAttribute?.('src') === oldMedia.getAttribute('src'))
-            || newItems[index];
-        const newMedia = newItem?.querySelector?.(selector);
-        const newUrl = newMedia?.dataset?.url || newMedia?.dataset?.originalSrc || newMedia?.getAttribute?.('src') || '';
-        if(!newMedia || oldUrl !== newUrl) return;
-        newItems.splice(newItems.indexOf(newItem), 1);
-        if(selector === 'img'){
-            oldMedia.className = newMedia.className;
-            oldMedia.draggable = false;
-            oldMedia.alt = newMedia.getAttribute('alt') || oldMedia.getAttribute('alt') || '';
-            oldMedia.style.cssText = newMedia.style.cssText;
-            oldMedia.dataset.originalSrc = newMedia.dataset?.originalSrc || oldMedia.dataset?.originalSrc || '';
-            newMedia.replaceWith(oldMedia);
-            return;
-        }
-        const state = captureMediaPlaybackState(oldMedia);
-        newMedia.replaceWith(oldMedia);
-        restoreMediaPlaybackState(oldMedia, state);
-        requestAnimationFrame(() => restoreMediaPlaybackState(oldMedia, state));
-    });
-}
-function captureMediaPlaybackStates(){
-    const states = new Map();
-    world.querySelectorAll('video[data-url], audio[data-url]').forEach(media => {
-        const tag = media.tagName.toLowerCase();
-        const url = media.dataset.url || media.getAttribute('src') || '';
-        if(url) states.set(`${tag}:${url}`, captureMediaPlaybackState(media));
-    });
-    return states;
-}
-function restoreMediaPlaybackStates(states){
-    if(!states?.size) return;
-    world.querySelectorAll('video[data-url], audio[data-url]').forEach(media => {
-        const tag = media.tagName.toLowerCase();
-        const url = media.dataset.url || media.getAttribute('src') || '';
-        restoreMediaPlaybackState(media, states.get(`${tag}:${url}`));
-    });
-}
 function smartRunTaskLabel(run){
     const s = run?.settings || {};
     if(run?.kind === 'video') return s.videoModel || 'Video';
@@ -12811,17 +10007,6 @@ function displayMediaUrl(itemOrUrl, name=''){
     const url = smartOriginalMediaUrl(itemOrUrl);
     if(/^https?:\/\//i.test(String(url || ''))) return proxiedMediaUrl(itemOrUrl, name);
     return url;
-}
-function bindImageProxyFallback(imgEl, itemOrUrl){
-    if(!imgEl || imgEl.dataset.proxyFallbackBound === '1') return;
-    imgEl.dataset.proxyFallbackBound = '1';
-    imgEl.addEventListener('error', () => {
-        if(imgEl.dataset.proxyFallbackTried === '1') return;
-        const fallback = proxiedMediaUrl(itemOrUrl);
-        if(!fallback || fallback === imgEl.getAttribute('src')) return;
-        imgEl.dataset.proxyFallbackTried = '1';
-        imgEl.src = fallback;
-    });
 }
 function safeExportFileName(name, fallback='download.zip'){
     const cleaned = String(name || fallback).replace(/[\\/:*?"<>|]+/g, '_').trim();
@@ -12849,8 +10034,8 @@ function downloadNameForMediaItem(item, fallbackPrefix='canvas-output'){
     return name;
 }
 function downloadPreviewImage(){
-    const node = nodes.find(n => n.id === previewNavState.nodeId);
-    const image = node?.images?.[previewNavState.index];
+    const {nodeId, index} = smartPreview.location();
+    const image = nodes.find(node => node.id === nodeId)?.images?.[index];
     if(!image?.url) return;
     const name = downloadNameForMediaItem(image, 'image');
     downloadUrl(image.url, name);
@@ -12999,7 +10184,7 @@ function closePreviewImageContextMenu(){
 function openPreviewImageContextMenu(event){
     const image = currentEditImage().image;
     const menu = document.getElementById('previewImageContextMenu');
-    if(!menu || imageEditMode !== 'preview' || !image?.url || panoramaState.enabled) return;
+    if(!menu || imageEditMode !== 'preview' || !image?.url || smartPanorama.enabled()) return;
     event.preventDefault();
     event.stopPropagation();
     menu.hidden = false;
@@ -13029,12 +10214,10 @@ function downloadPreviewFile(item){
     downloadUrl(item.url, name);
 }
 function previewDownloadGroupItems(){
-    // 分组预览：整组所有成员图片按阅读顺序打包。
-    if(previewNavState.groupId){
-        const group = nodes.find(n => n.id === previewNavState.groupId && isSmartGroupNode(n));
-        if(group) return smartGroupImageRefs(group).map((r, index) => ({...r.item, __index:index}));
-    }
-    const node = nodes.find(n => n.id === previewNavState.nodeId);
+    const {groupId, nodeId} = smartPreview.location();
+    const group = groupId && nodes.find(item => item.id === groupId && isSmartGroupNode(item));
+    if(group) return smartGroupImageRefs(group).map(ref => ref.item);
+    const node = nodes.find(item => item.id === nodeId);
     return (node?.images || [])
         .filter(item => item?.url)
         .map((item, index) => ({...item, __index:index}))
@@ -13077,8 +10260,8 @@ async function zipDownloadImageItems(title, items){
     }
 }
 async function downloadPreviewGroup(){
-    const group = previewNavState.groupId ? nodes.find(n => n.id === previewNavState.groupId) : null;
-    const owner = group || nodes.find(n => n.id === previewNavState.nodeId);
+    const {groupId, nodeId} = smartPreview.location();
+    const owner = nodes.find(node => node.id === groupId) || nodes.find(node => node.id === nodeId);
     return zipDownloadImageItems(owner?.title, previewDownloadGroupItems());
 }
 function downloadSmartGroupImages(group){
@@ -13103,8 +10286,8 @@ function smartRunRequestMeta(run){
     if(usesSmartGifOutput(s)) return {provider_id:s.provider_id, model:s.model, mode:'async', size:'auto', output_format:'gif', n:s.count || 1};
     return {provider_id:s.provider_id || '', model:s.model || '', mode:s.requestMode === 'sync' ? 'sync' : 'async', size:run?.size || '', quality:imageModelSupportsQuality(s) ? (s.quality || '') : '', background:imageModelSupportsBackground(s) && !usesSmartSvgOutput(s) ? normalizeSmartBackground(s.background) : '', ...(usesSmartSvgOutput(s) ? {output_format:'svg'} : {}), n:s.count || 1};
 }
-function smartRunSnapshot(node, prompt, refs=[], kind='image'){
-    const settingsSnapshot = settingsForStorage(settings);
+function smartRunSnapshot(node, prompt, refs, kind, config, exactSize=false){
+    const settingsSnapshot = settingsForStorage(config);
     return {
         nodeId:node?.id || '',
         nodeType:node?.type || 'smart-image',
@@ -13112,7 +10295,7 @@ function smartRunSnapshot(node, prompt, refs=[], kind='image'){
         settings:settingsSnapshot,
         prompt:prompt || '',
         refs:(refs || []).map(ref => ({url:ref.url || '', name:ref.name || 'image', kind:ref.kind || ''})).filter(ref => ref.url),
-        size: kind === 'image' && isApiLikeEngine(settingsSnapshot.engine) ? sizeForRun(settingsSnapshot) : ''
+        size:kind === 'image' && isApiLikeEngine(config.engine) ? imageRequestDimensions(config, exactSize).size : ''
     };
 }
 function addSmartGenerationLog({run, outputs=[], runMs=0, error=''}) {
@@ -13129,7 +10312,7 @@ function addSmartGenerationLog({run, outputs=[], runMs=0, error=''}) {
             name:item.name || item.filename || ''
         });
     }).filter(item => item?.url);
-    if(!error && outputItems.length) playGenerationCompleteSound();
+    if(!error && outputItems.length) XiaomeiGenerationChime.play();
     const entry = {
         id:uid('log'),
         createdAt:Date.now(),
@@ -13151,7 +10334,6 @@ function addSmartGenerationLog({run, outputs=[], runMs=0, error=''}) {
     scheduleSave();
 }
 const SMART_LOG_PREVIEW_NODE_ID = '__smart_log_preview__';
-let smartLogPreviewRestore = null;
 function smartLogOutputItem(output){
     if(typeof output === 'string') return {url:output};
     if(!output || typeof output !== 'object') return null;
@@ -13184,51 +10366,12 @@ function smartLogSizeSummary(log, outputs=[]){
 }
 // 移除临时预览节点并还原选中态。供 closeImageEditor 调用。
 function cleanupSmartLogPreviewNode(){
-    if(nodes.some(n => n.id === SMART_LOG_PREVIEW_NODE_ID)) nodes = nodes.filter(n => n.id !== SMART_LOG_PREVIEW_NODE_ID);
-    if(smartLogPreviewRestore){
-        selectedId = smartLogPreviewRestore.selectedId;
-        selectedImage = smartLogPreviewRestore.selectedImage;
-        smartLogPreviewRestore = null;
+    if(nodes.some(node => node.id === SMART_LOG_PREVIEW_NODE_ID)){
+        nodes = nodes.filter(node => node.id !== SMART_LOG_PREVIEW_NODE_ID);
     }
 }
-function closeSmartLogLightbox(){
-    const box = document.getElementById('smartLogLightbox');
-    if(!box) return;
-    box.classList.remove('open');
-    const img = box.querySelector('img');
-    if(img){ img.onerror = null; img.removeAttribute('src'); }
-}
-// 日志缩略图的轻量预览：只弹一张大图（不进编辑器那套裁剪/涂抹的重组件），点背景或关闭按钮即关。
-function openSmartLogLightbox(url, kind='image'){
-    if(!url) return;
-    if(kind === 'video' || outputUrlLooksVideo(url)){ window.open(displayMediaUrl({url}), '_blank'); return; }
-    let box = document.getElementById('smartLogLightbox');
-    if(!box){
-        box = document.createElement('div');
-        box.id = 'smartLogLightbox';
-        box.className = 'smart-log-lightbox';
-        box.innerHTML = `<img alt="preview" draggable="false"><button class="smart-log-lightbox-close" type="button" aria-label="${escapeAttr(tr('common.close') || '关闭')}"><i data-lucide="x"></i></button>`;
-        document.body.appendChild(box);
-        box.addEventListener('click', e => {
-            if(e.target === box || e.target.closest('.smart-log-lightbox-close')) closeSmartLogLightbox();
-        });
-    }
-    const img = box.querySelector('img');
-    // 原图加载失败时回退到缩略图同款的 media-preview 代理（PIL 渲染，对截断文件更宽容）。
-    let triedFallback = false;
-    img.onerror = () => {
-        if(triedFallback) return;
-        triedFallback = true;
-        const fb = smartMediaPreviewUrl({url}, 2048);
-        if(fb && fb !== img.getAttribute('src')) img.src = fb;
-    };
-    img.src = displayMediaUrl({url});
-    box.classList.add('open');
-    refreshIcons();
-}
-function smartLogPreviewNode(url, kind='image'){
-    openSmartLogLightbox(url, kind);
-}
+function closeSmartLogLightbox(){ smartPreview.closeLog(); }
+function openSmartLogLightbox(url, kind='image'){ smartPreview.openLog(url, kind); }
 async function deleteSmartCanvasLog(logId, deleteUnreferencedMedia=false){
     if(!canvasId || !canvas || !logId) return;
     const message = deleteUnreferencedMedia
@@ -13318,7 +10461,7 @@ function renderSmartCanvasLog(){
             if(smartNodeTransformSession && smartNodeTransformSession.nodeId !== id){
                 closeSmartNodeTransform({render:false});
             }
-            smartLogPreviewNode(el.dataset.url, el.dataset.kind || 'image');
+            openSmartLogLightbox(el.dataset.url, el.dataset.kind || 'image');
         };
     });
     const bindLogCopy = (selector, key) => {
@@ -13355,15 +10498,11 @@ function closeSmartCanvasFeaturePanels(except=''){
     if(except !== 'asset'){
         assetLibraryOpen = false;
         assetPanel?.classList.remove('open');
-        assetPanel?.classList.remove('drag-over');
-        assetDropZone?.classList.remove('drag-over');
+        localAssetSidebar.hideHover();
+        localAssetSidebar.setDropActive(false);
         assetToggle?.classList.remove('active');
     }
-    if(except !== 'workflow'){
-        smartWorkflowTransferModal?.classList.remove('open');
-        smartWorkflowToggle?.classList.remove('active');
-        smartWorkflowImportDropZone?.classList.remove('drag-over');
-    }
+    if(except !== 'workflow') smartWorkflowTransfer.close();
     if(except !== 'log'){
         smartLogModal?.classList.remove('open');
         smartLogToggle?.classList.remove('active');
@@ -13410,67 +10549,6 @@ function openSmartCanvasShortcuts(){
 function closeSmartCanvasShortcuts(){
     smartShortcutModal?.classList.remove('open');
     smartShortcutToggle?.classList.remove('active');
-}
-function promptNodeBodyHtml(node){
-    node.llmSystemEnabled = node.llmSystemEnabled === true;
-    if(node.llmEnabled) preserveLegacyPromptInstruction(node);
-    const readonly = sharedCanvasReadOnly ? 'readonly' : '';
-    const systemPrompt = (node.llmSystemPrompt || '').trim();
-    const inputThumbs = smartNodeInputThumbsHtml(promptNodeInputImages(node), {removable:true, nodeId:node.id});
-    const templateActive = activePromptTemplateNodeId() === node.id;
-    const upstreamPromptItems = promptNodeUpstreamPromptItems(node);
-    const promptRunStatus = smartDependencyRuns.get(node.id)?.waiting
-        ? '等待上游节点完成'
-        : node.running
-        ? '正在运行，结果将写入输出提示词'
-        : node.promptRunError
-        ? `运行失败：${node.promptRunError}`
-        : node.promptRunAt
-        ? '已运行，结果已写入输出提示词'
-        : '';
-    const upstreamPromptHtml = upstreamPromptItems.length ? `<div class="prompt-node-upstream">
-        <div class="prompt-node-section-title">${escapeHtml(tr('smart.promptUpstreamText'))}</div>
-        <div class="prompt-node-upstream-list">${upstreamPromptItems.map((item, index) => `<div class="prompt-node-segment"><span>${index + 1}</span><p>${escapeHtml(item)}</p></div>`).join('')}</div>
-    </div>` : '';
-    const systemPromptField = node.llmEnabled && node.llmSystemEnabled
-        ? `<label class="prompt-node-field prompt-node-system-field"><span>${escapeHtml(tr('smart.promptSystemLabel'))}</span><textarea class="prompt-node-control prompt-llm-system" placeholder="${escapeHtml(tr('smart.promptLlmSystemPlaceholder'))}">${escapeHtml(systemPrompt)}</textarea></label>`
-        : '';
-    const llmInput = node.llmEnabled ? `${systemPromptField}${upstreamPromptHtml}
-        <div class="prompt-node-field prompt-node-instruction-field">
-            <span>${escapeHtml(tr('smart.promptInstructionLabel'))}</span>
-            <div class="prompt-llm-instruction-wrap">
-                <textarea class="prompt-node-control prompt-llm-instruction" aria-label="${escapeHtml(tr('smart.promptInstructionLabel'))}" placeholder="${escapeHtml(tr('smart.promptLlmInstructionPlaceholder'))}" style="height:${promptLlmInstructionHeight(node)}px">${escapeHtml(node.llmInstruction || '')}</textarea>
-                <div class="prompt-llm-instruction-resize prompt-node-control" data-llm-instruction-resize="1" title="拖动调整高度"><span></span></div>
-            </div>
-        </div>` : '';
-    const llmFooter = node.llmEnabled ? `<div class="prompt-node-llm">
-        ${promptRunStatus ? `<div class="prompt-node-run-status ${node.promptRunError ? 'error' : node.promptRunAt ? 'done' : 'running'}">${escapeHtml(promptRunStatus)}</div>` : ''}
-        <div class="prompt-node-footer">
-            <select class="prompt-node-control prompt-llm-provider" aria-label="API 平台">${chatProviderOptions(node.llmProvider)}</select>
-            <select class="prompt-node-control prompt-llm-model" aria-label="模型">${chatModelOptions(node.llmModel, node.llmProvider)}</select>
-            <button class="prompt-node-run prompt-node-control" type="button" ${smartNodeInFlight(node) ? 'disabled' : ''}><i data-lucide="${smartNodeInFlight(node) ? 'loader-2' : 'play'}"></i><span>${smartDependencyRuns.get(node.id)?.waiting ? '等待上游' : node.running ? escapeHtml(tr('common.running')) : escapeHtml(tr('common.run'))}</span></button>
-        </div>
-    </div>` : '';
-    return `<div class="prompt-node-card">
-        <div class="prompt-node-top"><i data-lucide="text-cursor-input"></i><span>${escapeHtml(tr('smart.promptNodeTitle'))}</span><button class="node-reference-picker-entry" type="button" data-reference-picker-node="${escapeAttr(node.id)}">从画布选择</button></div>
-        <div class="prompt-node-tools-wrap"><div class="prompt-node-tools">
-            <button class="prompt-node-pill prompt-node-control prompt-preset-edit ${templateActive ? 'active' : ''}" type="button"><i data-lucide="library"></i><span>模板库</span></button>
-            <button class="prompt-node-pill prompt-node-control agent-skill-library ${node.skillLibraryOpen ? 'active' : ''}" type="button" aria-pressed="${node.skillLibraryOpen ? 'true' : 'false'}"><i data-lucide="archive"></i><span>Skill 库</span></button>
-            <button class="prompt-node-pill prompt-node-control agent-skill-install" type="button" title="选择包含 SKILL.md 的完整文件夹"><i data-lucide="folder-down"></i><span>安装 Skill</span></button>
-            <input class="agent-skill-folder" type="file" webkitdirectory directory multiple hidden>
-            <button class="prompt-node-pill prompt-llm-toggle ${node.llmEnabled ? 'active' : ''}" type="button"><i data-lucide="sparkles"></i><span>LLM</span></button>
-            ${node.llmEnabled ? `<button class="prompt-node-pill prompt-node-control prompt-system-toggle ${node.llmSystemEnabled ? 'active' : ''}" type="button"><i data-lucide="${node.llmSystemEnabled ? 'toggle-right' : 'toggle-left'}"></i><span>${escapeHtml(tr('smart.promptSystemLabel'))}</span></button>` : ''}
-            <button class="prompt-node-pill prompt-node-control prompt-find-toggle" type="button" aria-pressed="false" title="${escapeHtml(tr('smart.promptFindOpen'))}"><i data-lucide="search"></i><span>${escapeHtml(tr('smart.promptFind'))}</span></button>
-        </div>
-        ${agentSkillLibraryHtml(node)}</div>
-        ${agentSkillChipsHtml(node)}
-        ${inputThumbs}
-        ${llmInput}
-        <div class="prompt-node-field prompt-node-output-field"><span>${escapeHtml(tr('smart.promptOutputLabel'))}</span>
-            <div class="prompt-text-find-host"><textarea class="prompt-node-text prompt-node-control" ${readonly} placeholder="${escapeHtml(tr('smart.promptPlaceholderNode'))}">${escapeHtml(node.text || '')}</textarea></div>
-        </div>
-        ${llmFooter}
-    </div>`;
 }
 // 提示词节点「查找」：搜索状态只存在于这两个模块级变量里，
 // 不写入节点数据、画布 JSON 或任何持久化存储。
@@ -13864,94 +10942,6 @@ function toggleComposerFind(){
     refreshComposerFind();
     inputEl.focus();
     inputEl.select();
-}
-function loopNumberControlHtml({label, value, key, min=1, max=100, quick=[1,2,3,4,5,6,8,10], suffix=''}){
-    const v = Math.max(min, Math.min(max, Number(value) || min));
-    return `<div class="loop-number-control">
-        <button class="loop-smart-control loop-number-trigger" type="button" aria-expanded="false" title="${escapeHtml(tr('smart.loopNumberOpen'))}"><span class="loop-number-label">${escapeHtml(label)}</span><strong>${v}</strong>${suffix ? `<em>${escapeHtml(suffix)}</em>` : ''}<span class="loop-number-chevron" aria-hidden="true">⌄</span></button>
-        <div class="loop-number-popover">
-            <div class="loop-number-grid">
-                ${quick.map(n => `<button type="button" class="loop-smart-control loop-number-cell ${n === v ? 'active' : ''}" data-loop-number="${escapeHtml(key)}" data-loop-value="${n}">${n}</button>`).join('')}
-            </div>
-            <label class="loop-number-custom">
-                <span>${escapeHtml(tr('common.custom'))}</span>
-                <input class="loop-smart-control loop-number-input" type="number" min="${min}" max="${max}" step="1" data-loop-number-input="${escapeHtml(key)}" value="${v}">
-            </label>
-        </div>
-    </div>`;
-}
-function smartLoopTokenLabel(token){
-    if(token === '《计数》' || token === '[计数]') return tr('smart.loopImageIndexShort');
-    return token;
-}
-function smartLoopTokenChipHtml(token){
-    return `<span class="loop-smart-token-chip" contenteditable="false" data-token="${escapeHtml(token)}"><span>${escapeHtml(smartLoopTokenLabel(token))}</span><button type="button" aria-label="${escapeHtml(tr('common.delete'))}" title="${escapeHtml(tr('common.delete'))}">×</button></span>`;
-}
-function smartLoopVariableHtml(text){
-    return String(text || '').split(/(《计数》|\[计数\])/g).map(part => {
-        if(part === '《计数》' || part === '[计数]') return smartLoopTokenChipHtml('《计数》');
-        return escapeHtml(part);
-    }).join('');
-}
-function smartLoopEditorText(editor){
-    const walk = node => {
-        if(node.nodeType === Node.TEXT_NODE) return node.nodeValue || '';
-        if(node.nodeType !== Node.ELEMENT_NODE) return '';
-        if(node.classList?.contains('loop-smart-token-chip')) return node.dataset.token || '';
-        if(node.tagName === 'BR') return '\n';
-        const content = [...node.childNodes].map(walk).join('');
-        return ['DIV', 'P', 'LI'].includes(node.tagName) ? `${content}\n` : content;
-    };
-    const children = [...(editor?.childNodes || [])];
-    let text = '';
-    children.forEach(child => {
-        const isBlock = child.nodeType === Node.ELEMENT_NODE && ['DIV', 'P', 'LI'].includes(child.tagName);
-        if(isBlock && text && !text.endsWith('\n')) text += '\n';
-        text += walk(child);
-    });
-    return text.replace(/\u00a0/g, ' ');
-}
-function insertPlainTextIntoSmartLoopEditor(editor, text){
-    if(!editor) return;
-    const value = String(text || '').replace(/\r\n?/g, '\n');
-    if(!value) return;
-    editor.focus();
-    const selection = window.getSelection();
-    let range = selection?.rangeCount ? selection.getRangeAt(0) : null;
-    if(!range || !editor.contains(range.commonAncestorContainer)){
-        range = document.createRange();
-        range.selectNodeContents(editor);
-        range.collapse(false);
-    }
-    range.deleteContents();
-    const textNode = document.createTextNode(value);
-    range.insertNode(textNode);
-    range.setStartAfter(textNode);
-    range.collapse(true);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-}
-function insertSmartLoopToken(editor, token){
-    if(!editor) return;
-    editor.focus();
-    const chipWrap = document.createElement('span');
-    chipWrap.innerHTML = smartLoopTokenChipHtml(token);
-    const chip = chipWrap.firstElementChild;
-    const spacer = document.createTextNode(' ');
-    const sel = window.getSelection();
-    if(sel && sel.rangeCount && editor.contains(sel.anchorNode)){
-        const range = sel.getRangeAt(0);
-        range.deleteContents();
-        range.insertNode(spacer);
-        range.insertNode(chip);
-        range.setStartAfter(spacer);
-        range.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(range);
-    } else {
-        editor.appendChild(chip);
-        editor.appendChild(spacer);
-    }
 }
 function smartLoopModePlanWord(node){
     return node?.mode === 'parallel' ? tr('smart.loopPlanParallel') : tr('smart.loopPlanSerial');
@@ -14815,6 +11805,23 @@ function smartLoopCommerceFields(node){
 function smartBatchCommerceCopyLabel(platform, copy){
     return platform === '亚马逊 · 主图组' ? copy.replace(/^主图零字 · 副图/, '每屏') : copy;
 }
+const SMART_BATCH_COPY_FOLLOW_PROMPT = '文案跟随提示词';
+function smartBatchCopyFollowsPrompt(copy){
+    return String(copy || '').trim() === SMART_BATCH_COPY_FOLLOW_PROMPT;
+}
+function smartBatchCopyFollowRule(label = SMART_BATCH_COPY_FOLLOW_PROMPT){
+    return `${label}：每屏是否出现文字、出现哪些文字，由该屏提示词明确写出的文案决定；提示词未写明文字时画面不出现文字，写明时逐字绘制，不改写、不扩写、不自行补充。`;
+}
+function smartBatchCopyPromptRule(platform, copy){
+    const label = smartBatchCommerceCopyLabel(platform, copy);
+    if(!smartBatchCopyFollowsPrompt(copy)) return label;
+    return `${label}（每屏是否出现文字由该屏提示词决定：需要文字的屏写清可直接绘制的完整文案，不需要文字的屏明确注明画面不出现文字，未写明文字时不得出现任何文字）`;
+}
+function smartBatchCopySystemRule(copy){
+    const base = '无文字或预留文案区域时，利益点标题只用于策划，不在图中绘制文字。';
+    if(!smartBatchCopyFollowsPrompt(copy)) return base;
+    return `${base}文案跟随提示词时，逐屏提示词自行决定是否绘制文字：需要文字的屏在prompt中写清可直接绘制的完整文案，不需要文字的屏明确注明画面不出现文字，未写明文案的画面不得出现任何文字，也不得让生图模型自行编字。`;
+}
 function smartLoopReadyKey(node){
     // 状态条跟随「生成类型」：主图模式显示主图任务，其余仍按详情页描述。
     return smartLoopCommerceFields(node).mode === '主图' ? 'smart.loopMainReady' : 'smart.loopDetailReady';
@@ -15052,17 +12059,28 @@ function smartBatchReferenceStyleRules(node, refs=smartLoopPreviewImages(node)){
     const productRefs = refs.flatMap((ref, index) => smartBatchRole(node, ref) === 'product' ? [`图${index + 1}`] : []);
     return `参考图设计执行要求：${styleRefs.join('、')}是本套图片的主要设计风格基准，主动对齐可见的配色及面积比例、版式骨架、主副标题字形与层级、图文占比、留白密度、背景质感、光影与装饰元素，而非仅借一个颜色或泛化为“高级、简洁”。${productRefs.length ? `${productRefs.join('、')}是产品图，只锁定商品自身的外观、结构、比例、颜色和可见材质；产品图自带的背景、道具、海报配色和文字排版不作为设计风格来源。` : ''}先保证用户明确的视觉要求、表单设置和产品真实性；未被用户指定的视觉细节以风格参考图为准。通用风格描述与参考图可见设计不一致时，以参考图为准。只借设计语言，不搬用参考中的商品、人物身份、Logo、水印、原文案或未经确认的功效。参考图是多屏长图或拼贴时借用其中与当前屏职责对应的局部版式，不把整张拼贴照搬成一屏；多张参考不一致时确定主参考并统一沿用，避免逐屏混搭风格。`;
 }
+function smartBatchVisualDensity(level){
+    const treatment = {
+        精简:'以一个商品主视觉和充足留白为主，减少次要装饰。',
+        中等:'用适量的环境细节和装饰建立清晰层级。',
+        丰富:'通过场景、光影和材质增加视觉层次。',
+    }[level];
+    if(!treatment) return '';
+    return '画面丰富度只调整视觉密度。' + treatment
+        + ' 任何档位都不得自行增加文案。未明确要求的卖点卡、参数栏、图标组、促销贴纸、角标、口号、顶部或底部横幅一律不添加。';
+}
 function smartBatchMainCopyRules(node, index=null){
     const d = smartLoopCommerceFields(node);
     if(d.mode !== '主图') return '';
+    const follows = smartBatchCopyFollowsPrompt(d.copy);
     const rules = [
         '【主图文案与信息量约束】',
         '用户指定的逐张文案、顺序和图中文字设置优先于通用卖点提炼、风格参考及自动生成的视觉要求。已有文案只做排版，逐字保留，不改写、不扩写，不把其他屏的文案搬到当前屏。',
         '仅将明确指定的上图文案绘入画面；运营目标、方案标题、画面说明、设计提示、产品资料和视觉要求用于理解设计，不自动转成标题、卖点卡、图标说明、角标、底部横幅或口号。禁止自行补充宣传语、促销标签和服务承诺。商品本体原有印字保持真实，不额外提取为海报文案。',
-        '未提供指定文案时，才可根据真实资料拟定一个简短核心标题；无文字、预留文案区域或只标参数时，仍严格服从对应图中文字设置。'
+        follows ? smartBatchCopyFollowRule('图中文字跟随提示词') : '未提供指定文案时，才可根据真实资料拟定一个简短核心标题；无文字、预留文案区域或只标参数时，仍严格服从对应图中文字设置。'
     ];
-    const density = {精简:'精简：以一个商品主视觉和充足留白为主，只排版用户指定的必要文案；未明确要求的卖点卡、参数栏、图标组、促销贴纸、顶部或底部横幅一律不添加。不得为填满画面增加文字或装饰，也不得为精简删改用户指定文案。', 中等:'中等：层级清晰，装饰适量，不因增加层次而增加文案。', 丰富:'丰富：通过场景、光影与材质丰富画面，不通过增加文案或卖点标签凑信息量。'}[d.richness];
-    if(density) rules.push(`画面丰富度执行要求：${density}`);
+    if(follows) return rules.join('\n');
+    rules.push('本屏文案上限＝用户指定的该屏文案；不得新增标题、副标题、卖点短句、参数标签、角标、图标说明、底部横幅或口号。未提供指定文案时按所选图中文字规则执行。');
     const copyMode = smartBatchCommerceCopyLabel(d.platform, d.copy);
     if(/无文字|预留文案|只标参数/.test(copyMode) || (copyMode.startsWith('主图零字') && (index === null || index === 0))){
         rules.push(`图中文字限制：${copyMode}；不得因原文包含标题而突破无文字、留空或参数范围。`);
@@ -15089,12 +12107,14 @@ function smartBatchScreenPrompt(node, index){
     const refs = smartLoopPreviewImages(node);
     const roles = refs.map((ref, i) => `图${i + 1}：${smartBatchRole(node, ref) === 'reference' ? '仅参考配色、排版和风格，不替换产品' : '产品图，保持外观、结构和颜色'}`).join('；');
     const copy = smartBatchCommerceCopyLabel(d.platform, d.copy);
-    const copyRule = copy.startsWith('主图零字') ? (index === 0 ? '当前是第 1 屏，画面不得出现文字' : copy.includes('只标参数') ? '当前屏仅标注已确认的产品参数，不编造参数' : '当前屏可以使用简短标题') : copy;
+    const copyRule = smartBatchCopyFollowsPrompt(d.copy)
+        ? '跟随本屏提示词，提示词写明的文案逐字绘制，未写明文字时画面不出现文字，不自行补充'
+        : copy.startsWith('主图零字') ? (index === 0 ? '当前是第 1 屏，画面不得出现文字' : copy.includes('只标参数') ? '当前屏仅标注已确认的产品参数，不编造参数' : '当前屏可以使用简短标题') : copy;
     const purpose = smartBatchOutputPurpose(node);
     const rules = [`用途：${purpose}，平台：${d.platform}；当前为第 ${index + 1} 屏`, `图中文字：${copyRule}；语种：${d.language}；字体：${d.font}`, `模特：${d.model}${d.model === '无模特' ? '' : `，姿态：${d.pose}`}；画面丰富度：${d.richness}；色彩节奏：${d.rhythm}`, d.requirements, roles && `参考素材分工：${roles}`].filter(Boolean).join('\n');
     const settings = smartLoopBatchImageSettings(node);
     const canvasSize = settings.resolution === 'custom' ? `按 ${smartBatchOutputSizeLabel(settings)} 的画幅构图。` : '';
-    return [`本次成图用途为${purpose}，画面要求以当前生成类型和平台策略为准。旧文案或参考图中的其他用途只作为素材。`, canvasSize, smartBatchPlatformRules(node), smartLoopDetailVisualGuide(node), node.batchGeneratedGuide || '', raw, rules, smartBatchReferenceStyleRules(node, refs), smartBatchMainCopyRules(node, index)].filter(Boolean).join('\n\n');
+    return [`本次成图用途为${purpose}，画面要求以当前生成类型和平台策略为准。旧文案或参考图中的其他用途只作为素材。`, canvasSize, smartBatchPlatformRules(node), smartLoopDetailVisualGuide(node), node.batchGeneratedGuide || '', raw, rules, smartBatchVisualDensity(d.richness), smartBatchReferenceStyleRules(node, refs), smartBatchMainCopyRules(node, index)].filter(Boolean).join('\n\n');
 }
 function smartBatchSetScreenPrompt(node, index, value){
     if(!Array.isArray(node.aiSplitPrompts)) node.aiSplitPrompts = smartLoopPromptFieldValues(node).map(prompt => ({prompt}));
@@ -15162,7 +12182,7 @@ function smartBatchDesignHtml(node){
             <input data-loop-ai-count type="number" min="1" max="100" value="${Math.max(1,Math.min(100,Number(node.batchAiTargetCount) || 7))}" aria-label="屏数">
             <button type="button" data-batch-count-step="1" aria-label="增加一屏"><i data-lucide="plus"></i></button>
         </div></label>
-        ${select('copy','图中文字',['主图零字 · 副图可加短标题','主图零字 · 副图只标参数','全部无文字','每屏需要文案','预留文案区域'])}
+        ${select('copy','图中文字',['主图零字 · 副图可加短标题','主图零字 · 副图只标参数','全部无文字','每屏需要文案','预留文案区域','文案跟随提示词'])}
         ${select('language','语种',['中文','英语','俄语','日语','韩语','西班牙语','法语','德语','葡萄牙语','阿拉伯语','意大利语'])}
         ${select('font','字体风格',['自动判断（跟首屏）','现代中性无衬线','人文柔和无衬线','圆润可爱字体','典雅简约衬线','现代宋意字体','新中式毛笔字','几何科技字体','工业力量字体','潮流手写展示字体','现代无衬线 · 干净','粗黑标题 · 有冲击力','经典衬线 · 沉稳','圆润黑体 · 亲和','手写书法 · 国风','科技字体 · 硬朗'])}
     </div><p class="batch-hint" data-batch-platform-hint aria-live="polite">${escapeHtml(smartBatchCommercePlatform(node).hint)}</p>`;
@@ -15321,11 +12341,7 @@ function smartLoopPairedBodyHtml(node){
         ? {cls:'is-warn', text:'提示词待更新'}
         : {cls:'', text:'待生成'};
     const runLabel = stopping ? '正在停止…' : running ? '停止生成' : hasResult ? '重新生成全部' : '批量生成';
-    const summaryText = state.ready
-        ? trf(smartLoopReadyKey(node), {n:state.pairCount})
-        : state.repairable
-        ? `点「生成」时会自动补齐 ${promptCount} 个屏节点`
-        : (state.message || tr('smart.loopPairedNeedImages'));
+    const summaryText = smartLoopPairedSummaryText(node, state, promptCount);
     return `<div class="loop-paired-card loop-detail-card batch-compact-card">
         <header class="batch-head batch-head-simple">
             <div class="batch-head-main">
@@ -15504,7 +12520,7 @@ async function runSmartBatchScreen(loop, index){
     try {
         pushUndo();
         applySmartLoopBatchImageSettings(loop, [paint]);
-        await runLoopRoundIntoSlot(loop, paint, paint, index + 1, {index:index + 1, total:smartLoopCount(loop), nodeId:loop.id, batchConcurrency:smartLoopPairedPromptValues(loop).length, forceWorkflow:true, runState, roundOutputs:new Map()});
+        await runLoopRoundIntoSlot(loop, paint, paint, {index:index + 1, total:smartLoopCount(loop), nodeId:loop.id, batchConcurrency:smartLoopPairedPromptValues(loop).length, forceWorkflow:true, runState, roundOutputs:new Map()});
     } catch(error){
         if(!error?.smartCascadeStopped) toast(error.message || '当前屏生成失败，请重试');
     }
@@ -15540,7 +12556,7 @@ async function runSmartBatchPromptGeneration(nodeId){
         node.aiSplitRunning = true; node.aiSplitError = ''; render();
         const platformRules = smartBatchPlatformRules(node);
         const purpose = smartBatchOutputPurpose(node);
-        const copy = smartBatchCommerceCopyLabel(d.platform, d.copy);
+        const copy = smartBatchCopyPromptRule(d.platform, d.copy);
         const mainCopyRules = smartBatchMainCopyRules(node);
         const message = `请生成${count}个${purpose}的生图提示词。目标平台：${d.platform}；输出画幅：${smartBatchOutputSizeLabel(imageSettings)}。图片用途：${roles}。${smartBatchPlatformSequence(node)}\n${platformRules}\n输出语言：${d.language}\n文案：${copy}\n丰富度：${d.richness}\n字体：${d.font}，${d.model}，姿态：${d.pose}，使用量：${d.usage}\n反转屏：${d.reverse}；色彩节奏：${d.rhythm}\n产品名称：${d.productName}\n产品卖点与资料：${source}\n补充要求：${d.requirements}\n视觉限制：${guide}\n不要编造产品参数。先确定统一的配色、字体与光线，保持整套风格一致。只返回 JSON：{"visual_guide":"全套统一视觉要求","screens":[{"title":"标题","prompt":"完整生图提示词"}]}，必须正好${count}项。`;
         const systemPrompt = `你是电商视觉策划师。只生成供用户确认的提示词，不生成图片。严格返回 JSON。
@@ -15553,7 +12569,7 @@ async function runSmartBatchPromptGeneration(nodeId){
 6. 遵守“三三原则”：全套字体、设计主辅色、逻辑、排版各不超过3种。商品实色和照片自然颜色不计入设计配色，不得为控制颜色而改变商品。
 7. 配色使用明确的HEX色值；在visual_guide中写清全套配色、字体、字级、品牌位置和产品机位并统一执行，按每屏职责安排不同构图。未提供品牌时不虚构Logo。
 8. 每屏的title和prompt必须一起策划，title具体概括本次该屏的核心利益、画面或内容主题，不套用固定分类标签。重新策划时同时更新分屏内容与标题，不只改写prompt；用户明确固定的内容和平台必需屏仍须保留。
-按用户表单的生成类型、平台、屏数、比例、分辨率、图中文字、语种及统一视觉要求执行。无文字或预留文案区域时，利益点标题只用于策划，不在图中绘制文字。沿用请求中的visual_guide和screens输出格式，逐屏细节及待确认项写入prompt，不增设额外输出字段。
+按用户表单的生成类型、平台、屏数、比例、分辨率、图中文字、语种及统一视觉要求执行。${smartBatchCopySystemRule(d.copy)}沿用请求中的visual_guide和screens输出格式，逐屏细节及待确认项写入prompt，不增设额外输出字段。
 ${smartBatchPlatformSequence(node)}
 ${platformRules}
 将平台策略落实到每屏的主体、构图和内容分工中。平台策略与参考图风格不一致时，优先保证平台的图片用途要求。
@@ -15661,27 +12677,6 @@ async function runSmartLoopAiSplit(nodeId){
         render();
     }
 }
-function smartLoopPairedPromptRowsHtml(node){
-    const aiRows = Array.isArray(node.aiSplitPrompts) && !smartLoopAiSplitIsStale(node)
-        ? node.aiSplitPrompts
-        : null;
-    const prompts = aiRows ? aiRows.map(item => typeof item === 'string' ? item : String(item?.prompt || '')).map(value => value.trim()) : smartLoopPromptFieldValues(node);
-    if(!prompts.length) return '<p class="loop-paired-help">'+escapeHtml(tr('smart.loopDetailEmpty'))+'</p>';
-    return prompts.map((value, index) => {
-        const screen = node.aiSplitPrompts?.[index];
-        const target = smartLoopDetailPaintNodes(node).find(item => Number(item.batchDetailScreenIndex) === index + 1);
-        const result = target && nonPreviewOutputImages(target.images || []).find(item => item?.url);
-        const status = target?.runError ? '生成失败' : target && smartNodeInFlight(target) ? '生成中' : result ? '已生成' : '待生成';
-        return `<article class="loop-detail-screen">
-            <div class="loop-detail-screen-head"><strong>${escapeHtml(trf('smart.loopDetailScreen', {n:index + 1}))}</strong><span>${escapeHtml(screen?.title || '')}</span>
-                <button class="loop-smart-control loop-smart-icon-btn loop-paired-prompt-delete" type="button" data-loop-prompt-delete="${index}" ${prompts.length <= 1 ? 'disabled' : ''} title="${escapeHtml(tr('common.delete'))}" aria-label="${escapeHtml(tr('common.delete'))}">×</button>
-            </div>
-            <div class="loop-commerce-result">${result ? `<button type="button" class="loop-smart-control loop-commerce-result-image" data-loop-result-preview="${index}" title="查看大图">${smartPreviewImgHtml(result, 256, 'alt="生成结果"')}</button>` : ''}<span>${escapeHtml(status)}</span>${target ? `<button class="loop-smart-control loop-paired-split" type="button" data-loop-result-edit="${index}">在画布中编辑</button>` : ''}</div>
-            ${screen?.source ? `<details class="loop-detail-original"><summary>${escapeHtml(tr('smart.loopDetailOriginal'))}</summary><p>${escapeHtml(screen.source)}</p></details>` : ''}
-            <div class="loop-smart-control loop-smart-text loop-paired-prompt-input" contenteditable="true" data-loop-prompt-index="${index}" data-loop-paired-prompt-index="${index}" aria-label="${escapeAttr(trf('smart.loopDetailScreen', {n:index + 1}))}">${smartLoopVariableHtml(value)}</div>
-        </article>`;
-    }).join('');
-}
 function smartLoopModeBodyHtml(node){
     const parallelHint = node.batchDetailModeV2 ? tr('smart.loopDetailParallelHint') : tr('smart.loopParallelHint');
     const modeHint = node.mode === 'parallel' ? parallelHint : tr('smart.loopSerialHint');
@@ -15738,7 +12733,7 @@ function smartLoopAdvancedBodyHtml(node){
             <div class="loop-smart-panel-heading">${escapeHtml(trf('smart.loopImageConnected', {n:imageCount}))}</div>
             ${loopThumbs}
             <div class="loop-smart-mini">
-                ${loopNumberControlHtml({label:tr('smart.loopUseImages'), value:node.imageBatchSize, key:'imageBatchSize', max:100, quick:[1,2,3,4,5,6,8,10], suffix:tr('smart.loopImageUnit')})}
+                ${smartLoopEditor.numberMarkup({label:tr('smart.loopUseImages'), value:node.imageBatchSize, key:'imageBatchSize', max:100, suffix:tr('smart.loopImageUnit')})}
             </div>
         </div>` : ''}
         ${node.showPrompt ? `<div class="loop-smart-panel prompt-panel">
@@ -15752,7 +12747,7 @@ function smartLoopAdvancedBodyHtml(node){
                     const displayValue = promptItems.length && isSmartLoopDefaultPrompt(value) ? '' : value;
                     return `<div class="loop-smart-prompt-item">
                     <div class="loop-smart-prompt-index">${index + 1}</div>
-                    <div class="loop-smart-control loop-smart-text" contenteditable="true" data-loop-prompt-index="${index}" data-placeholder="${escapeHtml(tr('smart.loopPromptPlaceholder'))}">${smartLoopVariableHtml(displayValue || (index === 0 && !promptFields.length && !promptItems.length ? defaultPrompt : ''))}</div>
+                    <div class="loop-smart-control loop-smart-text" contenteditable="true" data-loop-prompt-index="${index}" data-placeholder="${escapeHtml(tr('smart.loopPromptPlaceholder'))}">${smartLoopEditor.markup(displayValue || (index === 0 && !promptFields.length && !promptItems.length ? defaultPrompt : ''))}</div>
                     <button class="loop-smart-control loop-smart-icon-btn" type="button" data-loop-prompt-delete="${index}" ${visiblePromptFields.length <= 1 ? 'disabled' : ''} title="${escapeHtml(tr('common.delete'))}" aria-label="${escapeHtml(tr('common.delete'))}">×</button>
                 </div>`;
                 }).join('')}
@@ -15767,53 +12762,24 @@ function smartLoopAdvancedBodyHtml(node){
         </div>` : ''}
         <div class="loop-smart-plan">${escapeHtml(loopPlan)}</div>
         <div class="loop-smart-footer ${node.imageInput ? '' : 'no-image-input'}">
-            ${node.imageInput ? loopNumberControlHtml({label:tr('smart.loopStartFromImage'), value:node.loopStart, key:'loopStart', max:9999, quick:[1,2,3,4,5,6,8,10], suffix:tr('smart.loopStartSuffix')}) : ''}
-            ${loopNumberControlHtml({label:countLabel, value:node.count, key:'count', max:100, quick:[1,2,3,4,5,6,8,10], suffix:countSuffix})}
+            ${node.imageInput ? smartLoopEditor.numberMarkup({label:tr('smart.loopStartFromImage'), value:node.loopStart, key:'loopStart', max:9999, suffix:tr('smart.loopStartSuffix')}) : ''}
+            ${smartLoopEditor.numberMarkup({label:countLabel, value:node.count, key:'count', max:100, suffix:countSuffix})}
             <button class="loop-smart-control loop-smart-run ${loopRunning ? 'is-stop' : ''}" type="button" data-loop-run="${escapeHtml(node.id)}" ${loopStopping ? 'disabled' : ''}><i data-lucide="${loopRunning ? 'square' : 'workflow'}"></i><span>${escapeHtml(loopRunning ? smartCascadeStopText(loopStopping) : tr('smart.loopStartRun'))}</span></button>
         </div>
     </div>`;
 }
-function smartGroupBodyHtml(node){
-    const groupThumbLayout = smartGroupThumbLayout(node);
-    const refThumbs = groupThumbLayout?.refs || [];
-    const members = smartGroupMembers(node);
-    const counts = members.reduce((acc, member) => {
-        if(member.type === 'smart-prompt') acc.prompt += 1;
-        else if(member.type === 'smart-loop') acc.loop += 1;
-        return acc;
-    }, {prompt:0, media:refThumbs.length, loop:0});
-    const summary = [
-        counts.prompt ? `${counts.prompt} 提示词` : '',
-        counts.media ? `${counts.media} 图片` : '',
-        counts.loop ? `${counts.loop} 循环` : ''
-    ].filter(Boolean).join(' · ') || '双击或拖入图片';
-    if(refThumbs.length){
-        const totalThumbs = Math.max(1, Number(groupThumbLayout?.rows || 1) * Number(groupThumbLayout?.cols || 1));
-        if(totalThumbs === 1 && refThumbs.length === 1){
-            const ref = refThumbs[0];
-            const innerW = Math.max(24, Number(groupThumbLayout.innerW || groupThumbLayout.width || SMART_GROUP_DEFAULT_WIDTH));
-            const innerH = Math.max(24, Number(groupThumbLayout.innerH || groupThumbLayout.height || SMART_GROUP_DEFAULT_HEIGHT));
-            const canDelete = ref.nodeId === node.id;
-            return `<div class="smart-group-card has-thumbs">
-                <div class="smart-group-summary" title="拖动移动分组，按住 Ctrl 拖动缩略图可移出单张图片"><i data-lucide="group"></i><span>${escapeHtml(summary)}</span></div>
-                <div class="image-wrap smart-group-single-thumb ${selectedImage.nodeId === ref.nodeId && Number(selectedImage.index) === Number(ref.index) ? 'image-selected' : ''}" data-ref-node-id="${escapeAttr(ref.nodeId)}" data-ref-image-index="${ref.index}" data-image-index="${ref.index}" data-media-signature="${escapeAttr(`${mediaKindForItem(ref.item)}:${ref.item?.url || ''}`)}" style="--node-img-w:${innerW}px;--node-img-h:${innerH}px">${singleMediaHtml(ref.item, innerW, innerH)}${imageNameBadgeHtml(ref.item)}${imageResolutionBadgeHtml(ref.item)}${canDelete ? `<button class="mini-x image-delete" type="button" data-image-index="${ref.index}" title="${escapeHtml(tr('smart.deleteImage'))}"><i data-lucide="trash-2"></i></button>` : ''}</div>
-            </div>`;
-        }
-        const groupMaxVisibleRows = (groupThumbLayout.compactMembers || []).length ? Number(groupThumbLayout.rows || 1) : SMART_GROUP_MAX_VISIBLE_ROWS;
-        const visibleRows = Math.max(1, Math.min(groupMaxVisibleRows, Number(groupThumbLayout.visibleRows || groupThumbLayout.rows || 1)));
-        const maxHeight = Math.max(44, visibleRows * Number(groupThumbLayout.thumbH || groupThumbLayout.thumb || 96) + Math.max(0, visibleRows - 1) * 8);
-        return `<div class="smart-group-card has-thumbs">
-            <div class="smart-group-summary" title="拖动移动分组，按住 Ctrl 拖动缩略图可移出单张图片"><i data-lucide="group"></i><span>${escapeHtml(summary)}</span></div>
-            <div class="thumb-grid smart-group-thumb-grid" data-thumb-scroll="1" style="--thumb-cols:${groupThumbLayout.cols}; --thumb-size:${groupThumbLayout.thumb}px; --thumb-w:${groupThumbLayout.thumbW || groupThumbLayout.thumb}px; --thumb-h:${groupThumbLayout.thumbH || groupThumbLayout.thumb}px; --thumb-max-height:${maxHeight}px">${refThumbs.map(ref => {
-                const canDelete = ref.nodeId === node.id;
-                return `<div class="thumb-item ${selectedImage.nodeId === ref.nodeId && Number(selectedImage.index) === Number(ref.index) ? 'image-selected' : ''}" data-ref-node-id="${escapeAttr(ref.nodeId)}" data-ref-image-index="${ref.index}" data-image-index="${ref.index}" data-media-signature="${escapeAttr(`${mediaKindForItem(ref.item)}:${ref.item?.url || ''}`)}">${thumbMediaHtml(ref.item)}${imageNameBadgeHtml(ref.item)}${imageResolutionBadgeHtml(ref.item)}${canDelete ? `<button class="mini-x image-delete" type="button" data-image-index="${ref.index}" title="${escapeHtml(tr('smart.deleteImage'))}"><i data-lucide="trash-2"></i></button>` : ''}</div>`;
-            }).join('')}</div>
-        </div>`;
-    }
-    return `<div class="smart-group-card">
-        <div class="smart-group-summary"><i data-lucide="group"></i><span>${escapeHtml(summary)}</span></div>
-        ${members.length ? '' : `<div class="smart-group-empty"><i data-lucide="plus"></i><span>拖入图片自动收进分组</span></div>`}
-    </div>`;
+function smartGroupBodyHtml(group){
+    return XiaomeiSmartGroups.renderBody({
+        group,
+        members:smartGroupMembers(group),
+        layout:smartGroupThumbLayout(group),
+        selection:selectedImage,
+        limits:{width:SMART_GROUP_DEFAULT_WIDTH, height:SMART_GROUP_DEFAULT_HEIGHT, rows:SMART_GROUP_MAX_VISIBLE_ROWS},
+        single:singleMediaHtml,
+        thumbnail:thumbMediaHtml,
+        badges:item => imageNameBadgeHtml(item) + imageResolutionBadgeHtml(item),
+        deleteTitle:tr('smart.deleteImage')
+    });
 }
 function taskProgressNumber(value, key=''){
     if(value == null || typeof value === 'object') return null;
@@ -15896,6 +12862,29 @@ function generationTaskDisplay(node, task=null, compact=false){
     }
     return {phase:'waiting', value, label:compact ? '等待中' : '等待上游结果', source:progress.source, percent:progress.value};
 }
+// 视频生成走单个长请求，没有图片任务 ID；这里保存每个节点的 AbortController
+// 和浏览器请求 ID，供节点上的“取消视频”同时停止本地等待和后端轮询。
+const smartVideoRuns = new Map();
+function beginSmartVideoRun(nodeId){
+    const run = {
+        nodeId,
+        requestId:`canvas_video_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`,
+        controller:new AbortController(),
+        cancelled:false,
+    };
+    smartVideoRuns.set(nodeId, run);
+    return run;
+}
+function endSmartVideoRun(nodeId, run){
+    if(smartVideoRuns.get(nodeId) === run) smartVideoRuns.delete(nodeId);
+}
+function smartVideoRunActive(nodeId){
+    return smartVideoRuns.has(nodeId);
+}
+function smartVideoCancelHtml(node, classes='generation-cancel'){
+    if(!isSmartVideoNode(node) || !smartVideoRunActive(node.id)) return '';
+    return `<button class="${classes}" type="button" data-cancel-video-run="${escapeAttr(node.id)}">取消视频</button>`;
+}
 function generationProgressRingHtml(node, compact=false, task=null, showCancel=true){
     const progressTask = task || smartComfyTaskProgressByNode.get(node?.id) || null;
     const display = generationTaskDisplay(node, progressTask, compact);
@@ -15905,9 +12894,13 @@ function generationProgressRingHtml(node, compact=false, task=null, showCancel=t
         <div class="generation-progress-ring is-${display.phase} is-${display.source}" data-generation-progress="1" data-progress-phase="${display.phase}" data-progress-source="${display.source}" data-progress-value="${display.percent}" ${taskId ? `data-generation-task-id="${escapeAttr(taskId)}"` : ''} style="--generation-progress:${display.percent}"><span>${display.value}</span></div>
         <div class="generation-progress-label">${display.label}</div>
         ${showCancel && taskId && /^(canvas_img_|canvas_comfy_)/.test(taskId) ? `<button class="generation-cancel" type="button" data-cancel-image-task="${escapeAttr(taskId)}">取消生图</button>` : ''}
+        ${showCancel && !taskId ? smartVideoCancelHtml(node) : ''}
     </div>`;
 }
 function generationBatchCancelHtml(node){
+    if(isSmartVideoNode(node) && smartVideoRunActive(node.id)){
+        return smartVideoCancelHtml(node, 'generation-cancel generation-batch-cancel');
+    }
     return smartPendingTasks(node).some(task => /^(canvas_img_|canvas_comfy_)/.test(task.taskId) && task.status !== 'cancelled')
         ? `<button class="generation-cancel generation-batch-cancel" type="button" data-cancel-image-batch="${escapeAttr(node.id)}">取消生图</button>`
         : '';
@@ -16313,11 +13306,7 @@ function normalizeSmartAgentLongTextNode(node, textValues=[]){
 }
 function agentNodeBodyHtml(node){
     if(window.SmartExpertWorkflow?.is(node)) return window.SmartExpertWorkflow.nodeBodyHtml(node);
-    const templateLibraryOpen = Boolean(
-        promptTemplatePanel?.classList.contains('open')
-        && promptTemplatePanel.dataset.target === 'agent'
-        && promptTemplatePanel.dataset.nodeId === node.id
-    );
+    const templateLibraryOpen = smartPromptLibrary.isOpen('agent', node.id);
     const upstreamText = agentNodeUpstreamText(node);
     const media = agentNodeInputMedia(node);
     const outputMode = agentOutputMode(node);
@@ -16578,7 +13567,7 @@ function smartComfyWorkflowNodeBodyHtml(node){
     const summary = String(node.workflowReadiness?.summary || '').trim();
     const primaryFields = fields.filter(field => field?.advanced !== true);
     const advancedFields = fields.filter(field => field?.advanced === true);
-    const renderFields = list => list.map(field => comfyNodeFieldHtml(node, field)).join('');
+    const renderFields = list => list.map(field => workflowParams.comfyFieldMarkup(node, field)).join('');
     let visiblePresetCount = 0;
     const presetSections = fields.filter(field => field?.preset_links).map(field => {
         const controls = comfyPresetControlFields(node, field);
@@ -16766,7 +13755,7 @@ function smartTextStackBodyHtml(node, layout){
         top += metric.height + gap;
         if(item.kind === 'image'){
             const image = item.image;
-            return `<div class="collapsed-text-stack-card collapsed-text-stack-image-card" data-smart-text-stack-card="${index}" data-image-index="${index}" data-media-signature="${escapeAttr(`${mediaKindForItem(image)}:${image.url || ''}`)}" style="${style}">${singleMediaHtml(image, metric.width, metric.height)}</div>`;
+            return `<div class="collapsed-text-stack-card collapsed-text-stack-image-card" data-smart-text-stack-card="${index}" data-image-index="${index}" style="${style}">${singleMediaHtml(image, metric.width, metric.height)}</div>`;
         }
         const source = item.node || {};
         const label = source.type === 'smart-agent' ? '智能对话' : '提示词';
@@ -16796,7 +13785,7 @@ function nodeBodyHtml(node, layout){
     }
     if(node.type === 'smart-group') return smartGroupBodyHtml(node);
     if(isSmartTextStackNode(node)) return smartTextStackBodyHtml(node, layout);
-    if(node.type === 'smart-prompt') return node.collapsed ? promptNodeCollapsedBodyHtml(node) : promptNodeBodyHtml(node);
+    if(node.type === 'smart-prompt') return node.collapsed ? promptNodeCollapsedBodyHtml(node) : promptNodeView.markup(node);
     if(node.type === 'smart-agent') return agentNodeBodyHtml(node);
     if(node.type === 'smart-loop') return smartLoopBodyHtml(node);
     if(isSmartCompareNode(node)) return smartCompareNodeBodyHtml(node);
@@ -16852,7 +13841,7 @@ function nodeBodyHtml(node, layout){
         // A mixed result node is still running as a whole, but every completed
         // slot is already a real image. Keep the normal image metadata/classes
         // so it can be selected and previewed without waiting for other slots.
-        const completed = imgs.map((img, index) => `<div class="loading-cell thumb-item result-image-tile generation-complete-cell" data-generation-complete="1" data-image-index="${index}" data-image-number="${index + 1}" data-media-signature="${escapeAttr(`${mediaKindForItem(img)}:${img?.url || ''}`)}"><span class="result-image-index" aria-hidden="true">${index + 1}</span>${thumbMediaHtml(img)}${imageResolutionBadgeHtml(img)}</div>`).join('');
+        const completed = imgs.map((img, index) => `<div class="loading-cell thumb-item result-image-tile generation-complete-cell" data-generation-complete="1" data-image-index="${index}" data-image-number="${index + 1}"><span class="result-image-index" aria-hidden="true">${index + 1}</span>${thumbMediaHtml(img)}${imageResolutionBadgeHtml(img)}</div>`).join('');
         const pendingTasks = smartPendingTasks(node);
         const pending = Array.from({length:waiting}).map((_, index) => `<div class="loading-cell">${generationProgressRingHtml(node, true, pendingTasks[index] || null, false)}</div>`).join('');
         return `<div class="loading-skeleton generation-mixed-grid" style="grid-template-columns:repeat(${cols},minmax(0,1fr));grid-template-rows:repeat(${rows},minmax(0,1fr));width:${layout.width}px;height:${layout.height}px;padding:8px;box-sizing:border-box">${completed}${pending}</div>${generationBatchCancelHtml(node)}`;
@@ -16872,18 +13861,18 @@ function nodeBodyHtml(node, layout){
             const index = start + layer;
             const fan = fanLayers[layer] || {x:0, y:0, r:0, s:1, z:5};
             const rest = restLayers[layer] || {x:0, y:0, r:0, s:1};
-            return `<div class="collapsed-stack-card image-wrap" data-image-index="${index}" data-image-number="${index + 1}" data-media-signature="${escapeAttr(`${mediaKindForItem(img)}:${img?.url || ''}`)}" style="--fan-x:${fan.x}px;--fan-y:${fan.y}px;--fan-r:${fan.r}deg;--fan-s:${fan.s};--rest-x:${rest.x}px;--rest-y:${rest.y}px;--rest-r:${rest.r}deg;--rest-s:${rest.s};--stack-z:${fan.z};width:${cardWidth}px;height:${cardHeight}px;--node-img-w:${cardWidth}px;--node-img-h:${cardHeight}px">${singleMediaHtml(img, cardWidth, cardHeight)}${imageNameBadgeHtml(img)}${imageResolutionBadgeHtml(img)}</div>`;
+            return `<div class="collapsed-stack-card image-wrap" data-image-index="${index}" data-image-number="${index + 1}" style="--fan-x:${fan.x}px;--fan-y:${fan.y}px;--fan-r:${fan.r}deg;--fan-s:${fan.s};--rest-x:${rest.x}px;--rest-y:${rest.y}px;--rest-r:${rest.r}deg;--rest-s:${rest.s};--stack-z:${fan.z};width:${cardWidth}px;height:${cardHeight}px;--node-img-w:${cardWidth}px;--node-img-h:${cardHeight}px">${singleMediaHtml(img, cardWidth, cardHeight)}${imageNameBadgeHtml(img)}${imageResolutionBadgeHtml(img)}</div>`;
         }).join('');
         return `<div class="collapsed-stack" style="--fan-spread:${fanSpread}px;width:${cardWidth}px;height:${cardHeight}px" aria-label="已折叠 ${imgs.length} 张图片">${cards}</div>`;
     }
     if(imgs.length > 1){
         const visibleRows = Math.max(1, Math.min(MEDIA_GROUP_MAX_VISIBLE_ROWS, Number(layout.visibleRows || layout.rows || 1)));
         const maxHeight = visibleRows * Number(layout.thumbH || layout.thumb || 96) + Math.max(0, visibleRows - 1) * 8;
-        return `<div class="thumb-grid result-image-grid" data-thumb-scroll="1" style="--thumb-cols:${layout.cols}; --thumb-size:${layout.thumb}px; --thumb-w:${layout.thumbW || layout.thumb}px; --thumb-h:${layout.thumbH || layout.thumb}px; --thumb-max-height:${maxHeight}px">${imgs.map((img, i) => `<div class="thumb-item result-image-tile ${selectedImage.nodeId === node.id && selectedImage.index === i ? 'image-selected' : ''}" data-image-index="${i}" data-image-number="${i + 1}" data-media-signature="${escapeAttr(`${mediaKindForItem(img)}:${img?.url || ''}`)}"><span class="result-image-index" aria-hidden="true">${i + 1}</span>${thumbMediaHtml(img)}${imageResolutionBadgeHtml(img)}<button class="mini-x image-delete" type="button" data-image-index="${i}" title="${escapeHtml(tr('smart.deleteImage'))}"><i data-lucide="trash-2"></i></button></div>`).join('')}</div>`;
+        return `<div class="thumb-grid result-image-grid" data-thumb-scroll="1" style="--thumb-cols:${layout.cols}; --thumb-size:${layout.thumb}px; --thumb-w:${layout.thumbW || layout.thumb}px; --thumb-h:${layout.thumbH || layout.thumb}px; --thumb-max-height:${maxHeight}px">${imgs.map((img, i) => `<div class="thumb-item result-image-tile ${selectedImage.nodeId === node.id && selectedImage.index === i ? 'image-selected' : ''}" data-image-index="${i}" data-image-number="${i + 1}"><span class="result-image-index" aria-hidden="true">${i + 1}</span>${thumbMediaHtml(img)}${imageResolutionBadgeHtml(img)}<button class="mini-x image-delete" type="button" data-image-index="${i}" title="${escapeHtml(tr('smart.deleteImage'))}"><i data-lucide="trash-2"></i></button></div>`).join('')}</div>`;
     }
     // 单图节点的右上角只保留“删除节点”按钮，避免和图片级删除按钮重叠。
     // 图片级删除仍保留给多图节点及分组，用于移除其中一张图片而不删除容器。
-    if(imgs[0]) return `<div class="image-wrap has-outside-image-name ${selectedImage.nodeId === node.id && selectedImage.index === 0 ? 'image-selected' : ''}" data-image-index="0" data-media-signature="${escapeAttr(`${mediaKindForItem(imgs[0])}:${imgs[0]?.url || ''}`)}" style="--node-img-w:${layout.width}px;--node-img-h:${layout.height}px">${singleMediaHtml(imgs[0], layout.width, layout.height)}${imageNameBadgeHtml(imgs[0], {outside:true})}${imageResolutionBadgeHtml(imgs[0])}</div>`;
+    if(imgs[0]) return `<div class="image-wrap has-outside-image-name ${selectedImage.nodeId === node.id && selectedImage.index === 0 ? 'image-selected' : ''}" data-image-index="0" style="--node-img-w:${layout.width}px;--node-img-h:${layout.height}px">${singleMediaHtml(imgs[0], layout.width, layout.height)}${imageNameBadgeHtml(imgs[0], {outside:true})}${imageResolutionBadgeHtml(imgs[0])}</div>`;
     if(isSmartPaintNode(node) || isSmartVideoNode(node)) return `<div class="paint-node-empty ${isSmartVideoNode(node) ? 'video-node-empty' : ''}">
         <span class="paint-node-main"><i data-lucide="${isSmartVideoNode(node) ? 'film' : 'palette'}"></i></span>
         <span class="paint-node-title">${escapeHtml(isSmartVideoNode(node) ? '视频' : tr('smart.createPaintNode'))}</span>
@@ -16954,7 +13943,7 @@ async function retryFailedImageGeneration(nodeId){
         };
         pushUndo();
         try {
-            await runLoopRoundIntoSlot(detailOwner, node, node, screenIndex, context);
+            await runLoopRoundIntoSlot(detailOwner, node, node, context);
         } catch(error) {
             toast((error?.message || tr('smart.errRunFailed')).slice(0, 160));
         } finally {
@@ -17856,7 +14845,6 @@ function expandCollapsedImageNode(nodeId){
         return true;
     }
     // 兼容没有来源快照的旧多图节点：按原有“解散分组”逻辑拆回独立节点。
-    node.collapsed = false;
     return ungroupNode(node.id);
 }
 function selectionToolbarBounds(){
@@ -17903,7 +14891,6 @@ function beginSmartSelectionResize(event, anchorNode=null){
         resizeState = {selection:true, blocked:true, members:[]};
         return true;
     }
-    clearImageClickTimer();
     clearSelectionClickGuard();
     const anchor = anchorNode ? nodeRect(anchorNode) : null;
     const members = bounds.selected.map(node => {
@@ -18601,8 +15588,8 @@ function runSmartNodeToolbarAction(nodeId, action, anchorElement=null){
     const modeMap = {crop:'crop', outpaint:'outpaint', mask:'mask', erase:'mask', 'protection-mask':'protection-mask', ocr:'ocr', brush:'brush', 'smart-edit':'smart-edit', grid:'grid'};
     openImageEditor(nodeId, index);
     setImageEditMode(modeMap[action] || 'preview', true);
-    if(action === 'grid' && canGridJoinCurrentNode()){
-        setGridOperationMode('join');
+    if(action === 'grid' && currentGridJoinItems().length > 1){
+        smartGrid.setMode('join');
     }
 }
 
@@ -18804,7 +15791,7 @@ function runSmartGroupToolbarAction(nodeId, action){
         openImageEditor(nodeId, Math.max(0, first));
         if(imageEditModal.classList.contains('open')){
             setImageEditMode('grid', true);
-            setGridOperationMode('join');
+            smartGrid.setMode('join');
         }
         return;
     }
@@ -18908,16 +15895,6 @@ function refreshRunTimerPills(){
     if(active && !runTimerInterval) runTimerInterval = setInterval(refreshRunTimerPills, 1000);
     if(!active && runTimerInterval){ clearInterval(runTimerInterval); runTimerInterval = null; }
 }
-function rememberInlineVideoActivations(){
-    world.querySelectorAll('.image-node [data-image-index] video[data-inline-video-active="1"]').forEach(video => {
-        const nodeEl = video.closest('.image-node');
-        const itemEl = video.closest('[data-image-index]');
-        const node = nodes.find(n => n.id === nodeEl?.dataset.id);
-        const index = Number(itemEl?.dataset.imageIndex ?? 0);
-        const image = node?.images?.[index];
-        if(image && mediaKindForItem(image) === 'video') image._inlineVideoActive = true;
-    });
-}
 // Keep unchanged node DOM and decoded previews in place when a task updates one node.
 const smartRenderedNodeMarkup = new Map();
 function render(options={}){
@@ -18932,27 +15909,29 @@ function render(options={}){
         nodes.forEach(node => { if(dirtyNodeIds.has(node.id) && node.batchDetailOwnerId) dirtyNodeIds.add(node.batchDetailOwnerId); });
         nodes.forEach(node => { if(dirtyNodeIds.has(node.id) && node.batchResultOwnerId) dirtyNodeIds.add(node.batchResultOwnerId); });
     }
-    if(smartWorkflowTransferModal?.classList.contains('open')) updateSmartWorkflowTransferMeta();
+    smartWorkflowTransfer.refresh();
     // 首次渲染可能发生在共享会话回调、旧数据迁移或协作快照的任一时序；
     // 在生成 DOM 前再兜底一次，确保编辑者看到与本地画布相同的选中状态。
     ensureSharedEditorInitialSelection();
     const renderBounds = smartCanvasRenderBounds();
     const rectCache = new Map();
     const renderNodes = smartCanvasRenderNodes(renderBounds, rectCache);
-    rememberInlineVideoActivations();
+    const mediaNodes = new Map(nodes.map(node => [node.id, node]));
+    const findMediaNode = id => mediaNodes.get(id);
+    smartNodeMedia.rememberActivations(findMediaNode);
     const selectedForToolbar = selectedNodeIds().map(id => nodes.find(node => node.id === id)).filter(Boolean);
     // 智能分组使用自己的 smart-group-menu，不能被普通多图的选择态规则隐藏。
     const multiImageNode = selectedForToolbar.length === 1 && isSmartUploadNode(selectedForToolbar[0]) && !selectedForToolbar[0].collapsed
         && (selectedForToolbar[0].images || []).filter(image => image?.url).length > 1;
     world.classList.toggle('smart-multi-selected', selectedForToolbar.length > 1 || multiImageNode);
     world.classList.toggle('smart-multi-node-selected', selectedForToolbar.length > 1);
-    const mediaStates = captureMediaPlaybackStates();
     const activeNodeEl = document.activeElement?.closest?.('.image-node');
     const existingConnectionEl = world.querySelector('svg.connection-layer');
     const existingConnectionMarkup = existingConnectionEl?.outerHTML || '';
     const existingNodeEls = new Map();
     const comfyNodeScrollTops = new Map();
     const batchScrollTops = new Map();
+    const uploadScrollTops = new Map();
     const promptScrollStates = new Map();
     world.querySelectorAll('.image-node').forEach(el => {
         if(el.dataset.id) existingNodeEls.set(el.dataset.id, el);
@@ -18960,6 +15939,8 @@ function render(options={}){
         if(scroller && el.dataset.id) comfyNodeScrollTops.set(el.dataset.id, scroller.scrollTop);
         const batchScroller = el.querySelector('.batch-overview-grid');
         if(batchScroller && el.dataset.id) batchScrollTops.set(el.dataset.id, batchScroller.scrollTop);
+        const uploadGrid = el.classList.contains('upload-node') && el.querySelector('.result-image-grid');
+        if(uploadGrid?.scrollTop && el.dataset.id) uploadScrollTops.set(el.dataset.id, uploadGrid.scrollTop);
         if(el.classList.contains('prompt-smart-node')){
             promptScrollStates.set(el.dataset.id, [...el.querySelectorAll('textarea.prompt-node-control')].map(control => ({
                 selector:control.classList.contains('prompt-node-text') ? '.prompt-node-text'
@@ -19113,6 +16094,7 @@ function render(options={}){
             && previous?.node === entry.node && previous.html !== entry.html
             && document.activeElement?.matches('textarea.prompt-node-control, .prompt-find-input')){
             existing.dataset.promptRenderDeferred = '1';
+            promptNodeView.refreshRunControls(existing, entry.node);
             return false;
         }
         return !existing?.isConnected || previous?.node !== entry.node || previous.html !== entry.html;
@@ -19134,6 +16116,7 @@ function render(options={}){
             return;
         }
         if(isSmartCameraNode(entry.node)) fresh.classList.add('camera-smart-node');
+        if(existing?.isConnected) smartNodeMedia.reuse(existing, fresh);
         // 保留节点外壳，避免图片节点在状态同步、图片尺寸测量或任务轮询时
         // 先消失再重新插入。仅重建其内部内容，并把已解码的媒体元素移回去。
         // 活动提示词控件的刷新已在上方延后。
@@ -19143,7 +16126,6 @@ function render(options={}){
                 && (dragState.id === entry.node.id || dragState.groupIds?.includes(entry.node.id))
             );
             const dragWillChange = isDraggedExisting ? existing.style.willChange : '';
-            if(smartNodeHasLiveMedia(entry.node)) transplantSmartMediaElements(existing, fresh);
             existing.className = fresh.className;
             existing.style.cssText = fresh.style.cssText;
             delete existing.dataset.promptRenderDeferred;
@@ -19202,11 +16184,14 @@ function render(options={}){
         if(scroller) scroller.scrollTop = scrollTop;
     });
     batchScrollTops.forEach((scrollTop, id) => { const scroller = nextNodeEls.get(id)?.querySelector('.batch-overview-grid'); if(scroller) scroller.scrollTop = scrollTop; });
+    uploadScrollTops.forEach((scrollTop, id) => {
+        const grid = nextNodeEls.get(id)?.querySelector('.result-image-grid');
+        if(grid) grid.scrollTop = scrollTop;
+    });
     promptScrollStates.forEach((states, id) => states.forEach(state => {
         const control = nextNodeEls.get(id)?.querySelector(state.selector);
         if(control){ control.scrollTop = state.scrollTop; control.scrollLeft = state.scrollLeft; }
     }));
-    restoreMediaPlaybackStates(mediaStates);
     smartSelectionUiNodeIds = new Set(selectedNodeIds());
     smartSelectionUiImage = {...selectedImage};
     renderSmartSelectionToolbar();
@@ -19223,7 +16208,7 @@ function render(options={}){
     if(window.lucide) lucide.createIcons();
     bindSmartPreviewImageFallbacks(world);
     syncSmartSelectedImageResolution(world);
-    measureSmartNodeImages();
+    smartNodeMedia.observe(findMediaNode);
     refreshRunTimerPills();
     notifyCanvasTaskScopeChange();
     renderCollabPresence();
@@ -19235,94 +16220,34 @@ function render(options={}){
     lastCanvasRenderedNodeCount = renderNodes.length;
     lastCanvasRenderedConnectionCount = world.querySelectorAll('.conn-group').length;
     window.SmartCanvasReferencePicker?.invalidate();
-    return;
-    world.innerHTML = '';
-    world.insertAdjacentHTML('beforeend', renderConnections());
-    const nodesHtml = nodes.map(node => {
-        const imgs = node.images || [];
-        const title = node.type === 'smart-prompt' ? escapeHtml(node.title || 'Prompt') : node.type === 'smart-loop' ? 'Loop' : (imgs.length > 1 ? 'Group' : 'Image');
-        const scale = nodeScale(node);
-        const layout = imageLayout(imgs, scale, node);
-        const isPrompt = node.type === 'smart-prompt';
-        const isLoop = node.type === 'smart-loop';
-        const isImageNode = isSmartImageNode(node);
-        const isQueued = Boolean(node.queued && imgs.length === 0 && !node.pending);
-        const isEmpty = isImageNode && imgs.length === 0 && !node.pending && !isQueued;
-        const isGroup = isImageNode && imgs.length > 1;
-        const isPending = (node.pending || isQueued) && imgs.length === 0;
-        const body = nodeBodyHtml(node, layout);
-        const deleteBtn = isGroup || !isEmpty ? '' : `<button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button>`;
-        return `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${isGroup ? 'group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''}" data-id="${escapeHtml(node.id)}" style="${xmNodeOriginStyle(node)};width:${layout.width}px;height:${layout.height}px">
-            <div class="node-head"><div class="node-title">${title}</div><div class="node-actions">${deleteBtn}</div></div>
-            ${!isEmpty && !isGroup ? `<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>` : ''}
-            ${smartNodeRunBorderHtml(node)}
-            ${smartNodeToolbarHtml(node)}
-            <div class="node-body">${body}</div>
-            <div class="node-hint">${isPending ? escapeHtml(tr('smart.hintPending')) : (imgs.length > 1 ? escapeHtml(tr('smart.hintMulti')) : imgs.length ? escapeHtml(tr('smart.hintSingle')) : escapeHtml(tr('smart.hintEmpty')))}</div>
-            ${imgs.length || node.pending || isQueued || isPrompt || isLoop ? '<div class="node-resize-handle" data-resize="1"></div>' : ''}
-            <div class="node-port port-in" data-port="in" title="连接输入"></div>
-            <div class="node-port port-out" data-port="out" title="按住加号拖动连接"></div>
-        </div>`;
-    }).join('');
-    world.insertAdjacentHTML('beforeend', nodesHtml);
-    bindNodeEvents();
-    bindConnectionEvents();
-    updateComposer();
-    renderMinimap();
-    if(window.lucide) lucide.createIcons();
-    measureSmartNodeImages();
-    refreshRunTimerPills();
 }
-function measureSmartNodeImages(){
-    world.querySelectorAll('.image-node img:not(.smart-document-icon),.image-node video').forEach(imgEl => {
-        const nodeEl = imgEl.closest('.image-node');
-        const itemEl = imgEl.closest('[data-image-index]');
-        const containerNode = nodes.find(n => n.id === nodeEl?.dataset.id);
-        const targetNodeId = itemEl?.dataset.refNodeId || nodeEl?.dataset.id;
-        const index = Number(itemEl?.dataset.refImageIndex ?? itemEl?.dataset.imageIndex ?? 0);
-        const node = nodes.find(n => n.id === targetNodeId);
-        const image = node?.images?.[index];
-        if(imgEl.tagName?.toLowerCase() === 'img' && image?.url && !isSmartPreviewImage(imgEl)) bindImageProxyFallback(imgEl, image);
-        if(!node || !image || image.natural_w || image.natural_h) return;
-        const isPreview = isSmartPreviewImage(imgEl);
-        // 预览图和原图比例一致，未携带尺寸元数据时直接使用预览图的自然尺寸
-        // 做布局测量。不要再用隐藏 Image 加载原图，否则超大 PNG/JPEG 会在画布
-        // 初始化阶段被完整下载和解码。
-        if(isPreview && image.layout_w && image.layout_h) return;
-        const apply = () => {
-            const w = imgEl.naturalWidth || imgEl.videoWidth || 0;
-            const h = imgEl.naturalHeight || imgEl.videoHeight || 0;
-            if(w <= 0 || h <= 0 || image.natural_w || image.natural_h) return;
-            const prevW = Number(image.layout_w || 0);
-            const prevH = Number(image.layout_h || 0);
-            if(isPreview){
-                if(prevW === w && prevH === h) return;
-                image.layout_w = w;
-                image.layout_h = h;
-            } else {
-                image.natural_w = w;
-                image.natural_h = h;
-                delete image.layout_w;
-                delete image.layout_h;
-            }
-            applyThumbDisplaySizeToElement(itemEl, image, Math.max(itemEl?.clientWidth || 0, itemEl?.clientHeight || 0));
-            updateImageResolutionBadgeElement(itemEl, image);
-            if(!isSmartGroupNode(node) && (node.images || []).length === 1 && !node.w && !node.h){
-                const layout = singleImageLayout(image, node, mediaNodeDefaultScale(node));
-                node.w = layout.width;
-                node.h = layout.height;
-            }
-            updateNodeElementDuringResize(node);
-            if(containerNode && containerNode.id !== node.id) updateNodeElementDuringResize(containerNode);
-            if(isNodeSelected(node.id)) updateComposer();
-            scheduleSave();
-        };
-        const isVideo = imgEl.tagName?.toLowerCase() === 'video';
-        if(!isVideo && imgEl.complete) apply();
-        else imgEl.addEventListener('load', apply, {once:true});
-        imgEl.addEventListener('loadedmetadata', apply, {once:true});
-    });
-}
+const smartNodeMedia = XiaomeiSmartNodeMedia.create({
+    world,
+    node:id => nodes.find(node => node.id === id),
+    matchesSource(item, source){
+        return item.url === source || smartOriginalMediaUrl(item) === source
+            || smartOriginalMediaUrl(imageForDisplay(item)) === source;
+    },
+    isVideo:isVideoMediaItem,
+    isPreview:isSmartPreviewImage,
+    proxy:proxiedMediaUrl,
+    measured({node, item, slot, card}){
+        if(slot?.hasAttribute('data-image-index')){
+            applyThumbDisplaySizeToElement(slot, item, Math.max(slot.clientWidth, slot.clientHeight));
+            updateImageResolutionBadgeElement(slot, item);
+        }
+        if(!isSmartGroupNode(node) && node.images.length === 1 && !node.w && !node.h){
+            const box = singleImageLayout(item, node, mediaNodeDefaultScale(node));
+            node.w = box.width;
+            node.h = box.height;
+        }
+        const container = card.dataset.id === node.id ? node : nodes.find(candidate => candidate.id === card.dataset.id);
+        if(container) updateNodeElementDuringResize(container);
+        if(container !== node && interactionNodeElement(node.id, null)) updateNodeElementDuringResize(node);
+        if(isNodeSelected(node.id)) updateComposer();
+        scheduleSave();
+    }
+});
 function bindConnectionEvents(){
     if(!world || world.dataset.connectionEventsBound === '1') return;
     // 连线位于 world 的 SVG 层中。鼠标按下如果冒泡到 shell，会被画布当成
@@ -19331,7 +16256,7 @@ function bindConnectionEvents(){
     const connectionHit = event => event.target?.closest?.('.conn-hit,.conn-cut,[data-conn-cut]');
     // 部分鼠标/触控板会把用户的“右键拖动”报告为中键自动滚动；
     // Ctrl/⌘+中键作为兼容入口，避免浏览器接管成“向上滚动”。
-    const isConnectionErasePress = event => isConnectionEraseGesture(event);
+    const isConnectionErasePress = smartConnectionEraser.isPress;
     world.addEventListener('pointerdown', event => {
         if(!connectionHit(event)) return;
         // Ctrl/⌘+右键需要继续冒泡到 shell，由画布统一建立擦除状态；
@@ -19410,105 +16335,9 @@ function clearPortDragVisual(){
     world.querySelectorAll('.node-port.is-active,.node-port.is-drag-source').forEach(el => el.classList.remove('is-active', 'is-drag-source'));
     world.querySelectorAll('.image-node.port-hover').forEach(el => el.classList.remove('port-hover'));
 }
-function bindPromptNodeControls(el, node){
-    bindNodeSkillControls(el, node);
-    el.querySelectorAll('.agent-node-control').forEach(control => {
-        control.addEventListener('mousedown', e => e.stopPropagation());
-        control.addEventListener('click', e => e.stopPropagation());
-        control.addEventListener('dblclick', e => e.stopPropagation());
-    });
-    el.querySelectorAll('.prompt-node-control, .prompt-node-pill').forEach(control => {
-        control.addEventListener('mousedown', e => e.stopPropagation());
-        control.addEventListener('click', e => e.stopPropagation());
-        control.addEventListener('dblclick', e => e.stopPropagation());
-    });
-    const textEl = el.querySelector('.prompt-node-text');
-    if(textEl) {
-        bindScrollableText(textEl);
-        textEl.oninput = e => {
-            node.text = e.target.value;
-            syncSmartLoopDetailTextInputs();
-            scheduleSave();
-            if(promptFindState?.nodeId === node.id) refreshPromptNodeFind({scrollToCurrent:false});
-        };
-        textEl.addEventListener('keydown', e => {
-            if(e.key === 'Escape' && promptFindState?.nodeId === node.id){
-                e.preventDefault();
-                e.stopPropagation();
-                closePromptNodeFind();
-            }
-        });
-    }
-    const presetEdit = el.querySelector('.prompt-preset-edit');
-    if(presetEdit) presetEdit.onclick = e => {
-        e.preventDefault();
-        e.stopPropagation();
-        editPromptPresetForNode(node);
-    };
-    const toggle = el.querySelector('.prompt-llm-toggle');
-    if(toggle) toggle.onclick = e => {
-        e.preventDefault(); e.stopPropagation();
-        node.llmEnabled = !node.llmEnabled;
-        if(node.llmEnabled){
-            preserveLegacyPromptInstruction(node);
-            node.llmProvider = resolveChatProviderId(node.llmProvider || '');
-            node.llmModel = resolveChatModel(node.llmModel || '', node.llmProvider);
-            node.h = Math.max(Number(node.h) || 0, promptNodeExpandedHeight(node));
-            node.w = Math.max(Number(node.w) || 0, 430);
-        } else {
-            node.h = promptNodeMinHeight(node);
-            node.w = Math.max(Number(node.w) || 0, 316);
-        }
-        render();
-        scheduleSave();
-    };
-    const providerEl = el.querySelector('.prompt-llm-provider');
-    if(providerEl) providerEl.onchange = e => {
-        e.stopPropagation();
-        node.llmProvider = resolveChatProviderId(e.target.value);
-        node.llmModel = resolveChatModel('', node.llmProvider);
-        render();
-        scheduleSave();
-    };
-    const modelEl = el.querySelector('.prompt-llm-model');
-    if(modelEl) modelEl.onchange = e => { e.stopPropagation(); node.llmModel = e.target.value; scheduleSave(); };
-    const systemToggleEl = el.querySelector('.prompt-system-toggle');
-    if(systemToggleEl) systemToggleEl.onclick = e => {
-        e.preventDefault();
-        e.stopPropagation();
-        const prevHeight = Number(node.h) || 0;
-        node.llmSystemEnabled = !node.llmSystemEnabled;
-        if(node.llmSystemEnabled) node.h = Math.max(prevHeight, promptNodeExpandedHeight(node));
-        else if(prevHeight <= 364) node.h = promptNodeExpandedHeight(node);
-        render();
-        scheduleSave();
-    };
-    const systemEl = el.querySelector('.prompt-llm-system');
-    if(systemEl) { bindScrollableText(systemEl); systemEl.oninput = e => { node.llmSystemPrompt = e.target.value; scheduleSave(); }; }
-    const instructionEl = el.querySelector('.prompt-llm-instruction');
-    if(instructionEl) { bindScrollableText(instructionEl); instructionEl.oninput = e => { node.llmInstruction = e.target.value; node.promptInstructionInitialized = true; scheduleSave(); }; }
-    const instructionResizeEl = el.querySelector('[data-llm-instruction-resize]');
-    if(instructionResizeEl) instructionResizeEl.addEventListener('mousedown', e => {
-        if(e.button !== 0) return;
-        if(!collabCanEditNode(node.id)) return;
-        collabAcquireNodeLock(node.id);
-        e.preventDefault(); e.stopPropagation();
-        const startRect = nodeRect(node);
-        llmInstructionResizeState = {
-            id:node.id,
-            startY:e.clientY,
-            startH:promptLlmInstructionHeight(node),
-            startNodeH:promptNodeLayoutSize(node).height,
-            startRect,
-            pushTargets:resizePushTargets(node, startRect)
-        };
-        // 拖动期间屏蔽文本框的指针/选区，否则上拉时光标滑到上方输入框会被它抢走（选中文字/失焦）。
-        document.body.classList.add('smart-node-resize', 'smart-llm-instr-resize');
-        capturePendingUndo();
-    });
-    const runEl = el.querySelector('.prompt-node-run');
-    if(runEl) runEl.onclick = e => { e.preventDefault(); e.stopPropagation(); runPromptLLMNode(node.id); };
-    bindPromptNodeFindControls(el, node);
+function refreshPromptOutputDependents(node){
+    syncSmartLoopDetailTextInputs();
+    if(promptFindState?.nodeId === node.id) refreshPromptNodeFind({scrollToCurrent:false});
 }
 function bindNodeSkillControls(el, node){
     const skillLibrarySearch = el.querySelector('.agent-skill-library-search-input');
@@ -19914,13 +16743,8 @@ function bindAgentNodeControls(el, node){
     const assistant = el.querySelector('.agent-prompt-assistant');
     if(assistant) assistant.onclick = e => {
         e.preventDefault(); e.stopPropagation();
-        const alreadyOpen = Boolean(
-            promptTemplatePanel?.classList.contains('open')
-            && promptTemplatePanel.dataset.target === 'agent'
-            && promptTemplatePanel.dataset.nodeId === node.id
-        );
-        if(alreadyOpen) closePromptTemplatePanel();
-        else openPromptTemplatePanel(node.id, node.agentPromptTemplateId || '', {target:'agent'});
+        if(smartPromptLibrary.isOpen('agent', node.id)) smartPromptLibrary.close();
+        else smartPromptLibrary.show('agent', node.id, node.agentPromptTemplateId || '');
     };
     const run = el.querySelector('.agent-run');
     if(run) run.onclick = e => { e.preventDefault(); e.stopPropagation(); if(smartNodeInFlight(node)) cancelAgentNode(node.id); else runAgentNode(node.id); };
@@ -20167,7 +16991,35 @@ function bindSmartBatchOverviewControls(el, node){
     }; });
     el.querySelector('[data-batch-download]')?.addEventListener('click', e => { e.stopPropagation(); zipDownloadImageItems(smartLoopCommerceFields(node).productName || '批量生成', smartLoopDetailPaintNodes(node).flatMap(paint => nonPreviewOutputImages(paint.images || []).map((img, i) => ({...img, name:`${String(paint.batchDetailScreenIndex).padStart(2,'0')}-${i + 1}-${img.name || 'image.png'}`})))); });
 }
+function smartLoopPairedSummaryText(node, state, count){
+    if(state.ready) return trf(smartLoopReadyKey(node), {n:state.pairCount});
+    if(state.repairable) return `点「生成」时会自动补齐 ${count} 个屏节点`;
+    return state.message || tr('smart.loopPairedNeedImages');
+}
+function updateSmartLoopPairedSummary(card, node){
+    if(!smartLoopIsPaired(node)) return;
+    syncSmartLoopPairedSettings(node);
+    const state = smartLoopPairedState(node);
+    const count = Math.max(state.promptCount || 0, smartLoopAiSplitPrompts(node).length);
+    const available = state.ready || state.repairable;
+    const summary = card.querySelector('[data-loop-paired-summary]');
+    if(summary){
+        summary.textContent = smartLoopPairedSummaryText(node, state, count);
+        const notice = summary.closest('.loop-paired-summary');
+        notice?.classList.toggle('is-ready', available);
+        notice?.classList.toggle('is-blocked', !available);
+    }
+    const run = card.querySelector('[data-loop-run]');
+    if(!run || run.classList.contains('is-stop') || smartCascadeIsLoopRunning(node.id)) return;
+    run.disabled = !available;
+    run.title = available ? '' : state.message || '';
+    const label = run.querySelector('[data-batch-run-count]');
+    if(label) label.textContent = String(count);
+}
 function bindLoopNodeControls(el, node){
+    smartLoopEditor.bind(el, node);
+    const updatePairedLoopSummary = () => updateSmartLoopPairedSummary(el, node);
+    el.addEventListener('smart-loop-text-input', updatePairedLoopSummary);
     bindSmartBatchSelectMenus(el);
     window.SmartCanvasSku?.bind(el, node);
     const refs = smartLoopPreviewImages(node);
@@ -20193,137 +17045,6 @@ function bindLoopNodeControls(el, node){
         control.addEventListener('mousedown', e => e.stopPropagation());
         control.addEventListener('click', e => e.stopPropagation());
         control.addEventListener('dblclick', e => e.stopPropagation());
-    });
-    el.querySelectorAll('.loop-number-trigger').forEach(trigger => {
-        trigger.onclick = e => {
-            e.preventDefault();
-            e.stopPropagation();
-            const control = trigger.closest('.loop-number-control');
-            const willOpen = !control?.classList.contains('is-open');
-            document.querySelectorAll('.loop-number-control.is-open').forEach(item => {
-                item.classList.remove('is-open');
-                item.querySelector('.loop-number-trigger')?.setAttribute('aria-expanded', 'false');
-            });
-            if(control){
-                control.classList.toggle('is-open', willOpen);
-                trigger.setAttribute('aria-expanded', String(willOpen));
-            }
-        };
-    });
-    const loopNumberBounds = key => {
-        if(key === 'loopStart') return {min:1, max:9999};
-        if(key === 'imageBatchSize') return {min:1, max:100};
-        return {min:1, max:100};
-    };
-    const normalizeLoopNumber = (key, rawValue) => {
-        const bounds = loopNumberBounds(key);
-        return Math.max(bounds.min, Math.min(bounds.max, Number(rawValue) || bounds.min));
-    };
-    const syncLoopNumberUi = (source, key, value) => {
-        const control = source?.closest?.('.loop-number-control');
-        if(!control) return;
-        const display = control.querySelector('.loop-number-trigger strong');
-        if(display) display.textContent = value;
-        control.querySelectorAll('[data-loop-value]').forEach(cell => {
-            cell.classList.toggle('active', Number(cell.dataset.loopValue) === value);
-        });
-    };
-    const setLoopNumber = (key, rawValue, rerender=true, source=null) => {
-        const value = normalizeLoopNumber(key, rawValue);
-        if(key === 'count') node.count = smartLoopCount({count:value});
-        if(key === 'loopStart') node.loopStart = value;
-        if(key === 'imageBatchSize') node.imageBatchSize = value;
-        scheduleSave();
-        if(rerender) render();
-        else syncLoopNumberUi(source, key, value);
-    };
-    el.querySelectorAll('[data-loop-number]').forEach(btn => {
-        btn.onclick = e => {
-            e.preventDefault();
-            e.stopPropagation();
-            setLoopNumber(btn.dataset.loopNumber, btn.dataset.loopValue, true);
-        };
-    });
-    el.querySelectorAll('[data-loop-number-input]').forEach(input => {
-        input.oninput = e => {
-            e.stopPropagation();
-            setLoopNumber(input.dataset.loopNumberInput, input.value, false, input);
-        };
-        input.onchange = e => {
-            e.stopPropagation();
-            setLoopNumber(input.dataset.loopNumberInput, input.value, true);
-        };
-    });
-    el.querySelectorAll('[data-loop-mode]').forEach(btn => {
-        btn.onclick = e => {
-            e.preventDefault();
-            e.stopPropagation();
-            node.mode = btn.dataset.loopMode === 'parallel' ? 'parallel' : 'serial';
-            render();
-            scheduleSave();
-        };
-    });
-    el.querySelectorAll('[data-loop-toggle]').forEach(btn => {
-        btn.onclick = e => {
-            e.preventDefault();
-            e.stopPropagation();
-            if(btn.dataset.loopToggle === 'image') node.imageInput = !node.imageInput;
-            if(btn.dataset.loopToggle === 'prompt') {
-                node.showPrompt = !node.showPrompt;
-                if(node.showPrompt && !smartLoopInputPromptItems(node).length && !smartLoopActivePromptFieldValues(node).length) setSmartLoopPromptFieldValues(node, [smartLoopDefaultPromptText()]);
-            }
-            fitSmartLoopNode(node);
-            render();
-            scheduleSave();
-        };
-    });
-    const syncPromptFieldsFromDom = () => {
-        if(smartLoopIsPaired(node) && smartLoopAiSplitIsStale(node)) return;
-        const values = [...el.querySelectorAll('[data-loop-prompt-index]')]
-            .sort((a, b) => Number(a.dataset.loopPromptIndex) - Number(b.dataset.loopPromptIndex))
-            .map(input => smartLoopEditorText(input));
-        if(Array.isArray(node.aiSplitPrompts)){
-            const previous = Array.isArray(node.aiSplitPrompts) ? node.aiSplitPrompts : [];
-            node.aiSplitPrompts = values.map((prompt, index) => ({
-                ...(previous[index] && typeof previous[index] === 'object' ? previous[index] : {}),
-                prompt
-            }));
-        }
-        setSmartLoopPromptFieldValues(node, values);
-    };
-    let activePromptEditor = null;
-    el.querySelectorAll('.loop-smart-text').forEach(text => {
-        bindScrollableText(text);
-        text.onfocus = () => { activePromptEditor = text; };
-        text.oninput = () => {
-            syncPromptFieldsFromDom();
-            if(smartLoopIsPaired(node)) updatePairedLoopSummary();
-            scheduleSave();
-        };
-        text.addEventListener('click', e => {
-            const remove = e.target.closest?.('.loop-smart-token-chip button');
-            if(!remove) return;
-            e.preventDefault();
-            e.stopPropagation();
-            remove.closest('.loop-smart-token-chip')?.remove();
-            syncPromptFieldsFromDom();
-            scheduleSave();
-        });
-    });
-    el.querySelectorAll('[data-loop-prompt-add]').forEach(btn => {
-        btn.onclick = e => {
-            e.preventDefault();
-            e.stopPropagation();
-            syncPromptFieldsFromDom();
-            const values = smartLoopPromptFieldValues(node);
-            setSmartLoopPromptFieldValues(node, [...values, '']);
-            if(Array.isArray(node.aiSplitPrompts)){
-                node.aiSplitPrompts.push({title:'第 ' + (node.aiSplitPrompts.length + 1) + ' 屏', source:'', prompt:''});
-            }
-            fitSmartLoopNode(node);
-            render();
-            scheduleSave();
-        };
     });
     const sourceText = el.querySelector('[data-loop-detail-text]');
     if(sourceText) {
@@ -20555,136 +17276,6 @@ function bindLoopNodeControls(el, node){
             cancelSmartBatchPromptRun(node);
         };
     });
-    el.querySelectorAll('[data-loop-prompt-delete]').forEach(btn => {
-        btn.onclick = e => {
-            e.preventDefault();
-            e.stopPropagation();
-            syncPromptFieldsFromDom();
-            const removeIndex = Number(btn.dataset.loopPromptDelete);
-            const values = smartLoopPromptFieldValues(node);
-            if(values.length <= 1) return;
-            values.splice(removeIndex, 1);
-            setSmartLoopPromptFieldValues(node, values);
-            if(Array.isArray(node.aiSplitPrompts)){
-                node.aiSplitPrompts.splice(removeIndex, 1);
-                if(!node.aiSplitPrompts.length) delete node.aiSplitPrompts;
-            }
-            fitSmartLoopNode(node);
-            render();
-            scheduleSave();
-        };
-    });
-    const firstText = el.querySelector('.loop-smart-text');
-    const targetPromptEditor = () => activePromptEditor && el.contains(activePromptEditor) ? activePromptEditor : firstText;
-    el.querySelectorAll('[data-loop-token]').forEach(btn => {
-        btn.onclick = e => {
-            e.preventDefault();
-            e.stopPropagation();
-            const text = targetPromptEditor();
-            if(!text) return;
-            const token = btn.dataset.loopToken || '《计数》';
-            insertSmartLoopToken(text, token);
-            syncPromptFieldsFromDom();
-            scheduleSave();
-        };
-    });
-    const updatePairedLoopSummary = () => {
-        if(!smartLoopIsPaired(node)) return;
-        syncSmartLoopPairedSettings(node);
-        const state = smartLoopPairedState(node);
-        const promptCount = el.querySelector('[data-loop-paired-prompt-count]');
-        if(promptCount) promptCount.textContent = trf('smart.loopPairedPromptsSplit', {n:state.promptCount});
-        const summary = el.querySelector('[data-loop-paired-summary]');
-        if(summary){
-            const count = Math.max(state.promptCount || 0, smartLoopAiSplitPrompts(node).length);
-            summary.textContent = state.ready
-                ? trf(smartLoopReadyKey(node), {n:state.pairCount})
-                : state.repairable
-                ? `点「生成」时会自动补齐 ${count} 个屏节点`
-                : state.message;
-            summary.closest('.loop-paired-summary')?.classList.toggle('is-ready', state.ready || state.repairable);
-            summary.closest('.loop-paired-summary')?.classList.toggle('is-blocked', !state.ready && !state.repairable);
-        }
-        const run = el.querySelector('[data-loop-run]');
-        if(run && !run.classList.contains('is-stop') && !smartCascadeIsLoopRunning(node.id)){
-            run.disabled = !state.ready && !state.repairable;
-            run.title = !state.ready && !state.repairable && state.message ? state.message : '';
-            const label = run.querySelector('[data-batch-run-count]');
-            if(label) label.textContent = String(Math.max(state.promptCount || 0, smartLoopAiSplitPrompts(node).length));
-        }
-    };
-    el.addEventListener('smart-loop-text-input', updatePairedLoopSummary);
-    el.querySelectorAll('[data-loop-paired-prompt-index]').forEach(editor => {
-        editor.addEventListener('paste', e => {
-            const pasted = String(e.clipboardData?.getData('text/plain') || '');
-            if(!pasted) return;
-            e.preventDefault();
-            e.stopPropagation();
-            insertPlainTextIntoSmartLoopEditor(editor, pasted);
-            syncPromptFieldsFromDom();
-            fitSmartLoopNode(node);
-            scheduleSave();
-            render();
-        });
-    });
-    el.querySelectorAll('[data-loop-create-paint]').forEach(btn => {
-        btn.onclick = e => {
-            e.preventDefault();
-            e.stopPropagation();
-            pushUndo();
-            const rect = nodeRect(node);
-            const paint = createPaintNodeAt({
-                x:(Number(node.x) || 0) + rect.width + 170,
-                y:(Number(node.y) || 0) + Math.max(110, rect.height / 2)
-            }, {select:false, skipUndo:true});
-            if(!paint) return;
-            if(node.batchDetailModeV2) applySmartLoopBatchImageSettings(node, [paint]);
-            addConnection(node.id, paint.id, 'flow');
-            selectedId = paint.id;
-            selectedIds = [];
-            fitSmartLoopNode(node);
-            scheduleSave();
-            render();
-        };
-    });
-    el.querySelectorAll('[data-loop-create-paint-batch]').forEach(btn => {
-        btn.onclick = e => {
-            e.preventDefault();
-            e.stopPropagation();
-            const count = Math.max(1, smartLoopPairedPromptValues(node).length || Number(node.batchAiTargetCount) || 1);
-            pushUndo();
-            ensureSmartLoopDetailPaintNodes(node, count);
-            selectedId = node.id;
-            selectedIds = [];
-            fitSmartLoopNode(node);
-            scheduleSave();
-            render();
-        };
-    });
-    el.querySelectorAll('[data-loop-switch-advanced]').forEach(btn => {
-        btn.onclick = e => {
-            e.preventDefault();
-            e.stopPropagation();
-            node.batchUiMode = 'advanced';
-            node.batchAdvancedReturnMode = 'paired';
-            fitSmartLoopNode(node);
-            scheduleSave();
-            render();
-        };
-    });
-    el.querySelectorAll('[data-loop-switch-paired]').forEach(btn => {
-        btn.onclick = e => {
-            e.preventDefault();
-            e.stopPropagation();
-            syncPromptFieldsFromDom();
-            node.batchUiMode = 'paired';
-            delete node.batchAdvancedReturnMode;
-            syncSmartLoopPairedSettings(node);
-            fitSmartLoopNode(node);
-            scheduleSave();
-            render();
-        };
-    });
     el.querySelectorAll('[data-loop-run]').forEach(btn => {
         btn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
         btn.onclick = e => {
@@ -20710,95 +17301,6 @@ function bindLoopNodeControls(el, node){
             stitchDetailPagesFromLoop(btn.dataset.loopDetailStitch || node.id);
         };
     });
-}
-function bindScrollableText(el){
-    if(!el || el.dataset.scrollBound === '1') return;
-    el.dataset.scrollBound = '1';
-    const stop = e => e.stopPropagation();
-    const selectAllWithinControl = event => {
-        if(event.isComposing || event.altKey || !(event.ctrlKey || event.metaKey) || String(event.key || '').toLowerCase() !== 'a') return;
-        event.preventDefault();
-        event.stopPropagation();
-        if(el.matches?.('input, textarea')){
-            el.focus({preventScroll:true});
-            el.select();
-            return;
-        }
-        if(!el.isContentEditable && el.getAttribute?.('contenteditable') !== 'true') return;
-        const selection = window.getSelection?.();
-        if(!selection) return;
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        selection.removeAllRanges();
-        selection.addRange(range);
-    };
-    // 画布节点默认禁止选择文本。显式接管 Ctrl/Cmd+A，避免 Chromium
-    // 在 contenteditable 节点内回退为选择整个页面。
-    el.addEventListener('keydown', selectAllWithinControl, true);
-    const beginSelection = e => {
-        e.stopPropagation();
-        textSelectionGuard = {
-            el,
-            scrollTop:el.scrollTop || 0,
-            scrollLeft:el.scrollLeft || 0,
-            clientY:e.clientY,
-            wheelUntil:0,
-            active:true
-        };
-    };
-    // 文本框内的滚轮只滚动文字，不继续冒泡到无限画布触发缩放。
-    el.addEventListener('wheel', stop, {passive:true});
-    el.addEventListener('mousedown', beginSelection);
-    el.addEventListener('mousemove', e => {
-        if(resizeState || llmInstructionResizeState) return;
-        e.stopPropagation();
-        if(textSelectionGuard?.el === el) textSelectionGuard.clientY = e.clientY;
-    });
-    el.addEventListener('mouseup', e => {
-        if(resizeState || llmInstructionResizeState) return;
-        e.stopPropagation();
-        if(textSelectionGuard?.el === el) textSelectionGuard.active = false;
-    });
-    el.addEventListener('mouseleave', e => {
-        e.stopPropagation();
-        if(textSelectionGuard?.el === el) {
-            el.scrollTop = textSelectionGuard.scrollTop;
-            el.scrollLeft = textSelectionGuard.scrollLeft;
-        }
-    });
-    el.addEventListener('scroll', () => {
-        const guard = textSelectionGuard;
-        if(!guard || guard.el !== el || !guard.active || Date.now() < guard.wheelUntil) {
-            if(guard?.el === el) {
-                guard.scrollTop = el.scrollTop || 0;
-                guard.scrollLeft = el.scrollLeft || 0;
-            }
-            return;
-        }
-        const nextTop = el.scrollTop || 0;
-        const prevTop = guard.scrollTop || 0;
-        const rect = el.getBoundingClientRect();
-        const pointerBelow = Number.isFinite(guard.clientY) && guard.clientY > rect.bottom - 10;
-        const pointerAbove = Number.isFinite(guard.clientY) && guard.clientY < rect.top + 10;
-        const jumpedToTop = prevTop > Math.max(80, el.clientHeight * 0.45) && nextTop < 4 && !pointerAbove;
-        const wrongDirectionJump = pointerBelow && nextTop < prevTop - Math.max(40, el.clientHeight * 0.25);
-        if(jumpedToTop || wrongDirectionJump) {
-            requestAnimationFrame(() => {
-                if(textSelectionGuard?.el === el && textSelectionGuard.active) {
-                    el.scrollTop = prevTop;
-                    el.scrollLeft = guard.scrollLeft || 0;
-                }
-            });
-            return;
-        }
-        guard.scrollTop = nextTop;
-        guard.scrollLeft = el.scrollLeft || 0;
-    }, {passive:true});
-    el.addEventListener('click', stop);
-    el.addEventListener('dblclick', stop);
-    el.addEventListener('wheel', e => {
-        if(textSelectionGuard?.el === el) textSelectionGuard.wheelUntil = Date.now() + 180;
-    }, {passive:true});
 }
 function updatePortDragVisual(){
     if(!portDragState) return;
@@ -21110,9 +17612,6 @@ async function replaceSmartNodeImage(nodeId, imageIndex, file, originalUrl=''){
 function removeTransientFeedbackElement(el){
     if(el?.isConnected) el.remove();
 }
-function emitUploadPointerRipple(){
-    // 上传区域不再显示点击圆圈；保留空函数兼容旧事件与导入工作流。
-}
 function emitPortPressRipple(port){
     if(!port?.classList?.contains('port-out')) return;
     const ripple = document.createElement('span');
@@ -21120,12 +17619,6 @@ function emitPortPressRipple(port){
     port.appendChild(ripple);
     ripple.addEventListener('animationend', () => removeTransientFeedbackElement(ripple), {once:true});
     window.setTimeout(() => removeTransientFeedbackElement(ripple), 900);
-}
-function bindUploadNodeFeedback(el, drop){
-    // 上传区域只负责文件交互。连接提示统一由节点右侧的悬浮加号承担，
-    // 避免卡片内部出现一个无法解释的浅色圆圈。
-    if(!el || !drop) return;
-    drop.classList.remove('upload-pointer-near');
 }
 let linkPortNearNodeEl = null;
 let linkPortProximityFrame = 0;
@@ -21382,17 +17875,31 @@ function setComfyNodeFieldValue(node, fieldId, value){
     scheduleSave();
 }
 async function switchComfyWorkflowForNode(node, workflowName){
-    if(!isSmartComfyWorkflowNode(node) || !workflowName || workflowName === node.workflowRef) return;
+    if(!isSmartComfyWorkflowNode(node) || !workflowName) return;
     if(!collabCanEditNode(node.id)) return;
+    if(workflowName === node.workflowRef){
+        comfyWorkflowChanges.delete(node.id);
+        return;
+    }
     const previousName = node.workflowRef;
+    const change = beginComfyWorkflowChange(node.id);
+    const owner = () => {
+        if(!currentComfyWorkflowChange(change)) return null;
+        const current = nodes.find(item => item.id === change.nodeId);
+        return isSmartComfyWorkflowNode(current) && current.workflowRef === previousName && collabCanEditNode(current.id, true)
+            ? current : null;
+    };
     try {
         const data = await ensureComfyWorkflow(workflowName);
+        node = owner();
+        if(!node) return;
         if(!data) throw new Error('工作流不存在或尚未准备完成');
         const config = data.config && typeof data.config === 'object' ? data.config : {};
         const fields = Array.isArray(config.fields) ? JSON.parse(JSON.stringify(config.fields)) : [];
         const entry = (comfyWorkflows || []).find(item => item?.name === workflowName) || {};
         const title = String(config.title || entry.title || workflowName.replace(/\.json$/i, '') || 'ComfyUI 工作流').trim();
         const readiness = data.readiness && typeof data.readiness === 'object' ? data.readiness : (entry.readiness || {});
+        pushUndo();
         node.workflowRef = workflowName;
         node.workflowTitle = title;
         node.title = title;
@@ -21416,9 +17923,13 @@ async function switchComfyWorkflowForNode(node, workflowName){
         scheduleSave();
         toast(`已切换到「${title}」`);
     } catch(error){
+        node = owner();
+        if(!node) return;
         const select = world.querySelector(`.image-node[data-id="${CSS.escape(node.id)}"] [data-comfy-node-workflow]`);
         if(select) select.value = previousName;
         toast((error?.message || '工作流切换失败').slice(0, 160));
+    } finally {
+        finishComfyWorkflowChange(change);
     }
 }
 function bindComfyWorkflowNodeControls(el, node){
@@ -21443,6 +17954,7 @@ function bindComfyWorkflowNodeControls(el, node){
         control.addEventListener('mousedown', event => event.stopPropagation());
         control.addEventListener('click', event => event.stopPropagation());
         control.addEventListener('dblclick', event => event.stopPropagation());
+        if(control.matches('[data-comfy-node-workflow]')) return;
         control.addEventListener('focus', startUndo, true);
         control.addEventListener('blur', () => setTimeout(finishUndo, 0), true);
     });
@@ -21467,10 +17979,7 @@ function bindComfyWorkflowNodeControls(el, node){
         event.preventDefault();
         event.stopPropagation();
         if(!collabCanEditNode(node.id)) return;
-        openComfyNodeWorkflowPicker(node, workflowSelect, workflowName => {
-            startUndo();
-            switchComfyWorkflowForNode(node, workflowName).finally(finishUndo);
-        });
+        openComfyNodeWorkflowPicker(node, workflowSelect, workflowName => void switchComfyWorkflowForNode(node, workflowName));
     };
     el.querySelectorAll('[data-comfy-node-param]').forEach(input => {
         const update = event => {
@@ -21758,11 +18267,275 @@ function bindSmartAiRenderNodeControls(el, node){
         runAiRenderNode(node.id);
     });
 }
+function selectSmartCard(id){
+    selectedId = id;
+    selectedIds = [];
+    selectedImage = {nodeId:'', index:-1};
+}
+
+function selectSmartCardFromClick(id, event){
+    if(Date.now() < suppressNodeClickUntil) return;
+    clearLinkPortProximity();
+    prepareSmartCardSelection(id);
+    if(applyModifiedNodeSelection(id, event)) return;
+    selectSmartCard(id);
+    if(smartCascadeAnyRunning()) smartCascadeSilentSelection = false;
+    syncSelectionUi();
+    updateComposer();
+}
+
+function prepareSmartCardSelection(id){
+    hideRunTimerForNode(nodes.find(node => node.id === id));
+    deferredComposerNodeId = '';
+}
+
+function uploadFromSmartCard(id){
+    prepareSmartCardSelection(id);
+    selectSmartCard(id);
+    pendingGroupUploadPoint = null;
+    uploadTargetId = id;
+    syncSelectionUi();
+    updateComposer();
+    pickMediaForSmartNode(id);
+}
+
+function beginSmartCardResize(id, card, event){
+    if(event.button !== 0 || !collabCanEditNode(id)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const node = nodes.find(item => item.id === id);
+    if(!node || (isNodeSelected(id) && beginSmartSelectionResize(event, node))) return;
+
+    const rect = nodeRect(node);
+    const state = {
+        id, startX:event.clientX, startY:event.clientY,
+        startW:rect.width, startH:rect.height, startRect:rect,
+        pushTargets:resizePushTargets(node, rect),
+        promptMinH:node.type === 'smart-prompt' ? promptNodeMinHeight(node) : 0
+    };
+    if(isSmartGroupNode(node)){
+        const origin = Number(node.x) || 0;
+        let right = origin;
+        state.members = [];
+        for(const member of smartGroupMembers(node)){
+            const bounds = nodeRect(member);
+            const x = Number(member.x) || 0;
+            const width = Number(bounds.width) || 0;
+            right = Math.max(right, x + width);
+            state.members.push({
+                id:member.id, sx:x, sy:Number(member.y) || 0,
+                sw:width, sh:Number(bounds.height) || 0, isImage:isSmartImageNode(member)
+            });
+        }
+        state.startZoom = smartGroupZoom(node);
+        state.contentFitW = state.members.length ? Math.max(1, right - origin + 16) : (rect.width || 1);
+    }
+    if(isSmartDrawingBoardNode(node) && window.SmartDrawingBoard?.measureLayout){
+        state.drawingElement = card;
+        state.drawingLayout = window.SmartDrawingBoard.measureLayout(card);
+    }
+    resizeState = state;
+    card.classList.add('resizing');
+    document.body.classList.add('smart-node-resize');
+    capturePendingUndo();
+}
+
+function beginSmartCardDrag(id, event){
+    const alternate = event.altKey && event.button === 2;
+    if(smartConnectionEraser.active() || (event.button !== 0 && !alternate)) return;
+    const target = event.target;
+    if(target.closest('.mini-x, .smart-node-floating-menu, .node-resize-handle, .node-port, .prompt-node-control, .prompt-node-pill, select, input, textarea, button')) return;
+    if(!alternate && target.closest('.thumb-item') && !isSmartGroupNode(nodes.find(item => item.id === id))) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    window.getSelection()?.removeAllRanges();
+    document.activeElement?.blur();
+
+    const overview = target.closest('.loop-batch-overview');
+    let anchor = nodes.find(item => item.id === (overview?.dataset.batchOverviewOwner || id));
+    if(!anchor || !collabCanEditNode(id)) return;
+    const previousSelection = !overview && selectedIds.includes(id) ? selectedIds : [id];
+    if(!previousSelection.every(targetId => collabCanEditNode(targetId))) return;
+    if(event.shiftKey && !event.altKey) applyModifiedNodeSelection(id, event);
+
+    let copiedBatch;
+    if(overview){
+        copiedBatch = duplicateSmartBatchOverview(anchor, {drag:true, keepUpstream:!alternate});
+        if(!copiedBatch) return;
+        anchor = copiedBatch.owner;
+    } else if(event.altKey){
+        anchor = duplicateForAltDrag(anchor, !alternate);
+    }
+
+    const nodeMap = new Map(nodes.map(item => [item.id, item]));
+    const seedIds = copiedBatch ? copiedBatch.copies.map(copy => copy.id)
+        : (selectedIds.includes(anchor.id) ? selectedIds : [anchor.id]);
+    const groupFor = targetId => {
+        const item = nodeMap.get(targetId);
+        return item && (isSmartGroupNode(item) ? item : smartGroupContainingNode(targetId));
+    };
+    const groupRoots = new Map();
+    if(!copiedBatch){
+        for(const targetId of seedIds){
+            const group = groupFor(targetId);
+            if(group) groupRoots.set(group.id, group);
+        }
+    }
+    const dragIds = XiaomeiNodeKernel.expandIds(seedIds, targetId => {
+        const group = groupFor(targetId);
+        return group && {groupId:group.id, memberIds:smartGroupMembers(group).map(member => member.id)};
+    });
+    if(!dragIds.every(targetId => collabCanEditNode(targetId))) return;
+    const moveIds = new Set(dragIds);
+    if(canvasViewPrefs.follow){
+        for(const targetId of connectedDownstreamNodeIds(dragIds)){
+            if(!moveIds.has(targetId) && collabCanEditNode(targetId)) moveIds.add(targetId);
+        }
+    }
+
+    const group = [], moveGroup = [];
+    const dragged = new Set(dragIds);
+    for(const targetId of moveIds){
+        const item = nodeMap.get(targetId);
+        if(!item) continue;
+        const start = {id:targetId, ox:Number(item.x) || 0, oy:Number(item.y) || 0};
+        if(dragged.has(targetId)) group.push(start);
+        moveGroup.push(start);
+    }
+    const groupIds = moveGroup.map(item => item.id);
+    if(!collabAcquireNodeLocks(groupIds)){
+        discardPendingUndo();
+        return;
+    }
+    dragState = {
+        id:anchor.id, startX:event.clientX, startY:event.clientY,
+        ox:anchor.x || 0, oy:anchor.y || 0, group, moveGroup, groupIds, nodeMap,
+        elementCache:new Map(smartNodeElementsByIds(groupIds).map(card => [card.dataset.id, card])),
+        ctrlGroup:Boolean(event.ctrlKey), groupRoots, buttonMask:alternate ? 2 : 1,
+        returnGroupId:String(anchor.detachedFromNodeId || '')
+    };
+    if(!event.altKey) capturePendingUndo();
+}
+
+async function cancelImageFromSmartCard(button){
+    button.disabled = true;
+    button.textContent = '取消中…';
+    try {
+        const result = await cancelSmartGenerationTask(button.dataset.cancelImageTask);
+        toast(result.message || '已取消生图');
+    } catch(error) {
+        button.disabled = false;
+        button.textContent = '取消生图';
+        toast(error.message || '取消失败');
+    }
+}
+
+async function cancelBatchFromSmartCard(button){
+    const nodeId = button.dataset.cancelImageBatch;
+    const pending = () => smartPendingTasks(nodes.find(node => node.id === nodeId));
+    const taskIds = new Set();
+    for(const task of pending()){
+        if(task.status !== 'cancelled' && /^(canvas_img_|canvas_comfy_)/.test(task.taskId)) taskIds.add(task.taskId);
+    }
+    if(!taskIds.size) return;
+    button.disabled = true;
+    button.textContent = '取消中…';
+    const ids = [...taskIds];
+    const replies = await Promise.allSettled(ids.map(cancelSmartGenerationTask));
+    const current = new Map(pending().map(task => [task.taskId, task]));
+    let failures = 0;
+    for(const [index, reply] of replies.entries()){
+        if(reply.status === 'rejected'){
+            failures++;
+        } else if(reply.value?.status === 'cancelled'){
+            const task = current.get(ids[index]);
+            if(task) task.status = 'cancelled';
+        }
+    }
+    if(failures){
+        button.disabled = false;
+        button.textContent = '取消生图';
+        toast(`${ids.length - failures} 个任务已处理，${failures} 个取消失败，请重试`);
+    } else {
+        toast(`已请求取消 ${ids.length} 个生图任务；平台已受理的请求可能继续执行或计费`);
+    }
+}
+
+const smartCardEvents = XiaomeiSmartCardEvents.create({
+    node:id => nodes.find(node => node.id === id),
+    select:selectSmartCardFromClick,
+    openGroup(id, event){
+        selectSmartCard(id);
+        openCreateMenu(event, {groupId:id});
+    },
+    drag:beginSmartCardDrag,
+    resize:beginSmartCardResize,
+    port:beginSmartPortDrag,
+    edit:{
+        acquire:collabAcquireNodeLock,
+        release:id => collabReleaseLocks([id]),
+        refresh:id => render({nodeIds:[id]})
+    },
+    files:{
+        blocks:isSmartDrawingBoardNode,
+        clear:clearMediaDropHighlight,
+        indicate(event, card){
+            setSmartDropCopyEffect(event);
+            if(hasSmartImageDropData(event.dataTransfer)) setMediaDropHighlight(card);
+            else clearMediaDropHighlight();
+        },
+        drop(data, id){
+            shell?.classList.remove('smart-drop-active');
+            clearMediaDropHighlight();
+            if(isSmartDrawingBoardNode(nodes.find(node => node.id === id))){
+                toast(tr('smart.drawingBoardNoImport'));
+                return;
+            }
+            return importSmartDrop(data, id);
+        }
+    },
+    settings:{
+        open:openSmartNodeSettingsPanel,
+        close:closeSmartNodeSettingsPanel,
+        hidden(panel){
+            if(smartNodeSettingsPanelState?.panel === panel) releaseSmartNodeSettingsPanel();
+        }
+    },
+    actions:{
+        upload:(_button, id) => uploadFromSmartCard(id),
+        remove:(_button, id) => deleteNodeFromButton(id),
+        expandPrompt:(_button, id) => toggleSmartPromptNodeCollapsed(id, false),
+        expandStack:(_button, id) => expandCollapsedTextStackNode(id),
+        openDocument(button){
+            openSmartDocumentPreview({url:button.dataset.documentPreviewUrl, name:button.dataset.documentName});
+        },
+        removeReference(button, id){
+            removePromptNodeInputReference(button.dataset.nodeId || id, button.dataset.nodeInputRemove || '');
+        },
+        toolbar(button, id){
+            if(button.closest('.smart-node-settings-panel')) closeSmartNodeSettingsPanel();
+            runSmartNodeToolbarAction(button.dataset.nodeId || id, button.dataset.smartNodeAction, button);
+        },
+        groupToolbar(button, id){
+            runSmartGroupToolbarAction(button.dataset.nodeId || id, button.dataset.smartGroupAction);
+        },
+        queryJimeng:button => queryJimengNow(button.dataset.jimengQuery),
+        queryImage:button => querySmartImageTaskNow(button.dataset.imageTaskQuery, button.dataset.taskId),
+        cancelImage:cancelImageFromSmartCard,
+        cancelBatch:cancelBatchFromSmartCard,
+        cancelVideo:button => cancelSmartVideoRun(button.dataset.cancelVideoRun),
+        recoverImage:button => recoverUnparsedImageNow(button.dataset.imageResultRecovery, button.dataset.recoveryId),
+        retryImage:button => retryFailedImageGeneration(button.dataset.imageRerun),
+        retryResolution:button => retryImageWithLowerResolution(button.dataset.imageQuotaRetry, button.dataset.fallbackResolution)
+    }
+});
 function bindNodeEvents(nodeEls=world.querySelectorAll('.image-node')){
     if(paintInputRefHoverThumb && !paintInputRefHoverThumb.isConnected) hidePaintInputRefHover();
     nodeEls.forEach(el => {
         const id = el.dataset.id;
         const nodeForControls = nodes.find(n => n.id === id);
+        if(!nodeForControls) return;
         if(isProductFidelityNode(nodeForControls) && typeof bindProductFidelityNode === 'function') bindProductFidelityNode(el, nodeForControls);
         if(isProductRetouchNode(nodeForControls)&&typeof bindProductRetouchNode==='function'){
             el.classList.add('product-retouch-smart-node');bindProductRetouchNode(el,nodeForControls);
@@ -21773,27 +18546,6 @@ function bindNodeEvents(nodeEls=world.querySelectorAll('.image-node')){
         }
         if(isSmartReplicaNode(nodeForControls)) window.SmartCanvasReplica.bind(el, nodeForControls);
         if(isSmartAiRenderNode(nodeForControls)) bindSmartAiRenderNodeControls(el, nodeForControls);
-        if(el.dataset.collabEventsBound !== '1'){
-            el.dataset.collabEventsBound = '1';
-            el.addEventListener('focusin', event => {
-                if(event.target?.matches?.('input,textarea,select,[contenteditable="true"]') && !collabAcquireNodeLock(id)){
-                    event.target.blur?.();
-                }
-            });
-            el.addEventListener('focusout', event => {
-                if(event.target?.matches?.('input,textarea,select,[contenteditable="true"]')){
-                    setTimeout(() => {
-                        if(!el.contains(document.activeElement)){
-                            collabReleaseLocks([id]);
-                            if(el.isConnected && el.dataset.promptRenderDeferred === '1'){
-                                delete el.dataset.promptRenderDeferred;
-                                render({nodeIds:[id]});
-                            }
-                        }
-                    }, 0);
-                }
-            });
-        }
         if(nodeForControls?.type === SMART_CAMERA_NODE_TYPE && window.SmartCameraNode?.bindNode){
             let cameraUndoStarted = false;
             window.SmartCameraNode.bindNode(el, nodeForControls, {
@@ -21867,608 +18619,23 @@ function bindNodeEvents(nodeEls=world.querySelectorAll('.image-node')){
         }
         if(isSmartTableNode(nodeForControls) || isSmartTimelineNode(nodeForControls)) bindSmartDataVideoNode(el, nodeForControls);
         if(nodeForControls?.type === 'smart-prompt'){
-            bindPromptNodeControls(el, nodeForControls);
+            promptNodeView.bind(el, nodeForControls);
         }
         if(nodeForControls?.type === 'smart-agent' && !isSmartTextStackNode(nodeForControls)) bindAgentNodeControls(el, nodeForControls);
-        const collapsedTextNode = el.querySelector('[data-smart-text-node-expand]');
-        collapsedTextNode?.addEventListener('mousedown', event => {
-            event.preventDefault();
-            event.stopPropagation();
-        }, true);
-        collapsedTextNode?.addEventListener('click', event => {
-            event.preventDefault();
-            event.stopPropagation();
-            toggleSmartPromptNodeCollapsed(nodeForControls.id, false);
-        });
-        el.querySelectorAll('[data-smart-text-stack-card]').forEach(card => {
-            card.addEventListener('mousedown', event => {
-                event.preventDefault();
-                event.stopPropagation();
-            }, true);
-            card.addEventListener('click', event => {
-                event.preventDefault();
-                event.stopPropagation();
-                expandCollapsedTextStackNode(nodeForControls.id);
-            });
-        });
         if(nodeForControls?.type === 'smart-loop') bindLoopNodeControls(el, nodeForControls);
         if(nodeForControls?.type === SMART_COMPARE_NODE_TYPE) bindSmartCompareNodeControls(el, nodeForControls);
         if(isSmartComfyWorkflowNode(nodeForControls)) bindComfyWorkflowNodeControls(el, nodeForControls);
-        const runStatus = el.querySelector('.run-time-pill');
-        if(runStatus){
-            const stopNodeEvent = event => event.stopPropagation();
-            runStatus.onmousedown = stopNodeEvent;
-            runStatus.onclick = stopNodeEvent;
-            runStatus.ondblclick = stopNodeEvent;
-        }
-        if(nodeForControls?.type === 'smart-group') {
-            el.ondblclick = e => {
-                e.preventDefault();
-                e.stopPropagation();
-                selectedId = id;
-                selectedIds = [];
-                selectedImage = {nodeId:'', index:-1};
-                openCreateMenu(e, {groupId:id});
-            };
-        }
-        el.onclick = e => {
-            e.stopPropagation();
-            if(Date.now() < suppressNodeClickUntil) return;
-            const node = nodes.find(n => n.id === id);
-            clearLinkPortProximity();
-            hideRunTimerForNode(node);
-            deferredComposerNodeId = '';
-            if(applyModifiedNodeSelection(id, e)) return;
-            const alreadySelected = selectedId === id && selectedIds.length === 0 && selectedImage.nodeId === '';
-            selectedId = id;
-            selectedIds = [];
-            selectedImage = {nodeId:'', index:-1};
-            if(smartCascadeAnyRunning()) smartCascadeSilentSelection = false;
-            if(alreadySelected){
-                syncSelectionUi();
-                updateComposer();
-                return;
-            }
-            // 选中状态只影响高亮、连线焦点和底部编辑器；不重建所有节点，
-            // 否则点击一张素材也会重新创建整张画布的图片与控件。
-            syncSelectionUi();
-            updateComposer();
-        };
-        if(nodeForControls?.type !== 'smart-group') el.ondblclick = e => e.stopPropagation();
-        const nodeDrop = el.querySelector('.node-drop');
-        bindUploadNodeFeedback(el, nodeDrop);
-        nodeDrop?.addEventListener('mousedown', e => {
-            if(e.button !== 0) return;
-            e.preventDefault();
-            e.stopPropagation();
-        }, true);
-        nodeDrop?.addEventListener('click', e => {
-            e.preventDefault(); e.stopPropagation();
-            hideRunTimerForNode(nodes.find(n => n.id === id));
-            deferredComposerNodeId = '';
-            selectedId = id;
-            selectedIds = [];
-            selectedImage = {nodeId:'', index:-1};
-            pendingGroupUploadPoint = null;
-            uploadTargetId = id;
-            syncSelectionUi();
-            updateComposer();
-            pickMediaForSmartNode(id);
-        });
-        el.querySelectorAll('.node-delete').forEach(btn => {
-            btn.addEventListener('click', e => {
-                e.preventDefault(); e.stopPropagation();
-                deleteNodeFromButton(id);
-            });
-        });
         const nodeRefItems = ['smart-agent', 'smart-prompt'].includes(nodeForControls?.type) && !isSmartTextStackNode(nodeForControls)
             ? promptNodeInputMediaForLLM(nodeForControls) : [];
-        el.querySelectorAll('[data-document-preview-url]').forEach(button => {
-            button.addEventListener('mousedown', event => { event.preventDefault(); event.stopPropagation(); }, true);
-            button.addEventListener('click', event => {
-                if(event.target.closest('[data-node-input-remove]')) return;
-                event.preventDefault(); event.stopPropagation();
-                openSmartDocumentPreview({url:button.dataset.documentPreviewUrl, name:button.dataset.documentName});
-            }, true);
-        });
         el.querySelectorAll('[data-input-preview-url]').forEach(thumb => {
             if(thumb.closest('.batch-asset-track')) return;
             const item = nodeRefItems.find(ref => inputRefKey(ref) === thumb.dataset.inputRefKey) || {url:thumb.dataset.inputPreviewUrl};
             bindImageReferenceThumb(thumb, nodeForControls, item, nodeRefItems, nodeRefItems.length > 1);
         });
-        el.querySelectorAll('[data-node-input-remove]').forEach(btn => {
-            if(nodeForControls?.type === 'smart-loop') return;
-            btn.addEventListener('mousedown', e => {
-                e.preventDefault();
-                e.stopPropagation();
-            }, true);
-            btn.addEventListener('click', e => {
-                e.preventDefault();
-                e.stopPropagation();
-                removePromptNodeInputReference(btn.dataset.nodeId || id, btn.dataset.nodeInputRemove || '');
-            });
-        });
-        el.querySelectorAll('[data-smart-node-settings]').forEach(btn => {
-            const panel = btn.nextElementSibling;
-            btn.popoverTargetElement = panel;
-            btn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
-            btn.addEventListener('click', e => {
-                e.preventDefault(); e.stopPropagation();
-                if(panel.matches(':popover-open')) { closeSmartNodeSettingsPanel(); return; }
-                openSmartNodeSettingsPanel(panel, btn);
-            });
-            panel.addEventListener('toggle', () => {
-                const open = panel.matches(':popover-open');
-                btn.setAttribute('aria-expanded', String(open));
-                if(!open && smartNodeSettingsPanelState?.panel === panel) releaseSmartNodeSettingsPanel();
-            });
-            panel.addEventListener('pointerdown', e => e.stopPropagation());
-            panel.addEventListener('mousedown', e => e.stopPropagation());
-            panel.addEventListener('wheel', e => e.stopPropagation(), {passive:true});
-        });
-        el.querySelectorAll('[data-smart-node-action]').forEach(btn => {
-            btn.addEventListener('mousedown', e => {
-                e.preventDefault();
-                e.stopPropagation();
-            }, true);
-            btn.addEventListener('click', e => {
-                e.preventDefault();
-                e.stopPropagation();
-                if(btn.closest('.smart-node-settings-panel')) closeSmartNodeSettingsPanel();
-                runSmartNodeToolbarAction(btn.dataset.nodeId || id, btn.dataset.smartNodeAction, btn);
-            });
-        });
-        el.querySelectorAll('[data-smart-group-action]').forEach(btn => {
-            btn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); }, true);
-            btn.addEventListener('click', e => {
-                e.preventDefault();
-                e.stopPropagation();
-                runSmartGroupToolbarAction(btn.dataset.nodeId || id, btn.dataset.smartGroupAction);
-            });
-        });
-        el.querySelectorAll('[data-jimeng-query]').forEach(btn => {
-            btn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); }, true);
-            btn.addEventListener('click', e => {
-                e.preventDefault(); e.stopPropagation();
-                queryJimengNow(btn.dataset.jimengQuery);
-            });
-        });
-        el.querySelectorAll('[data-image-task-query]').forEach(btn => {
-            btn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); }, true);
-            btn.addEventListener('click', e => {
-                e.preventDefault(); e.stopPropagation();
-                querySmartImageTaskNow(btn.dataset.imageTaskQuery, btn.dataset.taskId);
-            });
-        });
-        el.querySelectorAll('[data-cancel-image-task]').forEach(btn => {
-            btn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); }, true);
-            btn.addEventListener('click', async e => {
-                e.preventDefault(); e.stopPropagation();
-                btn.disabled = true;
-                btn.textContent = '取消中…';
-                const taskId = btn.dataset.cancelImageTask;
-                try {
-                    const result = await cancelSmartGenerationTask(taskId);
-                    toast(result.message || '已取消生图');
-                } catch(error) {
-                    btn.disabled = false;
-                    btn.textContent = '取消生图';
-                    toast(error.message || '取消失败');
-                }
-            });
-        });
-        el.querySelectorAll('[data-cancel-image-batch]').forEach(btn => {
-            btn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); }, true);
-            btn.addEventListener('click', async e => {
-                e.preventDefault(); e.stopPropagation();
-                const currentNode = nodes.find(node => node.id === btn.dataset.cancelImageBatch);
-                const taskIds = [...new Set(smartPendingTasks(currentNode)
-                    .filter(task => task.status !== 'cancelled')
-                    .map(task => task.taskId)
-                    .filter(taskId => /^(canvas_img_|canvas_comfy_)/.test(taskId)))];
-                if(!taskIds.length) return;
-                btn.disabled = true;
-                btn.textContent = '取消中…';
-                const results = await Promise.allSettled(taskIds.map(cancelSmartGenerationTask));
-                results.forEach((result, index) => {
-                    if(result.status !== 'fulfilled' || result.value?.status !== 'cancelled') return;
-                    const task = smartPendingTasks(currentNode).find(item => item.taskId === taskIds[index]);
-                    if(task) task.status = 'cancelled';
-                });
-                const failed = results.filter(result => result.status === 'rejected');
-                if(failed.length){
-                    btn.disabled = false;
-                    btn.textContent = '取消生图';
-                    toast(`${taskIds.length - failed.length} 个任务已处理，${failed.length} 个取消失败，请重试`);
-                } else {
-                    toast(`已请求取消 ${taskIds.length} 个生图任务；平台已受理的请求可能继续执行或计费`);
-                }
-            });
-        });
-        el.querySelectorAll('[data-image-result-recovery]').forEach(btn => {
-            btn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); }, true);
-            btn.addEventListener('click', e => {
-                e.preventDefault(); e.stopPropagation();
-                recoverUnparsedImageNow(btn.dataset.imageResultRecovery, btn.dataset.recoveryId);
-            });
-        });
-        el.querySelectorAll('[data-image-rerun]').forEach(btn => {
-            btn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); }, true);
-            btn.addEventListener('click', e => {
-                e.preventDefault(); e.stopPropagation();
-                void retryFailedImageGeneration(btn.dataset.imageRerun);
-            });
-        });
-        el.querySelectorAll('[data-image-quota-retry]').forEach(btn => {
-            btn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); }, true);
-            btn.addEventListener('click', e => {
-                e.preventDefault(); e.stopPropagation();
-                void retryImageWithLowerResolution(btn.dataset.imageQuotaRetry, btn.dataset.fallbackResolution);
-            });
-        });
-        el.querySelectorAll('[data-thumb-scroll]').forEach(scroller => {
-            scroller.addEventListener('wheel', () => {}, {passive:true});
-        });
-        el.querySelectorAll('.image-delete').forEach(btn => {
-            btn.addEventListener('click', e => {
-                e.preventDefault(); e.stopPropagation();
-                deleteImage(id, Number(btn.dataset.imageIndex));
-            });
-        });
-        el.querySelectorAll('.image-name-badge').forEach(badge => {
-            const item = badge.closest('[data-image-index]');
-            const targetNodeId = item?.dataset.refNodeId || id;
-            const imageIndex = Number(item?.dataset.refImageIndex ?? item?.dataset.imageIndex ?? 0);
-            badge.addEventListener('mousedown', e => {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-            }, true);
-            badge.addEventListener('click', e => {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-            }, true);
-            badge.addEventListener('dblclick', e => {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                clearImageClickTimer();
-                suppressImageClickUntil = Date.now() + 260;
-                renameSmartNodeImage(targetNodeId, imageIndex);
-            }, true);
-        });
-        el.querySelectorAll('.smart-video-play').forEach(btn => {
-            btn.addEventListener('mousedown', e => {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-            }, true);
-            btn.addEventListener('click', e => {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                const item = btn.closest('[data-image-index]');
-                const targetNodeId = item?.dataset.refNodeId || id;
-                const imageIndex = Number(item?.dataset.refImageIndex ?? item?.dataset.imageIndex ?? 0);
-                const owner = nodes.find(n => n.id === targetNodeId);
-                if(mediaKindForItem(owner?.images?.[imageIndex] || {}) !== 'video') return;
-                clearImageClickTimer();
-                suppressImageClickUntil = Date.now() + 260;
-                hideRunTimerForNode(owner);
-                smartActivateVideoPreview(btn);
-            }, true);
-        });
-        el.querySelectorAll('.thumb-item,.image-wrap').forEach(item => {
-            const thumbTarget = () => {
-                const targetNodeId = item.dataset.refNodeId || id;
-                const imageIndex = Number(item.dataset.refImageIndex ?? item.dataset.imageIndex ?? 0);
-                const owner = nodes.find(n => n.id === targetNodeId);
-                return {targetNodeId, imageIndex, owner, image:owner?.images?.[imageIndex]};
-            };
-            item.setAttribute('draggable', 'false');
-            item.addEventListener('dragstart', e => {
-                e.preventDefault();
-            });
-            item.addEventListener('mousedown', e => {
-                if(e.target.closest('video,audio')) return;
-                if(e.button !== 0 || e.target.closest('.image-delete,.image-name-badge,.media-document-preview')) return;
-                // 缩略图点击不会进入 beginNodeDrag；如果焦点还在右侧 Agent
-                // 输入框，Delete 会被文本框拦截而不是删除当前选中的节点。
-                if(document.activeElement?.blur) document.activeElement.blur();
-                if(e.shiftKey && !e.altKey){
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.stopImmediatePropagation();
-                    applyModifiedNodeSelection(id, e);
-                    return;
-                }
-                if(e.detail < 2) return;
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                clearImageClickTimer();
-                suppressImageClickUntil = Date.now() + 260;
-                const target = thumbTarget();
-                if(mediaKindForItem(target.image || {}) === 'video'){
-                    smartActivateVideoPreview(item);
-                    return;
-                }
-                selectedId = id;
-                selectedIds = [];
-                selectedImage = {nodeId:target.targetNodeId, index:target.imageIndex};
-                openImagePreviewSmart(target.targetNodeId, target.imageIndex);
-            }, true);
-            item.addEventListener('click', e => {
-                if(e.target.closest('video,audio')) return;
-                if(e.target.closest('.image-delete,.image-name-badge,.media-document-preview')) return;
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                if(Date.now() < suppressImageClickUntil) return;
-                const target = thumbTarget();
-                const owner = nodes.find(n => n.id === id);
-                // The output connector is intentionally revealed by selecting
-                // an uploaded material, not by clicking the node background.
-                showLinkPortForUploadedImage(target.targetNodeId, target.imageIndex);
-                if(mediaKindForItem(target.image || {}) === 'video'){
-                    clearImageClickTimer();
-                    suppressImageClickUntil = Date.now() + 260;
-                    hideRunTimerForNode(target.owner || owner);
-                    smartActivateVideoPreview(item);
-                    return;
-                }
-                if(e.shiftKey || e.ctrlKey || e.metaKey){
-                    clearImageClickTimer();
-                    applyModifiedNodeSelection(id, e);
-                    return;
-                }
-                if(e.detail >= 2){
-                    clearImageClickTimer();
-                    suppressImageClickUntil = Date.now() + 260;
-                    selectedId = id;
-                    selectedIds = [];
-                    selectedImage = {nodeId:target.targetNodeId, index:target.imageIndex};
-                    openImagePreviewSmart(target.targetNodeId, target.imageIndex);
-                    return;
-                }
-                // During a multi-image generation, completed slots should be
-                // previewable immediately with one click while the remaining
-                // slots continue showing progress.
-                if(item.dataset.generationComplete === '1' && target.image?.url){
-                    clearImageClickTimer();
-                    suppressImageClickUntil = Date.now() + 260;
-                    selectedId = id;
-                    selectedIds = [];
-                    selectedImage = {nodeId:target.targetNodeId, index:target.imageIndex};
-                    openImagePreviewSmart(target.targetNodeId, target.imageIndex);
-                    return;
-                }
-                clearImageClickTimer();
-                pendingImageClickSelection = {
-                    nodeId:id,
-                    imageNodeId:target.targetNodeId,
-                    imageIndex:target.imageIndex
-                };
-                imageClickTimer = setTimeout(() => {
-                    imageClickTimer = null;
-                    pendingImageClickSelection = null;
-                hideRunTimerForNode(owner);
-                selectedId = id;
-                selectedIds = [];
-                // Composer 绑定节点本身；这里记录图层焦点，用于交叠时置顶和工具栏目标。
-                selectedImage = {nodeId:target.targetNodeId, index:target.imageIndex};
-                    if(smartCascadeAnyRunning()) smartCascadeSilentSelection = false;
-                    syncSelectionUi();
-                    scheduleComposerUpdate(180);
-                // 共享编辑者需要点击后立即看到工具栏；普通本地画布保留
-                // 220ms 延迟，以兼容单击选中/双击预览的原有手势。
-                }, sharedCanvasMode ? 0 : 220);
-            });
-        item.addEventListener('dblclick', e => {
-            if(e.target.closest('video,audio')) return;
-            if(e.target.closest('.image-delete,.image-name-badge')) return;
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            clearImageClickTimer();
-            suppressImageClickUntil = Date.now() + 260;
-            const target = thumbTarget();
-            if(mediaKindForItem(target.image || {}) === 'video'){
-                smartActivateVideoPreview(item);
-                return;
-            }
-            selectedId = id;
-            selectedIds = [];
-            selectedImage = {nodeId:target.targetNodeId, index:target.imageIndex};
-            openImagePreviewSmart(target.targetNodeId, target.imageIndex);
-        }, true);
-        });
-        el.querySelectorAll('.thumb-item,.smart-group-single-thumb').forEach(item => {
-            item.addEventListener('mousedown', e => {
-                if(e.target.closest('video,audio')) return;
-                if(e.button !== 0 || e.target.closest('.mini-x')) return;
-                if(e.shiftKey && !e.altKey){
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.stopImmediatePropagation();
-                    applyModifiedNodeSelection(id, e);
-                    return;
-                }
-                if(e.detail >= 2) return;
-                const node = nodes.find(n => n.id === id);
-                const refNodeId = item.dataset.refNodeId || '';
-                if(refNodeId && refNodeId !== id) return;
-                if(!node || !collabCanEditNode(id)) return;
-                const imgIndex = Number(item.dataset.imageIndex || 0);
-                if(isSmartGroupNode(node)){
-                    if(!e.altKey && !e.ctrlKey && !e.metaKey) return;
-                    if(!node.images?.[imgIndex]) return;
-                } else if((node.images || []).length <= 1) return;
-                e.preventDefault(); e.stopPropagation();
-                thumbDragState = {nodeId:id, imgIndex, startX:e.clientX, startY:e.clientY, copy:!!e.altKey, detached:false, element:item, grid:item.closest('.thumb-grid')};
-                capturePendingUndo();
-            });
-        });
-        el.querySelector('.node-resize-handle')?.addEventListener('mousedown', e => {
-            if(e.button !== 0) return;
-            if(!collabCanEditNode(id)) return;
-            e.preventDefault(); e.stopPropagation();
-            e.stopImmediatePropagation();
-            const node = nodes.find(n => n.id === id);
-            if(!node) return;
-            if(selectedNodeIds().includes(id) && beginSmartSelectionResize(e, node)) return;
-            const rect = nodeRect(node);
-            resizeState = {id, startX:e.clientX, startY:e.clientY, startW:rect.width, startH:rect.height,
-                startRect:rect,
-                pushTargets:resizePushTargets(node, rect),
-                promptMinH:node.type === 'smart-prompt' ? promptNodeMinHeight(node) : 0};
-            if(isSmartDrawingBoardNode(node) && window.SmartDrawingBoard?.measureLayout){
-                resizeState.drawingElement = el;
-                resizeState.drawingLayout = window.SmartDrawingBoard.measureLayout(el);
-            }
-            el.classList.add('resizing');
-            // 分组缩放：记录本次手势开始时所有成员的位置/尺寸快照与起始缩放，缩放过程按相对快照的比例实时计算，
-            // 整体等比缩放+重排。用快照而非持久基准，移动成员后再缩放也不会回退到旧位置。
-            if(isSmartGroupNode(node)){
-                resizeState.startZoom = smartGroupZoom(node);
-                const gx0 = Number(node.x) || 0, gy0 = Number(node.y) || 0;
-                let maxR = gx0, maxB = gy0, hasM = false;
-                resizeState.members = smartGroupMembers(node).map(m => {
-                    const r = nodeRect(m);
-                    const sx = Number(m.x) || 0, sy = Number(m.y) || 0, sw = Number(r.width) || 0, sh = Number(r.height) || 0;
-                    hasM = true; maxR = Math.max(maxR, sx + sw); maxB = Math.max(maxB, sy + sh);
-                    return {id:m.id, sx, sy, sw, sh, isImage:isSmartImageNode(m)};
-                });
-                // 记录“贴合内容时的框尺寸”作为缩放映射基准（而不是当前可能含留白的框宽），
-                // 这样从放大很多的框往回缩时，框是线性跟随手柄缩小、而不是一下子跳到内容边缘。
-                resizeState.contentFitW = hasM ? Math.max(1, maxR - gx0 + 16) : (rect.width || 1);
-                resizeState.contentFitH = hasM ? Math.max(1, maxB - gy0 + 16) : (rect.height || 1);
-            }
-            document.body.classList.add('smart-node-resize');
-            capturePendingUndo();
-        });
-        const beginNodeDrag = e => {
-            if(connectionEraseState) return;
-            const altRightDrag = e.altKey && e.button === 2;
-            if((e.button !== 0 && !altRightDrag) || e.target.closest('.mini-x, .smart-node-floating-menu, .node-resize-handle, .node-port, .prompt-node-control, select, input, textarea, button')) return;
-            if(!altRightDrag && e.target.closest('.thumb-item') && !isSmartGroupNode(nodes.find(n => n.id === id))) return;
-            if(e.target.closest('.prompt-node-pill, textarea:not(.prompt-node-text)')) return;
-            e.preventDefault(); e.stopPropagation();
-            window.getSelection?.()?.removeAllRanges?.();
-            if(document.activeElement?.blur) document.activeElement.blur();
-            const batchOverview = e.target.closest('.loop-batch-overview');
-            let node = nodes.find(n => n.id === (batchOverview?.dataset.batchOverviewOwner || id));
-            if(!node) return;
-            if(!collabCanEditNode(id)) return;
-            const selectedBeforeDrag = !batchOverview && selectedIds.includes(id) ? selectedIds.slice() : [id];
-            if(!selectedBeforeDrag.every(targetId => collabCanEditNode(targetId))) return;
-            if(e.shiftKey && !e.altKey) applyModifiedNodeSelection(id, e);
-            let batchCopy;
-            if(batchOverview){
-                batchCopy = duplicateSmartBatchOverview(node, {drag:true, keepUpstream:e.button === 0});
-                if(!batchCopy) return;
-                node = batchCopy.owner;
-            } else if(e.altKey) node = duplicateForAltDrag(node, e.button === 0);
-            let dragIds = batchCopy ? batchCopy.copies.map(copy => copy.id) : (selectedIds.includes(node.id) ? selectedIds.slice() : [node.id]);
-            const groupRoots = new Map();
-            if(!batchCopy) dragIds.forEach(dragId => {
-                const item = nodes.find(n => n.id === dragId);
-                const group = isSmartGroupNode(item) ? item : smartGroupContainingNode(dragId);
-                if(group) groupRoots.set(group.id, group);
-            });
-            dragIds = XiaomeiNodeKernel.expandIds(dragIds, dragId => {
-                    const item = nodes.find(n => n.id === dragId);
-                    const group = item && (isSmartGroupNode(item) ? item : smartGroupContainingNode(dragId));
-                    if(!group) return null;
-                    return {groupId:group.id, memberIds:smartGroupMembers(group).map(member => member.id)};
-                });
-            if(!dragIds.every(targetId => collabCanEditNode(targetId))) return;
-            const moveIds = canvasViewPrefs.follow
-                ? Array.from(new Set([...dragIds, ...connectedDownstreamNodeIds(dragIds)])).filter(moveId => collabCanEditNode(moveId))
-                : dragIds;
-            const group = dragIds.map(dragId => {
-                const n = nodes.find(x => x.id === dragId);
-                return n ? {id:n.id, ox:Number(n.x) || 0, oy:Number(n.y) || 0} : null;
-            }).filter(Boolean);
-            const moveGroup = moveIds.map(moveId => {
-                const n = nodes.find(x => x.id === moveId);
-                return n ? {id:n.id, ox:Number(n.x) || 0, oy:Number(n.y) || 0} : null;
-            }).filter(Boolean);
-            if(!collabAcquireNodeLocks(moveGroup.map(item => item.id))){
-                discardPendingUndo();
-                return;
-            }
-            dragState = {
-                id:node.id,
-                startX:e.clientX,
-                startY:e.clientY,
-                ox:node.x || 0,
-                oy:node.y || 0,
-                group,
-                moveGroup,
-                groupIds:moveGroup.map(item => item.id),
-                nodeMap:new Map(nodes.map(item => [item.id, item])),
-                elementCache:new Map(moveGroup.map(item => [item.id, world.querySelector(`.image-node[data-id="${CSS.escape(item.id)}"]`)])),
-                ctrlGroup:Boolean(e.ctrlKey),
-                groupRoots,
-                buttonMask:altRightDrag ? 2 : 1,
-                returnGroupId:String(node.detachedFromNodeId || '')
-            };
-            // Alt 复制已在创建副本前入栈，拖动共用这一次撤销。
-            if(!e.altKey) capturePendingUndo();
-        };
-        el.querySelectorAll('.node-port').forEach(port => {
-            port.addEventListener('mousedown', e => beginSmartPortDrag(port, id, e));
-            port.addEventListener('click', e => { e.stopPropagation(); });
-            port.addEventListener('dblclick', e => { e.stopPropagation(); });
-        });
-        el.onmousedown = beginNodeDrag;
-        el.ondragover = e => {
-            if(isSmartDrawingBoardNode(nodeForControls)){
-                e.dataTransfer.dropEffect = 'none';
-                clearMediaDropHighlight();
-                return;
-            }
-            setSmartDropCopyEffect(e);
-            if(hasSmartImageDropData(e.dataTransfer)) setMediaDropHighlight(el);
-            else clearMediaDropHighlight();
-        };
-        el.ondragleave = e => {
-            if(!el.contains(e.relatedTarget)) clearMediaDropHighlight();
-        };
-        el.ondrop = async e => {
-            e.preventDefault();
-            e.stopPropagation();
-            shell?.classList.remove('smart-drop-active');
-            clearMediaDropHighlight();
-            if(isSmartDrawingBoardNode(nodeForControls)){
-                toast(tr('smart.drawingBoardNoImport'));
-                return;
-            }
-            const payload = await resolveSmartImageDropPayload(e.dataTransfer);
-            if(payload.type === 'none') return;
-            await handleSmartImageDropPayload(payload, id);
-        };
+        smartCardEvents.bind(el, nodeForControls);
+        smartThumbnails.bindCardActions(el, id);
+        smartThumbnails.bindCardGestures(el, id);
     });
-}
-function rectOverlapNode(draggedId, x, y, w, h, excludeIds=[]){
-    const cx = x + w/2, cy = y + h/2;
-    const excluded = new Set([draggedId, ...(excludeIds || [])]);
-    for(const n of nodes){
-        if(excluded.has(n.id)) continue;
-        const r = nodeRect(n);
-        if(cx >= r.x && cx <= r.x + r.width && cy >= r.y && cy <= r.y + r.height) return n;
-    }
-    return null;
-}
-function dragConnectTargetFor(sourceNode, point=lastMouseWorld){
-    if(!sourceNode || (dragState?.group || []).length > 1) return null;
-    if(['smart-prompt', 'smart-agent', 'smart-loop'].includes(sourceNode.type) && point){
-        return rectOverlapNode(sourceNode.id, point.x - 1, point.y - 1, 2, 2, dragState?.groupIds || []);
-    }
-    const r = nodeRect(sourceNode);
-    return rectOverlapNode(sourceNode.id, r.x, r.y, r.width, r.height, dragState?.groupIds || []);
 }
 function canAutoConnectDraggedNode(sourceNode, targetNode){
     if(!sourceNode || !targetNode || sourceNode.id === targetNode.id) return false;
@@ -22496,16 +18663,6 @@ function canAutoConnectDraggedNode(sourceNode, targetNode){
     if(sourceNode.type === 'smart-loop') return isSmartImageNode(targetNode);
     if(sourceNode.type === 'smart-group') return isSmartImageNode(targetNode) || isSmartColorNode(targetNode) || targetNode.type === 'smart-loop';
     return false;
-}
-function restoreDraggedNodePosition(){
-    if(!dragState) return;
-    (dragState.moveGroup || dragState.group || [{id:dragState.id, ox:dragState.ox, oy:dragState.oy}]).forEach(item => {
-        const n = nodes.find(x => x.id === item.id);
-        if(n){
-            n.x = item.ox;
-            n.y = item.oy;
-        }
-    });
 }
 function clearDropHighlight(){
     world.querySelectorAll('.image-node.drop-target').forEach(el => el.classList.remove('drop-target', 'drop-target-group', 'drop-target-image'));
@@ -22624,464 +18781,87 @@ function deleteNodeFromButton(id){
     if(!collabCanEditNode(id)) return;
     deleteNode(id);
 }
-function disconnectConnection(index){
-    disconnectConnections([index]);
-}
-// 断开一条或多条连线（合并到分组的连线会一次性断开其下所有成员连线）。spec 可为索引数组或逗号分隔字符串。
 function disconnectConnections(spec){
-    if(!canvas || !Array.isArray(canvas.connections)) return;
-    const indices = (Array.isArray(spec) ? spec : String(spec).split(','))
-        .map(v => Number(v))
-        .filter(n => Number.isInteger(n) && n >= 0 && n < canvas.connections.length);
-    if(!indices.length) return;
-    const set = new Set(indices);
-    const removed = canvas.connections.filter((_, i) => set.has(i));
-    if(!removed.length) return;
+    const connections = canvas?.connections || [];
+    const indices = XiaomeiSmartConnectionEraser.indices(spec, connections.length);
+    if(indices.length) removeSmartConnections(indices.map(index => connections[index]));
+}
+function removeSmartConnections(edges, references=[]){
+    if(!canvas || !collabCanMutateCanvas()) return false;
+    const current = canvas.connections || [];
+    const marked = new Set(edges);
+    const removed = current.filter(edge => marked.has(edge));
+    const manual = [];
+    for(const {nodeId,key} of references){
+        const node = nodes.find(item => item.id === nodeId);
+        const reference = manualReferenceImagesFor(node).find(item => inputRefKey(item) === key);
+        if(reference) manual.push({nodeId, reference});
+    }
+    if(!removed.length && !manual.length) return false;
+
     pushUndo();
     rememberSmartConnectionDeletions(removed);
-    canvas.connections = canvas.connections.filter((_, i) => !set.has(i));
-    removed.forEach(conn => {
-        const toNode = nodes.find(n => n.id === conn.to);
-        if(toNode && Array.isArray(toNode.inputNodeIds) && (!isSmartReplicaNode(toNode) || !canvas.connections.some(c => c.from === conn.from && c.to === conn.to && (c.kind || 'flow') === 'input'))){
-            toNode.inputNodeIds = toNode.inputNodeIds.filter(id => id !== conn.from);
+    const remaining = current.filter(edge => !marked.has(edge));
+    canvas.connections = remaining;
+    for(const edge of removed){
+        const receiver = nodes.find(node => node.id === edge.to);
+        const kind = edge.kind || 'flow';
+        if(!receiver) continue;
+        if(Array.isArray(receiver.inputNodeIds)){
+            const retainedReplicaInput = isSmartReplicaNode(receiver) && remaining.some(link =>
+                link.from === edge.from && link.to === edge.to && (link.kind || 'flow') === 'input');
+            if(!retainedReplicaInput) receiver.inputNodeIds = receiver.inputNodeIds.filter(id => id !== edge.from);
         }
-        if(toNode && ['input','flow'].includes(conn.kind || 'flow')) clearDetachedRunInputRefs(toNode);
-        if((conn.kind || 'flow') === 'history'){
-            const group = nodes.find(n => n.id === conn.to && isHistoryGroupNode(n) && n.historyFor === conn.from);
-            demoteHistoryGroupNode(group);
-        }
-    });
-    render();
-    scheduleSave();
-}
-function connectionIndexSpecFromPoint(clientX, clientY){
-    const el = document.elementFromPoint(clientX, clientY);
-    const connEl = el?.closest?.('[data-conn-index]');
-    return connEl?.dataset?.connIndex || '';
-}
-function connectionEraseModifierActive(event){
-    return Boolean(event?.ctrlKey || event?.metaKey || connectionEraseModifierHeld);
-}
-function connectionEraseEventSource(event){
-    return String(event?.type || '').startsWith('pointer') ? 'pointer' : 'mouse';
-}
-function connectionEraseButton(event, button = event?.button){
-    if(button === 2 || button === 1) return button;
-    const buttons = Number(event?.buttons) || 0;
-    if(buttons & 2) return 2;
-    if(buttons & 4) return 1;
-    return button;
-}
-function isConnectionEraseGesture(event, button = event?.button){
-    const resolvedButton = connectionEraseButton(event, button);
-    return Boolean(event && (resolvedButton === 2 || resolvedButton === 1) && connectionEraseModifierActive(event));
-}
-function connectionEraseTargetExcluded(target){
-    return Boolean(target?.closest?.('.image-node,.composer,.smart-back,.asset-panel,.asset-toggle,.smart-log-toggle,.smart-shortcut-toggle,.smart-workflow-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.prompt-optimize-modal,.create-menu,.smart-minimap,.canvas-nav-panel'));
-}
-function beginConnectionErase(event, button = event?.button){
-    if(!isConnectionEraseGesture(event, button) || connectionEraseTargetExcluded(event.target)) return false;
-    if(connectionEraseState) return true;
-    event.preventDefault();
-    event.stopPropagation();
-    closeCreateMenu();
-    didPan = false;
-    panState = null;
-    shell.classList.remove('panning');
-    setSmartCanvasPanningMediaMode(false);
-    const trailRect = shell.getBoundingClientRect();
-    const coordinateCache = createConnectionEraseCoordinateCache();
-    connectionEraseState = {
-        started:false,
-        count:0,
-        indices:new Set(),
-        lastX:event.clientX,
-        lastY:event.clientY,
-        trail:[],
-        trailRect:{left:trailRect.left, top:trailRect.top, width:trailRect.width, height:trailRect.height},
-        inputSource:connectionEraseEventSource(event),
-        pointerId:Number.isFinite(event.pointerId) ? event.pointerId : null,
-        toWorld:coordinateCache.toWorld,
-        hitRadius:coordinateCache.hitRadius,
-        geometryCache:buildConnectionEraseGeometryCache()
-    };
-    shell.classList.add('connection-erasing');
-    updateConnectionEraseTrail(event);
-    eraseConnectionsAtPoint(event);
-    return true;
-}
-function pointSegmentDistance(point, a, b){
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const lengthSquared = dx * dx + dy * dy;
-    if(!lengthSquared) return Math.hypot(point.x - a.x, point.y - a.y);
-    const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared));
-    const closest = {x:a.x + dx * t, y:a.y + dy * t};
-    return Math.hypot(point.x - closest.x, point.y - closest.y);
-}
-function createConnectionEraseCoordinateCache(){
-    const rect = world?.getBoundingClientRect?.();
-    const width = Number(world?.offsetWidth) || 6000;
-    const height = Number(world?.offsetHeight) || 4000;
-    const scaleX = rect && width ? rect.width / width : 0;
-    const scaleY = rect && height ? rect.height / height : 0;
-    if(rect && Number.isFinite(scaleX) && Number.isFinite(scaleY) && Math.abs(scaleX) > 0.000001 && Math.abs(scaleY) > 0.000001){
-        return {
-            toWorld:(clientX, clientY) => ({
-                x:(clientX - rect.left) / scaleX,
-                y:(clientY - rect.top) / scaleY
-            }),
-            hitRadius:Math.max(8, 9 / Math.min(Math.abs(scaleX), Math.abs(scaleY)))
-        };
+        if(kind === 'input' || kind === 'flow') clearDetachedRunInputRefs(receiver);
+        if(kind === 'history' && isHistoryGroupNode(receiver) && receiver.historyFor === edge.from) demoteHistoryGroupNode(receiver);
     }
-    const shellRect = shell.getBoundingClientRect();
-    const scale = Math.max(0.0001, Math.abs(viewport.scale) || 1);
-    return {
-        toWorld:(clientX, clientY) => ({
-            x:(clientX - shellRect.left - viewport.x) / scale,
-            y:(clientY - shellRect.top - viewport.y) / scale
-        }),
-        hitRadius:Math.max(8, 9 / scale)
-    };
-}
-function connectionIndicesFromSpec(value){
-    const limit = canvas?.connections?.length || 0;
-    return String(value || '').split(',')
-        .filter(item => item.trim() !== '')
-        .map(item => Number(item))
-        .filter(index => Number.isInteger(index) && index >= 0 && index < limit);
-}
-function buildConnectionEraseGeometryCache(){
-    const markElementsByIndex = new Map();
-    const referenceEdgesByIndex = new Map();
-    world.querySelectorAll('[data-conn-index]').forEach(element => {
-        connectionIndicesFromSpec(element.dataset.connIndex).forEach(index => {
-            const elements = markElementsByIndex.get(index) || [];
-            elements.push(element);
-            markElementsByIndex.set(index, elements);
-        });
-    });
-    const paths = [];
-    // 擦除事件的 clientX/clientY 与 getScreenCTM() 都处在当前 iframe 的
-    // 客户端坐标系。直接在这一层比较，避免外层 iframe、CSS zoom、浏览器缩放
-    // 和 world transform 叠加时出现一次多余/错误的 world 反算。
-    const cellSize = 160;
-    const screenMatrix = world.querySelector('svg.connection-layer')?.getScreenCTM?.();
-    const canProjectToClient = Boolean(screenMatrix && [screenMatrix.a,screenMatrix.b,screenMatrix.c,screenMatrix.d,screenMatrix.e,screenMatrix.f].every(Number.isFinite));
-    const grid = new Map();
-    const addSegmentToGrid = (entry, segment) => {
-        const minX = Math.min(segment.a.x, segment.b.x);
-        const maxX = Math.max(segment.a.x, segment.b.x);
-        const minY = Math.min(segment.a.y, segment.b.y);
-        const maxY = Math.max(segment.a.y, segment.b.y);
-        for(let cellX = Math.floor(minX / cellSize); cellX <= Math.floor(maxX / cellSize); cellX++){
-            for(let cellY = Math.floor(minY / cellSize); cellY <= Math.floor(maxY / cellSize); cellY++){
-                const key = `${cellX}:${cellY}`;
-                const bucket = grid.get(key) || [];
-                bucket.push({entry, segment});
-                grid.set(key, bucket);
-            }
-        }
-    };
-    world.querySelectorAll('path.conn-hit[data-conn-index],.conn-reference path.conn-line').forEach(path => {
-        let indices = connectionIndicesFromSpec(path.dataset.connIndex);
-        const referenceGroup = path.closest('.conn-reference');
-        if(referenceGroup){
-            // Negative handles belong only to this gesture; formal connection indices stay unchanged.
-            const index = -referenceEdgesByIndex.size - 1;
-            const refs = JSON.parse(referenceGroup.dataset.connReferences || '[]');
-            if(!refs.length) return;
-            referenceEdgesByIndex.set(index,refs);
-            markElementsByIndex.set(index,[...referenceGroup.querySelectorAll('.conn-line,.conn-end')]);
-            indices = [index];
-        }
-        if(!indices.length || typeof path.getTotalLength !== 'function' || typeof path.getPointAtLength !== 'function') return;
-        try {
-            const length = Number(path.getTotalLength());
-            if(!Number.isFinite(length) || length <= 0) return;
-            const steps = Math.max(12, Math.min(56, Math.ceil(length / 36)));
-            const segments = [];
-            const projectToClient = point => {
-                if(!canProjectToClient) return point;
-                return {
-                    x:screenMatrix.a * point.x + screenMatrix.c * point.y + screenMatrix.e,
-                    y:screenMatrix.b * point.x + screenMatrix.d * point.y + screenMatrix.f
-                };
-            };
-            let previous = projectToClient(path.getPointAtLength(0));
-            let minX = previous.x, maxX = previous.x, minY = previous.y, maxY = previous.y;
-            for(let i = 1; i <= steps; i++){
-                const current = projectToClient(path.getPointAtLength(length * i / steps));
-                segments.push({a:previous, b:current});
-                minX = Math.min(minX, current.x);
-                maxX = Math.max(maxX, current.x);
-                minY = Math.min(minY, current.y);
-                maxY = Math.max(maxY, current.y);
-                previous = current;
-            }
-            const entry = {indices, segments, minX, maxX, minY, maxY};
-            paths.push(entry);
-            segments.forEach(segment => addSegmentToGrid(entry, segment));
-        } catch(e){
-            // SVG path measurements can fail while a layer is being replaced; the next gesture rebuilds the cache.
-        }
-    });
-    return {
-        paths,
-        grid,
-        cellSize,
-        markElementsByIndex,
-        referenceEdgesByIndex,
-        coordinateSpace:canProjectToClient ? 'client' : 'world',
-        hitRadius:canProjectToClient ? 16 : 8
-    };
-}
-function pointSegmentDistanceSquared(point, a, b){
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const lengthSquared = dx * dx + dy * dy;
-    if(!lengthSquared){
-        const px = point.x - a.x;
-        const py = point.y - a.y;
-        return px * px + py * py;
-    }
-    const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared));
-    const px = point.x - (a.x + dx * t);
-    const py = point.y - (a.y + dy * t);
-    return px * px + py * py;
-}
-function connectionIndicesNearClientPoint(clientX, clientY){
-    const indices = new Set();
-    const state = connectionEraseState;
-    const cache = state?.geometryCache;
-    const point = cache?.coordinateSpace === 'client'
-        ? {x:clientX, y:clientY}
-        : (state?.toWorld ? state.toWorld(clientX, clientY) : clientToWorldPoint(clientX, clientY));
-    const radius = Number(cache?.hitRadius) || Number(state?.hitRadius) || 8;
-    const radiusSquared = radius * radius;
-    if(cache?.paths?.length){
-        if(cache.grid?.size){
-            const candidateSegments = new Set();
-            const minCellX = Math.floor((point.x - radius) / cache.cellSize);
-            const maxCellX = Math.floor((point.x + radius) / cache.cellSize);
-            const minCellY = Math.floor((point.y - radius) / cache.cellSize);
-            const maxCellY = Math.floor((point.y + radius) / cache.cellSize);
-            for(let cellX = minCellX; cellX <= maxCellX; cellX++){
-                for(let cellY = minCellY; cellY <= maxCellY; cellY++){
-                    (cache.grid.get(`${cellX}:${cellY}`) || []).forEach(ref => candidateSegments.add(ref));
-                }
-            }
-            const hitPaths = new Set();
-            candidateSegments.forEach(ref => {
-                if(hitPaths.has(ref.entry) || ref.entry.indices.every(index => indices.has(index))) return;
-                if(pointSegmentDistanceSquared(point, ref.segment.a, ref.segment.b) <= radiusSquared){
-                    hitPaths.add(ref.entry);
-                    ref.entry.indices.forEach(index => indices.add(index));
-                }
-            });
-        } else {
-            cache.paths.forEach(path => {
-                if(path.indices.every(index => indices.has(index))) return;
-                if(point.x < path.minX - radius || point.x > path.maxX + radius || point.y < path.minY - radius || point.y > path.maxY + radius) return;
-                if(path.segments.some(segment => pointSegmentDistanceSquared(point, segment.a, segment.b) <= radiusSquared)){
-                    path.indices.forEach(index => indices.add(index));
-                }
-            });
-        }
-    } else {
-        connectionIndicesFromSpec(connectionIndexSpecFromPoint(clientX, clientY)).forEach(index => indices.add(index));
-    }
-    return indices;
-}
-function eraseConnectionsAtClientPoint(clientX, clientY){
-    if(!connectionEraseState || !canvas || !Array.isArray(canvas.connections)) return false;
-    const indices = [...connectionIndicesNearClientPoint(clientX, clientY)]
-        .filter(index => !connectionEraseState.indices.has(index));
-    if(!indices.length) return false;
-    indices.forEach(index => connectionEraseState.indices.add(index));
-    connectionEraseState.started = true;
-    connectionEraseState.count = connectionEraseState.indices.size;
-    const markElementsByIndex = connectionEraseState.geometryCache?.markElementsByIndex;
-    if(markElementsByIndex){
-        indices.forEach(index => markElementsByIndex.get(index)?.forEach(element => element.classList.add('conn-erasing-mark')));
-    } else {
-        world.querySelectorAll('[data-conn-index]').forEach(el => {
-            const hasHit = String(el.dataset.connIndex || '').split(',').some(v => connectionEraseState.indices.has(Number(v)));
-            if(hasHit) el.classList.add('conn-erasing-mark');
-        });
-    }
-    return true;
-}
-function finishConnectionErase(){
-    if(!connectionEraseState || !canvas || !Array.isArray(canvas.connections)) return false;
-    const set = new Set(connectionEraseState.indices || []);
-    if(!set.size) return false;
-    const removed = canvas.connections.filter((_, i) => set.has(i));
-    const referenceRemovals = [...set].flatMap(index => connectionEraseState.geometryCache?.referenceEdgesByIndex?.get(index) || [])
-        .map(({nodeId,key}) => ({nodeId,ref:manualReferenceImagesFor(nodes.find(node => node.id === nodeId)).find(ref => inputRefKey(ref) === key)}))
-        .filter(item => item.ref);
-    if(!removed.length && !referenceRemovals.length) return false;
-    pushUndo();
-    rememberSmartConnectionDeletions(removed);
-    removed.forEach(conn => {
-        const toNode = nodes.find(n => n.id === conn.to);
-        if(toNode && Array.isArray(toNode.inputNodeIds) && (!isSmartReplicaNode(toNode) || !canvas.connections.some(c => c.from === conn.from && c.to === conn.to && (c.kind || 'flow') === 'input'))){
-            toNode.inputNodeIds = toNode.inputNodeIds.filter(id => id !== conn.from);
-        }
-        if(toNode && ['input','flow'].includes(conn.kind || 'flow')) clearDetachedRunInputRefs(toNode);
-        if((conn.kind || 'flow') === 'history'){
-            const group = nodes.find(n => n.id === conn.to && isHistoryGroupNode(n) && n.historyFor === conn.from);
-            demoteHistoryGroupNode(group);
-        }
-    });
-    canvas.connections = canvas.connections.filter((_, i) => !set.has(i));
-    referenceRemovals.forEach(({nodeId,ref}) => removeReferenceFromNode(nodeId,ref,{skipUndo:true,sync:false}));
+    for(const {nodeId, reference} of manual) removeReferenceFromNode(nodeId, reference, {skipUndo:true,sync:false});
     render();
     scheduleSave();
     return true;
-}
-function eraseConnectionsAtPoint(event){
-    return eraseConnectionsAtClientPoint(event.clientX, event.clientY);
-}
-function eraseConnectionsAlongPointer(event){
-    if(!connectionEraseState) return false;
-    const lastX = Number.isFinite(connectionEraseState.lastX) ? connectionEraseState.lastX : event.clientX;
-    const lastY = Number.isFinite(connectionEraseState.lastY) ? connectionEraseState.lastY : event.clientY;
-    const dx = event.clientX - lastX;
-    const dy = event.clientY - lastY;
-    // Keep samples close enough even when a fast gesture produces one long pointer move.
-    // Capping the count at eight skips narrow crossings between distant samples.
-    const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 8));
-    let changed = false;
-    for(let i = 1; i <= steps; i++){
-        const t = i / steps;
-        changed = eraseConnectionsAtClientPoint(lastX + dx * t, lastY + dy * t) || changed;
-    }
-    connectionEraseState.lastX = event.clientX;
-    connectionEraseState.lastY = event.clientY;
-    return changed;
-}
-function ensureConnectionEraseTrail(){
-    let svg = shell.querySelector(':scope > svg.connection-erase-trail');
-    if(svg){
-        if(connectionEraseTrailTimer){
-            clearTimeout(connectionEraseTrailTimer);
-            connectionEraseTrailTimer = 0;
-        }
-        svg.classList.remove('fading');
-        return svg;
-    }
-    svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('class', 'connection-erase-trail');
-    svg.setAttribute('aria-hidden', 'true');
-    svg.innerHTML = '<path class="connection-erase-trail-glow" fill="none"></path><path class="connection-erase-trail-line" fill="none"></path>';
-    shell.appendChild(svg);
-    return svg;
-}
-function renderConnectionEraseTrail(){
-    connectionEraseTrailRaf = 0;
-    const state = connectionEraseState;
-    if(!state?.trail?.length) return;
-    const svg = ensureConnectionEraseTrail();
-    const width = Math.max(1, Number(state.trailRect?.width) || 1);
-    const height = Math.max(1, Number(state.trailRect?.height) || 1);
-    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    const d = state.trail.map((pt, index) => `${index ? 'L' : 'M'}${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`).join(' ');
-    svg.firstElementChild?.setAttribute('d', d);
-    svg.lastElementChild?.setAttribute('d', d);
-}
-function updateConnectionEraseTrail(event){
-    if(!connectionEraseState) return;
-    const p = shellPoint(event, connectionEraseState.trailRect);
-    const trail = connectionEraseState.trail || (connectionEraseState.trail = []);
-    const previous = trail[trail.length - 1];
-    if(!previous || (p.x - previous.x) ** 2 + (p.y - previous.y) ** 2 >= 2.25){
-        trail.push(p);
-        if(trail.length > 80) trail.splice(0, trail.length - 80);
-    }
-    if(!connectionEraseTrailRaf) connectionEraseTrailRaf = requestAnimationFrame(renderConnectionEraseTrail);
-}
-function clearConnectionEraseTrail(){
-    if(connectionEraseTrailRaf){
-        cancelAnimationFrame(connectionEraseTrailRaf);
-        connectionEraseTrailRaf = 0;
-    }
-    const svg = shell.querySelector(':scope > svg.connection-erase-trail');
-    if(!svg) return;
-    if(connectionEraseTrailTimer) clearTimeout(connectionEraseTrailTimer);
-    svg.classList.add('fading');
-    connectionEraseTrailTimer = setTimeout(() => {
-        connectionEraseTrailTimer = 0;
-        svg.remove();
-    }, 180);
-}
-function endConnectionErase({commit=true}={}){
-    if(!connectionEraseState) return false;
-    const changed = commit ? finishConnectionErase() : false;
-    connectionEraseState = null;
-    shell.classList.remove('connection-erasing');
-    clearConnectionEraseTrail();
-    return changed;
-}
-function connectionMidpoint(conn){
-    const fromNode = nodes.find(n => n.id === conn?.from);
-    const toNode = nodes.find(n => n.id === conn?.to);
-    if(!fromNode || !toNode) return null;
-    const fr = nodeRect(fromNode), tr = nodeRect(toNode);
-    if((conn.kind || 'flow') === 'history'){
-        return {x:(fr.x + fr.width / 2 + tr.x + tr.width / 2) / 2, y:(fr.y + fr.height + tr.y) / 2};
-    }
-    const fromPort = nodeConnectionWorldPoint(fromNode, 'out');
-    const toPort = nodeConnectionWorldPoint(toNode, 'in');
-    return {
-        x:((fromPort?.x ?? fr.x + fr.width) + (toPort?.x ?? tr.x)) / 2,
-        y:((fromPort?.y ?? fr.y + fr.height / 2) + (toPort?.y ?? tr.y + tr.height / 2)) / 2
-    };
-}
-function insertionConnectionForNode(node){
-    if(!node || node.type !== 'smart-loop' || !canvas?.connections?.length) return null;
-    const r = nodeRect(node);
-    const cx = (Number(r.x) || 0) + (Number(r.width) || 0) / 2;
-    const cy = (Number(r.y) || 0) + (Number(r.height) || 0) / 2;
-    let best = null;
-    (canvas.connections || []).forEach((conn, index) => {
-        const kind = conn.kind || 'flow';
-        if(!['input','flow'].includes(kind)) return;
-        if(conn.from === node.id || conn.to === node.id) return;
-        const fromNode = nodes.find(n => n.id === conn.from);
-        const toNode = nodes.find(n => n.id === conn.to);
-        if(!fromNode || !toNode || isHistoryGroupNode(fromNode) || isHistoryGroupNode(toNode)) return;
-        const mid = connectionMidpoint(conn);
-        if(!mid) return;
-        const score = Math.hypot(cx - mid.x, cy - mid.y);
-        if(score > 96) return;
-        if(!best || score < best.score) best = {conn, index, score};
-    });
-    return best;
 }
 function insertLoopNodeIntoConnection(loopNode, hit){
-    if(!loopNode || loopNode.type !== 'smart-loop' || !hit?.conn) return false;
-    const conn = hit.conn;
-    rememberSmartConnectionDeletions([conn]);
-    const kind = conn.kind || 'flow';
-    canvas.connections = (canvas.connections || []).filter((c, index) => index !== hit.index);
-    nodes.forEach(n => {
-        if(Array.isArray(n.inputNodeIds)) n.inputNodeIds = n.inputNodeIds.filter(id => !(n.id === conn.to && id === conn.from));
-    });
-    addConnection(conn.from, loopNode.id, kind === 'flow' ? 'flow' : 'input');
-    connectInputNode(loopNode.id, conn.to);
-    return true;
+    const connections = canvas?.connections || [];
+    const index = connections.indexOf(hit?.edge);
+    if(loopNode?.type !== 'smart-loop' || index < 0) return false;
+    const edge = connections[index];
+    const from = nodes.find(node => node.id === edge.from);
+    const target = nodes.find(node => node.id === edge.to);
+    if(!from || !target || !collabCanEditNode(from.id) || !collabCanEditNode(target.id)) return false;
+
+    const previousTarget = {...target};
+    const previousTombstones = new Set(smartConnectionDeletionTombstones);
+    let inserted = false;
+    try {
+        canvas.connections = connections.filter((_, i) => i !== index).map(connection => ({...connection}));
+        const slot = edge.input_slot || edge.inputSlot || '';
+        if(!connectInputNode(loopNode.id, target.id, slot)) return false;
+        addConnection(from.id, loopNode.id, edge.kind === 'flow' ? 'flow' : 'input');
+        if(Array.isArray(target.inputNodeIds) && !canvas.connections.some(connection => connection.from === from.id && connection.to === target.id)){
+            target.inputNodeIds = target.inputNodeIds.filter(id => id !== from.id);
+        }
+        rememberSmartConnectionDeletions([edge]);
+        inserted = true;
+        return true;
+    } finally {
+        if(!inserted){
+            canvas.connections = connections;
+            for(const key of Object.keys(target)) if(!Object.hasOwn(previousTarget, key)) delete target[key];
+            Object.assign(target, previousTarget);
+            smartConnectionDeletionTombstones.clear();
+            previousTombstones.forEach(key => smartConnectionDeletionTombstones.add(key));
+            persistSmartConnectionDeletionTombstones();
+        }
+    }
 }
-function updateLoopInsertPreview(){
-    const node = dragState ? nodes.find(n => n.id === dragState.id) : null;
-    const next = node?.type === 'smart-loop' && dragState.ctrlGroup && (dragState.group || []).length <= 1
-        ? insertionConnectionForNode(node)
-        : null;
-    const nextPreview = next ? {index:next.index} : null;
-    const changed = (loopInsertPreview?.index ?? -1) !== (nextPreview?.index ?? -1);
-    loopInsertPreview = nextPreview;
-    if(changed) scheduleConnectionLayerRefresh();
-    return next;
+function updateSmartNodeDropPreview(resolved){
+    const action = resolved.actions[0];
+    setDropHighlight(action?.target?.id || '');
+    const next = action?.type === 'insert' ? {index:action.hit.index} : null;
+    if((loopInsertPreview?.index ?? -1) !== (next?.index ?? -1)){
+        loopInsertPreview = next;
+        scheduleConnectionLayerRefresh();
+    }
 }
 function deleteImage(id, imageIndex){
     const node = nodes.find(n => n.id === id);
@@ -23098,14 +18878,16 @@ async function renameSmartNodeImage(nodeId, imageIndex){
     const node = nodes.find(n => n.id === nodeId);
     const index = Math.max(0, Number(imageIndex) || 0);
     const image = node?.images?.[index];
-    if(!node || !image) return;
+    if(!image || !collabCanEditNode(nodeId)) return;
+    const originalCanvasId = canvas?.id;
+    const url = image.url;
     const current = imageNameLabel(image);
-    const name = await openAssetNameDialog({title:'重命名图片', value:current, placeholder:'图片名称', cancelValue:null});
+    const name = await localAssetSidebar.askName({title:'重命名图片', value:current, placeholder:'图片名称', cancelValue:null});
     if(name === null) return;
     const next = String(name || '').trim();
-    if(!next || next === current) return;
+    if(!next || next === current || canvas?.id !== originalCanvasId) return;
     const liveImage = nodes.find(n => n.id === nodeId)?.images?.[index];
-    if(!liveImage || liveImage.url !== image.url) return;
+    if(!liveImage || liveImage.url !== url || !collabCanEditNode(nodeId)) return;
     pushUndo();
     liveImage.name = next;
     selectedId = node.id;
@@ -23119,299 +18901,59 @@ function currentEditImage(){
     const index = Number(cropState?.imageIndex || 0);
     return {node, index, image:imageForDisplay(node?.images?.[index])};
 }
-function cropImageDisplaySize(){
-    const img = document.getElementById('cropImage');
-    const clientW = Number(img?.clientWidth || 0);
-    const clientH = Number(img?.clientHeight || 0);
-    if(clientW > 2 && clientH > 2) return {w:clientW, h:clientH};
-    ensureImageEditBaseSize();
-    const fallbackW = Math.round((imageEditBaseW || Number(img?.naturalWidth || 0) || 1) * imageEditZoom);
-    const fallbackH = Math.round((imageEditBaseH || Number(img?.naturalHeight || 0) || 1) * imageEditZoom);
-    return {w:Math.max(1, fallbackW), h:Math.max(1, fallbackH)};
-}
+function cropImageDisplaySize(){ return smartImageEditor.displaySize(); }
 function cropBounds(){
     return cropImageDisplaySize();
 }
 function editDrawCanvas(){ return document.getElementById('editDrawCanvas'); }
 function editTextCanvas(){ return document.getElementById('editTextCanvas'); }
-function editTextContext(){ return editTextCanvas()?.getContext('2d') || null; }
-function selectedEditTextItem(){ return editTextItems.find(item => item.id === editTextSelectedId) || null; }
-function defaultEditTextText(){ return window.StudioI18n?.lang?.() === 'en' ? 'Double-click to edit' : '双击编辑'; }
-function editTextSizeFromBrush(){ return Math.max(14, Math.min(120, Math.round(editBrushSize() * 2))); }
-function createEditTextItem(text, point, preset={}){
-    const size = Math.max(10, Math.min(120, Number(preset.size) || editTextSizeFromBrush()));
-    return {id:uid('txt'), text:String(text || defaultEditTextText()).trim(), x:Number(point?.x || 0), y:Number(point?.y || 0), color:preset.color || brushColor(), size};
-}
-function textItemFont(item){
-    return XiaomeiCanvasEditorCore.textItemFont(item);
-}
-function measureEditTextItem(item, ctx=editTextContext()){
-    return XiaomeiCanvasEditorCore.measureEditTextItem(item, ctx);
-}
-function hitEditTextItem(point){
-    const ctx = editTextContext();
-    return XiaomeiCanvasEditorCore.hitEditTextItem(point, editTextItems, ctx);
-}
-function renderEditTextCanvas(){
-    const canvasEl = editTextCanvas();
-    const ctx = editTextContext();
-    if(!canvasEl || !ctx) return;
-    ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-    editTextItems.forEach(item => {
-        if(!item?.text) return;
-        const selected = item.id === editTextSelectedId;
-        const box = measureEditTextItem(item, ctx);
-        ctx.save();
-        ctx.font = textItemFont(item);
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = item.color || brushColor();
-        ctx.strokeStyle = 'rgba(255,255,255,.92)';
-        ctx.lineWidth = Math.max(2, (Number(item.size) || 28) / 8);
-        ctx.strokeText(String(item.text || ''), item.x, item.y);
-        ctx.fillText(String(item.text || ''), item.x, item.y);
-        if(selected){
-            ctx.setLineDash([7, 5]);
-            ctx.lineWidth = 1.5;
-            ctx.strokeStyle = 'rgba(15,23,42,.72)';
-            ctx.strokeRect(box.x, box.y, box.w, box.h);
-            ctx.setLineDash([]);
-            ctx.fillStyle = 'rgba(15,23,42,.92)';
-            ctx.beginPath();
-            ctx.arc(item.x + box.w / 2 - box.pad, item.y - box.h / 2 + box.pad, 3.5, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        ctx.restore();
-    });
-    positionEditTextInlineEditor();
-}
-function syncTextToolState(force=false){
-    const cropCanvasEl = document.getElementById('cropCanvas');
-    cropCanvasEl?.classList.toggle('text-mode', imageEditMode === 'brush' && brushTool === 'text');
-}
-function syncSelectedEditTextStyleFromBrush(){
-    if(imageEditMode !== 'brush' || brushTool !== 'text' || editTextInlineEditor) return;
-    const item = selectedEditTextItem();
-    if(!item) return;
-    const nextSize = editTextSizeFromBrush();
-    const nextColor = brushColor();
-    if(item.size === nextSize && item.color === nextColor) return;
-    beginTextEditChange();
-    item.size = nextSize;
-    item.color = nextColor;
-    renderEditTextCanvas();
-    syncTextToolState(true);
-}
-function beginTextEditChange(){
-    if(editTextDirty) return;
-    pushEditDrawHistory();
-    editTextDirty = true;
-}
-function setSelectedEditTextItem(id){
-    editTextSelectedId = id || '';
-    renderEditTextCanvas();
-    syncTextToolState(true);
-}
-function confirmSelectedEditTextItem(){
-    const selected = selectedEditTextItem();
-    if(!selected) return false;
-    if(!String(selected.text || '').trim()) editTextItems = editTextItems.filter(item => item.id !== selected.id);
-    editTextSelectedId = '';
-    editTextDrag = null;
-    editTextDirty = false;
-    renderEditTextCanvas();
-    syncTextToolState(true);
-    return true;
-}
-function editTextCanvasScale(){
-    const canvasEl = editTextCanvas();
-    return XiaomeiCanvasEditorCore.editCanvasScale(canvasEl);
-}
-function selectInlineEditorText(el){
-    const range = document.createRange();
-    range.selectNodeContents(el);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-}
-function inlineEditorText(){
-    return String(editTextInlineEditor?.el?.innerText || editTextInlineEditor?.el?.textContent || '').replace(/\u00a0/g, ' ');
-}
-function autosizeEditTextInlineEditor(){
-    const editor = editTextInlineEditor;
-    if(!editor?.el) return;
-    const el = editor.el;
-    el.style.width = 'auto';
-    el.style.height = 'auto';
-    el.style.width = `${Math.max(Number(editor.minW || 48), el.scrollWidth + 10)}px`;
-    el.style.height = `${Math.max(Number(editor.minH || 28), el.scrollHeight + 4)}px`;
-}
-function positionEditTextInlineEditor(){
-    const editor = editTextInlineEditor;
-    if(!editor?.el) return;
-    const item = editTextItems.find(x => x.id === editor.itemId);
-    const canvasEl = editTextCanvas();
-    const cropCanvasEl = document.getElementById('cropCanvas');
-    if(!item || !canvasEl || !cropCanvasEl) return;
-    const box = measureEditTextItem(item, editTextContext());
-    const scale = editTextCanvasScale();
-    const hostRect = cropCanvasEl.getBoundingClientRect();
-    const canvasRect = scale.rect || canvasEl.getBoundingClientRect();
-    const left = canvasRect.left - hostRect.left + box.x * scale.x;
-    const top = canvasRect.top - hostRect.top + box.y * scale.y;
-    const w = Math.max(48, box.w * scale.x);
-    const h = Math.max(28, box.h * scale.y);
-    editor.minW = w;
-    editor.minH = h;
-    editor.el.style.left = `${left}px`;
-    editor.el.style.top = `${top}px`;
-    editor.el.style.minWidth = `${w}px`;
-    editor.el.style.minHeight = `${h}px`;
-    editor.el.style.font = `900 ${Math.max(10, (Number(item.size) || 28) * scale.y)}px Arial, sans-serif`;
-    editor.el.style.color = item.color || brushColor();
-    autosizeEditTextInlineEditor();
-}
-function removeEditTextInlineEditor(commit=true){
-    const editor = editTextInlineEditor;
-    if(!editor) return;
-    const item = editTextItems.find(x => x.id === editor.itemId);
-    const next = inlineEditorText().trim();
-    editTextInlineEditor = null;
-    editor.el.remove();
-    if(!item) return;
-    if(commit){
-        if(next !== String(editor.before || '')){
-            beginTextEditChange();
-            if(next) item.text = next;
-            else {
-                editTextItems = editTextItems.filter(x => x.id !== item.id);
-                editTextSelectedId = '';
-            }
-        }
-    } else {
-        item.text = editor.before || item.text || defaultEditTextText();
-    }
-    editTextDirty = false;
-    renderEditTextCanvas();
-    syncTextToolState(true);
-}
-function beginEditTextInline(item){
-    if(!item) return;
-    removeEditTextInlineEditor(true);
-    editTextSelectedId = item.id;
-    const host = document.getElementById('cropCanvas');
-    if(!host) return;
-    const el = document.createElement('div');
-    el.className = 'edit-text-inline';
-    el.contentEditable = 'true';
-    el.spellcheck = false;
-    el.textContent = item.text || defaultEditTextText();
-    host.appendChild(el);
-    editTextInlineEditor = {el, itemId:item.id, before:item.text || ''};
-    positionEditTextInlineEditor();
-    el.addEventListener('input', autosizeEditTextInlineEditor);
-    el.addEventListener('keydown', event => {
-        if(event.key === 'Enter' && !event.shiftKey){ event.preventDefault(); removeEditTextInlineEditor(true); }
-        else if(event.key === 'Escape'){ event.preventDefault(); removeEditTextInlineEditor(false); }
-    });
-    el.addEventListener('blur', () => removeEditTextInlineEditor(true));
-    requestAnimationFrame(() => { el.focus(); selectInlineEditorText(el); });
-    renderEditTextCanvas();
-    syncTextToolState(true);
-}
-function editTextPoint(event){ return editDrawPoint(event); }
-function beginEditText(event){
-    if(imageEditMode !== 'brush' || brushTool !== 'text') return;
-    event.preventDefault(); event.stopPropagation();
-    removeEditTextInlineEditor(true);
-    const canvasEl = editTextCanvas();
-    const point = editTextPoint(event);
-    const hit = hitEditTextItem(point);
-    if(hit){
-        editTextSelectedId = hit.id;
-        editTextDrag = {id:hit.id, pointerId:event.pointerId, startX:hit.x, startY:hit.y, sx:event.clientX, sy:event.clientY, moved:false, hasHistory:false};
-        canvasEl.setPointerCapture?.(event.pointerId);
-        canvasEl.style.cursor = 'grabbing';
-        syncTextToolState(true);
-        renderEditTextCanvas();
-        return;
-    }
-    if(selectedEditTextItem()){
-        confirmSelectedEditTextItem();
-        return;
-    }
-    beginTextEditChange();
-    const item = createEditTextItem(defaultEditTextText(), point, {color:brushColor(), size:editTextSizeFromBrush()});
-    editTextItems.push(item);
-    editTextSelectedId = item.id;
-    canvasEl.style.cursor = 'text';
-    renderEditTextCanvas();
-    syncTextToolState(true);
-}
-function updateEditTextCursor(event){
-    const canvasEl = editTextCanvas();
-    if(!canvasEl || imageEditMode !== 'brush' || brushTool !== 'text') return;
-    const hit = hitEditTextItem(editTextPoint(event));
-    canvasEl.style.cursor = hit ? 'move' : 'text';
-}
-function moveEditText(event){
-    if(!editTextDrag){
-        updateEditTextCursor(event);
-        return;
-    }
-    event.preventDefault(); event.stopPropagation();
-    const item = editTextItems.find(x => x.id === editTextDrag.id);
-    if(!item) return;
-    const dx = event.clientX - editTextDrag.sx;
-    const dy = event.clientY - editTextDrag.sy;
-    if(!editTextDrag.moved && Math.abs(dx) + Math.abs(dy) < 2) return;
-    editTextDrag.moved = true;
-    if(!editTextDrag.hasHistory){
-        beginTextEditChange();
-        editTextDrag.hasHistory = true;
-    }
-    const canvasEl = editTextCanvas();
-    const rect = canvasEl?.getBoundingClientRect?.();
-    const scaleX = canvasEl ? canvasEl.width / Math.max(1, rect?.width || canvasEl.width) : 1;
-    const scaleY = canvasEl ? canvasEl.height / Math.max(1, rect?.height || canvasEl.height) : 1;
-    item.x = editTextDrag.startX + dx * scaleX;
-    item.y = editTextDrag.startY + dy * scaleY;
-    renderEditTextCanvas();
-}
-function endEditText(event){
-    if(editTextDrag && event?.pointerId != null) editTextCanvas()?.releasePointerCapture?.(event.pointerId);
-    editTextDrag = null;
-    editTextDirty = false;
-    renderEditTextCanvas();
-    syncTextToolState(true);
-    if(event) updateEditTextCursor(event);
-}
-function editTextHasContent(){ return editTextItems.some(item => String(item?.text || '').trim().length > 0); }
-function resizeEditTextCanvas(){
-    const img = document.getElementById('cropImage');
-    const canvasEl = editTextCanvas();
-    if(!img || !canvasEl) return;
-    const display = cropImageDisplaySize();
-    const w = Math.max(1, img.naturalWidth || img.clientWidth || 1);
-    const h = Math.max(1, img.naturalHeight || img.clientHeight || 1);
-    if(canvasEl.width !== w) canvasEl.width = w;
-    if(canvasEl.height !== h) canvasEl.height = h;
-    canvasEl.style.width = `${display.w}px`;
-    canvasEl.style.height = `${display.h}px`;
-    renderEditTextCanvas();
-}
+const smartGrid = XiaomeiSmartGrid.create({
+    modal:document.getElementById('imageEditModal'),
+    frame:document.getElementById('cropCanvas'),
+    image:document.getElementById('cropImage'),
+    draw:editDrawCanvas(),
+    active:() => Boolean(cropState && imageEditMode === 'grid'),
+    items:currentGridJoinItems,
+    zoom:smartImageEditor.zoom,
+    changed:() => { smartEditRevision++; },
+    modeChanged(joining){
+        const caption = document.querySelector('#imageEditApplyBtn span');
+        if(caption) caption.textContent = joining ? '输出拼接' : tr('canvas.applyGrid');
+        syncImageEditOverflow();
+    },
+    url:displayMediaUrl,
+    proxy:proxiedMediaUrl,
+    label:tr,
+    error:toast,
+});
+function refreshGridSplitPreview(){ smartGrid.paint(); }
+const smartInk = XiaomeiClassicAnnotations.create({
+    draw:editDrawCanvas(),
+    text:editTextCanvas(),
+    frame:document.getElementById('cropCanvas'),
+    image:document.getElementById('cropImage'),
+    displaySize:cropImageDisplaySize,
+    mode:() => imageEditMode,
+    ready:() => smartImageEditor.ready(),
+    changed:() => { smartEditRevision++; },
+    size:editBrushSize,
+    color:brushColor,
+    tools:document.querySelectorAll('[data-brush-tool]'),
+    undo:['maskUndoBtn', 'brushUndoBtn'].map(id => document.getElementById(id)),
+    redo:['maskRedoBtn', 'brushRedoBtn'].map(id => document.getElementById(id)),
+    styleControls:['paintBrushSize', 'paintBrushColor'].map(id => document.getElementById(id)),
+    label:tr,
+    id:uid,
+    grid:smartGrid.split,
+});
 function resizeEditDrawCanvas(){
-    const img = document.getElementById('cropImage');
-    const canvasEl = editDrawCanvas();
-    const display = cropImageDisplaySize();
-    const w = Math.max(1, img.naturalWidth || img.clientWidth || 1);
-    const h = Math.max(1, img.naturalHeight || img.clientHeight || 1);
-    if(canvasEl.width !== w || canvasEl.height !== h){ canvasEl.width = w; canvasEl.height = h; }
-    canvasEl.style.width = `${display.w}px`;
-    canvasEl.style.height = `${display.h}px`;
-    resizeEditTextCanvas();
+    smartInk.resize();
     if(imageEditMode === 'grid') refreshGridSplitPreview();
 }
+function undoEditDrawing(){ smartInk.undo(); }
+function redoEditDrawing(){ smartInk.redo(); }
+function clearEditDrawing(silent=false){ smartInk.clear(silent); }
+function setBrushTool(tool){ smartInk.setTool(tool); }
 function isImageMaskMode(){ return imageEditMode === 'mask' || imageEditMode === 'protection-mask'; }
 function setImageEditMode(mode, userTouched=false){
     closePreviewImageContextMenu();
@@ -23420,8 +18962,15 @@ function setImageEditMode(mode, userTouched=false){
     if(isVideoPreview && mode !== 'preview') mode = 'preview';
     if(userTouched) imageEditModeTouched = true;
     const prev = imageEditMode;
-    if(mode !== 'brush') removeEditTextInlineEditor(true);
+    if(mode !== prev){
+        smartInk.finishInline(true);
+        smartInk.finishStroke(null, true);
+        smartGrid.split.end();
+        smartGrid.endDrag();
+        smartEditRevision++;
+    }
     imageEditMode = ['preview','crop','outpaint','mask','protection-mask','ocr','brush','resize','grid'].includes(mode) ? mode : 'preview';
+    if(prev === 'ocr' && imageEditMode !== 'ocr') smartOcr.leave();
     const cropCanvasEl = document.getElementById('cropCanvas');
     const previewStageEl = document.getElementById('previewStage');
     const editStageEl = document.getElementById('imageEditStage');
@@ -23437,11 +18986,11 @@ function setImageEditMode(mode, userTouched=false){
     const isPreview = imageEditMode === 'preview';
     const isOutpaint = imageEditMode === 'outpaint';
     const isOcr = imageEditMode === 'ocr';
-    const isCompareNodePreview = Boolean(previewCompareNodeId);
+    const isCompareNodePreview = smartPreview.comparingNode();
     imageEditModal?.classList.toggle('outpaint-redesign', isOutpaint);
     imageEditModal?.classList.toggle('ocr-redesign', isOcr);
     imageEditModal?.classList.toggle('compare-node-preview', isCompareNodePreview);
-    if(!isPreview && panoramaState.enabled) disposePanoramaPreview();
+    if(!isPreview) smartPreview.suspend();
     cropCanvasEl.style.display = isPreview ? 'none' : '';
     previewStageEl.style.display = isPreview ? 'inline-flex' : 'none';
     editStageEl?.classList.toggle('preview-mode', isPreview);
@@ -23463,7 +19012,6 @@ function setImageEditMode(mode, userTouched=false){
     cropCanvasEl.classList.toggle('resize-mode', imageEditMode === 'resize');
     cropCanvasEl.classList.toggle('grid-mode', imageEditMode === 'grid');
     cropCanvasEl.classList.toggle('outpaint-mode', imageEditMode === 'outpaint');
-    syncGridCustomCursor();
     document.querySelectorAll('[data-image-edit-mode]').forEach(btn => btn.classList.toggle('active', btn.dataset.imageEditMode === imageEditMode));
     if(isOcr) document.querySelectorAll('.image-edit-mode [data-image-edit-mode]').forEach(btn => {
         const label = btn.querySelector('span')?.textContent || '';
@@ -23479,18 +19027,12 @@ function setImageEditMode(mode, userTouched=false){
     document.getElementById('imageBrushTools').classList.toggle('active', imageEditMode === 'brush');
     document.getElementById('imageResizeTools')?.classList.toggle('active', imageEditMode === 'resize');
     document.getElementById('imageGridTools').classList.toggle('active', imageEditMode === 'grid');
-    if(imageEditMode === 'grid' && gridOperationMode === 'join' && !canGridJoinCurrentNode()) gridOperationMode = 'split';
-    syncGridOperationControls();
-    syncGridGapValue();
-    syncImageResizeControls();
+    smartGrid.sync();
+    smartImageEditor.resizeControls();
     const outpaintBar = document.getElementById('outpaintActionBar');
     if(outpaintBar) outpaintBar.style.display = isOutpaint ? 'flex' : 'none';
     if(isOutpaint) syncOutpaintControls();
     const applyBtn = document.getElementById('imageEditApplyBtn');
-    document.getElementById('compareToggleBtn').style.display = isPreview && !isVideoPreview && !isCompareNodePreview ? 'inline-flex' : 'none';
-    document.getElementById('panoramaToggleBtn').style.display = isPreview && !isVideoPreview && !isCompareNodePreview ? 'inline-flex' : 'none';
-    document.getElementById('panoramaExportBtn').style.display = isPreview && !isVideoPreview && !isCompareNodePreview && panoramaState.enabled ? 'inline-flex' : 'none';
-    document.getElementById('compareThumbs').style.display = 'none';
     if(isPreview){
         document.getElementById('imageEditTitle').textContent = isCompareNodePreview
             ? smartCompareText('smart.compareNodePreviewTitle', '对比预览')
@@ -23501,8 +19043,8 @@ function setImageEditMode(mode, userTouched=false){
         applyBtn.style.display = 'none';
         refreshComparePanel();
     } else {
-        ensureImageEditBaseSize(true);
-        applyImageEditZoom();
+        smartImageEditor.refit(true);
+        smartImageEditor.applyZoom();
         applyBtn.style.display = '';
         if(isOcr){
             document.getElementById('imageEditTitle').textContent = 'OCR 智能改字';
@@ -23523,1176 +19065,107 @@ function setImageEditMode(mode, userTouched=false){
             const subKey = imageEditMode === 'crop' ? 'canvas.cropHint' : imageEditMode === 'outpaint' ? 'smart.outpaintHint' : imageEditMode === 'mask' ? 'canvas.maskHint2' : imageEditMode === 'ocr' ? 'canvas.brushHint' : imageEditMode === 'brush' ? 'canvas.brushHint' : 'canvas.gridHint';
             document.getElementById('imageEditTitle').textContent = tr(titleKey);
             document.getElementById('imageEditSub').textContent = tr(subKey);
-            const applyLabel = imageEditMode === 'grid' && gridOperationMode === 'join' ? '输出拼接' : imageEditMode === 'mask' ? '执行抹除' : imageEditMode === 'ocr' ? '生成改字图片' : tr(labelKey);
+            const applyLabel = smartGrid.joining() ? '输出拼接' : imageEditMode === 'mask' ? '执行抹除' : imageEditMode === 'ocr' ? '生成改字图片' : tr(labelKey);
             applyBtn.innerHTML = `<i data-lucide="${icon}" class="w-4 h-4"></i><span>${applyLabel}</span>`;
         }
-        if(imageEditMode === 'crop'){
-            requestAnimationFrame(() => {
-                resetCropBox();
-                syncImageEditOverflow();
-            });
-        } else if(imageEditMode === 'outpaint'){
-            requestAnimationFrame(() => {
-                resetOutpaintBox();
-                syncImageEditOverflow();
-            });
+        if((imageEditMode === 'crop' || isOutpaint) && smartImageEditor.ready()){
+            resetCropBox();
+            syncImageEditOverflow();
         }
     }
     resizeEditDrawCanvas();
     if(imageEditMode === 'grid') refreshGridSplitPreview();
     else if(imageEditMode === 'crop' || imageEditMode === 'resize' || imageEditMode === 'outpaint' || imageEditMode === 'ocr' || prev === 'grid') clearEditDrawing(true);
     if(isOcr){
-        syncOcrWorkspaceMeta();
-        syncOcrModelOptions();
-        syncOcrRecognitionModelOptions();
-        toggleOcrModelSettings(true);
-        syncImageOcrGenerate();
-        scheduleOcrPanelPosition();
+        smartOcr.open();
         requestAnimationFrame(() => {
             if(imageEditMode !== 'ocr' || !imageEditModal.classList.contains('open')) return;
-            ensureImageEditBaseSize(true);
-            applyImageEditZoom();
-            scheduleOcrPanelPosition();
+            smartImageEditor.refit(true);
+            smartImageEditor.applyZoom();
+            smartOcr.schedule();
         });
     }
-    syncEditDrawingHistoryButtons();
-    syncBrushToolButtons();
-    syncTextToolState(true);
+    smartInk.refreshTools();
     updatePreviewNavButtons();
     refreshIcons();
 }
-let previewCompareOn = false;
-let previewCompareIndex = -1;
-let previewCompareNodeId = '';
-let previewMetaExtraText = '';
-function applyPreviewTransform(){
-    const frame = document.getElementById('previewFrame');
-    if(frame){
-        frame.style.transform = panoramaState.enabled ? '' : `translate(${previewPan.x}px, ${previewPan.y}px) scale(${previewZoom})`;
+function smartPreviewReferences(node, compareId){
+    if(compareId){
+        const compare = nodes.find(item => item.id === compareId && isSmartCompareNode(item));
+        return compare ? smartCompareInputImages(compare) : [];
     }
-    updateZoomLabel();
-}
-function resetPreviewTransform(){
-    previewZoom = 1.0;
-    previewPan = {x:0, y:0};
-    previewComparePos = 50;
-    document.getElementById('previewStage')?.style.setProperty('--compare-pos', `${previewComparePos}%`);
-    applyPreviewTransform();
-}
-function panoramaRatioValue(){
-    const preset = PANORAMA_RATIO_PRESETS[panoramaState.ratio];
-    if(preset) return preset;
-    return {
-        w:Math.max(1, Number(panoramaState.customW) || 16),
-        h:Math.max(1, Number(panoramaState.customH) || 9)
-    };
-}
-function panoramaResolutionValue(){
-    const longSide = 1536;
-    const ratio = panoramaRatioValue();
-    const aspect = ratio.w / Math.max(1, ratio.h);
-    if(aspect >= 1){
-        return {w:longSide, h:Math.max(1, Math.round(longSide / aspect))};
-    }
-    return {w:Math.max(1, Math.round(longSide * aspect)), h:longSide};
-}
-function panoramaSource(){
-    const editing = currentEditImage();
-    const image = editing.image || {};
-    if(mediaKindForItem(image) !== 'image') return '';
-    return displayMediaUrl(image.url ? image : (image.url || ''));
-}
-function panoramaFallbackSource(){
-    const image = currentEditImage().image || {};
-    return image?.url ? proxiedMediaUrl(image) : '';
-}
-function isLikelyPanoramaImage(node, image, naturalW=0, naturalH=0){
-    if(mediaKindForItem(image || {}) !== 'image') return false;
-    const text = [
-        image?.name,
-        image?.title,
-        node?.title,
-        node?.runPrompt,
-        node?.runModelPrompt,
-        node?.promptDraftText,
-        node?.runSettings?.ratio,
-        node?.runSettings?.size,
-        node?.runSettings?.customSize
-    ].filter(Boolean).join(' ');
-    if(/(?:360|全景|环景|panorama|equirect|spherical|vr\b)/i.test(text)) return true;
-    const w = Number(naturalW || image?.natural_w || image?.width || image?.w || 0);
-    const h = Number(naturalH || image?.natural_h || image?.height || image?.h || 0);
-    if(!(w > 0 && h > 0)) return false;
-    const aspect = w / h;
-    return aspect >= 1.9 && aspect <= 2.1;
-}
-async function ensurePanoramaRenderer(){
-    const canvas = document.getElementById('panoramaCanvas');
-    if(!canvas) return false;
-    if(!panoramaState.three){
-        panoramaState.threeLoadPromise = panoramaState.threeLoadPromise || import('/static/vendor/js/three-0.160.0.module.js?v=2026.05.30');
-        panoramaState.three = await panoramaState.threeLoadPromise;
-    }
-    const THREE = panoramaState.three;
-    if(!panoramaState.renderer){
-        panoramaState.renderer = new THREE.WebGLRenderer({
-            canvas,
-            antialias:true,
-            alpha:false,
-            preserveDrawingBuffer:true
-        });
-        panoramaState.renderer.setPixelRatio(1);
-        panoramaState.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    }
-    if(!panoramaState.scene){
-        panoramaState.scene = new THREE.Scene();
-        panoramaState.camera = new THREE.PerspectiveCamera(panoramaState.fov, 16 / 9, 1, 1200);
-        const geometry = new THREE.SphereGeometry(500, 96, 64);
-        geometry.scale(-1, 1, 1);
-        const material = new THREE.MeshBasicMaterial({color:0xffffff});
-        panoramaState.sphere = new THREE.Mesh(geometry, material);
-        panoramaState.scene.add(panoramaState.sphere);
-    }
-    return Boolean(panoramaState.renderer && panoramaState.scene && panoramaState.camera && panoramaState.sphere);
-}
-function applyPanoramaTexture(img){
-    const THREE = panoramaState.three;
-    if(!THREE || !panoramaState.sphere || !img?.naturalWidth || !img?.naturalHeight) return false;
-    if(panoramaState.texture){
-        panoramaState.texture.dispose?.();
-        panoramaState.texture = null;
-    }
-    const texture = new THREE.Texture(img);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.needsUpdate = true;
-    panoramaState.texture = texture;
-    panoramaState.sphere.material.map = texture;
-    panoramaState.sphere.material.needsUpdate = true;
-    return true;
-}
-function drawPanoramaFrame(){
-    const canvas = document.getElementById('panoramaCanvas');
-    const img = panoramaState.image;
-    const {renderer, scene, camera, sphere, three:THREE} = panoramaState;
-    if(!panoramaState.enabled || !canvas || !renderer || !scene || !camera || !sphere || !THREE || !img?.naturalWidth || !img?.naturalHeight) return false;
-    const width = Math.max(1, canvas.width);
-    const height = Math.max(1, canvas.height);
-    renderer.setSize(width, height, false);
-    camera.fov = Math.max(35, Math.min(100, panoramaState.fov));
-    camera.aspect = width / Math.max(1, height);
-    camera.updateProjectionMatrix();
-    const pitch = Math.max(-85, Math.min(85, panoramaState.pitch));
-    const phi = THREE.MathUtils.degToRad(90 - pitch);
-    const theta = THREE.MathUtils.degToRad(panoramaState.yaw);
-    const target = new THREE.Vector3(
-        500 * Math.sin(phi) * Math.cos(theta),
-        500 * Math.cos(phi),
-        500 * Math.sin(phi) * Math.sin(theta)
-    );
-    camera.position.set(0, 0, 0);
-    camera.lookAt(target);
-    renderer.render(scene, camera);
-    return true;
-}
-function renderPanoramaFrame(){
-    if(!drawPanoramaFrame()) return;
-    panoramaState.animationId = requestAnimationFrame(renderPanoramaFrame);
-}
-function startPanoramaLoop(){
-    if(panoramaState.animationId) cancelAnimationFrame(panoramaState.animationId);
-    panoramaState.animationId = requestAnimationFrame(renderPanoramaFrame);
-}
-function stopPanoramaLoop(){
-    if(panoramaState.animationId) cancelAnimationFrame(panoramaState.animationId);
-    panoramaState.animationId = 0;
-}
-function resizePanoramaViewer(){
-    const stage = document.getElementById('panoramaStage');
-    const frame = document.getElementById('previewFrame');
-    const canvas = document.getElementById('panoramaCanvas');
-    if(!stage) return;
-    const ratio = panoramaRatioValue();
-    const aspect = Math.max(0.08, Math.min(12, ratio.w / ratio.h));
-    const maxW = Math.max(260, Math.min(1180, window.innerWidth - 116));
-    const maxH = Math.max(220, Math.min(780, window.innerHeight - 220));
-    let w = maxW;
-    let h = w / aspect;
-    if(h > maxH){
-        h = maxH;
-        w = h * aspect;
-    }
-    w = Math.max(160, Math.round(w));
-    h = Math.max(160, Math.round(h));
-    stage.style.width = `${w}px`;
-    stage.style.height = `${h}px`;
-    stage.style.aspectRatio = `${ratio.w} / ${ratio.h}`;
-    if(frame){
-        frame.style.width = `${w}px`;
-        frame.style.height = `${h}px`;
-    }
-    if(canvas){
-        const render = panoramaResolutionValue();
-        const nextW = Math.max(1, Math.round(render.w));
-        const nextH = Math.max(1, Math.round(render.h));
-        if(canvas.width !== nextW) canvas.width = nextW;
-        if(canvas.height !== nextH) canvas.height = nextH;
-    }
-}
-function disposePanoramaTexture(){
-    if(panoramaState.texture){
-        panoramaState.texture.dispose?.();
-        panoramaState.texture = null;
-    }
-    if(panoramaState.sphere?.material){
-        panoramaState.sphere.material.map = null;
-        panoramaState.sphere.material.needsUpdate = true;
-    }
-    panoramaState.image = null;
-}
-async function loadPanoramaTexture(src, allowFallback=true){
-    if(!src) return;
-    const token = ++panoramaState.loadToken;
-    const stage = document.getElementById('panoramaStage');
-    stage?.classList.remove('ready');
-    let ready = false;
-    try {
-        ready = await ensurePanoramaRenderer();
-    } catch(e) {
-        console.warn('panorama renderer init failed', e);
-        ready = false;
-    }
-    if(!ready){
-        stage?.classList.add('ready');
-        toast(tr('smart.panoramaLoadFailed'));
-        return;
-    }
-    if(token !== panoramaState.loadToken) return;
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    const fallback = allowFallback ? panoramaFallbackSource() : '';
-    const done = () => {
-        if(token !== panoramaState.loadToken){
-            return;
-        }
-        disposePanoramaTexture();
-        if(!applyPanoramaTexture(img)){
-            stage?.classList.add('ready');
-            toast(tr('smart.panoramaLoadFailed'));
-            return;
-        }
-        panoramaState.image = img;
-        panoramaState.loadedSrc = src;
-        stage?.classList.add('ready');
-        resizePanoramaViewer();
-        startPanoramaLoop();
-    };
-    const fail = () => {
-        if(token !== panoramaState.loadToken) return;
-        if(fallback && fallback !== src){
-            loadPanoramaTexture(fallback, false);
-            return;
-        }
-        stage?.classList.add('ready');
-        toast(tr('smart.panoramaLoadFailed'));
-    };
-    img.onload = done;
-    img.onerror = fail;
-    img.src = src;
-    if(img.complete && img.naturalWidth) done();
-}
-function refreshPanoramaControls(){
-    const controls = document.getElementById('panoramaControls');
-    const custom = document.getElementById('panoramaCustomRatio');
-    if(controls) controls.style.display = panoramaState.enabled ? 'inline-flex' : 'none';
-    if(custom) custom.style.display = panoramaState.enabled && panoramaState.ratio === 'custom' ? 'inline-flex' : 'none';
-    document.querySelectorAll('[data-panorama-ratio]').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.panoramaRatio === panoramaState.ratio);
-    });
-    const w = document.getElementById('panoramaRatioW');
-    const h = document.getElementById('panoramaRatioH');
-    if(w && document.activeElement !== w) w.value = panoramaState.customW;
-    if(h && document.activeElement !== h) h.value = panoramaState.customH;
-}
-function setPanoramaEnabled(enabled){
-    const next = Boolean(enabled);
-    if(panoramaState.enabled === next) return;
-    panoramaState.enabled = next;
-    const stage = document.getElementById('previewStage');
-    const pano = document.getElementById('panoramaStage');
-    const currentImg = document.getElementById('previewCurrentImage');
-    const compareLayer = document.getElementById('previewCompareLayer');
-    const compareHandle = document.getElementById('previewCompareHandle');
-    const toggle = document.getElementById('panoramaToggleBtn');
-    const exportBtn = document.getElementById('panoramaExportBtn');
-    const compareToggle = document.getElementById('compareToggleBtn');
-    const compareThumbs = document.getElementById('compareThumbs');
-    const previewTools = document.getElementById('imagePreviewTools');
-    stage?.classList.toggle('panorama-on', next);
-    previewTools?.classList.toggle('panorama-tools-on', next);
-    if(pano) pano.style.display = next ? 'block' : 'none';
-    if(currentImg) currentImg.style.display = next ? 'none' : 'block';
-    if(compareLayer && next) compareLayer.style.display = 'none';
-    if(compareHandle && next) compareHandle.style.display = 'none';
-    if(toggle) toggle.classList.toggle('active', next);
-    if(exportBtn) exportBtn.style.display = next ? 'inline-flex' : 'none';
-    if(compareToggle) compareToggle.style.display = next ? 'none' : 'inline-flex';
-    if(compareThumbs && next){ compareThumbs.style.display = 'none'; compareThumbs.innerHTML = ''; }
-    previewCompareOn = next ? false : previewCompareOn;
-    if(next){
-        previewPan = {x:0, y:0};
-        previewZoom = 1.0;
-        applyPreviewTransform();
-        resizePanoramaViewer();
-        loadPanoramaTexture(panoramaSource());
-        updatePreviewMetaHint(tr('smart.panoramaHint'));
-    } else {
-        stopPanoramaLoop();
-        const frame = document.getElementById('previewFrame');
-        if(frame){ frame.style.width = ''; frame.style.height = ''; }
-        refreshComparePanel();
-    }
-    refreshPanoramaControls();
-    updateZoomLabel();
-}
-function togglePanoramaPreview(){
-    const image = currentEditImage().image || {};
-    if(mediaKindForItem(image) !== 'image') return;
-    setPanoramaEnabled(!panoramaState.enabled);
-}
-async function exportPanoramaFrame(){
-    if(!panoramaState.enabled) return;
-    const canvasEl = document.getElementById('panoramaCanvas');
-    if(!canvasEl){ toast(tr('smart.panoramaExportFailed')); return; }
-    try {
-        if(!drawPanoramaFrame()) throw new Error(tr('smart.panoramaExportFailed'));
-        const blob = await new Promise(resolve => canvasEl.toBlob(resolve, 'image/png'));
-        if(!blob) throw new Error(tr('smart.panoramaExportFailed'));
-        const editing = currentEditImage();
-        const rawName = editing.image?.name || fileNameFromUrl(editing.image?.url || '') || 'panorama';
-        const base = String(rawName).replace(/\.[a-z0-9]{2,8}$/i, '') || 'panorama';
-        const filename = safeExportFileName(`${base}-panorama.png`, 'panorama.png');
-        const uploaded = await uploadFiles([new File([blob], filename, {type:'image/png'})]);
-        const frame = uploaded[0];
-        if(!frame?.url) throw new Error(tr('smart.panoramaExportFailed'));
-        frame.kind = 'image';
-        frame.natural_w = canvasEl.width;
-        frame.natural_h = canvasEl.height;
-        const rect = editing.node ? nodeRect(editing.node) : null;
-        const point = rect
-            ? {x:rect.x + rect.width + 240, y:rect.y + rect.height / 2}
-            : viewportCenter();
-        pushUndo();
-        const newNode = createImageNodeAt(point, [frame], {select:true, skipUndo:true});
-        selectedIds = [];
-        selectedImage = {nodeId:newNode.id, index:0};
-        render();
-        scheduleSave();
-        toast(tr('smart.panoramaExportDone'));
-    } catch(e) {
-        toast((e.message || tr('smart.panoramaExportFailed')).slice(0, 120));
-    }
-}
-function resetPanoramaView(){
-    panoramaState.fov = 75;
-    panoramaState.yaw = 0;
-    panoramaState.pitch = 0;
-    resizePanoramaViewer();
-    updateZoomLabel();
-}
-function disposePanoramaPreview(){
-    stopPanoramaLoop();
-    disposePanoramaTexture();
-    panoramaState.enabled = false;
-    panoramaState.drag = null;
-    panoramaState.loadedSrc = '';
-    panoramaState.loadToken++;
-    const stage = document.getElementById('panoramaStage');
-    stage?.classList.remove('ready');
-    if(stage) stage.style.display = 'none';
-    document.getElementById('previewStage')?.classList.remove('panorama-on', 'panning');
-    document.getElementById('imagePreviewTools')?.classList.remove('panorama-tools-on');
-    document.getElementById('panoramaControls')?.style.setProperty('display', 'none');
-    document.getElementById('panoramaToggleBtn')?.classList.remove('active');
-    document.getElementById('panoramaExportBtn')?.style.setProperty('display', 'none');
-}
-function applyPanoramaRatio(value){
-    panoramaState.ratio = PANORAMA_RATIO_PRESETS[value] ? value : 'custom';
-    refreshPanoramaControls();
-    resizePanoramaViewer();
-}
-function setPreviewComparePos(clientX){
-    const frame = document.getElementById('previewFrame');
-    const stage = document.getElementById('previewStage');
-    if(!frame || !stage) return;
-    const rect = frame.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(100, ((clientX - rect.left) / Math.max(1, rect.width)) * 100));
-    previewComparePos = pct;
-    stage.style.setProperty('--compare-pos', `${pct}%`);
-}
-function syncPreviewFrameSize(){
-    const frame = document.getElementById('previewFrame');
-    if(panoramaState.enabled){
-        resizePanoramaViewer();
-        return;
-    }
-    const currentImg = document.getElementById('previewCurrentImage');
-    const currentVideo = document.getElementById('previewCurrentVideo');
-    const compareImg = document.getElementById('previewCompareImage');
-    const currentMedia = currentVideo && currentVideo.style.display !== 'none' ? currentVideo : currentImg;
-    if(!frame || !currentMedia) return;
-    const w = currentMedia.clientWidth || currentMedia.videoWidth || currentMedia.naturalWidth || 1;
-    const h = currentMedia.clientHeight || currentMedia.videoHeight || currentMedia.naturalHeight || 1;
-    frame.style.width = `${w}px`;
-    frame.style.height = `${h}px`;
-    if(compareImg){
-        compareImg.style.width = `${w}px`;
-        compareImg.style.height = `${h}px`;
-    }
-}
-function previewResolutionText(){
-    const editing = currentEditImage();
-    const image = editing.image || {};
-    const currentImg = document.getElementById('previewCurrentImage');
-    const currentVideo = document.getElementById('previewCurrentVideo');
-    const cropImg = document.getElementById('cropImage');
-    const w = Number(image.natural_w || image.width || image.w || 0) || Number(currentVideo?.videoWidth || 0) || Number(currentImg?.naturalWidth || 0) || Number(cropImg?.naturalWidth || 0);
-    const h = Number(image.natural_h || image.height || image.h || 0) || Number(currentVideo?.videoHeight || 0) || Number(currentImg?.naturalHeight || 0) || Number(cropImg?.naturalHeight || 0);
-    if(!w || !h) return '';
-    return `${tr('smart.resolution')}: ${Math.round(w)} x ${Math.round(h)}`;
-}
-function updatePreviewMetaHint(extraText=previewMetaExtraText){
-    previewMetaExtraText = extraText || '';
-    const hint = document.getElementById('previewMetaHint');
-    if(!hint) return;
-    hint.textContent = [previewResolutionText(), previewMetaExtraText].filter(Boolean).join(' · ');
-}
-function rememberPreviewImageResolution(){
-    const editing = currentEditImage();
-    const image = editing.image;
-    if(!image) return;
-    const currentImg = document.getElementById('previewCurrentImage');
-    const currentVideo = document.getElementById('previewCurrentVideo');
-    const cropImg = document.getElementById('cropImage');
-    const w = Number(currentVideo?.videoWidth || 0) || Number(currentImg?.naturalWidth || 0) || Number(cropImg?.naturalWidth || 0);
-    const h = Number(currentVideo?.videoHeight || 0) || Number(currentImg?.naturalHeight || 0) || Number(cropImg?.naturalHeight || 0);
-    if(w > 0 && h > 0 && (!image.natural_w || !image.natural_h)){
-        image.natural_w = w;
-        image.natural_h = h;
-        scheduleSave();
-    }
-}
-function previewCompareSources(){
-    if(previewCompareNodeId){
-        const compareNode = nodes.find(n => n.id === previewCompareNodeId && isSmartCompareNode(n));
-        return compareNode ? smartCompareInputImages(compareNode) : [];
-    }
-    const editing = currentEditImage();
-    const node = editing.node;
     if(!node) return [];
-    const savedRefs = Array.isArray(node.runInputRefs) ? node.runInputRefs.filter(ref => ref?.url) : [];
-    const upstream = savedRefs.length ? savedRefs : inputImagesFor(node);
-    const dedup = [];
-    const seen = new Set();
-    for(const img of upstream){
-        if(!img?.url || seen.has(img.url) || mediaKindForItem(img) !== 'image') continue;
-        seen.add(img.url);
-        dedup.push(img);
-    }
-    if(dedup.length) return dedup;
-    const sourceId = node.sourceNodeId;
-    if(sourceId){
-        const src = nodes.find(n => n.id === sourceId);
-        if(src && (src.images || []).length){
-            for(const img of src.images){
-                if(!img?.url || seen.has(img.url) || mediaKindForItem(img) !== 'image') continue;
-                seen.add(img.url);
-                dedup.push(img);
-            }
+    const fromRun = (Array.isArray(node.runInputRefs) ? node.runInputRefs : []).filter(item => item?.url);
+    const fromNode = nodes.find(item => item.id === node.sourceNodeId)?.images || [];
+    const uniqueImages = items => {
+        const refs = new Map();
+        for(const item of items){
+            if(item?.url && mediaKindForItem(item) === 'image' && !refs.has(item.url)) refs.set(item.url, item);
         }
-    }
-    return dedup;
-}
-const PREVIEW_IMAGE_LOAD_TIMEOUT_MS = 15000;
-let previewImageLoad = null;
-function setPreviewImageLoadingState(state='idle'){
-    const box = document.getElementById('previewLoadingState');
-    const text = document.getElementById('previewLoadingText');
-    const retry = document.getElementById('previewRetryBtn');
-    if(!box) return;
-    const loading = state === 'loading';
-    const failed = state === 'error';
-    box.hidden = !loading && !failed;
-    box.classList.toggle('is-error', failed);
-    if(text) text.textContent = tr(failed ? 'smart.previewLoadFailed' : 'smart.previewLoading');
-    if(retry){
-        retry.hidden = !failed;
-        retry.disabled = false;
-    }
-}
-function resetCurrentPreviewImage(){
-    if(previewImageLoad){
-        if(previewImageLoad.timeoutId) clearTimeout(previewImageLoad.timeoutId);
-        for(const loader of previewImageLoad.loaders){
-            loader.onload = loader.onerror = null;
-            loader.removeAttribute('src');
-        }
-    }
-    previewImageLoad = null;
-    for(const id of ['previewCurrentImage', 'previewCompareImage']){
-        const img = document.getElementById(id);
-        if(!img) continue;
-        img.onload = img.onerror = null;
-        img.removeAttribute('src');
-        img.style.visibility = 'hidden';
-    }
-    setPreviewImageLoadingState('idle');
-}
-function loadCurrentPreviewImage(item, onLoaded){
-    const img = document.getElementById('previewCurrentImage');
-    const src = displayMediaUrl(item);
-    if(previewImageLoad?.src === src){
-        if(img.complete && img.naturalWidth){
-            setPreviewImageLoadingState('ready');
-            onLoaded();
-        }
-        return;
-    }
-    resetCurrentPreviewImage();
-    resetImageOcrState();
-    const state = previewImageLoad = {src, loaders:[], rank:0, pending:0, hasSuccess:false, timeoutId:0};
-    const active = () => previewImageLoad === state && imageEditModal.classList.contains('open');
-    const markFailedIfDone = () => {
-        if(active() && !state.hasSuccess && state.pending <= 0) setPreviewImageLoadingState('error');
+        return [...refs.values()];
     };
-    setPreviewImageLoadingState('loading');
-    state.timeoutId = window.setTimeout(() => {
-        if(active() && !state.hasSuccess) setPreviewImageLoadingState('error');
-    }, PREVIEW_IMAGE_LOAD_TIMEOUT_MS);
-    img.onload = () => { if(active()) onLoaded(); };
-    const load = (url, rank, quick, onError) => {
-        if(!url){ onError?.(); markFailedIfDone(); return; }
-        const loader = new Image();
-        state.loaders.push(loader);
-        state.pending += 1;
-        loader.onload = () => {
-            state.pending = Math.max(0, state.pending - 1);
-            if(!active() || state.rank >= rank) return;
-            state.rank = rank;
-            state.hasSuccess = true;
-            img.dataset.previewQuick = quick ? '1' : '';
-            img.src = url;
-            img.style.visibility = '';
-            setPreviewImageLoadingState('ready');
-        };
-        loader.onerror = () => {
-            state.pending = Math.max(0, state.pending - 1);
-            if(!active()) return;
-            onError?.();
-            markFailedIfDone();
-        };
-        loader.src = url;
-    };
-    const quickSrc = smartMediaPreviewUrl(item, 512);
-    if(quickSrc && quickSrc !== src) load(quickSrc, 1, true);
-    load(src, 3, false, () => {
-        // 系统代理的虚拟 DNS 地址可能被后端拒绝；浏览器仍可通过系统代理显示原图。
-        const fallback = smartOriginalMediaUrl(item);
-        if(fallback && fallback !== src) load(fallback, 2, false);
-    });
+    const inputs = uniqueImages(fromRun.length ? fromRun : inputImagesFor(node));
+    return inputs.length ? inputs : uniqueImages(fromNode);
 }
-function retryCurrentPreviewImage(){
-    if(!imageEditModal.classList.contains('open') || imageEditMode !== 'preview') return;
-    resetCurrentPreviewImage();
-    refreshComparePanel();
-}
-function refreshComparePanel(){
-    const stage = document.getElementById('previewStage');
-    const compareImg = document.getElementById('previewCompareImage');
-    const currentImg = document.getElementById('previewCurrentImage');
-    const currentVideo = document.getElementById('previewCurrentVideo');
-    const compareLayer = document.getElementById('previewCompareLayer');
-    const compareHandle = document.getElementById('previewCompareHandle');
-    const compareLeftLabel = document.getElementById('previewCompareLeftLabel');
-    const compareRightLabel = document.getElementById('previewCompareRightLabel');
-    const thumbsEl = document.getElementById('compareThumbs');
-    const toggle = document.getElementById('compareToggleBtn');
-    const panoramaToggle = document.getElementById('panoramaToggleBtn');
-    const editing = currentEditImage();
-    const curUrl = editing.image?.url || '';
-    const isVideoPreview = mediaKindForItem(editing.image || {}) === 'video';
-    const isPreviewMode = imageEditMode === 'preview';
-    const isCompareNodePreview = Boolean(previewCompareNodeId);
-    if(panoramaToggle){
-        panoramaToggle.style.display = isPreviewMode && !isVideoPreview && !isCompareNodePreview ? 'inline-flex' : 'none';
-        panoramaToggle.classList.toggle('active', panoramaState.enabled);
-    }
-    if(toggle){
-        toggle.style.display = isPreviewMode && !isVideoPreview && !isCompareNodePreview ? 'inline-flex' : 'none';
-    }
-    if(!isPreviewMode && panoramaState.enabled) disposePanoramaPreview();
-    if(panoramaState.enabled && isPreviewMode && !isVideoPreview){
-        currentImg.onload = null;
-        currentImg.onerror = null;
-        currentImg.style.display = 'none';
-        stage?.classList.remove('compare-on');
-        if(compareLayer) compareLayer.style.display = 'none';
-        if(compareHandle) compareHandle.style.display = 'none';
-        if(thumbsEl){ thumbsEl.style.display = 'none'; thumbsEl.innerHTML = ''; }
-        if(toggle) toggle.classList.remove('active');
-        updatePreviewMetaHint(tr('smart.panoramaHint'));
-        return;
-    }
-    const onCurrentLoaded = () => {
-        if(currentImg.dataset.previewQuick !== '1') rememberPreviewImageResolution();
-        syncPreviewFrameSize();
-        updatePreviewMetaHint();
-    };
-    if(isVideoPreview){
-        resetCurrentPreviewImage();
-        currentImg.onload = null;
-        currentImg.onerror = null;
-        currentImg.removeAttribute('src');
-        currentImg.style.display = 'none';
-        if(currentVideo){
-            const previewSrc = displayMediaUrl(editing.image || curUrl);
-            currentVideo.style.display = 'block';
-            currentVideo.onloadedmetadata = onCurrentLoaded;
-            currentVideo.onloadeddata = onCurrentLoaded;
-            if(currentVideo.getAttribute('src') !== previewSrc){
-                currentVideo.src = previewSrc;
-                currentVideo.load?.();
-            }
-            if(currentVideo.readyState >= 1) requestAnimationFrame(onCurrentLoaded);
-        }
-        previewCompareOn = false;
-        previewCompareIndex = -1;
-        stage.classList.remove('compare-on');
-        if(compareLayer) compareLayer.style.display = 'none';
-        if(compareHandle) compareHandle.style.display = 'none';
-        if(thumbsEl){ thumbsEl.style.display = 'none'; thumbsEl.innerHTML = ''; }
-        if(toggle){
-            toggle.disabled = true;
-            toggle.style.opacity = '.45';
-            toggle.classList.remove('active');
-            toggle.title = tr('smart.compareEmpty');
-        }
-        if(panoramaToggle) panoramaToggle.style.display = 'none';
-        updatePreviewMetaHint(editing.node?.runPrompt ? `${tr('smart.runPromptPrefix')}${editing.node.runPrompt.slice(0, 60)}` : '');
-        return;
-    }
-    if(currentVideo){
-        currentVideo.pause?.();
-        currentVideo.onloadedmetadata = null;
-        currentVideo.onloadeddata = null;
-        currentVideo.removeAttribute('src');
-        currentVideo.load?.();
-        currentVideo.style.display = 'none';
-    }
-    currentImg.style.display = 'block';
-    currentImg.onload = onCurrentLoaded;
-    loadCurrentPreviewImage(editing.image || curUrl, onCurrentLoaded);
-    const sources = previewCompareSources();
-    const hasSource = sources.length > 0;
-    if(toggle){
-        toggle.disabled = !hasSource;
-        toggle.style.opacity = hasSource ? '1' : '.45';
-        toggle.title = hasSource ? tr('smart.compareHover') : tr('smart.compareEmpty');
-        toggle.classList.toggle('active', hasSource && previewCompareOn);
-    }
-    if(!hasSource){
-        previewCompareOn = false;
-        previewCompareIndex = -1;
-        stage.classList.remove('compare-on');
-        if(compareLayer) compareLayer.style.display = 'none';
-        if(compareHandle) compareHandle.style.display = 'none';
-        thumbsEl.style.display = 'none';
-        updatePreviewMetaHint(editing.node?.runPrompt ? `${tr('smart.runPromptPrefix')}${editing.node.runPrompt.slice(0, 60)}` : '');
-        return;
-    }
-    const sliderActive = previewCompareOn && previewCompareIndex >= 0 && previewCompareIndex < sources.length;
-    if(sliderActive){
-        const src = sources[previewCompareIndex];
-        if(isCompareNodePreview){
-            if(compareLeftLabel) compareLeftLabel.textContent = smartCompareTextf('smart.compareNodeImageLabel', '图 {n}', {n:previewCompareIndex + 1});
-            if(compareRightLabel) compareRightLabel.textContent = smartCompareTextf('smart.compareNodeImageLabel', '图 {n}', {n:2});
-        }
-        compareImg.style.visibility = '';
-        compareImg.src = src?.url || '';
-        compareImg.onload = syncPreviewFrameSize;
-        syncPreviewFrameSize();
-        stage.classList.add('compare-on');
-        if(compareLayer) compareLayer.style.display = '';
-        if(compareHandle) compareHandle.style.display = '';
-    } else {
-        stage.classList.remove('compare-on');
-        if(compareLayer) compareLayer.style.display = 'none';
-        if(compareHandle) compareHandle.style.display = 'none';
-    }
-    if(previewCompareOn){
-        thumbsEl.style.display = 'inline-flex';
-        thumbsEl.innerHTML = sources.map((s, i) => {
-            const label = isCompareNodePreview ? smartCompareTextf('smart.compareNodeImageLabel', '图 {n}', {n:i + 1}) : '';
-            const action = i === previewCompareIndex ? tr('smart.compareCancelTip') : tr('smart.compareUseTip');
-            const title = label ? `${label}：${imageNameLabel(s)}` : action;
-            if(isCompareNodePreview) return `<div class="compare-thumb compare-node-thumb" title="${escapeAttr(title)}">${smartPreviewImgHtml(s.url, 256, 'alt=""')}<span class="compare-node-thumb-label">${escapeHtml(label)}</span></div>`;
-            return `<button type="button" class="compare-thumb ${i === previewCompareIndex ? 'active' : ''}" data-compare-idx="${i}" title="${escapeAttr(title)}" aria-label="${escapeAttr(title)}">${smartPreviewImgHtml(s.url, 256, 'alt=""')}</button>`;
-        }).join('');
-        bindSmartPreviewImageFallbacks(thumbsEl);
-        thumbsEl.querySelectorAll('[data-compare-idx]').forEach(btn => {
-            btn.onclick = e => {
-                e.preventDefault(); e.stopPropagation();
-                const idx = Number(btn.dataset.compareIdx);
-                previewCompareIndex = (previewCompareIndex === idx) ? -1 : idx;
-                refreshComparePanel();
-            };
-        });
-    } else {
-        thumbsEl.style.display = 'none';
-        thumbsEl.innerHTML = '';
-    }
-    let txt = isCompareNodePreview
-        ? smartCompareText('smart.compareNodePreviewHint', '拖动中间滑块调整对比位置')
-        : (editing.node?.runPrompt ? `${tr('smart.runPromptPrefix')}${editing.node.runPrompt.slice(0, 60)}` : '');
-    if(previewCompareOn && !sliderActive) txt = (txt ? `${txt} · ` : '') + tr('smart.compareHintPick');
-    updatePreviewMetaHint(txt);
-}
-function togglePreviewCompare(){
-    const sources = previewCompareSources();
-    if(!sources.length){ toast(tr('smart.compareNoSource')); return; }
-    previewCompareOn = !previewCompareOn;
-    if(previewCompareOn && (previewCompareIndex < 0 || previewCompareIndex >= sources.length)) previewCompareIndex = 0;
-    if(!previewCompareOn) previewCompareIndex = -1;
-    refreshComparePanel();
-}
-function currentPreviewVideo(){
-    if(!imageEditModal.classList.contains('open')) return null;
-    if(mediaKindForItem(currentEditImage().image || {}) !== 'video') return null;
-    return document.getElementById('previewCurrentVideo');
-}
-function videoFrameStep(){
-    const image = currentEditImage().image || {};
-    const fps = Number(image.fps || image.frameRate || image.frame_rate || image.framespersecond || image.frames_per_second || 0);
-    return 1 / Math.max(1, Math.min(120, Number.isFinite(fps) && fps > 0 ? fps : 30));
-}
-function seekPreviewVideoFrames(direction){
-    const video = currentPreviewVideo();
-    if(!video || video.readyState < 1) return false;
-    video.pause?.();
-    const step = videoFrameStep();
-    const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
-    const maxTime = duration ? Math.max(0, duration - step / 2) : Number.MAX_SAFE_INTEGER;
-    video.currentTime = Math.max(0, Math.min(maxTime, Number(video.currentTime || 0) + direction * step));
-    return true;
-}
-function waitForVideoEvent(video, eventName, timeout=1500){
-    return new Promise(resolve => {
-        let done = false;
-        const finish = () => {
-            if(done) return;
-            done = true;
-            clearTimeout(timer);
-            video.removeEventListener(eventName, finish);
-            resolve();
-        };
-        const timer = setTimeout(finish, timeout);
-        video.addEventListener(eventName, finish, {once:true});
-    });
-}
-async function seekVideoForFrame(video, time){
-    if(Math.abs(Number(video.currentTime || 0) - time) <= 0.002) return;
-    video.currentTime = time;
-    await waitForVideoEvent(video, 'seeked', 2200);
-}
-async function exportVideoFrame(which='current'){
-    const video = currentPreviewVideo();
-    if(!video){ toast('没有可导出的视频帧'); return; }
-    if(video.readyState < 2) await waitForVideoEvent(video, 'loadeddata', 2200);
-    if(!video.videoWidth || !video.videoHeight){ toast('视频还没有加载完成'); return; }
-    const originalTime = Number(video.currentTime || 0);
-    const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
-    const step = videoFrameStep();
-    const target = which === 'first'
-        ? 0
-        : which === 'last'
-            ? Math.max(0, duration - step / 2)
-            : originalTime;
-    const suffix = which === 'first' ? 'first-frame' : which === 'last' ? 'last-frame' : 'current-frame';
+function refreshComparePanel(){ smartPreview.render(); }
+function updatePreviewMetaHint(){ smartPreview.paintMeta(); }
+function togglePreviewCompare(){ smartPreview.toggleCompare(); }
+function togglePanoramaPreview(){ smartPreview.togglePanorama(); }
+function exportPanoramaFrame(){ return exportPreviewFrame('panorama'); }
+function exportVideoFrame(which='current'){ return exportPreviewFrame(which); }
+async function exportPreviewFrame(which){
+    const panorama = which === 'panorama';
+    if(panorama && !smartPanorama.enabled()) return;
+    const ownerId = canvas?.id;
+    if(!ownerId || !collabCanMutateCanvas()) return;
+
+    const {node:source, image} = currentEditImage();
+    const rect = source ? nodeRect(source) : null;
+    const point = rect ? {x:rect.x + rect.width + 240, y:rect.y + rect.height / 2} : viewportCenter();
+    const suffix = panorama ? 'panorama' : which + '-frame';
+    const originalName = image?.name || fileNameFromUrl(image?.url || '') || (panorama ? 'panorama' : 'video');
+    const stem = String(originalName).replace(/\.[a-z0-9]{2,8}$/i, '') || (panorama ? 'panorama' : 'video');
+    const filename = safeExportFileName(stem + '-' + suffix + '.png', suffix + '.png');
+    const failed = panorama ? tr('smart.panoramaExportFailed') : '导出到画布失败';
     try {
-        video.pause?.();
-        await seekVideoForFrame(video, target);
-        const canvasEl = document.createElement('canvas');
-        canvasEl.width = video.videoWidth;
-        canvasEl.height = video.videoHeight;
-        const ctx = canvasEl.getContext('2d');
-        ctx.drawImage(video, 0, 0, canvasEl.width, canvasEl.height);
-        const blob = await new Promise(resolve => canvasEl.toBlob(resolve, 'image/png'));
-        if(!blob) throw new Error('导出帧失败');
-        const editing = currentEditImage();
-        const rawName = editing.image?.name || fileNameFromUrl(editing.image?.url || '') || 'video';
-        const base = String(rawName).replace(/\.[a-z0-9]{2,8}$/i, '') || 'video';
-        const filename = safeExportFileName(`${base}-${suffix}.png`, `${suffix}.png`);
-        const uploaded = await uploadFiles([new File([blob], filename, {type:'image/png'})]);
-        const frame = uploaded[0];
-        if(!frame?.url) throw new Error('导出到画布失败');
-        frame.kind = 'image';
-        frame.natural_w = video.videoWidth;
-        frame.natural_h = video.videoHeight;
-        const rect = editing.node ? nodeRect(editing.node) : null;
-        const point = rect
-            ? {x:rect.x + rect.width + 240, y:rect.y + rect.height / 2}
-            : viewportCenter();
-        pushUndo();
-        const newNode = createImageNodeAt(point, [frame], {select:true, skipUndo:true});
+        const frame = panorama ? await smartPanorama.capture() : await smartPreview.captureVideoFrame(which);
+        if(canvas?.id !== ownerId) return;
+        if(!frame){
+            if(panorama) toast(failed);
+            return;
+        }
+        const file = new File([frame.blob], filename, {type:'image/png'});
+        const [uploaded] = await uploadFiles([file]);
+        if(canvas?.id !== ownerId) return;
+        if(!uploaded?.url) throw new Error(failed);
+
+        const output = {...uploaded, kind:'image', natural_w:frame.width, natural_h:frame.height};
+        const created = createImageNodeAt(point, [output], {select:true, skipRender:true, skipSave:true});
+        if(!created) return;
         selectedIds = [];
-        selectedImage = {nodeId:newNode.id, index:0};
+        selectedImage = {nodeId:created.id, index:0};
         render();
         scheduleSave();
-        toast('已导出到画布');
-        if(which !== 'current') await seekVideoForFrame(video, originalTime);
-    } catch(e) {
-        toast((e.message || '导出帧失败').slice(0, 120));
+        toast(panorama ? tr('smart.panoramaExportDone') : '已导出到画布');
+    } catch(error) {
+        if(canvas?.id === ownerId) toast((error.message || failed).slice(0, 120));
     }
 }
-function editDrawSnapshot(){
-    const canvasEl = editDrawCanvas();
-    return {
-        imageData:canvasEl.getContext('2d').getImageData(0, 0, canvasEl.width, canvasEl.height),
-        labelCounter:brushLabelCounter,
-        textItems:editTextItems.map(item => ({...item})),
-        textSelectedId:editTextSelectedId || ''
-    };
-}
-function restoreEditDrawSnapshot(snapshot){
-    if(!snapshot) return;
-    removeEditTextInlineEditor(false);
-    editDrawCanvas().getContext('2d').putImageData(snapshot.imageData || snapshot, 0, 0);
-    if(snapshot.labelCounter) brushLabelCounter = snapshot.labelCounter;
-    editTextItems = (snapshot.textItems || []).map(item => ({...item}));
-    editTextSelectedId = snapshot.textSelectedId || '';
-    renderEditTextCanvas();
-    syncTextToolState(true);
-}
-function pushEditDrawHistory(){
-    editDrawUndoStack.push(editDrawSnapshot());
-    if(editDrawUndoStack.length > EDIT_DRAW_HISTORY_MAX) editDrawUndoStack.shift();
-    editDrawRedoStack = [];
-    syncEditDrawingHistoryButtons();
-}
-function syncEditDrawingHistoryButtons(){
-    ['maskUndoBtn','brushUndoBtn'].forEach(id => { const btn = document.getElementById(id); if(btn){ btn.disabled = !editDrawUndoStack.length; btn.style.opacity = editDrawUndoStack.length ? '1' : '.42'; } });
-    ['maskRedoBtn','brushRedoBtn'].forEach(id => { const btn = document.getElementById(id); if(btn){ btn.disabled = !editDrawRedoStack.length; btn.style.opacity = editDrawRedoStack.length ? '1' : '.42'; } });
-}
-function undoEditDrawing(){
-    if(!editDrawUndoStack.length) return;
-    editDrawRedoStack.push(editDrawSnapshot());
-    restoreEditDrawSnapshot(editDrawUndoStack.pop());
-    syncEditDrawingHistoryButtons();
-}
-function redoEditDrawing(){
-    if(!editDrawRedoStack.length) return;
-    editDrawUndoStack.push(editDrawSnapshot());
-    restoreEditDrawSnapshot(editDrawRedoStack.pop());
-    syncEditDrawingHistoryButtons();
-}
-function editCanvasHasPixels(){
-    if(editTextHasContent()) return true;
-    const canvasEl = editDrawCanvas();
-    const data = canvasEl.getContext('2d').getImageData(0, 0, canvasEl.width, canvasEl.height).data;
-    for(let i = 3; i < data.length; i += 4) if(data[i] > 0) return true;
-    return false;
-}
-function clearEditDrawing(silent=false){
-    removeEditTextInlineEditor(false);
-    const canvasEl = editDrawCanvas();
-    if(!silent && editCanvasHasPixels()) pushEditDrawHistory();
-    canvasEl.getContext('2d').clearRect(0, 0, canvasEl.width, canvasEl.height);
-    const textCanvasEl = editTextCanvas();
-    textCanvasEl?.getContext('2d')?.clearRect(0, 0, textCanvasEl.width, textCanvasEl.height);
-    editTextItems = [];
-    editTextSelectedId = '';
-    editTextDrag = null;
-    editTextDirty = false;
-    brushLabelCounter = 1;
-    syncTextToolState(true);
-    syncEditDrawingHistoryButtons();
-}
-function resetEditDrawingHistory(){
-    removeEditTextInlineEditor(false);
-    editDrawUndoStack = [];
-    editDrawRedoStack = [];
-    brushLabelCounter = 1;
-    editTextItems = [];
-    editTextSelectedId = '';
-    editTextDrag = null;
-    editTextDirty = false;
-    renderEditTextCanvas();
-    syncTextToolState(true);
-    syncEditDrawingHistoryButtons();
-}
-function setBrushTool(tool){
-    if(tool !== 'text') removeEditTextInlineEditor(true);
-    brushTool = ['free','rect','ellipse','arrow','label','text','eraser'].includes(tool) ? tool : 'free';
-    syncBrushToolButtons();
-    syncTextToolState(true);
-}
-function syncBrushToolButtons(){
-    document.querySelectorAll('[data-brush-tool]').forEach(btn => {
-        const active = btn.dataset.brushTool === brushTool;
-        btn.classList.toggle('primary', active);
-        btn.classList.toggle('secondary', !active);
-    });
-    document.getElementById('cropCanvas')?.classList.toggle('text-mode', imageEditMode === 'brush' && brushTool === 'text');
-}
-function editDrawPoint(event){
-    const canvasEl = editDrawCanvas();
-    const rect = canvasEl.getBoundingClientRect();
-    return {x:(event.clientX - rect.left) * canvasEl.width / Math.max(1, rect.width), y:(event.clientY - rect.top) * canvasEl.height / Math.max(1, rect.height)};
-}
-function gridCustomLineHit(point){
-    const canvasEl = editDrawCanvas();
-    const threshold = Math.max(8, Math.min(canvasEl.width, canvasEl.height) / 80);
-    let best = -1, bestDist = Infinity;
-    gridCustomLines.forEach((line, index) => {
-        const dist = line.type === 'h' ? Math.abs(point.y - line.pos * canvasEl.height) : Math.abs(point.x - line.pos * canvasEl.width);
-        if(dist < bestDist && dist <= threshold){ best = index; bestDist = dist; }
-    });
-    return best;
-}
-function setGridCustomLinePos(index, point){
-    const canvasEl = editDrawCanvas();
-    const line = gridCustomLines[index];
-    if(!line) return;
-    line.pos = line.type === 'h'
-        ? Math.max(0.001, Math.min(0.999, point.y / Math.max(1, canvasEl.height)))
-        : Math.max(0.001, Math.min(0.999, point.x / Math.max(1, canvasEl.width)));
-}
-const MASK_BRUSH_ALPHA = 115;
-const MASK_BRUSH_RGB = [80, 80, 80];
-const MASK_BRUSH_COLOR = `rgba(${MASK_BRUSH_RGB.join(',')},${MASK_BRUSH_ALPHA / 255})`;
 function editBrushSize(){ return Number(document.getElementById(isImageMaskMode() ? 'maskBrushSize' : 'paintBrushSize')?.value || 20); }
 function brushColor(){ return document.getElementById('paintBrushColor')?.value || '#ff2d55'; }
-function setupDrawStyle(ctx){
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = editBrushSize();
-    ctx.strokeStyle = isImageMaskMode() ? MASK_BRUSH_COLOR : brushColor();
-    ctx.fillStyle = isImageMaskMode() ? MASK_BRUSH_COLOR : brushColor();
-    ctx.globalCompositeOperation = imageEditMode === 'brush' && brushTool === 'eraser' ? 'destination-out' : 'source-over';
-}
-function normalizeMaskPreviewCanvas(canvasEl=editDrawCanvas()){
-    if(!isImageMaskMode() || !canvasEl?.width || !canvasEl?.height) return;
-    const ctx = canvasEl.getContext('2d');
-    const imageData = ctx.getImageData(0, 0, canvasEl.width, canvasEl.height);
-    const data = imageData.data;
-    let changed = false;
-    for(let i = 0; i < data.length; i += 4){
-        if(data[i + 3] <= 0) continue;
-        data[i] = MASK_BRUSH_RGB[0];
-        data[i + 1] = MASK_BRUSH_RGB[1];
-        data[i + 2] = MASK_BRUSH_RGB[2];
-        if(data[i + 3] > MASK_BRUSH_ALPHA) data[i + 3] = MASK_BRUSH_ALPHA;
-        changed = true;
-    }
-    if(changed) ctx.putImageData(imageData, 0, 0);
-}
-function strokeFreeDrawPoint(point){
-    if(!editDrawState) return;
-    const ctx = editDrawCanvas().getContext('2d');
-    setupDrawStyle(ctx);
-    const dx = point.x - editDrawState.x;
-    const dy = point.y - editDrawState.y;
-    const dist = Math.hypot(dx, dy);
-    const radius = Math.max(1, editBrushSize() / 2);
-    if(dist > radius){
-        const steps = Math.ceil(dist / Math.max(1, radius * 0.35));
-        for(let i = 1; i <= steps; i++){
-            const t = i / steps;
-            const x = editDrawState.x + dx * t;
-            const y = editDrawState.y + dy * t;
-            ctx.beginPath();
-            ctx.arc(x, y, radius, 0, Math.PI * 2);
-            ctx.fill();
-        }
-    }
-    ctx.beginPath();
-    ctx.moveTo(editDrawState.x, editDrawState.y);
-    ctx.lineTo(point.x, point.y);
-    ctx.stroke();
-    editDrawState.x = point.x;
-    editDrawState.y = point.y;
-}
-function circledNumber(n){ return n >= 1 && n <= 20 ? String.fromCharCode(0x2460 + n - 1) : String(n); }
-function drawBrushShape(ctx, start, end){
-    setupDrawStyle(ctx);
-    const x = Math.min(start.x, end.x), y = Math.min(start.y, end.y), w = Math.abs(end.x - start.x), h = Math.abs(end.y - start.y);
-    if(brushTool === 'rect') ctx.strokeRect(x, y, w, h);
-    else if(brushTool === 'ellipse'){ ctx.beginPath(); ctx.ellipse(x + w / 2, y + h / 2, Math.max(1, w / 2), Math.max(1, h / 2), 0, 0, Math.PI * 2); ctx.stroke(); }
-    else if(brushTool === 'arrow'){
-        const angle=Math.atan2(end.y-start.y,end.x-start.x), head=Math.max(10,editBrushSize()*1.8);
-        ctx.beginPath();ctx.moveTo(start.x,start.y);ctx.lineTo(end.x,end.y);ctx.stroke();
-        ctx.beginPath();ctx.moveTo(end.x,end.y);ctx.lineTo(end.x-head*Math.cos(angle-.48),end.y-head*Math.sin(angle-.48));ctx.moveTo(end.x,end.y);ctx.lineTo(end.x-head*Math.cos(angle+.48),end.y-head*Math.sin(angle+.48));ctx.stroke();
-    }
-}
-function drawNumberLabel(point){
-    const ctx = editDrawCanvas().getContext('2d');
-    const size = Math.max(18, editBrushSize() * 2.2);
-    const text = circledNumber(brushLabelCounter++);
-    setupDrawStyle(ctx);
-    ctx.save(); ctx.font = `900 ${size}px Arial, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = Math.max(3, size / 8);
-    ctx.strokeStyle = 'rgba(255,255,255,0.92)'; ctx.strokeText(text, point.x, point.y); ctx.fillStyle = brushColor(); ctx.fillText(text, point.x, point.y); ctx.restore();
-}
-function beginEditDraw(event){
-    if(imageEditMode === 'crop' || imageEditMode === 'ocr') return;
-    event.preventDefault(); event.stopPropagation();
-    const canvasEl = editDrawCanvas();
-    canvasEl.setPointerCapture?.(event.pointerId);
-    const p = editDrawPoint(event);
-    if(imageEditMode === 'grid'){
-        if(gridOperationMode === 'join') return;
-        if(!gridCustomMode) return;
-        const hit = gridCustomLineHit(p);
-        gridCustomHistory = XiaomeiCanvasEditorCore.commitGridState({
-            customLines:gridCustomLines,
-            customHistory:gridCustomHistory,
-        }, gridCustomLines).customHistory;
-        if(hit >= 0){ gridCustomDrag = {index:hit, pointerId:event.pointerId}; setGridCustomLinePos(hit, p); }
-        else { gridCustomLines.push({type:gridCustomOrientation, pos:gridCustomOrientation === 'h' ? p.y / canvasEl.height : p.x / canvasEl.width}); gridCustomDrag = {index:gridCustomLines.length - 1, pointerId:event.pointerId}; }
-        syncGridCustomUndoBtn(); refreshGridSplitPreview(); return;
-    }
-    const ctx = canvasEl.getContext('2d');
-    pushEditDrawHistory();
-    if(imageEditMode === 'brush' && brushTool === 'label'){ drawNumberLabel(p); editDrawState = null; canvasEl.releasePointerCapture?.(event.pointerId); return; }
-    editDrawState = {x:p.x, y:p.y, sx:p.x, sy:p.y, pointerId:event.pointerId, snapshot:(imageEditMode === 'brush' && brushTool !== 'free') ? editDrawSnapshot() : null};
-    setupDrawStyle(ctx);
-    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + .01, p.y + .01);
-    if(isImageMaskMode() || brushTool === 'free') ctx.stroke();
-    normalizeMaskPreviewCanvas(canvasEl);
-}
-function moveEditDraw(event){
-    if(imageEditMode === 'grid' && gridOperationMode === 'join') return;
-    if(imageEditMode === 'grid' && gridCustomMode && gridCustomDrag){ event.preventDefault(); event.stopPropagation(); setGridCustomLinePos(gridCustomDrag.index, editDrawPoint(event)); refreshGridSplitPreview(); return; }
-    if(!editDrawState || imageEditMode === 'crop' || imageEditMode === 'ocr' || imageEditMode === 'grid') return;
-    event.preventDefault(); event.stopPropagation();
-    const ctx = editDrawCanvas().getContext('2d');
-    const p = editDrawPoint(event);
-    if(imageEditMode === 'brush' && brushTool !== 'free'){ restoreEditDrawSnapshot(editDrawState.snapshot); drawBrushShape(ctx, {x:editDrawState.sx, y:editDrawState.sy}, p); return; }
-    const events = typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : [];
-    if(events.length){
-        events.forEach(ev => strokeFreeDrawPoint(editDrawPoint(ev)));
-    } else {
-        strokeFreeDrawPoint(p);
-    }
-    normalizeMaskPreviewCanvas();
-}
-function endEditDraw(event){
-    if(editDrawState && event?.pointerId != null) editDrawCanvas().releasePointerCapture?.(event.pointerId);
-    if(gridCustomDrag && event?.pointerId != null) editDrawCanvas().releasePointerCapture?.(event.pointerId);
-    editDrawState = null; gridCustomDrag = null; syncEditDrawingHistoryButtons();
-}
-function beginGridJoinDrag(event){
-    if(imageEditMode !== 'grid' || gridOperationMode !== 'join') return;
-    const itemEl = event.target?.closest?.('.grid-join-item');
-    if(!itemEl) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const index = Number(itemEl.dataset.gridJoinIndex);
-    const item = gridJoinLayout?.items?.find(entry => Number(entry.index) === index);
-    const host = document.getElementById('gridJoinCanvas');
-    if(!item || !host) return;
-    itemEl.setPointerCapture?.(event.pointerId);
-    gridJoinDrag = {index, pointerId:event.pointerId, sx:event.clientX, sy:event.clientY, x:item.x, y:item.y};
-    itemEl.classList.add('dragging');
-}
-function moveGridJoinDrag(event){
-    if(!gridJoinDrag || imageEditMode !== 'grid' || gridOperationMode !== 'join') return;
-    event.preventDefault();
-    event.stopPropagation();
-    const item = gridJoinLayout?.items?.find(entry => Number(entry.index) === Number(gridJoinDrag.index));
-    if(!item) return;
-    const host = document.getElementById('gridJoinCanvas');
-    const rect = host?.getBoundingClientRect();
-    const logical = gridJoinCanvasSize();
-    const scale = rect ? Math.max(0.001, rect.width / Math.max(1, logical.w)) : Math.max(0.001, imageEditZoom || 1);
-    const dx = (event.clientX - gridJoinDrag.sx) / scale;
-    const dy = (event.clientY - gridJoinDrag.sy) / scale;
-    gridJoinDrag.dx = dx;
-    gridJoinDrag.dy = dy;
-    const el = host?.querySelector(`[data-grid-join-index="${CSS.escape(String(gridJoinDrag.index))}"]`);
-    if(el){
-        el.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px)`;
-    }
-}
-function gridJoinDragTarget(){
-    if(!gridJoinDrag || !gridJoinLayout) return null;
-    const dragged = gridJoinLayout.items.find(entry => Number(entry.index) === Number(gridJoinDrag.index));
-    if(!dragged) return null;
-    const dx = gridJoinDrag.dx || 0;
-    const dy = gridJoinDrag.dy || 0;
-    const cx = dragged.x + dx + dragged.w / 2;
-    const cy = dragged.y + dy + dragged.h / 2;
-    return (gridJoinLayout.items || [])
-        .filter(entry => Number(entry.index) !== Number(gridJoinDrag.index))
-        .map(entry => {
-            const inside = cx >= entry.x && cx <= entry.x + entry.w && cy >= entry.y && cy <= entry.y + entry.h;
-            const score = Math.hypot(cx - (entry.x + entry.w / 2), cy - (entry.y + entry.h / 2));
-            return {entry, inside, score};
-        })
-        .filter(item => item.inside || item.score < Math.max(dragged.w, dragged.h, item.entry.w, item.entry.h) * 0.55)
-        .sort((a, b) => (b.inside - a.inside) || a.score - b.score)[0]?.entry || null;
-}
-function endGridJoinDrag(event){
-    if(!gridJoinDrag) return;
-    const host = document.getElementById('gridJoinCanvas');
-    const draggedEl = host?.querySelector(`[data-grid-join-index="${CSS.escape(String(gridJoinDrag.index))}"]`);
-    draggedEl?.classList.remove('dragging');
-    if(draggedEl) draggedEl.style.transform = '';
-    const dragged = gridJoinLayout?.items?.find(entry => Number(entry.index) === Number(gridJoinDrag.index));
-    const target = gridJoinDragTarget();
-    if(dragged && target){
-        const order = gridJoinVisualOrder();
-        const a = order.indexOf(Number(dragged.index));
-        const b = order.indexOf(Number(target.index));
-        if(a >= 0 && b >= 0) [order[a], order[b]] = [order[b], order[a]];
-        setGridJoinLayoutOrder(order, gridJoinLayout.rows, gridJoinLayout.cols, gridJoinLayout.gap);
-        gridJoinUserMoved = true;
-        renderGridJoinPreview();
-    }
-    if(event?.pointerId != null) event.target?.releasePointerCapture?.(event.pointerId);
-    gridJoinDrag = null;
-}
-function syncGridGapValue(){
-    const input = document.getElementById('gridGapSize');
-    const value = Math.max(0, Math.min(240, Number(input?.value || 0)));
-    if(input) input.value = value;
-    const label = document.getElementById('gridGapValue');
-    if(label) label.textContent = String(value);
-    if(gridJoinLayout && gridOperationMode === 'join'){
-        const rows = gridJoinLayout.rows;
-        const cols = gridJoinLayout.cols;
-        const order = gridJoinVisualOrder();
-        setGridJoinLayoutOrder(order, rows, cols, value);
-    }
-    return value;
-}
-function gridGapInputValue(){
-    return Math.max(0, Math.min(240, Number(document.getElementById('gridGapSize')?.value || 0)));
-}
-function gridSplitSettings(){
-    const hLines = Math.max(0, Math.min(20, Number(document.getElementById('gridHorizontalLines')?.value || 0)));
-    const vLines = Math.max(0, Math.min(20, Number(document.getElementById('gridVerticalLines')?.value || 0)));
-    return {rows:hLines + 1, cols:vLines + 1, gap:syncGridGapValue()};
-}
 function currentGridJoinItems(){
-    // 分组拼接：聚合组内所有图片成员的图片，按阅读顺序给出连续索引（source 指向真实图片对象以写回自然尺寸）。
     if(gridJoinGroupId){
         const group = nodes.find(n => n.id === gridJoinGroupId && isSmartGroupNode(n));
         if(group){
             return smartGroupImageRefs(group)
                 .filter(r => mediaKindForItem(r.item) === 'image' && r.item?.url)
-                .map((r, index) => ({item:r.item, source:r.source, index}));
+                .map((r, index) => ({item:r.item, index}));
         }
+        return [];
     }
     const node = currentEditImage().node;
     return (node?.images || [])
-        .map((item, index) => ({item:imageForDisplay(item), source:item, index}))
+        .map((item, index) => ({item:imageForDisplay(item), index}))
         .filter(entry => mediaKindForItem(entry.item) === 'image' && entry.item?.url);
 }
 // 从分组小菜单打开“宫格拼接”：锚定在分组第一张图片（保证编辑器有真实底图，不出现破图/尺寸异常），
@@ -24706,549 +19179,20 @@ function openGroupGridJoin(group){
     if(!imageEditModal.classList.contains('open')) return;
     gridJoinGroupId = group.id;
     setImageEditMode('grid', true);
-    setGridOperationMode('join');
+    smartGrid.setMode('join');
 }
-function canGridJoinCurrentNode(){
-    return currentGridJoinItems().length > 1;
-}
-function gridJoinAutoDims(count){
-    const cols = Math.max(1, Math.ceil(Math.sqrt(Math.max(1, count))));
-    return {rows:Math.max(1, Math.ceil(count / cols)), cols};
-}
-function gridJoinNaturalSize(entry){
-    const item = entry?.item || {};
-    const cached = gridJoinImageCache.get(entry?.index);
-    const w = Number(item.natural_w || item.width || cached?.naturalWidth || 0);
-    const h = Number(item.natural_h || item.height || cached?.naturalHeight || 0);
-    return {w:Math.max(1, w || 512), h:Math.max(1, h || 512)};
-}
-function gridJoinBaseCellSize(items){
-    const sizes = items.map(gridJoinNaturalSize);
-    const maxW = Math.max(1, ...sizes.map(size => size.w));
-    const maxH = Math.max(1, ...sizes.map(size => size.h));
-    const scale = Math.min(1, 420 / Math.max(maxW, maxH));
-    return {w:Math.max(1, Math.round(maxW * scale)), h:Math.max(1, Math.round(maxH * scale)), scale};
-}
-function gridJoinItemDisplaySize(entry, cell){
-    return {
-        w:Math.max(1, Math.round(cell.w)),
-        h:Math.max(1, Math.round(cell.h))
-    };
-}
-function ensureGridJoinLayout(rows=null, cols=null){
-    const items = currentGridJoinItems();
-    if(!items.length){ gridJoinLayout = null; return null; }
-    const auto = gridJoinAutoDims(items.length);
-    const nextRows = Math.max(1, Number(rows || gridJoinLayout?.rows || auto.rows) || auto.rows);
-    const nextCols = Math.max(1, Number(cols || gridJoinLayout?.cols || auto.cols) || auto.cols);
-    const byIndex = new Map(items.map(entry => [entry.index, entry]));
-    const previousOrder = gridJoinVisualOrder()
-        .map(index => byIndex.get(Number(index)))
-        .filter(Boolean);
-    const ordered = [
-        ...previousOrder,
-        ...items.filter(entry => !previousOrder.some(prev => Number(prev.index) === Number(entry.index)))
-    ];
-    const cell = gridJoinBaseCellSize(ordered);
-    const gap = gridGapInputValue();
-    const layoutItems = ordered.map((entry, order) => {
-        const row = Math.floor(order / nextCols);
-        const col = order % nextCols;
-        const {w, h} = gridJoinItemDisplaySize(entry, cell);
-        return {
-            index:entry.index,
-            x:col * (cell.w + gap),
-            y:row * (cell.h + gap),
-            w,
-            h
-        };
-    });
-    gridJoinLayout = {rows:nextRows, cols:nextCols, cellW:cell.w, cellH:cell.h, gap, items:layoutItems};
-    return gridJoinLayout;
-}
-function gridJoinVisualOrder(layout=gridJoinLayout){
-    return (layout?.items || [])
-        .slice()
-        .sort((a, b) => (Number(a.y || 0) - Number(b.y || 0)) || (Number(a.x || 0) - Number(b.x || 0)))
-        .map(item => Number(item.index));
-}
-function setGridJoinLayoutOrder(order, rows=null, cols=null, gapOverride=null){
-    const entries = currentGridJoinItems();
-    if(!entries.length){ gridJoinLayout = null; return null; }
-    const byIndex = new Map(entries.map(entry => [entry.index, entry]));
-    const ordered = [
-        ...order.map(index => byIndex.get(Number(index))).filter(Boolean),
-        ...entries.filter(entry => !order.includes(entry.index))
-    ];
-    const auto = gridJoinAutoDims(ordered.length);
-    const nextRows = Math.max(1, Number(rows || gridJoinLayout?.rows || auto.rows) || auto.rows);
-    const nextCols = Math.max(1, Number(cols || gridJoinLayout?.cols || auto.cols) || auto.cols);
-    const cell = gridJoinBaseCellSize(ordered);
-    const gap = Math.max(0, Math.min(240, Number(gapOverride ?? document.getElementById('gridGapSize')?.value ?? 0)));
-    const layoutItems = ordered.map((entry, orderIndex) => {
-        const row = Math.floor(orderIndex / nextCols);
-        const col = orderIndex % nextCols;
-        const {w, h} = gridJoinItemDisplaySize(entry, cell);
-        return {
-            index:entry.index,
-            x:col * (cell.w + gap),
-            y:row * (cell.h + gap),
-            w,
-            h
-        };
-    });
-    gridJoinLayout = {rows:nextRows, cols:nextCols, cellW:cell.w, cellH:cell.h, gap, items:layoutItems};
-    return gridJoinLayout;
-}
-function resetGridJoinLayout(){
-    gridJoinUserMoved = false;
-    gridJoinLayout = null;
-    ensureGridJoinLayout();
-    renderGridJoinPreview();
-}
-function applyGridJoinPreset(rows, cols){
-    gridJoinUserMoved = false;
-    const order = gridJoinVisualOrder();
-    if(order.length) setGridJoinLayoutOrder(order, rows, cols);
-    else {
-        gridJoinLayout = null;
-        ensureGridJoinLayout(rows, cols);
-    }
-    renderGridJoinPreview();
-}
-function setGridJoinOutputSize(size){
-    gridJoinOutputSize = Math.max(256, Math.min(8192, Number(size) || 2048));
-    syncGridJoinSizeControls();
-    refreshGridSplitPreview();
-}
-function syncGridJoinSizeControls(){
-    document.querySelectorAll('[data-grid-join-size]').forEach(btn => {
-        const active = Number(btn.dataset.gridJoinSize || 0) === Number(gridJoinOutputSize);
-        btn.classList.toggle('active', active);
-    });
-}
-function setGridOperationMode(mode){
-    gridOperationMode = mode === 'join' && canGridJoinCurrentNode() ? 'join' : 'split';
-    if(mode === 'join' && gridOperationMode !== 'join') toast('请从包含多张图片的分组打开宫格拼接');
-    syncGridOperationControls();
-    refreshGridSplitPreview();
-}
-function syncGridOperationControls(){
-    // 拼接层只允许在“宫格 > 拼接”模式显示。切回裁剪等模式时，
-    // 必须同步恢复原图，否则上一次拼接的多张图片会残留在裁剪框内。
-    const join = imageEditMode === 'grid' && gridOperationMode === 'join';
-    document.getElementById('gridSplitModeBtn')?.classList.toggle('primary', !join);
-    document.getElementById('gridSplitModeBtn')?.classList.toggle('secondary', join);
-    const joinBtn = document.getElementById('gridJoinModeBtn');
-    if(joinBtn){
-        joinBtn.disabled = !canGridJoinCurrentNode();
-        joinBtn.classList.toggle('primary', join);
-        joinBtn.classList.toggle('secondary', !join);
-    }
-    document.querySelectorAll('.grid-split-control').forEach(el => { el.style.display = join ? 'none' : (el.id === 'gridRegularControls' ? 'contents' : ''); });
-    document.querySelectorAll('.grid-join-control').forEach(el => { el.style.display = join ? 'flex' : 'none'; });
-    syncGridJoinSizeControls();
-    if(!join) syncGridCustomControls();
-    document.getElementById('cropCanvas')?.classList.toggle('grid-join-mode', join);
-    document.getElementById('cropImage')?.classList.toggle('grid-join-hidden', join);
-    if(join) ensureGridJoinLayout();
-    else {
-        gridJoinDrag = null;
-        const host = document.getElementById('gridJoinCanvas');
-        if(host){
-            host.innerHTML = '';
-            host.style.display = 'none';
-            host.style.width = '';
-            host.style.height = '';
-            host.style.transform = '';
-        }
-        const cropCanvas = document.getElementById('cropCanvas');
-        if(cropCanvas){ cropCanvas.style.width = ''; cropCanvas.style.height = ''; }
-    }
-}
-function gridSplitRects(width, height){
-    if(gridCustomMode) return gridSplitRectsCustom(width, height);
-    const {rows, cols, gap} = gridSplitSettings();
-    const halfGap = gap / 2, rects = [];
-    for(let row = 0; row < rows; row++){
-        const topLine = row * height / rows, bottomLine = (row + 1) * height / rows;
-        const y1 = Math.round(row === 0 ? 0 : topLine + halfGap), y2 = Math.round(row === rows - 1 ? height : bottomLine - halfGap);
-        for(let col = 0; col < cols; col++){
-            const leftLine = col * width / cols, rightLine = (col + 1) * width / cols;
-            const x1 = Math.round(col === 0 ? 0 : leftLine + halfGap), x2 = Math.round(col === cols - 1 ? width : rightLine - halfGap);
-            if(x2 > x1 && y2 > y1) rects.push({row, col, x:x1, y:y1, w:x2 - x1, h:y2 - y1});
-        }
-    }
-    return rects;
-}
-function gridSplitRectsCustom(width, height){
-    const gap = Math.max(0, Math.min(240, Number(document.getElementById('gridGapSize')?.value || 0)));
-    const halfGap = gap / 2;
-    const rawH = [...new Set(gridCustomLines.filter(l => l.type === 'h').map(l => l.pos * height))].sort((a, b) => a - b);
-    const rawV = [...new Set(gridCustomLines.filter(l => l.type === 'v').map(l => l.pos * width))].sort((a, b) => a - b);
-    const hCuts = [0, ...rawH, height], vCuts = [0, ...rawV, width], rects = [];
-    for(let row = 0; row < hCuts.length - 1; row++) for(let col = 0; col < vCuts.length - 1; col++){
-        const y1 = Math.round(row === 0 ? hCuts[row] : hCuts[row] + halfGap), y2 = Math.round(row === hCuts.length - 2 ? hCuts[row + 1] : hCuts[row + 1] - halfGap);
-        const x1 = Math.round(col === 0 ? vCuts[col] : vCuts[col] + halfGap), x2 = Math.round(col === vCuts.length - 2 ? vCuts[col + 1] : vCuts[col + 1] - halfGap);
-        if(x2 > x1 && y2 > y1) rects.push({row, col, x:x1, y:y1, w:x2 - x1, h:y2 - y1});
-    }
-    return rects;
-}
-function gridLayoutFromRects(rects){
-    return {type:'grid-split', groupId:uid('grid'), rows:Math.max(1, ...rects.map(r => Number(r.row || 0) + 1)), cols:Math.max(1, ...rects.map(r => Number(r.col || 0) + 1))};
-}
-function applyGridPreset(rows, cols){
-    const state = XiaomeiCanvasEditorCore.gridPresetState(rows, cols);
-    gridCustomMode = state.customMode;
-    gridCustomLines = state.customLines;
-    gridCustomHistory = state.customHistory;
-    gridCustomDrag = state.customDrag;
-    const h = document.getElementById('gridHorizontalLines'), v = document.getElementById('gridVerticalLines');
-    if(h){ h.disabled = false; h.value = String(state.horizontalLines); }
-    if(v){ v.disabled = false; v.value = String(state.verticalLines); }
-    document.getElementById('gridCustomToggle')?.classList.remove('primary');
-    document.getElementById('gridCustomToggle')?.classList.add('secondary');
-    syncGridCustomControls();
-    syncGridCustomCursor(); syncGridCustomUndoBtn(); refreshGridSplitPreview();
-}
-function syncGridCustomControls(){
-    const join = gridOperationMode === 'join';
-    const custom = document.getElementById('gridCustomControls');
-    if(custom) custom.style.display = !join && gridCustomMode ? 'flex' : 'none';
-    document.querySelectorAll('.grid-split-control.grid-preset-row').forEach(row => {
-        row.style.display = !join && !gridCustomMode ? 'flex' : 'none';
-    });
-    const regular = document.getElementById('gridRegularControls');
-    if(regular) regular.style.display = !join && !gridCustomMode ? 'contents' : 'none';
-}
-function toggleGridCustomMode(){
-    const state = XiaomeiCanvasEditorCore.toggleGridState({
-        customMode:gridCustomMode,
-        customLines:gridCustomLines,
-        customHistory:gridCustomHistory,
-        customDrag:gridCustomDrag,
-    });
-    gridCustomMode = state.customMode;
-    gridCustomLines = state.customLines;
-    gridCustomHistory = state.customHistory;
-    gridCustomDrag = state.customDrag;
-    const toggle = document.getElementById('gridCustomToggle');
-    toggle.classList.toggle('primary', gridCustomMode); toggle.classList.toggle('secondary', !gridCustomMode);
-    ['gridHorizontalLines','gridVerticalLines'].forEach(id => { const el = document.getElementById(id); if(el) el.disabled = gridCustomMode; });
-    syncGridCustomControls();
-    syncGridCustomCursor(); syncGridCustomUndoBtn(); refreshGridSplitPreview();
-}
-function setGridCustomOrientation(orient){
-    gridCustomOrientation = orient;
-    document.getElementById('gridOrientH').classList.toggle('primary', orient === 'h');
-    document.getElementById('gridOrientH').classList.toggle('secondary', orient !== 'h');
-    document.getElementById('gridOrientV').classList.toggle('primary', orient === 'v');
-    document.getElementById('gridOrientV').classList.toggle('secondary', orient !== 'v');
-    syncGridCustomCursor();
-}
-function clearGridCustomLines(){ gridCustomHistory = []; gridCustomLines = []; gridCustomDrag = null; syncGridCustomUndoBtn(); refreshGridSplitPreview(); }
-function undoGridCustomLine(){
-    if(!gridCustomHistory.length) return;
-    const state = XiaomeiCanvasEditorCore.undoGridState({
-        customLines:gridCustomLines,
-        customHistory:gridCustomHistory,
-        customDrag:gridCustomDrag,
-    });
-    gridCustomLines = state.customLines;
-    gridCustomHistory = state.customHistory;
-    gridCustomDrag = state.customDrag;
-    syncGridCustomUndoBtn(); refreshGridSplitPreview();
-}
-function syncGridCustomUndoBtn(){
-    const btn = document.getElementById('gridUndoBtn');
-    if(!btn) return;
-    btn.disabled = gridCustomHistory.length === 0;
-    btn.style.opacity = gridCustomHistory.length === 0 ? '0.4' : '1';
-}
-function clampImageResizeScale(value){
-    const num = Number(value);
-    if(!Number.isFinite(num)) return 0.5;
-    return Math.max(0.05, Math.min(1, Math.round(num * 100) / 100));
-}
-function imageResizeDimensions(){
-    const img = document.getElementById('cropImage');
-    const sourceW = Math.max(1, Math.round(Number(img?.naturalWidth || 0)));
-    const sourceH = Math.max(1, Math.round(Number(img?.naturalHeight || 0)));
-    const scale = clampImageResizeScale(imageResizeScale);
-    return {
-        sourceW,
-        sourceH,
-        scale,
-        targetW:Math.max(1, Math.round(sourceW * scale)),
-        targetH:Math.max(1, Math.round(sourceH * scale))
-    };
-}
-function syncImageResizeControls(){
-    imageResizeScale = clampImageResizeScale(imageResizeScale);
-    const range = document.getElementById('imageResizeScaleRange');
-    const input = document.getElementById('imageResizeScaleInput');
-    const label = document.getElementById('imageResizeResolution');
-    const overlay = document.getElementById('resizeResolutionOverlay');
-    const dims = imageResizeDimensions();
-    const text = `${dims.targetW}×${dims.targetH}`;
-    if(range && Number(range.value) !== dims.scale) range.value = String(dims.scale);
-    if(input && Number(input.value) !== dims.scale) input.value = String(dims.scale);
-    if(label) label.textContent = text;
-    if(overlay) overlay.textContent = text;
-}
-function setImageResizeScale(value){
-    imageResizeScale = clampImageResizeScale(value);
-    syncImageResizeControls();
-}
-async function resizedImageBlobFromEditor(){
-    const img = document.getElementById('cropImage');
-    if(!img?.naturalWidth || !img?.naturalHeight) return null;
-    const dims = imageResizeDimensions();
-    const canvasEl = document.createElement('canvas');
-    canvasEl.width = dims.targetW;
-    canvasEl.height = dims.targetH;
-    const ctx = canvasEl.getContext('2d');
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, 0, 0, dims.targetW, dims.targetH);
-    const blob = await new Promise(resolve => canvasEl.toBlob(resolve, 'image/png'));
-    return blob ? {blob, ...dims} : null;
-}
-function applyImageEditZoom(scaleOverride=null){
-    ensureImageEditBaseSize();
-    if(!imageEditBaseW) return;
-    const img = document.getElementById('cropImage');
-    const oldW = cropImageDisplaySize().w;
-    img.style.maxWidth = 'none'; img.style.maxHeight = 'none';
-    const size = XiaomeiCanvasEditorCore.imageEditZoomSize(imageEditBaseW, imageEditBaseH, imageEditZoom);
-    // 只固定宽度，让浏览器按原图比例计算高度。此前同时写入 width/height，
-    // 在图片曾经处于隐藏态、切换模式或高倍缩放时可能把整张图拉成横条。
-    img.style.width = size.width + 'px';
-    img.style.height = 'auto';
-    resizeEditDrawCanvas();
-    if(cropState){
-        const scale = Number(scaleOverride) || (oldW > 0 ? cropImageDisplaySize().w / oldW : 1);
-        cropState.x = Math.round(cropState.x * scale); cropState.y = Math.round(cropState.y * scale);
-        cropState.w = Math.round(cropState.w * scale); cropState.h = Math.round(cropState.h * scale);
-        clampCrop(); renderCropBox();
-    }
-    if(imageEditMode === 'grid') refreshGridSplitPreview();
-    syncImageResizeControls();
-    syncImageEditOverflow(); updateZoomLabel();
-}
-function ensureImageEditBaseSize(force=false){
-    if(imageEditBaseW && imageEditBaseH && !force) return;
-    const img = document.getElementById('cropImage');
-    const naturalW = img.naturalWidth || img.clientWidth || 0;
-    const naturalH = img.naturalHeight || img.clientHeight || 0;
-    if(!naturalW || !naturalH) return;
-    const ocrStage = imageEditMode === 'ocr' ? document.getElementById('imageEditStage') : null;
-    const stageW = Number(ocrStage?.clientWidth || 0);
-    const stageH = Number(ocrStage?.clientHeight || 0);
-    const maxW = imageEditMode === 'ocr' && stageW > 0
-        ? Math.max(1, Math.min(760, stageW - 64))
-        : Math.max(1, Math.min(1300, window.innerWidth - 100));
-    const maxH = imageEditMode === 'ocr' && stageH > 0
-        ? Math.max(1, Math.min(760, stageH - 64))
-        : Math.max(1, Math.min(840, window.innerHeight - 200));
-    const fit = Math.min(maxW / naturalW, maxH / naturalH);
-    imageEditBaseW = Math.max(1, Math.round(naturalW * fit));
-    imageEditBaseH = Math.max(1, Math.round(naturalH * fit));
-}
-function syncImageEditOverflow(){
-    const stage = document.getElementById('imageEditStage');
-    const crop = document.getElementById('cropCanvas');
-    if(!stage || !crop) return;
-    const rect = crop.getBoundingClientRect(), pad = 36;
-    stage.classList.toggle('overflow-x', rect.width + pad > stage.clientWidth);
-    stage.classList.toggle('overflow-y', rect.height + pad > stage.clientHeight);
-}
+function syncImageEditOverflow(){ smartImageEditor.overflow(); }
 function resetImageEditZoom(){
-    if(imageEditMode === 'preview'){
-        if(panoramaState.enabled){
-            resetPanoramaView();
-            return;
-        }
-        resetPreviewTransform();
-        return;
-    }
-    const stage = document.getElementById('imageEditStage');
-    imageEditZoom = 1.0; applyImageEditZoom();
-    if(stage){ stage.scrollLeft = 0; stage.scrollTop = 0; }
+    if(imageEditMode === 'preview') smartPreview.resetView();
+    else smartImageEditor.resetZoom();
 }
 function updateZoomLabel(){
     const el = document.getElementById('imageEditZoomLabel');
     if(!el) return;
-    if(imageEditMode === 'preview' && panoramaState.enabled){
-        el.textContent = Math.round((75 / Math.max(1, panoramaState.fov)) * 100) + '%';
-        return;
-    }
-    el.textContent = Math.round((imageEditMode === 'preview' ? previewZoom : imageEditZoom) * 100) + '%';
+    const scale = imageEditMode === 'preview' ? smartPreview.zoom() : smartImageEditor.zoom();
+    el.textContent = Math.round(scale * 100) + '%';
 }
-function syncGridCustomCursor(){
-    const el = document.getElementById('cropCanvas');
-    el.classList.toggle('grid-custom-h', imageEditMode === 'grid' && gridOperationMode !== 'join' && gridCustomMode && gridCustomOrientation === 'h');
-    el.classList.toggle('grid-custom-v', imageEditMode === 'grid' && gridOperationMode !== 'join' && gridCustomMode && gridCustomOrientation === 'v');
-}
-function gridJoinCanvasSize(layout=gridJoinLayout){
-    if(!layout) return {w:1, h:1};
-    const gap = Math.max(0, Number(layout.gap || 0));
-    const byGrid = {
-        w:Math.max(1, Number(layout.cols || 1) * Number(layout.cellW || 1) + Math.max(0, Number(layout.cols || 1) - 1) * gap),
-        h:Math.max(1, Number(layout.rows || 1) * Number(layout.cellH || 1) + Math.max(0, Number(layout.rows || 1) - 1) * gap)
-    };
-    const byItems = (layout.items || []).reduce((acc, item) => ({
-        w:Math.max(acc.w, Number(item.x || 0) + Number(item.w || 0)),
-        h:Math.max(acc.h, Number(item.y || 0) + Number(item.h || 0))
-    }), byGrid);
-    return {w:Math.ceil(byItems.w), h:Math.ceil(byItems.h)};
-}
-function renderGridJoinPreview(){
-    const host = document.getElementById('gridJoinCanvas');
-    const countEl = document.getElementById('gridSplitCount');
-    const cropCanvasEl = document.getElementById('cropCanvas');
-    if(!host) return;
-    host.innerHTML = '';
-    if(imageEditMode !== 'grid' || gridOperationMode !== 'join'){
-        host.style.display = 'none';
-        if(cropCanvasEl){ cropCanvasEl.style.width = ''; cropCanvasEl.style.height = ''; }
-        return;
-    }
-    const items = currentGridJoinItems();
-    if(items.length <= 1){
-        host.style.display = 'none';
-        if(cropCanvasEl){ cropCanvasEl.style.width = ''; cropCanvasEl.style.height = ''; }
-        if(countEl) countEl.textContent = '分组需要至少 2 张图片';
-        return;
-    }
-    const layout = ensureGridJoinLayout();
-    const size = gridJoinCanvasSize(layout);
-    const zoom = Math.max(0.05, Number(imageEditZoom || 1));
-    const displayW = Math.max(1, Math.round(size.w * zoom));
-    const displayH = Math.max(1, Math.round(size.h * zoom));
-    host.style.display = 'block';
-    host.style.width = `${Math.max(1, Math.round(size.w))}px`;
-    host.style.height = `${Math.max(1, Math.round(size.h))}px`;
-    host.style.transform = `scale(${zoom})`;
-    host.style.transformOrigin = '0 0';
-    if(cropCanvasEl){
-        cropCanvasEl.style.width = `${displayW}px`;
-        cropCanvasEl.style.height = `${displayH}px`;
-    }
-    const byIndex = new Map(items.map(entry => [entry.index, entry]));
-    (layout.items || []).forEach(item => {
-        const entry = byIndex.get(item.index);
-        if(!entry) return;
-        const img = document.createElement('img');
-        img.className = 'grid-join-item';
-        img.draggable = false;
-        img.dataset.gridJoinIndex = String(item.index);
-        img.style.left = `${Math.round(item.x)}px`;
-        img.style.top = `${Math.round(item.y)}px`;
-        img.style.width = `${Math.round(item.w)}px`;
-        img.style.height = `${Math.round(item.h)}px`;
-        img.alt = entry.item.name || `image-${item.index + 1}`;
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-            const hadNaturalSize = Boolean(entry.source.natural_w && entry.source.natural_h);
-            gridJoinImageCache.set(item.index, img);
-            if(!entry.source.natural_w && img.naturalWidth) entry.source.natural_w = img.naturalWidth;
-            if(!entry.source.natural_h && img.naturalHeight) entry.source.natural_h = img.naturalHeight;
-            if(!hadNaturalSize && img.naturalWidth && img.naturalHeight && imageEditMode === 'grid' && gridOperationMode === 'join'){
-                ensureGridJoinLayout();
-                renderGridJoinPreview();
-            }
-        };
-        img.onerror = () => {
-            if(img.dataset.proxyFallbackTried === '1') return;
-            const fallback = proxiedMediaUrl(entry.item);
-            if(!fallback || fallback === img.getAttribute('src')) return;
-            img.dataset.proxyFallbackTried = '1';
-            img.src = fallback;
-        };
-        img.src = displayMediaUrl(entry.item);
-        host.appendChild(img);
-    });
-    if(countEl) countEl.textContent = `将拼接 ${items.length} 张图片 · 输出长边 ${Math.round(gridJoinOutputSize / 1024)}K`;
-}
-function refreshGridSplitPreview(){
-    const canvasEl = editDrawCanvas();
-    const ctx = canvasEl.getContext('2d');
-    ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-    renderGridJoinPreview();
-    if(imageEditMode !== 'grid') return;
-    if(gridOperationMode === 'join') return;
-    const countEl = document.getElementById('gridSplitCount');
-    const lineWidth = Math.max(2, Math.round(Math.min(canvasEl.width, canvasEl.height) / 320));
-    const drawLine = (x1, y1, x2, y2) => {
-        ctx.save(); ctx.lineWidth = lineWidth + 2; ctx.strokeStyle = 'rgba(2,6,23,0.72)'; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-        ctx.lineWidth = lineWidth; ctx.strokeStyle = 'rgba(255,255,255,0.92)'; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.restore();
-    };
-    if(gridCustomMode){
-        const gap = Math.max(0, Math.min(240, Number(document.getElementById('gridGapSize')?.value || 0)));
-        const hLines = gridCustomLines.filter(l => l.type === 'h'), vLines = gridCustomLines.filter(l => l.type === 'v');
-        if(countEl) countEl.textContent = tr('canvas.gridWillOutput').replace('{n}', (hLines.length + 1) * (vLines.length + 1));
-        hLines.forEach(l => { const y = l.pos * canvasEl.height; gap > 0 ? (drawLine(0, y - gap / 2, canvasEl.width, y - gap / 2), drawLine(0, y + gap / 2, canvasEl.width, y + gap / 2)) : drawLine(0, y, canvasEl.width, y); });
-        vLines.forEach(l => { const x = l.pos * canvasEl.width; gap > 0 ? (drawLine(x - gap / 2, 0, x - gap / 2, canvasEl.height), drawLine(x + gap / 2, 0, x + gap / 2, canvasEl.height)) : drawLine(x, 0, x, canvasEl.height); });
-        return;
-    }
-    const {rows, cols, gap} = gridSplitSettings();
-    if(countEl) countEl.textContent = tr('canvas.gridWillOutput').replace('{n}', rows * cols);
-    for(let i = 1; i < cols; i++){ const x = i * canvasEl.width / cols; gap > 0 ? (drawLine(x - gap / 2, 0, x - gap / 2, canvasEl.height), drawLine(x + gap / 2, 0, x + gap / 2, canvasEl.height)) : drawLine(x, 0, x, canvasEl.height); }
-    for(let i = 1; i < rows; i++){ const y = i * canvasEl.height / rows; gap > 0 ? (drawLine(0, y - gap / 2, canvasEl.width, y - gap / 2), drawLine(0, y + gap / 2, canvasEl.width, y + gap / 2)) : drawLine(0, y, canvasEl.width, y); }
-}
-function renderCropBox(){
-    if(!cropState) return;
-    const cropCanvasEl = document.getElementById('cropCanvas');
-    const img = document.getElementById('cropImage');
-    const draw = editDrawCanvas();
-    const textCanvas = editTextCanvas();
-    let boxX = cropState.x;
-    let boxY = cropState.y;
-    if(imageEditMode === 'outpaint' && cropCanvasEl && img){
-        cropCanvasEl.style.width = `${Math.round(cropState.w)}px`;
-        cropCanvasEl.style.height = `${Math.round(cropState.h)}px`;
-        img.style.position = 'absolute';
-        img.style.left = `${Math.round(cropState.x)}px`;
-        img.style.top = `${Math.round(cropState.y)}px`;
-        boxX = 0;
-        boxY = 0;
-        if(draw){
-            draw.style.left = img.style.left;
-            draw.style.top = img.style.top;
-        }
-        if(textCanvas){
-            textCanvas.style.left = img.style.left;
-            textCanvas.style.top = img.style.top;
-        }
-        updateOutpaintResolutionLabel();
-    } else if(cropCanvasEl && img){
-        cropCanvasEl.style.width = '';
-        cropCanvasEl.style.height = '';
-        img.style.position = '';
-        img.style.left = '';
-        img.style.top = '';
-        if(draw){
-            draw.style.left = '';
-            draw.style.top = '';
-        }
-        if(textCanvas){
-            textCanvas.style.left = '';
-            textCanvas.style.top = '';
-        }
-    }
-    const box = document.getElementById('cropBox');
-    if(box){
-        box.style.left = `${boxX}px`; box.style.top = `${boxY}px`; box.style.width = `${cropState.w}px`; box.style.height = `${cropState.h}px`;
-    }
-    const outpaintFrame = document.getElementById('outpaintFrame');
-    if(outpaintFrame){
-        outpaintFrame.style.left = imageEditMode === 'outpaint' ? '0px' : `${boxX}px`;
-        outpaintFrame.style.top = imageEditMode === 'outpaint' ? '0px' : `${boxY}px`;
-        outpaintFrame.style.width = `${cropState.w}px`;
-        outpaintFrame.style.height = `${cropState.h}px`;
-    }
-}
+function renderCropBox(){ smartImageEditor.paint(); }
 function outpaintRatioInfo(key=outpaintRatioPreset){
     return OUTPAINT_RATIO_PRESETS.find(item => item.key === key) || OUTPAINT_RATIO_PRESETS[0];
 }
@@ -25256,35 +19200,10 @@ function normalizeOutpaintCount(value=1){
     const count = Math.round(Number(value));
     return OUTPAINT_COUNT_OPTIONS.includes(count) ? count : 1;
 }
-function outpaintFrameForScale(scale=outpaintScalePreset, ratio=outpaintRatioInfo().ratio){
-    const source = cropImageDisplaySize();
-    const safeScale = Math.max(1, Number(scale) || 1.5);
-    const baseW = Math.max(source.w, source.w * safeScale);
-    const baseH = Math.max(source.h, source.h * safeScale);
-    if(!ratio || !Number.isFinite(ratio) || ratio <= 0){
-        return {w:Math.round(baseW), h:Math.round(baseH)};
-    }
-    let w = Math.max(baseW, baseH * ratio, source.w);
-    let h = w / ratio;
-    if(h < baseH || h < source.h){
-        h = Math.max(baseH, source.h);
-        w = h * ratio;
-    }
-    return {w:Math.round(w), h:Math.round(h)};
-}
 function fitOutpaintFrameToCurrentSettings(){
     if(!cropState) return;
-    const frame = outpaintFrameForScale(outpaintScalePreset, outpaintRatioInfo().ratio);
-    const source = cropImageDisplaySize();
-    cropState.w = Math.max(Math.round(source.w), frame.w);
-    cropState.h = Math.max(Math.round(source.h), frame.h);
-    cropState.x = Math.round((cropState.w - source.w) / 2);
-    cropState.y = Math.round((cropState.h - source.h) / 2);
-    outpaintActiveEdges.clear();
-    clampOutpaint();
-    renderCropBox();
+    smartImageEditor.fitOutpaint();
     syncOutpaintControls();
-    syncImageEditOverflow();
 }
 function renderOutpaintRatioMenu(){
     const menu = document.getElementById('outpaintRatioOptions');
@@ -25467,7 +19386,7 @@ function setOutpaintResolutionPreset(resolution='auto'){
     document.getElementById('outpaintResolutionMenu')?.classList.remove('open');
     document.getElementById('outpaintResolutionBtn')?.setAttribute('aria-expanded', 'false');
     syncOutpaintControls();
-    updateOutpaintResolutionLabel();
+    smartImageEditor.paint();
 }
 function setOutpaintCountPreset(count=1){
     outpaintCountPreset = normalizeOutpaintCount(count);
@@ -25508,190 +19427,65 @@ function runOutpaintHeadAction(action){
     if(!node || !image?.url) return;
     if(action === 'download') return downloadPreviewFile(image);
 }
-function outpaintNaturalSize(){
-    const img = document.getElementById('cropImage');
-    if(!img || !cropState) return {w:1, h:1};
-    const display = cropImageDisplaySize();
-    const scaleX = Math.max(1, Number(img.naturalWidth || 1)) / Math.max(1, Number(display.w || img.clientWidth || 1));
-    const scaleY = Math.max(1, Number(img.naturalHeight || 1)) / Math.max(1, Number(display.h || img.clientHeight || 1));
-    return {
-        w:Math.max(1, Math.round((cropState.w || 1) * scaleX)),
-        h:Math.max(1, Math.round((cropState.h || 1) * scaleY))
-    };
-}
-function updateOutpaintResolutionLabel(){
-    const label = document.getElementById('outpaintResolution');
-    const cropCanvasEl = document.getElementById('cropCanvas');
-    if(!label || !cropState) return;
-    const size = outpaintNaturalSize();
-    const warning = exceedsFourKStandard(size.w, size.h);
-    cropCanvasEl?.classList.toggle('outpaint-warning', warning);
-    label.textContent = `${Math.round(size.w)} x ${Math.round(size.h)}`;
-}
-function clampOutpaint(){
-    if(!cropState) return;
-    const {w, h} = cropBounds();
-    cropState.w = Math.max(w, cropState.w);
-    cropState.h = Math.max(h, cropState.h);
-    cropState.x = Math.min(cropState.w - w, Math.max(0, cropState.x));
-    cropState.y = Math.min(cropState.h - h, Math.max(0, cropState.y));
-}
 function resetOutpaintBox(){
     if(!cropState) return;
-    ensureImageEditBaseSize(true);
-    applyImageEditZoom();
+    smartImageEditor.refit(true);
+    smartImageEditor.applyZoom();
     fitOutpaintFrameToCurrentSettings();
-}
-function cropRatioFromPreset(preset){
-    return XiaomeiCanvasEditorCore.cropRatioFromPreset(preset, cropBounds);
-}
-function syncCropRatioButtons(){
-    document.querySelectorAll('[data-crop-ratio]').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.cropRatio === cropAspectPreset);
-    });
-}
-function fitCropRectToAspect(ratio, sourceRect=null){
-    const {w:boundsW, h:boundsH} = cropBounds();
-    const rect = sourceRect || cropState || {x:0, y:0, w:boundsW, h:boundsH};
-    const minSize = 24;
-    let nextW = Math.max(minSize, Number(rect.w || boundsW));
-    let nextH = Math.max(minSize, Number(rect.h || boundsH));
-    if(ratio){
-        if(nextW / nextH > ratio) nextW = nextH * ratio;
-        else nextH = nextW / ratio;
-        if(nextW > boundsW){ nextW = boundsW; nextH = nextW / ratio; }
-        if(nextH > boundsH){ nextH = boundsH; nextW = nextH * ratio; }
-    } else {
-        nextW = Math.min(nextW, boundsW);
-        nextH = Math.min(nextH, boundsH);
-    }
-    const cx = Number(rect.x || 0) + Number(rect.w || nextW) / 2;
-    const cy = Number(rect.y || 0) + Number(rect.h || nextH) / 2;
-    cropState.w = Math.round(nextW);
-    cropState.h = Math.round(nextH);
-    cropState.x = Math.round(cx - cropState.w / 2);
-    cropState.y = Math.round(cy - cropState.h / 2);
-    clampCrop();
-}
-function setCropAspectPreset(preset='free'){
-    cropAspectPreset = preset || 'free';
-    cropAspectRatio = cropRatioFromPreset(cropAspectPreset);
-    syncCropRatioButtons();
-    if(cropState && imageEditMode === 'crop' && cropAspectRatio){
-        fitCropRectToAspect(cropAspectRatio);
-        renderCropBox();
-    }
 }
 function resetCropBox(){
     if(!cropState) return;
-    if(imageEditMode === 'outpaint') return resetOutpaintBox();
-    const {w, h} = cropBounds();
-    const rect = {x:Math.round(w * 0.08), y:Math.round(h * 0.08), w:Math.round(w * 0.84), h:Math.round(h * 0.84)};
-    cropState.x = rect.x; cropState.y = rect.y; cropState.w = rect.w; cropState.h = rect.h;
-    if(cropAspectRatio) fitCropRectToAspect(cropAspectRatio, rect);
-    renderCropBox();
+    if(imageEditMode === 'outpaint') resetOutpaintBox();
+    else smartImageEditor.resetCrop();
 }
-function updatePreviewNavButtons(){
-    const node = nodes.find(n => n.id === previewNavState.nodeId);
-    const count = previewNavState.seq?.length ?? (node?.images || []).filter(img => img?.url).length;
-    previewNavState.count = count;
-    const show = imageEditModal.classList.contains('open') && imageEditMode === 'preview' && !previewCompareNodeId && count > 1;
-    document.getElementById('previewPrevBtn')?.classList.toggle('visible', show);
-    document.getElementById('previewNextBtn')?.classList.toggle('visible', show);
-}
+function updatePreviewNavButtons(){ smartPreview.updateNavigation(); }
 function navigatePreviewImage(delta){
     closePreviewImageContextMenu();
-    if(!imageEditModal.classList.contains('open') || imageEditMode !== 'preview') return;
-    const {seq, seqPos, groupId} = previewNavState;
-    if(seq){
-        if(seq.length > 1){
-            const pos = (seqPos + delta + seq.length) % seq.length;
-            openPreviewSequence(seq, pos, groupId);
-        }
-        return;
-    }
-    const node = nodes.find(n => n.id === previewNavState.nodeId);
-    const images = (node?.images || []).filter(img => img?.url);
-    if(!node || images.length <= 1) return;
-    const count = images.length;
-    const next = (Number(previewNavState.index || 0) + Number(delta || 0) + count) % count;
-    openImageEditor(node.id, next);
+    smartPreview.navigate(delta);
 }
 function smartComparePreviewTarget(ref){
     if(!ref?.url) return null;
-    const targetUrl = smartOriginalMediaUrl(ref);
-    const candidateIds = [...new Set([ref.nodeId, ref.compareSourceNodeId].filter(Boolean))];
-    for(const candidateId of candidateIds){
-        const source = nodes.find(node => node.id === candidateId);
-        if(!source || !Array.isArray(source.images)) continue;
-        const preferredIndex = Number(ref.imageIndex);
-        if(Number.isInteger(preferredIndex) && preferredIndex >= 0){
-            const preferred = source.images[preferredIndex];
-            if(preferred?.url && (smartOriginalMediaUrl(preferred) === targetUrl || String(preferred.url) === String(ref.url))){
-                return {nodeId:source.id, imageIndex:preferredIndex};
-            }
-        }
-        const imageIndex = source.images.findIndex(image => image?.url && (
-            smartOriginalMediaUrl(image) === targetUrl
-            || String(image.url) === String(ref.url)
-        ));
-        if(imageIndex >= 0) return {nodeId:source.id, imageIndex};
+    const url = smartOriginalMediaUrl(ref);
+    for(const id of new Set([ref.nodeId, ref.compareSourceNodeId].filter(Boolean))){
+        const images = nodes.find(node => node.id === id)?.images || [];
+        const matches = item => item?.url && (item.url === ref.url || smartOriginalMediaUrl(item) === url);
+        const preferred = Number(ref.imageIndex);
+        const index = matches(images[preferred]) ? preferred : images.findIndex(matches);
+        if(index >= 0) return {nodeId:id, index};
     }
     return null;
 }
 function openSmartComparePreview(nodeId){
-    const compareNode = nodes.find(node => node.id === nodeId && isSmartCompareNode(node));
-    const images = compareNode ? smartCompareInputImages(compareNode).slice(0, 2) : [];
-    if(images.length < 2){
+    const node = nodes.find(item => item.id === nodeId && isSmartCompareNode(item));
+    const refs = node ? smartCompareInputImages(node) : [];
+    if(refs.length < 2){
         toast(smartCompareText('smart.compareNodePreviewNeedImages', '连接两张图片后才能放大查看'));
         return;
     }
-    const target = smartComparePreviewTarget(images[1]);
-    if(!target){
+    const target = smartComparePreviewTarget(refs[1]);
+    if(!target || !smartPreview.compareNode(nodeId, target)){
         toast(smartCompareText('smart.compareNodePreviewUnavailable', '当前图片无法打开大图对比'));
         return;
     }
-    openImagePreview(target.nodeId, target.imageIndex);
-    if(!imageEditModal.classList.contains('open')) return;
-    previewCompareNodeId = compareNode.id;
-    previewCompareOn = true;
-    previewCompareIndex = 0;
-    selectedId = compareNode.id;
+    selectedId = nodeId;
     selectedIds = [];
     selectedImage = {nodeId:'', index:-1};
-    setImageEditMode('preview');
-    refreshComparePanel();
 }
-function openImagePreview(nodeId, imageIndex=0){
-    openImageEditor(nodeId, imageIndex);
-    setImageEditMode('preview');
-}
-// 双击组内图片时按整组预览；非分组成员退回单节点预览。
+function openImagePreview(nodeId, imageIndex=0){ openImageEditor(nodeId, imageIndex); }
 function openImagePreviewSmart(nodeId, imageIndex=0){
-    const group = smartGroupContainingNode(nodeId);
-    if(group){
-        openGroupImagePreview(group, nodeId, imageIndex);
+    openGroupImagePreview(smartGroupContainingNode(nodeId), nodeId, imageIndex);
+}
+function openGroupImagePreview(group, startNodeId, startIndex=0){
+    const refs = isSmartGroupNode(group) ? smartGroupImageRefs(group) : [];
+    if(refs.length <= 1){
+        openImagePreview(startNodeId, startIndex);
         return;
     }
-    openImagePreview(nodeId, imageIndex);
+    const sequence = refs.map(({nodeId, index}) => ({nodeId, index}));
+    const start = sequence.findIndex(entry => entry.nodeId === startNodeId && entry.index === Number(startIndex));
+    smartPreview.openSequence(sequence, Math.max(0, start), group.id);
 }
-// 打开整组图片预览：以被双击图片为起点，左右切换遍历分组内所有图片。
-function openGroupImagePreview(group, startNodeId, startIndex=0){
-    if(!isSmartGroupNode(group)){ openImagePreview(startNodeId, startIndex); return; }
-    const refs = smartGroupImageRefs(group);
-    if(refs.length <= 1){ openImagePreview(startNodeId, startIndex); return; }
-    const seq = refs.map(r => ({nodeId:r.nodeId, index:r.index}));
-    const pos = seq.findIndex(s => s.nodeId === startNodeId && Number(s.index) === Number(startIndex));
-    openPreviewSequence(seq, Math.max(0, pos), group.id);
-}
-function openPreviewSequence(seq, pos, groupId=''){
-    const {nodeId, index} = seq[pos];
-    openImageEditor(nodeId, index);
-    if(!imageEditModal.classList.contains('open') || previewNavState.nodeId !== nodeId || previewNavState.index !== index) return;
-    Object.assign(previewNavState, {groupId, seq, seqPos:pos});
-    // 恢复分组上下文后重算导航/下载全部按钮（openImageEditor 已把 previewNavState 重置成单节点态）。
-    setImageEditMode('preview');
-}
+function openPreviewSequence(sequence, position, groupId=''){ smartPreview.openSequence(sequence, position, groupId); }
 function openImageEditor(nodeId, imageIndex=0){
     closePreviewImageContextMenu();
     const node = nodes.find(n => n.id === nodeId);
@@ -25710,110 +19504,52 @@ function openImageEditor(nodeId, imageIndex=0){
     outpaintGenerationBusy = false;
     const outpaintRunButton = document.getElementById('outpaintRunBtn');
     if(outpaintRunButton){ outpaintRunButton.disabled = false; outpaintRunButton.classList.remove('busy'); }
-    resetCurrentPreviewImage();
+    smartImageEditor.stop();
+    smartOcr.reset();
+    smartPreview.begin(nodeId, imageIndex);
     selectedId = nodeId;
     selectedImage = {nodeId, index:imageIndex};
-    previewNavState = {nodeId, index:imageIndex, count:(node.images || []).filter(img => img?.url).length};
     cropState = {nodeId, imageIndex, x:0, y:0, w:0, h:0};
-    gridCustomMode = false; gridCustomLines = []; gridCustomHistory = []; gridCustomDrag = null; gridCustomOrientation = 'h';
-    gridOperationMode = 'split'; gridJoinLayout = null; gridJoinDrag = null; gridJoinImageCache = new Map(); gridJoinUserMoved = false; gridJoinGroupId = '';
-    imageEditZoom = 1.0; imageEditBaseW = 0; imageEditBaseH = 0; imageResizeScale = 0.5; imageEditModeTouched = false;
-    cropAspectPreset = 'free'; cropAspectRatio = null; syncCropRatioButtons();
-    outpaintRatioPreset = 'auto'; outpaintScalePreset = 1.5; outpaintResolutionPreset = '4k'; outpaintCountPreset = normalizeOutpaintCount(node?.runSettings?.count ?? settings?.count); outpaintGenerationBusy = false; outpaintActiveEdges.clear();
+    gridJoinGroupId = '';
+    smartGrid.reset();
+    imageEditModeTouched = false;
+    outpaintRatioPreset = 'auto'; outpaintScalePreset = 1.5; outpaintResolutionPreset = '4k'; outpaintCountPreset = normalizeOutpaintCount(node?.runSettings?.count ?? settings?.count); outpaintGenerationBusy = false;
     outpaintModelSelection = outpaintModelSelectionForNode(node);
     const outpaintQuality = document.getElementById('outpaintQuality');
     if(outpaintQuality) outpaintQuality.value = node?.runSettings?.quality || settings?.quality || 'auto';
-    editTextItems = []; editTextSelectedId = ''; editTextDrag = null; editTextDirty = false;
-    const toggle = document.getElementById('gridCustomToggle');
-    if(toggle){ toggle.classList.add('secondary'); toggle.classList.remove('primary'); }
-    syncGridCustomControls();
-    syncGridOperationControls();
-    ['gridHorizontalLines','gridVerticalLines'].forEach(id => { const el = document.getElementById(id); if(el) el.disabled = false; });
-    const orientH = document.getElementById('gridOrientH'), orientV = document.getElementById('gridOrientV');
-    if(orientH){ orientH.classList.add('primary'); orientH.classList.remove('secondary'); }
-    if(orientV){ orientV.classList.add('secondary'); orientV.classList.remove('primary'); }
-    syncGridCustomUndoBtn(); updateZoomLabel();
-    const img = document.getElementById('cropImage');
-    img.style.width = ''; img.style.height = ''; img.style.maxWidth = ''; img.style.maxHeight = '';
+    smartInk.reset();
+    updateZoomLabel();
     imageEditModal.classList.add('open');
-    previewCompareOn = false;
-    previewCompareIndex = -1;
-    disposePanoramaPreview();
-    resetPreviewTransform();
-    if(kind === 'video'){
-        img.onload = null;
-        img.onerror = null;
-        img.removeAttribute('src');
-        delete img.dataset.proxyFallbackTried;
-        setImageEditMode('preview');
-        updatePreviewNavButtons();
-        refreshIcons();
-        return;
-    }
-    // 原图加载失败时的兜底链：依次尝试 download-output 代理、缩略图同款的 media-preview 代理（PIL 渲染，
-    // 对截断/半下载的文件比浏览器宽容，所以缩略图能显示而原图破损时它仍能出图）。兜底时去掉 crossOrigin——
-    // 预览不需要导出画布，带 crossOrigin 反而会因跨域/CORS 直接加载失败。
-    const primaryEditorSrc = displayMediaUrl(image);
-    const editorFallbackUrls = [proxiedMediaUrl(image), smartMediaPreviewUrl(image, 2048)]
-        .filter(Boolean)
-        .filter((u, i, arr) => u !== primaryEditorSrc && arr.indexOf(u) === i);
-    let editorFallbackIndex = 0;
-    const editorSrcToken = uid('editor');
-    img.dataset.editorSrcToken = editorSrcToken;
-    img.dataset.editorQuick = '';
-    img.onload = () => {
-        if(img.dataset.editorSrcToken !== editorSrcToken || !imageEditModal.classList.contains('open')) return;
-        const targetImage = node.images?.[imageIndex];
-        // 兜底用的是代理/缩放图，naturalWidth 不是原图真实尺寸，别污染节点的 natural_w/h。
-        const loadedPrimary = img.dataset.editorQuick !== '1' && img.getAttribute('src') === primaryEditorSrc;
-        if(loadedPrimary && editorFallbackIndex === 0 && targetImage && img.naturalWidth && img.naturalHeight && (!targetImage.natural_w || !targetImage.natural_h)){
-            targetImage.natural_w = img.naturalWidth;
-            targetImage.natural_h = img.naturalHeight;
-            scheduleSave();
-        }
-        // 预览模式会先隐藏 cropCanvas，此时 clientWidth/clientHeight 可能是 0。
-        // 用原图尺寸重新计算基础显示尺寸，避免把隐藏态的错误高度带入裁剪器。
-        ensureImageEditBaseSize(true);
-        updateZoomLabel(); syncImageResizeControls(); resizeEditDrawCanvas(); resetEditDrawingHistory(); clearEditDrawing(true); resetCropBox();
-        if(!imageEditModeTouched) setImageEditMode('preview');
-        else if(imageEditMode === 'ocr'){
-            applyImageEditZoom();
-        } else refreshComparePanel();
-        if(!panoramaState.enabled) updatePreviewMetaHint();
-        syncImageEditOverflow(); refreshIcons();
-    };
-    img.onerror = () => {
-        if(img.dataset.editorSrcToken !== editorSrcToken || !imageEditModal.classList.contains('open')) return;
-        if(editorFallbackIndex >= editorFallbackUrls.length) return;
-        img.src = editorFallbackUrls[editorFallbackIndex++];
-    };
-    // 不设 crossOrigin：displayMediaUrl 已把所有地址收敛为同源（http 走本地代理），同源图片不会污染画布，
-    // 裁剪/涂抹等导出操作照常可用。而带 crossOrigin 会让浏览器对“缩略图已无 CORS 缓存的同源图”重新发起
-    // CORS 请求并失败——表现就是预览先闪一下（命中缓存）随即变成破损图。
-    img.removeAttribute('crossorigin');
-    img.removeAttribute('src');
     setImageEditMode('preview');
-    updatePreviewNavButtons();
+    if(kind === 'image') smartImageEditor.loadSource(image);
+}
+function onSmartEditSourceReady(original, width, height){
+    const {node, index} = currentEditImage();
+    const item = node?.images?.[index];
+    if(original && item && (!item.natural_w || !item.natural_h)){
+        Object.assign(item, {natural_w:width, natural_h:height});
+        scheduleSave();
+    }
+    if(imageEditMode !== 'preview') smartImageEditor.applyZoom();
+    else {
+        smartImageEditor.resizeControls();
+        resizeEditDrawCanvas();
+    }
+    smartInk.reset();
+    resetCropBox();
+    if(imageEditMode === 'grid') refreshGridSplitPreview();
+    if(!imageEditModeTouched && imageEditMode !== 'preview') setImageEditMode('preview');
+    if(imageEditMode === 'preview' && !smartPanorama.enabled()) updatePreviewMetaHint();
+    syncImageEditOverflow();
+    updateZoomLabel();
     refreshIcons();
-    // 先让可见预览请求发出，隐藏的编辑原图稍后再加载，避免打开大图时
-    // 原图解码/读取与首屏缩略图争抢同一轮资源。
-    window.setTimeout(() => {
-        if(img.dataset.editorSrcToken !== editorSrcToken || !imageEditModal.classList.contains('open')) return;
-        if(!img.getAttribute('src')) img.src = primaryEditorSrc;
-    }, 0);
 }
 function closeImageEditor(){
-    resetCurrentPreviewImage();
-    resetImageOcrState();
+    smartImageEditor.stop();
+    smartPreview.stop();
+    smartOcr.reset();
     closePreviewImageContextMenu();
     cleanupSmartLogPreviewNode();
-    const ocrPanel = imageEditModal.querySelector('.image-edit-panel');
-    if(ocrPanel){
-        ocrPanel.style.removeProperty('left');
-        ocrPanel.style.removeProperty('top');
-        ocrPanel.style.removeProperty('width');
-        ocrPanel.style.removeProperty('height');
-    }
     imageEditModal.classList.remove('open');
     imageEditModal.classList.remove('outpaint-redesign');
     imageEditModal.classList.remove('ocr-redesign');
@@ -25831,157 +19567,26 @@ function closeImageEditor(){
     const outpaintBar = document.getElementById('outpaintActionBar');
     if(outpaintBar) outpaintBar.style.display = 'none';
     document.querySelector('.image-edit-panel')?.classList.remove('video-preview-mode');
-    const img = document.getElementById('cropImage');
-    const previewVideo = document.getElementById('previewCurrentVideo');
-    img.onload = null; img.onerror = null; img.removeAttribute('src'); delete img.dataset.proxyFallbackTried; delete img.dataset.editorSrcToken; delete img.dataset.editorQuick; img.style.width = ''; img.style.height = ''; img.style.maxWidth = ''; img.style.maxHeight = '';
-    img.style.position = ''; img.style.left = ''; img.style.top = '';
-    if(previewVideo){
-        previewVideo.pause?.();
-        previewVideo.onloadedmetadata = null;
-        previewVideo.onloadeddata = null;
-        previewVideo.removeAttribute('src');
-        previewVideo.load?.();
-        previewVideo.style.display = 'none';
-    }
-    clearEditDrawing(true);
-    cropState = null; cropDrag = null; outpaintActiveEdges.clear(); editDrawState = null; resetEditDrawingHistory(); gridCustomDrag = null; gridJoinDrag = null; gridJoinLayout = null; gridJoinImageCache = new Map(); gridJoinUserMoved = false; gridOperationMode = 'split'; gridJoinGroupId = '';
-    previewCompareNodeId = '';
-    previewCompareOn = false;
-    previewCompareIndex = -1;
-    previewNavState = {nodeId:'', index:0, count:0};
-    imageEditZoom = 1.0; imageEditBaseW = 0; imageEditBaseH = 0; imageResizeScale = 0.5; imageEditModeTouched = false;
-    cropAspectPreset = 'free'; cropAspectRatio = null; syncCropRatioButtons();
-    disposePanoramaPreview();
-    previewPanDrag = null; previewCompareDrag = false; imageEditPanDrag = null; resetPreviewTransform();
+    smartInk.reset(true);
+    cropState = null;
+    gridJoinGroupId = '';
+    smartGrid.reset();
+    imageEditModeTouched = false;
     document.getElementById('imageEditStage')?.classList.remove('overflow-x', 'overflow-y', 'preview-mode');
     const cropCanvasEl = document.getElementById('cropCanvas');
     cropCanvasEl?.classList.remove('grid-custom-h', 'grid-custom-v', 'outpaint-mode', 'outpaint-warning', 'dragging-image', 'text-mode', 'resize-mode');
-    cropCanvasEl?.classList.remove('grid-join-mode');
-    document.getElementById('ocrRegionLayer')?.replaceChildren();
-    document.getElementById('cropImage')?.classList.remove('grid-join-hidden');
-    const joinCanvas = document.getElementById('gridJoinCanvas');
-    if(joinCanvas){ joinCanvas.innerHTML = ''; joinCanvas.style.display = 'none'; joinCanvas.style.width = ''; joinCanvas.style.height = ''; }
-    if(cropCanvasEl){ cropCanvasEl.style.width = ''; cropCanvasEl.style.height = ''; }
     const textCanvas = editTextCanvas();
     if(textCanvas){ textCanvas.style.left = ''; textCanvas.style.top = ''; }
     updatePreviewNavButtons();
-}
-function clampCrop(){
-    if(!cropState) return;
-    if(imageEditMode === 'outpaint') return clampOutpaint();
-    const {w, h} = cropBounds();
-    cropState.w = Math.max(24, Math.min(cropState.w, w)); cropState.h = Math.max(24, Math.min(cropState.h, h));
-    cropState.x = Math.max(0, Math.min(cropState.x, w - cropState.w)); cropState.y = Math.max(0, Math.min(cropState.y, h - cropState.h));
-}
-function beginCropDrag(event, mode){
-    if(!cropState) return;
-    event.preventDefault(); event.stopPropagation();
-    if(imageEditMode === 'outpaint' && mode === 'move') return;
-    cropDrag = {
-        mode,
-        sx:event.clientX,
-        sy:event.clientY,
-        symmetric:!!event.altKey,
-        start:{...cropState},
-    };
-}
-function resizeOutpaintFromDrag(dx, dy){
-    const start = cropDrag?.start;
-    if(!start) return;
-    const next = XiaomeiOutpaintGeometry.resize(start, cropImageDisplaySize(),
-        String(cropDrag.mode).replace(/^outpaint-/, ''), dx, dy, cropDrag.symmetric,
-        outpaintRatioInfo().ratio);
-    Object.assign(cropState, next);
-    outpaintActiveEdges.add(String(cropDrag.mode));
-    clampOutpaint();
-}
-
-function clampAspectCropToBounds(anchorX, anchorY, movingX, movingY, ratio, handle){
-    const {w:boundsW, h:boundsH} = cropBounds();
-    const minSize = 24;
-    let width = Math.max(minSize, Math.abs(movingX - anchorX));
-    let height = Math.max(minSize, Math.abs(movingY - anchorY));
-    if(width / height > ratio) width = height * ratio;
-    else height = width / ratio;
-    const dirX = handle.includes('w') ? -1 : 1;
-    const dirY = handle.includes('n') ? -1 : 1;
-    width = Math.min(width, dirX < 0 ? anchorX : boundsW - anchorX);
-    height = Math.min(height, dirY < 0 ? anchorY : boundsH - anchorY);
-    if(width / height > ratio) width = height * ratio;
-    else height = width / ratio;
-    return {
-        x:dirX < 0 ? anchorX - width : anchorX,
-        y:dirY < 0 ? anchorY - height : anchorY,
-        w:width,
-        h:height
-    };
-}
-function resizeCropFromDrag(dx, dy){
-    const start = cropDrag?.start;
-    if(!start) return;
-    const handle = String(cropDrag.mode || 'resize').replace(/^crop-/, '') || 'se';
-    if(!cropAspectRatio){
-        let left = start.x;
-        let top = start.y;
-        let right = start.x + start.w;
-        let bottom = start.y + start.h;
-        if(handle.includes('w')) left += dx;
-        if(handle.includes('e') || handle === 'resize') right += dx;
-        if(handle.includes('n')) top += dy;
-        if(handle.includes('s') || handle === 'resize') bottom += dy;
-        cropState.x = Math.min(left, right - 24);
-        cropState.y = Math.min(top, bottom - 24);
-        cropState.w = Math.max(24, right - cropState.x);
-        cropState.h = Math.max(24, bottom - cropState.y);
-        return;
-    }
-    const normalized = handle === 'resize' ? 'se' : handle;
-    const centerX = start.x + start.w / 2;
-    const centerY = start.y + start.h / 2;
-    if(normalized === 'e' || normalized === 'w'){
-        const {w:boundsW, h:boundsH} = cropBounds();
-        let width = Math.max(24, normalized === 'e' ? start.w + dx : start.w - dx);
-        const maxW = normalized === 'e' ? boundsW - start.x : start.x + start.w;
-        const maxH = Math.max(24, 2 * Math.min(centerY, boundsH - centerY));
-        width = Math.min(width, maxW, maxH * cropAspectRatio);
-        const height = width / cropAspectRatio;
-        cropState.x = Math.round(normalized === 'e' ? start.x : start.x + start.w - width);
-        cropState.y = Math.round(centerY - height / 2);
-        cropState.w = Math.round(width);
-        cropState.h = Math.round(height);
-        return;
-    }
-    if(normalized === 'n' || normalized === 's'){
-        const {w:boundsW, h:boundsH} = cropBounds();
-        let height = Math.max(24, normalized === 's' ? start.h + dy : start.h - dy);
-        const maxH = normalized === 's' ? boundsH - start.y : start.y + start.h;
-        const maxW = Math.max(24, 2 * Math.min(centerX, boundsW - centerX));
-        height = Math.min(height, maxH, maxW / cropAspectRatio);
-        const width = height * cropAspectRatio;
-        cropState.x = Math.round(centerX - width / 2);
-        cropState.y = Math.round(normalized === 's' ? start.y : start.y + start.h - height);
-        cropState.w = Math.round(width);
-        cropState.h = Math.round(height);
-        return;
-    }
-    const anchorX = normalized.includes('w') ? start.x + start.w : start.x;
-    const anchorY = normalized.includes('n') ? start.y + start.h : start.y;
-    const movingX = normalized.includes('w') ? start.x + dx : start.x + start.w + dx;
-    const movingY = normalized.includes('n') ? start.y + dy : start.y + start.h + dy;
-    const next = clampAspectCropToBounds(anchorX, anchorY, movingX, movingY, cropAspectRatio, normalized);
-    cropState.x = Math.round(next.x);
-    cropState.y = Math.round(next.y);
-    cropState.w = Math.round(next.w);
-    cropState.h = Math.round(next.h);
 }
 async function uploadCroppedBlob(blob, name){
     const form = new FormData();
     form.append('files', blob, name);
     const response = await fetch('/api/ai/upload', {method:'POST', body:form});
-    let data = {};
-    try { data = await response.json(); } catch(e) {}
-    if(!response.ok) throw new Error(data.error || data.detail || `图片上传失败（${response.status}）`);
-    const file = data.files?.[0];
+    if(!response.ok){
+        throw new Error(await smartResponseErrorMessage(response, '图片上传失败（' + response.status + '）'));
+    }
+    const file = (await response.json().catch(() => null))?.files?.[0];
     if(!file?.url) throw new Error('图片上传失败：服务器没有返回图片地址');
     return file;
 }
@@ -26078,725 +19683,343 @@ function applyOutpaintSizeToSmartParams(width, height, subject=currentEditImage(
         renderDynamicParams();
     }
 }
-async function applyImageCrop(){
-    if(!cropState) return;
-    const {node, image, index} = currentEditImage();
-    const img = document.getElementById('cropImage');
-    // 三种失联原因给不同的提示：节点被删、图片被生成结果替换、原图还在解码，只有第三种才值得“稍后重试”。
-    if(!node){ toast('裁剪失败：原图节点已不在画布上，请关闭编辑器后重试'); return; }
-    if(!image){ toast('裁剪失败：原图已被更新，请关闭编辑器后重新打开'); return; }
-    if(!img.naturalWidth || !img.naturalHeight){ toast('裁剪失败：当前图片尚未加载，请稍后重试'); return; }
-    const scaleX = img.naturalWidth / (img.clientWidth || 1), scaleY = img.naturalHeight / (img.clientHeight || 1);
-    const sx = Math.max(0, Math.round(cropState.x * scaleX)), sy = Math.max(0, Math.round(cropState.y * scaleY));
-    const sw = Math.max(1, Math.round(cropState.w * scaleX)), sh = Math.max(1, Math.round(cropState.h * scaleY));
-    try {
-        const canvasEl = document.createElement('canvas');
-        canvasEl.width = sw; canvasEl.height = sh;
-        canvasEl.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-        const blob = await new Promise(resolve => canvasEl.toBlob(resolve, 'image/png'));
-        if(!blob) throw new Error('图片无法导出');
-        const base = (image.name || 'image').replace(/\.[^.]+$/, '');
-        const file = await uploadCroppedBlob(blob, `${base}_crop.png`);
-        if(!cropState || currentEditImage().node !== node || currentEditImage().index !== index || currentEditImage().image?.url !== image.url){
-            throw new Error('原图已改变，请重新打开裁剪');
-        }
-        pushUndo();
-        if(cropState.localRepair){
-            const region={version:1,id:uid('repair'),sourceNodeId:node.id,sourceImageIndex:index,
-                sourceUrl:smartOriginalMediaUrl(image),sourceWidth:img.naturalWidth,sourceHeight:img.naturalHeight,
-                x:sx,y:sy,width:sw,height:sh,cropUrl:file.url,createdAt:Date.now()};
-            const rect=nodeRect(node);
-            const cropped=createNode(rect.x+rect.width+64,rect.y,[{...file,kind:'image',name:base+'_局部.png',
-                natural_w:sw,natural_h:sh,width:sw,height:sh,localRepair:region}],{skipUndo:true,skipRender:true,skipSave:true});
-            if(cropped){cropped.title='局部修复 · 裁剪';addConnection(node.id,cropped.id,'flow');}
-            closeImageEditor();render();scheduleSave();toast('已保留原图并裁出局部，可连接绘画节点修改');return;
-        }
-        // 上传接口只返回文件地址；把本次裁剪画布的实际像素尺寸写回图片元数据。
-        if(replaceEditedImage(file, {kind:'image', natural_w:sw, natural_h:sh, width:sw, height:sh})){
-            closeImageEditor(); render(); scheduleSave();
-        }
-    } catch(error){
-        toast(`裁剪保存失败：${error?.message || '请重试'}`);
-    }
+function smartEditOutputName(edit, mode){
+    if(mode === 'crop') return (edit.image.name || 'image').replace(/\.[^.]+$/, '') + '_crop.png';
+    const name = downloadNameForMediaItem(edit.image, 'image');
+    const base = safeExportFileName(name.replace(/\.[^.]+$/, ''), 'image');
+    return base + '_resize_' + Math.round(edit.resizeBy * 100) + 'pct.png';
 }
-async function applyImageOutpaint(options={}){
-    if(!cropState){ toast('扩图区域尚未准备好，请稍后再试'); return false; }
-    const {node, image} = currentEditImage();
-    const img = document.getElementById('cropImage');
-    if(!node || !image || !img.naturalWidth || !img.naturalHeight){
-        toast('当前图片尚未加载完成，请稍后再试');
-        return false;
-    }
-    const selectedModel = outpaintModelEntry(outpaintModelSelection.provider_id, outpaintModelSelection.model);
-    if(options.autoRun && !selectedModel){
-        syncOutpaintModelControls();
-        const modelMenu = document.getElementById('outpaintModelMenu');
-        modelMenu?.classList.add('open');
-        document.getElementById('outpaintModelBtn')?.setAttribute('aria-expanded', 'true');
-        toast('请先选择扩图模型');
-        return false;
-    }
-    clampOutpaint();
-    const geometry = XiaomeiOutpaintGeometry.output(cropState, cropImageDisplaySize(),
-        {w:img.naturalWidth,h:img.naturalHeight}, String(outpaintResolutionPreset).toLowerCase());
-    const {w:outW,h:outH,x:dx,y:dy,sourceW:imageW,sourceH:imageH} = geometry;
-    const canvasEl = document.createElement('canvas');
-    canvasEl.width = outW; canvasEl.height = outH;
-    const ctx = canvasEl.getContext('2d');
-    if(!ctx){ toast('无法创建扩图画布'); return false; }
-    // 先固定本次提交的原图像素，避免上传时打开另一张图改变编辑器中的 img。
-    ctx.clearRect(0, 0, outW, outH);
-    ctx.drawImage(img, dx, dy, imageW, imageH);
-    const base = (image.name || 'image').replace(/\.[^.]+$/, '');
-    const customOutpaintPrompt = String(document.getElementById('outpaintPrompt')?.value || '').trim();
-    const outpaintBoundaryConstraint = `这是一张已排好位置的扩图底图，完整画布为 ${outW}×${outH}。原图区域位于左上角 (${dx}, ${dy})，大小 ${imageW}×${imageH}；坐标均以完整画布为准。请生成一张自然连续的完整扩图，补全原图外的透明区域。尽量保持原图主体的位置、大小以及人物、商品、文字和相框的特征；为了让新画面自然衔接，可以调整原图区域的光线和纹理。不要把原图缩小后重新放进画面，不要生成画中画、矩形接缝或重复的主体。保持完整画布的宽高比与整体构图，扩展区域沿原图边缘连续延伸背景和透视，不要添加边框或留白。`;
-    const promptText = customOutpaintPrompt ? `${customOutpaintPrompt}\n\n${outpaintBoundaryConstraint}` : outpaintBoundaryConstraint;
-    const originalNode = node;
-    const rect = nodeRect(originalNode);
-    const outputNode = createNode(rect.x + rect.width + 160, rect.y, [], {select:true, skipSave:true, skipRender:true});
-    if(!outputNode) return false;
-    outputNode.title = '扩图';
-    outputNode.runSettings = cloneSmartSettings(originalNode.runSettings || settings);
-    outputNode.w = rect.width;
-    outputNode.h = rect.height;
-    outputNode.queued = true;
-    addConnection(originalNode.id, outputNode.id, 'flow');
-    outputNode.outpaintPreserve = {
-        sourceUrl:smartOriginalMediaUrl(image),
-        x:dx,
-        y:dy,
-        sourceW:imageW,
-        sourceH:imageH,
-        canvasW:outW,
-        canvasH:outH,
-        createdAt:Date.now(),
-    };
-    const nextRunSettings = selectedModel ? outpaintSettingsForSelection(outputNode) : null;
-    if(nextRunSettings) outputNode.runSettings = settingsForStorage(nextRunSettings);
-    applyOutpaintSizeToSmartParams(outW, outH, outputNode);
-    // 扩图工具栏独立于底部生成参数栏，提交前同步当前节点的模型设置。
-    settings = smartSettingsForNode(outputNode);
-    selectedId = outputNode.id;
-    selectedIds = [];
-    setPromptDraftForNode(outputNode, promptText);
-    // 同步底部输入框，确保画布关闭编辑器后显示本次扩图描述。
-    if(promptInput){
-        promptInput.textContent = promptText;
-        promptInput.dataset.preserveDraftOnce = '1';
-    }
-    closeImageEditor();
-    render();
-    smartPendingPasteUploads += 1;
-    try {
-        // 先让关闭后的画布完成一帧绘制，再编码和上传大图。
-        await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
-        if(!nodes.includes(outputNode)) return false;
-        const blob = await new Promise(resolve => canvasEl.toBlob(resolve, 'image/png'));
-        const file = blob ? await uploadCroppedBlob(blob, `${base}_outpaint.png`) : null;
-        if(!file?.url) throw new Error('扩图底图生成失败');
-        if(!nodes.includes(outputNode)) return false;
-        outputNode.images = [{...file, originalLocalUrl:file.url, localUrl:file.url, sourceUrl:file.url,
-            local_url:file.url, source_url:file.url, kind:'image', natural_w:outW, natural_h:outH}];
-        delete outputNode.w;
-        delete outputNode.h;
-        outputNode.queued = false;
-        render({nodeIds:[outputNode.id]});
-    } catch(error) {
-        if(nodes.includes(outputNode)){
-            markSmartNodeFailed(outputNode, error?.message || '扩图底图生成失败');
-            render({nodeIds:[outputNode.id]});
-        }
-        throw error;
-    } finally {
-        smartPendingPasteUploads = Math.max(0, smartPendingPasteUploads - 1);
-        scheduleSave();
-    }
-    if(options.autoRun && nodes.includes(outputNode)){
-        const runSettings = smartSettingsForNode(outputNode);
-        const file = outputNode.images[0];
-        const refs = [{url:file.url, name:file.name || `${base}_outpaint.png`,
-            nodeId:outputNode.id, imageIndex:0, kind:'image'}];
-        await runSmartNodeWithDependencies(outputNode, current =>
-            runGenerationDirect('default', refs, promptText, current, runSettings));
-    }
-    return true;
-}
-async function applyImageMask(){
-    if(!cropState || !editCanvasHasPixels()) return;
-    const {node, image, index} = currentEditImage();
-    if(!node || !image) return;
-    const mask = maskCanvasFromDrawCanvas(editDrawCanvas());
-    const blob = await new Promise(resolve => mask.toBlob(resolve, 'image/png'));
-    const base = (image.name || 'image').replace(/\.[^.]+$/, '');
-    const file = blob ? await uploadCroppedBlob(blob, `${base}_mask.png`) : null;
-    if(file){
-        const width = document.getElementById('cropImage')?.naturalWidth || 0, height = document.getElementById('cropImage')?.naturalHeight || 0;
-        const outputNode = createPaintNodeAt({x:(node.x||0)+imageLayout(node.images||[],nodeScale(node),node).width+260,y:(node.y||0)+80},{select:true,skipUndo:true,title:'抹除结果'});
-        if(!outputNode || !connectInputNode(node.id,outputNode.id)) { toast('当前图片无法创建抹除结果'); return; }
-        outputNode.runSettings = typeof settingsForStorage==='function' && typeof smartSettingsForNode==='function' ? settingsForStorage(smartSettingsForNode(node)) : {...(node.runSettings||settings)};
-        Object.assign(outputNode.runSettings,{apiKind:'image',imageOperation:'generate',ratio:'source',customRatio:`${width}:${height}`,customRatioWidth:width,customRatioHeight:height});
-        outputNode.manualInputRefs=[{...file,name:'抹除区域',kind:'image',role:'mask',manualAdded:true}];
-        const sourceRef={...image,url:smartOriginalMediaUrl(image),nodeId:node.id,imageIndex:index,name:'抹除原图',kind:'image',width,height};
-        setPromptDraftForNode(outputNode,`编辑图1“抹除原图”，使用图2的白色区域作为抹除范围。移除这些区域中的物体或文字，并自然补全背景；保持其他内容、构图、尺寸和比例不变。`);
-        selectedId=outputNode.id;selectedIds=[];selectedImage={nodeId:'',index:-1}; closeImageEditor(); render(); updateComposer(); scheduleSave();
-        await runGeneration('default',[sourceRef,...outputNode.manualInputRefs],`编辑图1“抹除原图”，使用图2的白色区域作为抹除范围。移除这些区域中的物体或文字，并自然补全背景；保持其他内容、构图、尺寸和比例不变。`);
-    }
-}
-
-async function applyImageProtectionMask(){
-    if(!cropState || !editCanvasHasPixels()){ toast('请先涂抹需要保护的产品区域'); return; }
-    const {node,image}=currentEditImage();
-    if(!node || !image) return;
-    const mask=maskCanvasFromDrawCanvas(editDrawCanvas());
-    const blob=await new Promise(resolve=>mask.toBlob(resolve,'image/png'));
-    if(!blob){ toast('蒙版生成失败，请重试'); return; }
-    const base=(image.name||'image').replace(/\.[^.]+$/,'');
-    try{
-        const file=await uploadCroppedBlob(blob,`${base}_protection_mask.png`);
-        if(!file?.url){ toast('蒙版上传失败，请重试'); return; }
-        const output=createNode((node.x||0)+nodeRect(node).width+40,node.y||0,[{
-            ...file,kind:'image',role:'product-mask',natural_w:mask.width,natural_h:mask.height
-        }],{nodeType:'smart-upload',title:'保护蒙版',select:true});
-        if(!output) return;
-        output.title='保护蒙版';
-        closeImageEditor();render();updateComposer();scheduleSave();
-        toast('保护图已生成，可在产品保护设置中直接选择');
-    }catch(error){ toast('蒙版保存失败：'+error.message); }
-}
-
-let imageOcrItems = [];
-let ocrModelSelection = {provider_id:'', model:''};
-let ocrRecognitionSelection = {provider_id:'', model:''};
-let ocrRecognitionSelectionLoaded = false;
-let ocrPanelPositionRaf = 0;
-let ocrActiveRegion = -1;
-let ocrRequestController = null;
-let ocrElapsedTimer = 0;
-function setOcrRecognizeButtonBusy(busy){
-    const btn=document.getElementById('ocrRecognizeBtn');
-    if(!btn) return;
-    const label=btn.querySelector('span');
-    if(label) label.textContent=busy?'取消识别':'识别文字';
-}
-function startOcrElapsedTimer(model){
-    stopOcrElapsedTimer();
-    const status=document.getElementById('ocrStatus');
-    const startedAt=Date.now();
-    ocrElapsedTimer=window.setInterval(()=>{
-        if(status) status.textContent=`正在使用 ${model} 识别文字…（已等待 ${Math.round((Date.now()-startedAt)/1000)} 秒，CLI 平台可能需要 1-3 分钟）`;
-    },1000);
-}
-function stopOcrElapsedTimer(){ if(ocrElapsedTimer){ clearInterval(ocrElapsedTimer); ocrElapsedTimer=0; } }
-function positionOcrPanel(){
-    ocrPanelPositionRaf = 0;
-    if(imageEditMode !== 'ocr' || !imageEditModal?.classList.contains('open')) return;
-    const panel = imageEditModal.querySelector('.image-edit-panel');
-    const nodeId = String(cropState?.nodeId || selectedImage?.nodeId || '');
-    const nodeEl = nodeId ? world?.querySelector(`.image-node[data-id="${CSS.escape(nodeId)}"]`) : null;
-    if(!panel || !nodeEl) return;
-    const nodeRect = nodeEl.getBoundingClientRect();
-    const viewportWidth = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
-    const viewportHeight = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
-    const gap = 12;
-    const edge = 12;
-    const visualScale = Math.max(0.1, Number.parseFloat(getComputedStyle(imageEditModal).zoom) || 1);
-    const panelWidth = Math.min(360, Math.max(280, viewportWidth - edge * 2));
-    const panelHeight = Math.min(650, Math.max(280, viewportHeight - 24));
-    panel.style.width = `${panelWidth / visualScale}px`;
-    panel.style.height = `${panelHeight / visualScale}px`;
-    const rightCandidate = nodeRect.right + gap;
-    const leftCandidate = nodeRect.left - panelWidth - gap;
-    let left = rightCandidate;
-    if(left + panelWidth > viewportWidth - edge && leftCandidate >= edge) left = leftCandidate;
-    left = Math.max(edge, Math.min(left, viewportWidth - panelWidth - edge));
-    let top = nodeRect.top - 18;
-    top = Math.max(edge, Math.min(top, viewportHeight - panelHeight - edge));
-    panel.style.left = `${Math.round(left / visualScale)}px`;
-    panel.style.top = `${Math.round(top / visualScale)}px`;
-}
-function scheduleOcrPanelPosition(){
-    if(ocrPanelPositionRaf || imageEditMode !== 'ocr' || !imageEditModal?.classList.contains('open')) return;
-    ocrPanelPositionRaf = requestAnimationFrame(positionOcrPanel);
-}
-function syncOcrWorkspaceMeta(){
-    const el = document.getElementById('ocrWorkspaceName');
-    if(!el) return;
-    const image = currentEditImage()?.image;
-    el.textContent = String(image?.name || image?.filename || 'image.png').trim() || 'image.png';
-}
-function toggleOcrModelSettings(force){
-    const settingsEl = document.getElementById('ocrModelSettings');
-    const toggle = document.getElementById('ocrModelToggle');
-    if(!settingsEl || !toggle) return;
-    const open = typeof force === 'boolean' ? force : settingsEl.hidden;
-    settingsEl.hidden = !open;
-    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-}
-function ocrModelOptionKey(providerId='', model=''){ return `${encodeURIComponent(providerId || '')}|${encodeURIComponent(model || '')}`; }
-function parseOcrModelOptionKey(value=''){
-    const [provider='', model=''] = String(value || '').split('|', 2);
-    try { return {provider_id:decodeURIComponent(provider), model:decodeURIComponent(model)}; }
-    catch(error) { return {provider_id:provider, model}; }
-}
-function syncOcrRecognitionModelOptions(){
-    const providerSelect = document.getElementById('ocrRecognitionProviderSelect');
-    const select = document.getElementById('ocrRecognitionModelSelect');
-    if(!providerSelect || !select) return null;
-    const providers = (apiProviders || []).filter(provider => {
-        const protocol = String(provider.protocol || '').toLowerCase();
-        return provider.enabled !== false && !['runninghub','jimeng'].includes(protocol)
-            && (['codex','gemini-cli'].includes(protocol) || provider.has_key !== false);
-    });
-    if(!ocrRecognitionSelectionLoaded){
-        ocrRecognitionSelectionLoaded = true;
-        try{
-            const saved = JSON.parse(localStorage.getItem('xiaomei_ocr_model_v1') || '{}');
-            ocrRecognitionSelection = {provider_id:saved.provider_id || saved.provider || '', model:saved.model || ''};
-        }catch(_){ }
-    }
-    const provider = providers.find(item => item.id === ocrRecognitionSelection.provider_id);
-    const models = [...new Set(provider?.chat_models || [])].filter(Boolean);
-    const model = models.includes(ocrRecognitionSelection.model) ? ocrRecognitionSelection.model : '';
-    ocrRecognitionSelection = {provider_id:provider?.id || '', model};
-    providerSelect.innerHTML = `<option value="">${providers.length ? '请选择 API 平台' : '暂无可用平台'}</option>`
-        + providers.map(item => `<option value="${escapeAttr(item.id)}">${escapeHtml(item.name || item.id)}</option>`).join('');
-    providerSelect.value = ocrRecognitionSelection.provider_id;
-    providerSelect.disabled = !!ocrRequestController || !providers.length;
-    select.innerHTML = `<option value="">${!provider ? '请先选择 API 平台' : models.length ? '请选择识字模型' : '该平台暂无识字模型'}</option>`
-        + models.map(item => `<option value="${escapeAttr(item)}">${escapeHtml(item)}</option>`).join('');
-    select.value = model;
-    select.disabled = !!ocrRequestController || !models.length;
-    const active = provider && model ? {...ocrRecognitionSelection} : null;
-    const btn = document.getElementById('ocrRecognizeBtn');
-    if(btn) btn.disabled = !active && !ocrRequestController;
-    const cliHint = document.querySelector('#ocrModelSettings > p.ocr-model-hint');
-    if(cliHint) cliHint.textContent = (String(provider?.protocol || '').toLowerCase() === 'gemini-cli' || String(provider?.protocol || '').toLowerCase() === 'codex')
-        ? '当前 CLI 平台为代理式识别（先启动代理再读图），通常需要 1-3 分钟；选 OpenAI 兼容平台的视觉模型更快。'
-        : '请选择支持图片输入的 API 或 CLI 模型。CLI 使用已有登录状态识字。';
-    if(!providerSelect.dataset.bound){
-        providerSelect.dataset.bound='1';
-        providerSelect.addEventListener('change',()=>{
-            ocrRecognitionSelection={provider_id:providerSelect.value,model:''};
-            try{localStorage.setItem('xiaomei_ocr_model_v1',JSON.stringify(ocrRecognitionSelection));}catch(_){ }
-            syncOcrRecognitionModelOptions();
-        });
-    }
-    if(!select.dataset.bound){
-        select.dataset.bound='1';
-        select.addEventListener('change',()=>{
-            ocrRecognitionSelection={provider_id:providerSelect.value,model:select.value};
-            try{localStorage.setItem('xiaomei_ocr_model_v1',JSON.stringify(ocrRecognitionSelection));}catch(_){ }
-            syncOcrRecognitionModelOptions();
-        });
-    }
-    return active || null;
-}
-function ocrModelChoices(){
-    const source = currentEditImage().node?.runSettings || settings || {};
-    const choices = [];
-    if(String(source.engine || '').toLowerCase() === 'comfy' || String(source.engine || '').toLowerCase() === 'runninghub'){
-        choices.push({provider_id:'', model:'', label:'当前画布工作流'});
-    }
-    imageProviders().forEach(provider => {
-        providerImageModels(provider.id).forEach(model => {
-            const value = String(model || '').trim();
-            if(value) choices.push({provider_id:provider.id, model:value, label:`${provider.name || provider.id} · ${value}`});
-        });
-    });
-    const sourceProvider = String(source.provider_id || '');
-    const sourceModel = String(source.model || '');
-    const current = choices.find(item => item.provider_id === sourceProvider && item.model === sourceModel);
-    if(!current && (sourceProvider || sourceModel)) choices.unshift({provider_id:sourceProvider, model:sourceModel, label:sourceModel || '当前画布模型'});
-    if(!choices.length) choices.push({provider_id:'', model:'', label:'当前画布模型'});
-    return {choices, sourceProvider, sourceModel};
-}
-function syncOcrModelOptions(){
-    const select = document.getElementById('ocrModelSelect');
-    if(!select) return;
-    const {choices, sourceProvider, sourceModel} = ocrModelChoices();
-    const preferred = ocrModelSelection.model || sourceModel;
-    const preferredProvider = ocrModelSelection.provider_id || sourceProvider;
-    const active = choices.find(item => item.provider_id === preferredProvider && item.model === preferred) || choices[0];
-    select.innerHTML = choices.map(item => `<option value="${escapeAttr(ocrModelOptionKey(item.provider_id, item.model))}">${escapeHtml(item.label)}</option>`).join('');
-    if(active){
-        select.value = ocrModelOptionKey(active.provider_id, active.model);
-        ocrModelSelection = {provider_id:active.provider_id, model:active.model};
-    }
-    const hint = document.getElementById('ocrModelHint');
-    if(hint) hint.textContent = active?.model ? '模型列表来自当前 API 设置，可随平台配置更新' : '将沿用当前节点的画布模型';
-    if(!select.dataset.bound){
-        select.dataset.bound = '1';
-        select.addEventListener('change', () => { ocrModelSelection = parseOcrModelOptionKey(select.value); });
-    }
-    refreshIcons();
-}
-function syncOcrCount(){
-    const count = document.getElementById('ocrCountLabel');
-    const edited = imageOcrItems.filter(item => String(item?.replacement || '').trim() && String(item.replacement).trim() !== String(item.text || '').trim()).length;
-    if(count) count.textContent = `识别 ${imageOcrItems.length} 组 · 已改 ${edited} 组`;
-    const empty = document.getElementById('ocrEmptyState');
-    if(empty) empty.hidden = imageOcrItems.length > 0;
-}
-function ocrNodeRegionLayer(){
-    const nodeId = String(cropState?.nodeId || selectedImage?.nodeId || '');
-    const imageIndex = Number(cropState?.imageIndex ?? selectedImage?.index ?? 0);
-    const nodeEl = nodeId ? world?.querySelector(`.image-node[data-id="${CSS.escape(nodeId)}"]`) : null;
-    if(!nodeEl) return null;
-    const target = nodeEl.querySelector(`.image-wrap[data-image-index="${imageIndex}"], .thumb-item[data-image-index="${imageIndex}"]`) || nodeEl.querySelector('.image-wrap, .thumb-item');
-    if(!target) return null;
-    target.querySelectorAll(':scope > .ocr-node-region-layer').forEach(layer => layer.remove());
-    const layer = document.createElement('div');
-    layer.className = 'ocr-node-region-layer';
-    layer.setAttribute('aria-label', '识别文字区域');
-    target.appendChild(layer);
-    return layer;
-}
-function bindOcrRegionLayer(layer){
-    if(!layer) return;
-    layer.querySelectorAll('[data-ocr-region]').forEach(region => {
-        const activate = () => {
-            const index = Number(region.dataset.ocrRegion);
-            ocrActiveRegion = index;
-            const field = document.querySelector(`[data-ocr-replacement="${index}"]`);
-            if(field){ field.focus({preventScroll:true}); field.closest('.ocr-text-row')?.classList.add('is-active'); field.scrollIntoView({block:'nearest'}); }
-            renderImageOcrRegions();
-        };
-        region.addEventListener('click', event => { event.stopPropagation(); if(region.dataset.ocrDragged !== 'true' || !event.detail) activate(); });
-        region.addEventListener('keydown', event => { if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); } });
-        region.addEventListener('pointerdown', event => {
-            if(event.button !== 0 || !imageOcrItems[Number(region.dataset.ocrRegion)]) return;
-            event.preventDefault(); event.stopPropagation();
-            const index = Number(region.dataset.ocrRegion), item = imageOcrItems[index];
-            const start = {...item}, rect = layer.getBoundingClientRect();
-            if(!rect.width || !rect.height) return;
-            const resize = !!event.target.closest('[data-ocr-resize]');
-            const startX = event.clientX, startY = event.clientY;
-            const img = document.getElementById('cropImage');
-            const minW = Math.min(1, 4 / (img?.naturalWidth || 1000));
-            const minH = Math.min(1, 4 / (img?.naturalHeight || 1000));
-            const bound = (value, min, max) => Math.max(min, Math.min(max, value));
-            let moved = false;
-            region.dataset.ocrDragged = 'false'; ocrActiveRegion = index;
-            region.classList.add('is-active');
-            region.setPointerCapture(event.pointerId);
-            const move = ev => {
-                if(ev.pointerId !== event.pointerId || imageOcrItems[index] !== item) return;
-                const dx = (ev.clientX - startX) / rect.width, dy = (ev.clientY - startY) / rect.height;
-                if(Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) < 3 && !moved) return;
-                moved = true; region.dataset.ocrDragged = 'true';
-                if(resize){
-                    item.width = bound(start.width + dx, minW, 1 - start.x);
-                    item.height = bound(start.height + dy, minH, 1 - start.y);
-                }else{
-                    item.x = bound(start.x + dx, 0, 1 - start.width);
-                    item.y = bound(start.y + dy, 0, 1 - start.height);
-                }
-                if(start.source_boxes) item.source_boxes = start.source_boxes.map(box => ({...box,
-                    x:item.x + (box.x - start.x) * item.width / start.width,
-                    y:item.y + (box.y - start.y) * item.height / start.height,
-                    width:box.width * item.width / start.width, height:box.height * item.height / start.height}));
-                document.querySelectorAll(`[data-ocr-region="${index}"]`).forEach(el => {
-                    el.style.left = `${item.x * 100}%`; el.style.top = `${item.y * 100}%`;
-                    el.style.width = `${item.width * 100}%`; el.style.height = `${item.height * 100}%`;
-                });
-            };
-            const end = ev => {
-                if(ev.pointerId !== event.pointerId) return;
-                region.removeEventListener('pointermove', move); region.removeEventListener('pointerup', end);
-                region.removeEventListener('pointercancel', end);
-                if(region.hasPointerCapture(event.pointerId)) region.releasePointerCapture(event.pointerId);
-                if(moved) requestAnimationFrame(renderImageOcrRegions);
-            };
-            region.addEventListener('pointermove', move); region.addEventListener('pointerup', end); region.addEventListener('pointercancel', end);
-        });
-    });
-}
-function renderImageOcrRegions(){
-    const layer = document.getElementById('ocrRegionLayer');
-    const markup = imageOcrItems.map((item, index) => {
-        const x = Math.max(0, Math.min(100, Number(item?.x || 0) * 100));
-        const y = Math.max(0, Math.min(100, Number(item?.y || 0) * 100));
-        const w = Math.max(0.5, Math.min(100 - x, Number(item?.width || 0) * 100));
-        const h = Math.max(0.5, Math.min(100 - y, Number(item?.height || 0) * 100));
-        const edited = String(item?.replacement || '').trim() && String(item.replacement).trim() !== String(item.text || '').trim();
-        return `<button type="button" class="ocr-region${edited ? ' is-edited' : ''}${index === ocrActiveRegion ? ' is-active' : ''}" data-ocr-region="${index}" aria-label="选择第 ${index + 1} 组文字" title="拖动调整位置，拖右下角调整大小" style="left:${x}%;top:${y}%;width:${w}%;height:${h}%"><span class="ocr-region-label">${index + 1}</span><span data-ocr-resize class="ocr-region-resize"></span></button>`;
-    }).join('');
-    if(layer){ layer.innerHTML = markup; bindOcrRegionLayer(layer); }
-    const nodeLayer = ocrNodeRegionLayer();
-    if(nodeLayer){ nodeLayer.innerHTML = markup; bindOcrRegionLayer(nodeLayer); }
-}
-function resetImageOcrState(){
-    ocrRequestController?.abort(); ocrRequestController = null;
-    stopOcrElapsedTimer(); setOcrRecognizeButtonBusy(false);
-    ocrActiveRegion = -1;
-    const recognizeBtn=document.getElementById('ocrRecognizeBtn'); if(recognizeBtn) recognizeBtn.disabled=false;
-    document.getElementById('imageOcrTools')?.classList.remove('is-busy'); document.getElementById('ocrTextList')?.removeAttribute('aria-busy');
-    imageOcrItems=[];
-    const list=document.getElementById('ocrTextList'); if(list) list.innerHTML='';
-    const status=document.getElementById('ocrStatus'); if(status) status.textContent='选择平台和识字模型后，点击识别文字';
-    const emptyLabel=document.getElementById('ocrEmptyLabel'); if(emptyLabel) emptyLabel.textContent='选择平台和识字模型后，点击识别文字';
-    const btn=document.getElementById('ocrGenerateBtn'); if(btn) btn.disabled=true;
-    syncOcrCount(); renderImageOcrRegions();
-    world?.querySelectorAll('.ocr-node-region-layer').forEach(layer => layer.remove());
-}
-function ocrSourceDataUrl(){
-    const img=document.getElementById('cropImage'); if(!img?.naturalWidth) return '';
-    const c=document.createElement('canvas'); c.width=img.naturalWidth; c.height=img.naturalHeight; c.getContext('2d').drawImage(img,0,0); return c.toDataURL('image/png');
-}
-function renderImageOcrItems(){
-    const list=document.getElementById('ocrTextList'); if(!list) return;
-    list.innerHTML=imageOcrItems.map((item,i)=>{ const edited=String(item?.replacement || '').trim() && String(item.replacement).trim() !== String(item.text || '').trim(); const displayText=String(item?.replacement || item?.text || ''); const rows=/\n/.test(displayText) || displayText.length > 22 ? 2 : 1; return `<div class="ocr-text-row"><span class="ocr-row-index">${String(i + 1).padStart(2,'0')}</span><label class="ocr-row-field"><textarea data-ocr-replacement="${i}" data-ocr-original="${escapeAttr(item.text || '')}" data-ocr-edited="${edited ? 'true' : 'false'}" rows="${rows}" aria-label="第 ${i + 1} 组文字">${escapeHtml(displayText)}</textarea></label><button type="button" data-ocr-delete="${i}" title="删除第 ${i + 1} 组文字" aria-label="删除第 ${i + 1} 组文字"><i data-lucide="trash-2"></i></button></div>`; }).join('');
-    list.querySelectorAll('[data-ocr-replacement]').forEach(el=>{
-        el.addEventListener('focus',()=>{ ocrActiveRegion=Number(el.dataset.ocrReplacement); list.querySelectorAll('.ocr-text-row').forEach(row=>row.classList.remove('is-active')); el.closest('.ocr-text-row')?.classList.add('is-active'); renderImageOcrRegions(); });
-        el.addEventListener('input',()=>{const i=Number(el.dataset.ocrReplacement); const value=el.value; imageOcrItems[i].replacement=value.trim() === String(imageOcrItems[i].text || '').trim() ? '' : value; el.dataset.ocrEdited = imageOcrItems[i].replacement.trim() ? 'true' : 'false'; syncImageOcrGenerate(); renderImageOcrRegions(); });
-    });
-    list.querySelectorAll('[data-ocr-delete]').forEach(el=>el.addEventListener('click',()=>{const i=Number(el.dataset.ocrDelete);imageOcrItems.splice(i,1);ocrActiveRegion=ocrActiveRegion===i?-1:ocrActiveRegion>i?ocrActiveRegion-1:ocrActiveRegion;renderImageOcrItems();})); refreshIcons();
-    syncImageOcrGenerate(); renderImageOcrRegions();
-}
-function syncImageOcrGenerate(){ const btn=document.getElementById('ocrGenerateBtn'); if(btn) btn.disabled=!!ocrRequestController || !imageOcrItems.some(x=>String(x.replacement||'').trim() && String(x.replacement).trim() !== String(x.text || '').trim()); syncOcrCount(); }
-async function recognizeImageText(){
-    const status=document.getElementById('ocrStatus');
-    if(ocrRequestController){ ocrRequestController.abort(); stopOcrElapsedTimer(); return; }
-    const recognition = syncOcrRecognitionModelOptions();
-    if(!recognition){ if(status) status.textContent='请选择 API 平台和识字模型；暂无模型时请在 API 设置中配置'; toggleOcrModelSettings(true); return; }
-    const data=ocrSourceDataUrl(); if(!data){ if(status) status.textContent='图片尚未加载，请稍后点击识别文字'; return; }
-    const controller = new AbortController(); ocrRequestController = controller;
-    syncOcrRecognitionModelOptions();
-    syncImageOcrGenerate();
-    document.getElementById('imageOcrTools')?.classList.add('is-busy'); document.getElementById('ocrTextList')?.setAttribute('aria-busy','true'); if(status) status.textContent=`正在使用 ${recognition.model} 识别文字…（已等待 0 秒）`;
-    setOcrRecognizeButtonBusy(true); startOcrElapsedTimer(recognition.model);
-    try{
-        const res=await fetch('/api/image-ocr',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data,filename:'canvas-ocr.png',provider:recognition.provider_id,model:recognition.model}),signal:controller.signal});
-        const payload=await res.json();
-        if(controller.signal.aborted || ocrRequestController !== controller) return;
-        if(!res.ok) throw new Error(payload.detail||payload.error||'OCR 请求失败');
-        imageOcrItems=Array.isArray(payload.items)?payload.items.filter(x=>String(x?.text||'').trim()).map(x=>({...x,replacement:''})):[];
-        ocrActiveRegion = imageOcrItems.length ? 0 : -1;
-        renderImageOcrItems(); if(status) status.textContent=imageOcrItems.length?`识别到 ${imageOcrItems.length} 组文字，直接修改右侧内容即可`:'没有识别到可编辑文字'; syncImageOcrGenerate();
-    }catch(error){ if(!controller.signal.aborted && ocrRequestController === controller && status) status.textContent=error?.message||'OCR 识别失败'; }
-    finally{stopOcrElapsedTimer(); setOcrRecognizeButtonBusy(false); if(ocrRequestController === controller){ocrRequestController=null;syncOcrRecognitionModelOptions(); document.getElementById('imageOcrTools')?.classList.remove('is-busy'); document.getElementById('ocrTextList')?.removeAttribute('aria-busy');syncImageOcrGenerate();}}
-}
-async function applyImageOcrEdit(){
-    const edits=imageOcrItems.filter(x=>String(x.replacement||'').trim() && String(x.replacement).trim() !== String(x.text || '').trim()); if(!edits.length) return;
-    const {node,image,index}=currentEditImage(); const img=document.getElementById('cropImage'); if(!node||!image||!img?.naturalWidth) return;
-    const maskCanvas=document.createElement('canvas'); maskCanvas.width=img.naturalWidth; maskCanvas.height=img.naturalHeight;
-    const maskCtx=maskCanvas.getContext('2d'); maskCtx.fillStyle='#fff';
-    edits.forEach(item=>{ const x=Math.max(0,Math.round(Number(item.x||0)*maskCanvas.width)); const y=Math.max(0,Math.round(Number(item.y||0)*maskCanvas.height)); const w=Math.max(1,Math.round(Number(item.width||0)*maskCanvas.width)); const h=Math.max(1,Math.round(Number(item.height||0)*maskCanvas.height)); maskCtx.fillRect(x,y,w,h); });
-    const maskBlob=await new Promise(resolve=>maskCanvas.toBlob(resolve,'image/png')); const maskFile=maskBlob?await uploadCroppedBlob(maskBlob,'ocr_text_regions_mask.png'):null;
-    if(!maskFile?.url){toast('OCR 文字区域遮罩上传失败，请重试');return;}
-    const outputNode=createPaintNodeAt({x:(node.x||0)+imageLayout(node.images||[],nodeScale(node),node).width+260,y:(node.y||0)+120},{select:true,skipUndo:true,title:'OCR 改字'}); if(!outputNode||!connectInputNode(node.id,outputNode.id)){toast('当前图片无法创建 OCR 改字结果');return;}
-    const sourceSettings = typeof smartSettingsForNode === 'function' ? smartSettingsForNode(node) : {...(node.runSettings || settings)};
-    const ocrSettings = {...sourceSettings};
-    if(ocrModelSelection.model){
-        ocrSettings.engine = ocrModelSelection.provider_id === 'volcengine' ? 'volcengine' : (ocrModelSelection.provider_id === 'runninghub' ? 'runninghub' : 'api');
-        ocrSettings.apiKind = 'image';
-        ocrSettings.provider_id = ocrModelSelection.provider_id || ocrSettings.provider_id;
-        ocrSettings.model = ocrModelSelection.model;
-    }
-    outputNode.runSettings=typeof settingsForStorage==='function' ? settingsForStorage(ocrSettings) : ocrSettings;
-    Object.assign(outputNode.runSettings,{apiKind:'image',imageOperation:'generate',ratio:'source',customRatio:`${img.naturalWidth}:${img.naturalHeight}`,customRatioWidth:img.naturalWidth,customRatioHeight:img.naturalHeight});
-    const sourceRef={...image,url:smartOriginalMediaUrl(image),nodeId:node.id,imageIndex:index,name:'OCR 原图',kind:'image',width:img.naturalWidth,height:img.naturalHeight};
-    outputNode.manualInputRefs=[{...maskFile,name:'OCR 原文字区域',kind:'image',role:'mask',manualAdded:true}];
-    const prompt=['编辑图1中的文字。图2是需要先抹除再重绘的原文字区域白色遮罩：',...edits.map(x=>{const px=Math.round(Number(x.x||0)*img.naturalWidth),py=Math.round(Number(x.y||0)*img.naturalHeight),pw=Math.round(Number(x.width||0)*img.naturalWidth),ph=Math.round(Number(x.height||0)*img.naturalHeight);return `在像素区域 ${px},${py},${pw}×${ph}，将“${x.text}”替换为“${x.replacement}”，保持原字体、字号、颜色、位置、排版和背景不变。`; }),'先自然抹除图2白色区域内的原文字，再绘制替换文字。除文字替换外不要修改任何内容。'].join('\n'); setPromptDraftForNode(outputNode,prompt); selectedId=outputNode.id;selectedIds=[];selectedImage={nodeId:'',index:-1};closeImageEditor();render();updateComposer();scheduleSave();await runGeneration('default',[sourceRef,...outputNode.manualInputRefs],prompt);
-}
-function maskCanvasFromDrawCanvas(src){
-    const mask = document.createElement('canvas');
-    mask.width = src.width;
-    mask.height = src.height;
-    const srcCtx = src.getContext('2d');
-    const srcData = srcCtx.getImageData(0, 0, src.width, src.height);
-    const ctx = mask.getContext('2d');
-    const out = ctx.createImageData(mask.width, mask.height);
-    for(let i = 0; i < srcData.data.length; i += 4){
-        const painted = srcData.data[i + 3] > 8;
-        const v = painted ? 255 : 0;
-        out.data[i] = v;
-        out.data[i + 1] = v;
-        out.data[i + 2] = v;
-        out.data[i + 3] = 255;
-    }
-    ctx.putImageData(out, 0, 0);
-    return mask;
-}
-async function applyImageBrush(){
-    if(!cropState) return;
-    const applyBtn = document.getElementById('imageEditApplyBtn');
-    if(applyBtn.disabled) return;
-    const editorState = cropState;
-    applyBtn.disabled = true;
-    try {
-        removeEditTextInlineEditor(true);
-        if(!editCanvasHasPixels()){ toast('请先添加画笔或文字标记'); return; }
-        const {node, image, index} = currentEditImage();
-        const img = document.getElementById('cropImage');
-        if(!node || !image) throw new Error('原图已改变，请关闭编辑器后重新打开');
-        if(!img.naturalWidth || !img.naturalHeight) throw new Error('图片尚未加载完成，请稍后重试');
-        const canvasEl = document.createElement('canvas');
-        canvasEl.width = img.naturalWidth; canvasEl.height = img.naturalHeight;
-        const ctx = canvasEl.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvasEl.width, canvasEl.height);
-        ctx.drawImage(editDrawCanvas(), 0, 0); ctx.drawImage(editTextCanvas(), 0, 0);
-        const blob = await new Promise(resolve => canvasEl.toBlob(resolve, 'image/png'));
-        if(!blob) throw new Error('图片无法导出，请重试');
-        const base = (image.name || 'image').replace(/\.[^.]+$/, '');
-        const file = await uploadCroppedBlob(blob, `${base}_paint.png`);
-        if(cropState !== editorState) return;
-        if(!nodes.includes(node) || currentEditImage().index !== index || currentEditImage().image?.url !== image.url) throw new Error('原图已改变，请关闭编辑器后重新打开');
+function commitSmartCropOrResize(edit, mode, output, file){
+    const {node, image, index} = edit;
+    const {width, height} = output;
+    const dims = {kind:'image', natural_w:width, natural_h:height, width, height};
+    pushUndo();
+    if(mode === 'crop' && edit.localRepair){
+        const {x, y} = output.rect;
+        const region = {version:1, id:uid('repair'), sourceNodeId:node.id, sourceImageIndex:index,
+            sourceUrl:smartOriginalMediaUrl(image), sourceWidth:edit.sourceW, sourceHeight:edit.sourceH,
+            x, y, width, height, cropUrl:file.url, createdAt:Date.now()};
         const rect = nodeRect(node);
-        const outputNode = createNode(rect.x + rect.width + 40, rect.y, [{
-            ...file, kind:'image', natural_w:canvasEl.width, natural_h:canvasEl.height,
-            width:canvasEl.width, height:canvasEl.height
-        }], {skipRender:true, skipSave:true});
-        if(!outputNode) return;
-        selectedIds = [];
-        selectedImage = {nodeId:outputNode.id, index:0};
-        closeImageEditor(); render(); scheduleSave();
-    } catch(error){
-        if(cropState === editorState) toast(`画笔保存失败：${error?.message || '请重试'}`);
-    } finally {
-        applyBtn.disabled = false;
-    }
-}
-async function applyImageGridSplit(){
-    if(!cropState) return;
-    if(gridOperationMode === 'join') return applyImageGridJoin();
-    const {node, image} = currentEditImage();
-    const img = document.getElementById('cropImage');
-    if(!node || !image || !img.naturalWidth || !img.naturalHeight) return;
-    const rects = gridSplitRects(img.naturalWidth, img.naturalHeight).sort((a, b) => (Number(a.row || 0) - Number(b.row || 0)) || (Number(a.col || 0) - Number(b.col || 0)));
-    if(!rects.length) return;
-    const base = safeExportFileName((downloadNameForMediaItem(image, 'image') || 'image').replace(/\.[^.]+$/, ''), 'image');
-    const digits = String(rects.length).length;
-    const blobs = [];
-    for(let i = 0; i < rects.length; i++){
-        const rect = rects[i];
-        const canvasEl = document.createElement('canvas');
-        canvasEl.width = rect.w; canvasEl.height = rect.h;
-        canvasEl.getContext('2d').drawImage(img, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
-        const blob = await new Promise(resolve => canvasEl.toBlob(resolve, 'image/png'));
-        const order = String(i + 1).padStart(digits, '0');
-        if(blob) blobs.push({blob, name:`${base}_${order}_r${rect.row + 1}_c${rect.col + 1}.png`});
-    }
-    const files = await uploadImageBlobs(blobs);
-    if(files.length){
-        const layout = gridLayoutFromRects(rects);
-        const outputNode = createNode((node.x || 0) + imageLayout(node.images || [], nodeScale(node), node).width + 40, node.y || 0, files.map((file, i) => ({
-            url:file.url,
-            name:file.name,
-            grid:{...layout, row:rects[i]?.row || 0, col:rects[i]?.col || 0, w:rects[i]?.w || 1, h:rects[i]?.h || 1}
-        })));
-        outputNode.title = 'Grid';
-        closeImageEditor(); render(); scheduleSave();
-    }
-}
-function loadGridJoinImage(entry){
-    const cached = gridJoinImageCache.get(entry.index);
-    if(cached?.complete && cached.naturalWidth) return Promise.resolve(cached);
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-            gridJoinImageCache.set(entry.index, img);
-            resolve(img);
-        };
-        img.onerror = () => {
-            if(img.dataset.proxyFallbackTried === '1'){
-                reject(new Error('图片加载失败'));
-                return;
-            }
-            const fallback = proxiedMediaUrl(entry.item);
-            if(!fallback || fallback === img.src){
-                reject(new Error('图片加载失败'));
-                return;
-            }
-            img.dataset.proxyFallbackTried = '1';
-            img.src = fallback;
-        };
-        img.src = displayMediaUrl(entry.item);
-    });
-}
-function drawImageCover(ctx, img, dx, dy, dw, dh){
-    const sw = Math.max(1, Number(img?.naturalWidth || img?.videoWidth || img?.width || 1));
-    const sh = Math.max(1, Number(img?.naturalHeight || img?.videoHeight || img?.height || 1));
-    const targetW = Math.max(1, Number(dw || 1));
-    const targetH = Math.max(1, Number(dh || 1));
-    const scale = Math.max(targetW / sw, targetH / sh);
-    const cropW = Math.max(1, targetW / scale);
-    const cropH = Math.max(1, targetH / scale);
-    const sx = Math.max(0, (sw - cropW) / 2);
-    const sy = Math.max(0, (sh - cropH) / 2);
-    ctx.drawImage(img, sx, sy, cropW, cropH, dx, dy, targetW, targetH);
-}
-async function applyImageGridJoin(){
-    const {node, image} = currentEditImage();
-    const items = currentGridJoinItems();
-    if(!node || items.length <= 1){ toast('请从包含多张图片的分组打开宫格拼接'); return; }
-    const layout = ensureGridJoinLayout();
-    if(!layout?.items?.length) return;
-    const size = gridJoinCanvasSize(layout);
-    const targetLong = Math.max(256, Number(gridJoinOutputSize) || 2048);
-    const outputScale = Math.max(1, targetLong / Math.max(1, Math.max(size.w, size.h)));
-    const canvasEl = document.createElement('canvas');
-    canvasEl.width = Math.max(1, Math.round(size.w * outputScale));
-    canvasEl.height = Math.max(1, Math.round(size.h * outputScale));
-    const ctx = canvasEl.getContext('2d');
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
-    const byIndex = new Map(items.map(entry => [entry.index, entry]));
-    for(const item of layout.items || []){
-        const entry = byIndex.get(item.index);
-        if(!entry) continue;
-        const img = await loadGridJoinImage(entry);
-        drawImageCover(ctx, img, Math.round(item.x * outputScale), Math.round(item.y * outputScale), Math.round(item.w * outputScale), Math.round(item.h * outputScale));
-    }
-    const blob = await new Promise(resolve => canvasEl.toBlob(resolve, 'image/png'));
-    const base = safeExportFileName((downloadNameForMediaItem(image || items[0]?.item, 'image') || 'image').replace(/\.[^.]+$/, ''), 'image');
-    const file = blob ? await uploadCroppedBlob(blob, `${base}_join.png`) : null;
-    if(file){
-        const rect = nodeRect(node);
-        const outputNode = createImageNodeAt({x:rect.x + rect.width + 240, y:rect.y + rect.height / 2}, [{
-            url:file.url,
-            name:file.name,
-            kind:'image',
-            natural_w:canvasEl.width,
-            natural_h:canvasEl.height
-        }], {select:true, skipUndo:true});
-        outputNode.title = 'Grid Join';
-        closeImageEditor();
-        render();
-        scheduleSave();
-        toast('已输出拼接图片');
-    }
-}
-async function applyImageResize(){
-    if(!cropState) return;
-    const {node, image} = currentEditImage();
-    if(!node || !image) return;
-    let resized = null;
-    try {
-        resized = await resizedImageBlobFromEditor();
-    } catch(err) {
-        toast('缩放失败：当前图片无法写入画布，请换成本地图片或重新上传后再试');
-        return;
-    }
-    if(!resized?.blob) return;
-    const base = safeExportFileName((downloadNameForMediaItem(image, 'image') || image.name || 'image').replace(/\.[^.]+$/, ''), 'image');
-    const suffix = `${Math.round(resized.scale * 100)}pct`;
-    const file = await uploadCroppedBlob(resized.blob, `${base}_resize_${suffix}.png`);
-    if(!file) return;
-    if(!replaceEditedImage(file, {kind:'image', role:image.role || '', natural_w:resized.targetW, natural_h:resized.targetH})){
-        return;
+        const name = (image.name || 'image').replace(/\.[^.]+$/, '') + '_局部.png';
+        const patch = {...file, ...dims, name, localRepair:region};
+        const cropped = createNode(rect.x + rect.width + 64, rect.y, [patch], {skipUndo:true, skipRender:true, skipSave:true});
+        if(!cropped) return;
+        cropped.title = '局部修复 · 裁剪';
+        addConnection(node.id, cropped.id, 'flow');
+    } else {
+        const extra = mode === 'crop' ? dims : {...dims, role:image.role || ''};
+        if(!replaceEditedImage(file, extra)) return;
     }
     closeImageEditor();
     render();
     scheduleSave();
+    if(mode === 'crop' && edit.localRepair) toast('已保留原图并裁出局部，可连接绘画节点修改');
 }
+function applyImageCrop(){ return smartImageEditor.apply('crop'); }
+function promptForOutpaintModel(){
+    syncOutpaintModelControls();
+    document.getElementById('outpaintModelMenu')?.classList.add('open');
+    document.getElementById('outpaintModelBtn')?.setAttribute('aria-expanded', 'true');
+    toast('请先选择扩图模型');
+}
+function reserveSmartOutpaint(plan){
+    const {source, placement, prompt} = plan;
+    const rect = nodeRect(source.node);
+    const node = createNode(rect.x + rect.width + 160, rect.y, [], {select:true, skipSave:true, skipRender:true});
+    if(!node) return null;
+    Object.assign(node, {title:'扩图', w:rect.width, h:rect.height, queued:true});
+    node.runSettings = plan.settings ? settingsForStorage(plan.settings) : cloneSmartSettings(source.node.runSettings || settings);
+    node.outpaintPreserve = {
+        sourceUrl:smartOriginalMediaUrl(source.image),
+        x:placement.x, y:placement.y, sourceW:placement.sourceW, sourceH:placement.sourceH,
+        canvasW:placement.w, canvasH:placement.h, createdAt:Date.now()
+    };
+    addConnection(source.node.id, node.id, 'flow');
+    applyOutpaintSizeToSmartParams(placement.w, placement.h, node);
+    settings = smartSettingsForNode(node);
+    selectedId = node.id;
+    selectedIds = [];
+    setPromptDraftForNode(node, prompt);
+    if(promptInput){
+        promptInput.textContent = prompt;
+        promptInput.dataset.preserveDraftOnce = '1';
+    }
+    return {node, canvas};
+}
+function attachSmartOutpaint({node}, file, {w, h}){
+    const {url} = file;
+    node.images = [{...file, kind:'image', originalLocalUrl:url, localUrl:url, sourceUrl:url, local_url:url, source_url:url,
+        natural_w:w, natural_h:h}];
+    delete node.w;
+    delete node.h;
+    node.queued = false;
+    render({nodeIds:[node.id]});
+}
+function runSmartOutpaint({node}, {prompt, filename}, file){
+    const config = smartSettingsForNode(node);
+    const reference = {url:file.url, name:file.name || filename, nodeId:node.id, imageIndex:0, kind:'image'};
+    return runSmartNodeWithDependencies(node, current => runGenerationDirect('default', [reference], prompt, current, config));
+}
+function applyImageOutpaint(options={}){ return smartOutpaint.apply(options); }
+function currentSmartEditSession(){
+    const state = cropState;
+    const owner = canvas;
+    if(!state) return null;
+    const {node, image, index} = currentEditImage();
+    if(!node || !image) return null;
+    const rawUrl = node.images?.[index]?.url;
+    const open = () => canvas === owner && cropState === state;
+    const current = () => {
+        if(!open()) return false;
+        const latest = currentEditImage();
+        return latest.node === node && latest.index === index && latest.image?.url === image.url && node.images?.[index]?.url === rawUrl;
+    };
+    return {state, node, image, index, open, current};
+}
+
+const smartEditExports = new WeakSet();
+
+async function exportSmartEdit(mode, label, prepare, publish){
+    const button = document.getElementById('imageEditApplyBtn');
+    if(imageEditMode !== mode || button.disabled || !smartImageEditor.ready()) return;
+    const session = currentSmartEditSession();
+    if(!session || smartEditExports.has(session.state)) return;
+    const {state, image} = session;
+    smartInk.finishInline(true);
+    smartInk.finishStroke();
+    const revision = smartEditRevision;
+    const current = () => imageEditMode === mode && smartEditRevision === revision && session.current();
+    smartEditExports.add(state);
+    button.disabled = true;
+    try {
+        const base = (image.name || 'image').replace(/\.[^.]+$/, '');
+        const files = await prepare(base, current, image);
+        if(files && current()) await publish(files, session);
+    } catch(error) {
+        if(current()) toast(label + '：' + (error?.message || '请重试'));
+    } finally {
+        smartEditExports.delete(state);
+        if(session.open() || !cropState) button.disabled = false;
+    }
+}
+
+function editCanvasHasPixels(){
+    return layerHasAlpha(editDrawCanvas()) ||
+        (imageEditMode === 'brush' && smartInk.hasMarks('brush') && layerHasAlpha(editTextCanvas()));
+}
+function layerHasAlpha(layer){
+    const data = layer.getContext('2d').getImageData(0, 0, layer.width, layer.height).data;
+    for(let i = 3; i < data.length; i += 4) if(data[i] > 8) return true;
+    return false;
+}
+function exportSmartInk(mode, suffix, failure, empty, publish){
+    const media = XiaomeiImageEditGeometry;
+    return exportSmartEdit(mode, failure, async (base, current) => {
+        if(!editCanvasHasPixels()){
+            if(empty) toast(empty);
+            return;
+        }
+        const layer = mode === 'brush'
+            ? media.flatten(document.getElementById('cropImage'), [editDrawCanvas(), editTextCanvas()])
+            : media.mask(editDrawCanvas());
+        const blob = await media.png(layer.canvas);
+        if(!current()) return;
+        const file = await uploadCroppedBlob(blob, base + suffix + '.png');
+        return {...file, kind:'image', natural_w:layer.width, natural_h:layer.height, width:layer.width, height:layer.height};
+    }, publish);
+}
+
+function applyImageMask(){
+    return exportSmartInk('mask', '_mask', '抹除蒙版保存失败', '', async (file, {node, image, index}) => {
+        const width = file.natural_w, height = file.natural_h;
+        const rect = nodeRect(node);
+        const output = createPaintNodeAt({x:rect.x + rect.width + 260, y:rect.y + 80},
+            {select:false, skipUndo:true, skipRender:true, skipSave:true, title:'抹除结果'});
+        if(!output) return;
+        if(!connectInputNode(node.id, output.id)){
+            nodes.splice(nodes.indexOf(output), 1);
+            toast('当前图片无法创建抹除结果');
+            return;
+        }
+        output.runSettings = settingsForStorage(smartSettingsForNode(node));
+        Object.assign(output.runSettings, {apiKind:'image', imageOperation:'generate', ratio:'source',
+            customRatio:width + ':' + height, customRatioWidth:width, customRatioHeight:height});
+        output.manualInputRefs = [{...file, name:'抹除区域', role:'mask', manualAdded:true}];
+        const source = {...image, url:smartOriginalMediaUrl(image), nodeId:node.id, imageIndex:index,
+            name:'抹除原图', kind:'image', width, height};
+        const prompt = '编辑图1“抹除原图”，使用图2的白色区域作为抹除范围。移除这些区域中的物体或文字，并自然补全背景；保持其他内容、构图、尺寸和比例不变。';
+        setPromptDraftForNode(output, prompt);
+        selectedId = output.id;
+        selectedIds = [];
+        selectedImage = {nodeId:'', index:-1};
+        closeImageEditor();
+        render();
+        updateComposer();
+        scheduleSave();
+        await runGeneration('default', [source, ...output.manualInputRefs], prompt);
+    });
+}
+
+function applyImageProtectionMask(){
+    return exportSmartInk('protection-mask', '_protection_mask', '蒙版保存失败', '请先涂抹需要保护的产品区域', (file, {node}) => {
+        const rect = nodeRect(node);
+        const output = createNode(rect.x + rect.width + 40, rect.y, [{...file, role:'product-mask'}],
+            {nodeType:'smart-upload', title:'保护蒙版', select:true});
+        if(!output) return;
+        output.title = '保护蒙版';
+        closeImageEditor();
+        render();
+        updateComposer();
+        scheduleSave();
+        toast('保护图已生成，可在产品保护设置中直接选择');
+    });
+}
+
+function smartOcrAnchor(){
+    const nodeId = cropState?.nodeId;
+    const index = Number(cropState?.imageIndex || 0);
+    const node = nodeId ? world.querySelector('.image-node[data-id="' + CSS.escape(nodeId) + '"]') : null;
+    const selector = '[data-image-index="' + index + '"]';
+    const target = node?.querySelector('.image-wrap' + selector + ', .thumb-item' + selector) ||
+        node?.querySelector('.image-wrap, .thumb-item');
+    return {node, target};
+}
+
+function smartOcrImageModels(){
+    const source = currentEditImage().node?.runSettings || settings || {};
+    const preferred = {provider_id:String(source.provider_id || ''), model:String(source.model || '')};
+    const choices = [];
+    if(['comfy', 'runninghub'].includes(String(source.engine || '').toLowerCase())){
+        choices.push({provider_id:'', model:'', label:'当前画布工作流'});
+    }
+    for(const provider of imageProviders()){
+        for(const value of providerImageModels(provider.id)){
+            const model = String(value || '').trim();
+            if(model) choices.push({provider_id:provider.id, model, label:(provider.name || provider.id) + ' · ' + model});
+        }
+    }
+    if((preferred.provider_id || preferred.model) && !choices.some(item => item.provider_id === preferred.provider_id && item.model === preferred.model)){
+        choices.unshift({...preferred, label:preferred.model || '当前画布模型'});
+    }
+    if(!choices.length) choices.push({provider_id:'', model:'', label:'当前画布模型'});
+    return {choices, preferred};
+}
+
+async function publishSmartOcrEdit({node, image, index}, {file, width, height, model, prompt}){
+    const rect = nodeRect(node);
+    const output = createPaintNodeAt({x:rect.x + rect.width + 260, y:rect.y + 120},
+        {select:false, skipUndo:true, skipRender:true, skipSave:true, title:'OCR 改字'});
+    if(!output) return;
+    if(!connectInputNode(node.id, output.id)){
+        nodes.splice(nodes.indexOf(output), 1);
+        toast('当前图片无法创建 OCR 改字结果');
+        return;
+    }
+    const runSettings = {...smartSettingsForNode(node)};
+    if(model?.model){
+        const provider = model.provider_id;
+        runSettings.engine = ['volcengine','runninghub'].includes(provider) ? provider : 'api';
+        runSettings.provider_id = provider || runSettings.provider_id;
+        runSettings.model = model.model;
+    }
+    output.runSettings = settingsForStorage({...runSettings, apiKind:'image', imageOperation:'generate', ratio:'source',
+        customRatio:width + ':' + height, customRatioWidth:width, customRatioHeight:height});
+    const original = {...image, url:smartOriginalMediaUrl(image), nodeId:node.id, imageIndex:index,
+        name:'OCR 原图', kind:'image', width, height};
+    output.manualInputRefs = [{...file, name:'OCR 原文字区域', kind:'image', role:'mask', manualAdded:true}];
+    setPromptDraftForNode(output, prompt);
+    selectedId = output.id;
+    selectedIds = [];
+    selectedImage = {nodeId:'', index:-1};
+    closeImageEditor();
+    render();
+    updateComposer();
+    scheduleSave();
+    await runGeneration('default', [original, ...output.manualInputRefs], prompt);
+}
+
+function applyImageBrush(){
+    return exportSmartInk('brush', '_paint', '画笔保存失败', '请先添加画笔或文字标记', (file, {node}) => {
+        const rect = nodeRect(node);
+        const output = createNode(rect.x + rect.width + 40, rect.y, [file], {skipRender:true, skipSave:true});
+        if(!output) return;
+        selectedIds = [];
+        selectedImage = {nodeId:output.id, index:0};
+        closeImageEditor();
+        render();
+        scheduleSave();
+    });
+}
+function smartGridFileBase(image){
+    return safeExportFileName((downloadNameForMediaItem(image, 'image') || 'image').replace(/\.[^.]+$/, ''), 'image');
+}
+
+function applyImageGridSplit(){
+    if(smartGrid.joining()) return applyImageGridJoin();
+    const media = XiaomeiImageEditGeometry;
+    return exportSmartEdit('grid', '宫格切分失败', async (_base, current, image) => {
+        const source = document.getElementById('cropImage');
+        const rects = smartGrid.split.rects(source.naturalWidth, source.naturalHeight);
+        if(!rects.length) return;
+        const base = smartGridFileBase(image);
+        const digits = String(rects.length).length;
+        const blobs = [];
+        for(const [index, rect] of rects.entries()){
+            const blob = await media.png(media.subimage(source, rect).canvas);
+            if(!current()) return;
+            const order = String(index + 1).padStart(digits, '0');
+            blobs.push({blob, name:base + '_' + order + '_r' + (rect.row + 1) + '_c' + (rect.col + 1) + '.png'});
+        }
+        const files = await uploadImageBlobs(blobs);
+        if(files.length !== rects.length || files.some(file => !file?.url)) throw new Error('切片上传不完整，请重试');
+        const grid = {type:'grid-split', groupId:uid('grid'), rows:Math.max(...rects.map(rect => rect.row)) + 1,
+            cols:Math.max(...rects.map(rect => rect.col)) + 1};
+        return files.map(({url, name}, index) => {
+            const {row, col, w, h} = rects[index];
+            return {url, name, grid:{...grid, row, col, w, h}};
+        });
+    }, (files, {node}) => {
+        const rect = nodeRect(node);
+        const output = createNode(rect.x + rect.width + 40, rect.y, files);
+        if(!output) return;
+        output.title = 'Grid';
+        closeImageEditor();
+        render();
+        scheduleSave();
+    });
+}
+
+function applyImageGridJoin(){
+    const media = XiaomeiImageEditGeometry;
+    const signature = smartGrid.signature();
+    const sameSources = () => signature === smartGrid.signature();
+    return exportSmartEdit('grid', '宫格拼接失败', async (_base, current, image) => {
+        const valid = () => current() && sameSources();
+        const layer = await smartGrid.combine(valid);
+        if(!layer || !valid()) return;
+        const blob = await media.png(layer.canvas);
+        if(!valid()) return;
+        const file = await uploadCroppedBlob(blob, smartGridFileBase(image) + '_join.png');
+        if(sameSources()) return {url:file.url, name:file.name, kind:'image', natural_w:layer.width, natural_h:layer.height};
+    }, (file, {node}) => {
+        const rect = nodeRect(node);
+        const output = createImageNodeAt({x:rect.x + rect.width + 240, y:rect.y + rect.height / 2}, [file],
+            {select:true, skipUndo:true});
+        if(!output) return;
+        output.title = 'Grid Join';
+        closeImageEditor();
+        render();
+        scheduleSave();
+        toast('已输出拼接图片');
+    });
+}
+function applyImageResize(){ return smartImageEditor.apply('resize'); }
 function applyImageEdit(){
     if(imageEditMode === 'preview') return;
     if(imageEditMode === 'outpaint') return applyImageOutpaint();
     if(imageEditMode === 'protection-mask') return applyImageProtectionMask();
     if(imageEditMode === 'mask') return applyImageMask();
-    if(imageEditMode === 'ocr') return applyImageOcrEdit();
+    if(imageEditMode === 'ocr') return smartOcr.generate();
     if(imageEditMode === 'brush') return applyImageBrush();
     if(imageEditMode === 'resize') return applyImageResize();
     if(imageEditMode === 'grid') return applyImageGridSplit();
@@ -26967,6 +20190,7 @@ function updateComposer(){
     }
     composerUpdateSeq++;
     const node = selectedNode();
+    if(node !== activeComposerSubject) closeMentionPicker();
     composer.inert = isProductFidelityNode(node);
     syncRunButtonState(node);
     if(smartCascadeSilentSelection && !activeComposerSubject){
@@ -27223,11 +20447,11 @@ function renderInputThumbsRow(node){
             : smartPreviewImgHtml(img, 256, 'draggable="false"');
         const count = (mediaCounters[kind] = (mediaCounters[kind] || 0) + 1);
         const label = kind === 'audio' ? `音频${count}` : kind === 'video' ? `视频${count}` : `图${count}`;
-        const sourceUrl = img.originalLocalUrl || img.url || '';
+        const sourceUrl = mediaRefSourceUrl(img);
         const key = inputRefKey(img);
         const removable = Boolean(key);
         const removeBtn = removable ? `<button class="input-thumb-remove" type="button" data-input-remove-reference="${escapeHtml(key)}" data-node-id="${escapeHtml(node?.id || '')}" data-source-node-id="${escapeHtml(img.nodeId || '')}" title="删除这张参考图" aria-label="删除这张参考图">×</button>` : '';
-        return `<div class="input-thumb ${img.sourceMissing ? 'reference-source-missing' : ''} ${isSelf ? 'input-self' : ''} ${removable ? 'input-manual-ref' : ''}" draggable="false" data-thumb-index="${i}" data-input-ref-key="${escapeHtml(key)}" data-node-id="${escapeHtml(img.nodeId || '')}" data-image-index="${img.imageIndex ?? ''}" data-url="${escapeHtml(img.url || '')}" data-source-url="${escapeHtml(sourceUrl)}" title="${escapeHtml(`${img.name || tr('smart.inputNum').replace('{n}', String(i + 1))} · ${title}`)}">${inner}<span class="input-thumb-label">${escapeHtml(img.sourceMissing ? '引用已失效' : label)}</span>${removeBtn}</div>`;
+        return `<div class="input-thumb ${img.sourceMissing ? 'reference-source-missing' : ''} ${isSelf ? 'input-self' : ''} ${removable ? 'input-manual-ref' : ''}" draggable="false" data-thumb-index="${i}" data-input-ref-key="${escapeHtml(key)}" data-node-id="${escapeHtml(img.nodeId || '')}" data-image-index="${img.imageIndex ?? ''}" data-url="${escapeHtml(img.url || '')}" data-source-url="${escapeHtml(sourceUrl)}" data-media-kind="${escapeHtml(kind)}" title="${escapeHtml(`${img.name || tr('smart.inputNum').replace('{n}', String(i + 1))} · ${title}`)}">${inner}<span class="input-thumb-label">${escapeHtml(img.sourceMissing ? '引用已失效' : label)}</span>${removeBtn}</div>`;
     }).join('');
     inputThumbsRow.innerHTML = `<div class="input-thumb-list">${thumbsHtml}</div><div class="input-thumb-actions">${dedup.length > 1 ? `<span class="input-thumb-count">${escapeHtml(tr('smart.inputCount').replace('{n}', String(dedup.length)))}</span>` : ''}${selectButton}</div>`;
     bindSmartPreviewImageFallbacks(inputThumbsRow);
@@ -27630,30 +20854,6 @@ function clearInputThumbDropMarkers(){
             el.classList.remove('drop-before', 'drop-after', 'dragging');
         });
 }
-function bindInputThumbVideoActions(){
-    inputThumbsRow?.querySelectorAll('[data-manual-video-url]').forEach(btn => {
-        btn.onclick = async event => {
-            event.preventDefault();
-            event.stopPropagation();
-            try {
-                await setCurrentSmartManualVideoUrl();
-            } catch(e) {
-                toast((e.message || '设置视频网址失败').slice(0, 180));
-            }
-        };
-    });
-    inputThumbsRow?.querySelectorAll('[data-temp-sh-upload-video]').forEach(btn => {
-        btn.onclick = async event => {
-            event.preventDefault();
-            event.stopPropagation();
-            try {
-                await uploadCurrentSmartVideosToCloud();
-            } catch(e) {
-                toast((e.message || '云端上传失败').slice(0, 180));
-            }
-        };
-    });
-}
 function movedBeforeAfterIds(ids, movedId, targetId, placement='before'){
     const list = (ids || []).filter(Boolean);
     const from = list.indexOf(movedId);
@@ -27702,66 +20902,21 @@ function reorderInputThumb(currentNode, items, from, to, placement='before'){
     scheduleSave();
 }
 function isSupportedUploadFile(file){
-    const type = String(file?.type || '').toLowerCase();
-    const name = String(file?.name || '').toLowerCase();
-    return type.startsWith('image/') || type.startsWith('video/') || type.startsWith('audio/')
-        || SMART_DOCUMENT_UPLOAD_EXT_RE.test(name)
-        || /\.(png|jpe?g|webp|gif|mp4|webm|mov|m4v|mp3|wav|m4a|aac|ogg|flac)(\?|$)/.test(name);
-}
-function dataTransferItemEntry(item){
-    try { return item?.webkitGetAsEntry?.() || null; } catch { return null; }
-}
-async function filesFromEntry(entry){
-    if(!entry) return [];
-    if(entry.isFile){
-        return new Promise(resolve => entry.file(file => resolve(file ? [file] : []), () => resolve([])));
-    }
-    if(!entry.isDirectory) return [];
-    const reader = entry.createReader();
-    const children = [];
-    while(true){
-        const batch = await new Promise(resolve => reader.readEntries(resolve, () => resolve([])));
-        if(!batch.length) break;
-        children.push(...batch);
-    }
-    const nested = await Promise.all(children.map(filesFromEntry));
-    return nested.flat();
-}
-async function uploadFilesFromDataTransfer(dataTransfer){
-    const items = [...(dataTransfer?.items || [])];
-    const entries = items.map(dataTransferItemEntry).filter(Boolean);
-    const raw = entries.length
-        ? (await Promise.all(entries.map(filesFromEntry))).flat()
-        : [...(dataTransfer?.files || [])];
-    return raw.filter(isSupportedUploadFile);
+    if(!file || file.size === 0) return false;
+    const name = String(file.name || '');
+    return /^(image|video|audio)\//i.test(file.type || '') || SMART_DOCUMENT_UPLOAD_EXT_RE.test(name)
+        || /\.(png|jpe?g|webp|gif|mp4|webm|mov|m4v|mp3|wav|m4a|aac|ogg|flac)(\?|$)/i.test(name);
 }
 function uploadTitleForItems(items, fallback='Upload'){
-    const list = [...(items || [])];
-    if(!list.length) return fallback;
-    const kinds = new Set(list.map(item => item instanceof File ? mediaKindForFile(item) : mediaKindForItem(item)));
-    if(kinds.size > 1) return list.length > 1 ? 'Media' : fallback;
-    if(kinds.has('video')) return list.length > 1 ? 'Videos' : 'Video';
-    if(kinds.has('audio')) return 'Audio';
-    if(kinds.has('file') || kinds.has('text')) return list.length > 1 ? tr('smart.filesLabel') : tr('smart.fileLabel');
-    return list.length > 1 ? 'Group' : 'Image';
-}
-const SMART_IMAGE_DROP_EXT_RE = /\.(png|jpe?g|webp|gif)$/i;
-const SMART_IMAGE_DROP_TEXT_TYPES = [
-    'text/uri-list',
-    'text/plain',
-    'text/html',
-    'DownloadURL',
-    'text/x-moz-url',
-    'text/x-file-url',
-    'public.file-url',
-    'public.url',
-    'UniformResourceLocator',
-    'FileName',
-    'FileNameW'
-];
-const SMART_IMAGE_DROP_TYPE_HINT_RE = /^(?:files?|image\/.+|text\/(?:uri-list|html|plain|x-moz-url|x-file-url)|downloadurl|public\.(?:file-url|url)|uniformresourcelocator|filenamew?)$|application\/x-qt-(?:windows-mime|image)|application\/x-moz-file|com\.eagle/i;
-function smartImageFilesFromDataTransfer(dataTransfer){
-    return [...(dataTransfer?.files || [])].filter(isSupportedUploadFile);
+    if(!items?.length) return fallback;
+    const kinds = new Set(items.map(item => item instanceof File ? mediaKindForFile(item) : mediaKindForItem(item)));
+    const multiple = items.length > 1;
+    if(kinds.size > 1) return 'Media';
+    const kind = kinds.values().next().value;
+    if(kind === 'file' || kind === 'text') return tr(multiple ? 'smart.filesLabel' : 'smart.fileLabel');
+    if(kind === 'audio') return 'Audio';
+    if(kind === 'video') return multiple ? 'Videos' : 'Video';
+    return multiple ? 'Group' : 'Image';
 }
 async function smartResponseErrorMessage(response, fallback='请求失败'){
     try {
@@ -27776,75 +20931,6 @@ async function smartResponseErrorMessage(response, fallback='请求失败'){
     } catch(_) {}
     return fallback;
 }
-function smartDropDataTypes(dataTransfer){
-    return [...(dataTransfer?.types || [])].map(type => String(type || ''));
-}
-function readSmartDropData(dataTransfer, type){
-    try { return dataTransfer?.getData?.(type) || ''; } catch(_) { return ''; }
-}
-function decodeSmartDropText(value){
-    const text = String(value || '').trim();
-    if(!text) return '';
-    try { return decodeURIComponent(text); } catch(_) { return text; }
-}
-function smartDropTextFragments(value){
-    const text = String(value || '').trim();
-    if(!text) return [];
-    const fragments = [];
-    if(/<img|<a\s/i.test(text)){
-        const doc = new DOMParser().parseFromString(text, 'text/html');
-        doc.querySelectorAll('img[src],a[href]').forEach(el => fragments.push(el.getAttribute('src') || el.getAttribute('href') || ''));
-    }
-    text.split(/\r?\n/).forEach(line => {
-        const item = line.trim();
-        if(item) fragments.push(item);
-    });
-    const downloadUrl = text.match(/^image\/[^\s:]+:(.+)$/i);
-    if(downloadUrl) fragments.push(downloadUrl[1]);
-    return fragments;
-}
-function uniqueSmartDropValues(values){
-    const seen = new Set();
-    return values.filter(value => {
-        const key = String(value || '').trim();
-        if(!key || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
-}
-function smartDropTextCandidates(dataTransfer){
-    if(!dataTransfer) return [];
-    const types = uniqueSmartDropValues([...SMART_IMAGE_DROP_TEXT_TYPES, ...smartDropDataTypes(dataTransfer)]);
-    const values = types.map(type => readSmartDropData(dataTransfer, type)).filter(Boolean);
-    return uniqueSmartDropValues(values.flatMap(smartDropTextFragments).map(decodeSmartDropText))
-        .filter(s => s && !s.startsWith('#'));
-}
-function isRemoteSmartImageDropValue(value){
-    const text = String(value || '').trim();
-    return /^https?:\/\/.+/i.test(text) || /^data:image\//i.test(text) || /^blob:/i.test(text);
-}
-function isLocalSmartImageDropValue(value){
-    const text = String(value || '').trim();
-    if(!text) return false;
-    let path = text;
-    if(/^file:/i.test(path)){
-        try {
-            const url = new URL(path);
-            if(url.protocol !== 'file:') return false;
-            path = decodeURIComponent(url.pathname || path);
-        } catch(_) {
-            return false;
-        }
-    }
-    if(/^\/[a-zA-Z]:[\\/]/.test(path)) path = path.slice(1);
-    const clean = path.split(/[?#]/, 1)[0];
-    const isWindowsPath = /^[a-zA-Z]:[\\/]/.test(clean);
-    const isPosixPath = clean.startsWith('/');
-    return (isWindowsPath || isPosixPath) && SMART_IMAGE_DROP_EXT_RE.test(clean);
-}
-function smartLocalImagePathsFromDataTransfer(dataTransfer){
-    return uniqueSmartDropValues(smartDropTextCandidates(dataTransfer).filter(isLocalSmartImageDropValue));
-}
 function smartImageNameFromUrl(url){
     try {
         const clean = String(url || '').split('?', 1)[0].split('#', 1)[0];
@@ -27853,73 +20939,28 @@ function smartImageNameFromUrl(url){
         return 'image';
     }
 }
-function smartImageDropPayload(dataTransfer){
-    const assetRaw = readSmartDropData(dataTransfer, 'application/x-smart-asset');
-    if(assetRaw){
-        try {
-            const asset = JSON.parse(assetRaw);
-            if(asset?.url && (asset.kind || assetMediaKind(asset)) === 'image'){
-                return {type:'asset', image:assetNodeImageFromItem(asset)};
-            }
-        } catch(_) {}
-    }
-    // History drags also carry a compressed image for external applications.
-    // On this canvas, use the history record's original URL before the browser
-    // exposes that compressed copy as a File.
-    const historyRaw = readSmartDropData(dataTransfer, 'application/x-smart-history-image');
-    if(historyRaw){
-        try {
-            const history = JSON.parse(historyRaw);
-            const url = smartOriginalMediaUrl(history?.url);
-            if(history?.source === 'history' && history?.kind === 'image' && /^https?:\/\//i.test(url)){
-                const natural_w = Number(history.natural_w) || 0;
-                const natural_h = Number(history.natural_h) || 0;
-                return {type:'url', url, natural_w, natural_h};
-            }
-        } catch(_) {}
-    }
-    const files = smartImageFilesFromDataTransfer(dataTransfer);
-    if(files.length) return {type:'files', files};
-    const localPaths = smartLocalImagePathsFromDataTransfer(dataTransfer);
-    if(localPaths.length) return {type:'localPaths', localPaths};
-    const url = smartDropTextCandidates(dataTransfer).find(isRemoteSmartImageDropValue) || '';
-    if(url) return {type:'url', url};
-    return {type:'none'};
+function resolveSmartImageDropPayload(transfer){
+    return XiaomeiCanvasDropData.resolveSmart(transfer, {
+        accept:isSupportedUploadFile, originalUrl:smartOriginalMediaUrl, assetReference:assetNodeImageFromItem,
+    });
 }
-async function resolveSmartImageDropPayload(dataTransfer){
-    const payload = smartImageDropPayload(dataTransfer);
-    if(payload.type !== 'none') return payload;
-    const files = await uploadFilesFromDataTransfer(dataTransfer);
-    return files.length ? {type:'files', files} : payload;
+function hasSmartImageDropData(transfer){
+    return XiaomeiCanvasDropData.hasSmartMedia(transfer, isSupportedUploadFile);
 }
-function hasSmartImageDropData(dataTransfer){
-    if(!dataTransfer) return false;
-    if(hasSmartAssetDrag(dataTransfer)) return true;
-    if(smartImageFilesFromDataTransfer(dataTransfer).length) return true;
-    const types = smartDropDataTypes(dataTransfer);
-    if(types.some(type => SMART_IMAGE_DROP_TYPE_HINT_RE.test(type.toLowerCase()))) return true;
-    return smartImageDropPayload(dataTransfer).type !== 'none';
-}
-function hasSmartAssetDrag(dataTransfer){
-    return smartDropDataTypes(dataTransfer).includes('application/x-smart-asset');
-}
-function hasMediaDrawerDrag(dataTransfer){
-    return smartDropDataTypes(dataTransfer).includes('application/x-smart-asset');
-}
-function hasSmartInputThumbDrag(dataTransfer){
-    return smartDropDataTypes(dataTransfer).includes('application/x-smart-input-thumb');
+function hasSmartInputThumbDrag(transfer){
+    return XiaomeiCanvasDropData.types(transfer).includes(XiaomeiCanvasDropData.inputType);
 }
 function isCanvasDropSurfaceTarget(target){
     return !target?.closest?.('.image-node,.asset-panel,.asset-toggle,.canvas-agent-panel,.canvas-agent-toggle,.canvas-collab-status,.canvas-collab-panel,.composer,.create-menu,.smart-minimap,.canvas-nav-panel,.smart-log-toggle,.smart-shortcut-toggle,.smart-workflow-toggle,.workflow-transfer-panel,.log-modal,.shortcut-modal,.image-edit-modal');
 }
-function setSmartDropCopyEffect(e, includeAsset=false){
+function setSmartDropCopyEffect(e){
     e.preventDefault();
     if(hasSmartInputThumbDrag(e.dataTransfer)){
         shell?.classList.remove('smart-drop-active');
         clearMediaDropHighlight();
         return;
     }
-    const canDrop = hasSmartImageDropData(e.dataTransfer) || (includeAsset && hasSmartAssetDrag(e.dataTransfer));
+    const canDrop = hasSmartImageDropData(e.dataTransfer);
     if(!canDrop){
         shell?.classList.remove('smart-drop-active');
         return;
@@ -28075,7 +21116,6 @@ function removeSmartPendingPasteImages(tokens, createdNode=null){
         if(!Array.isArray(node.images) || !node.images.length) return;
         const kept = node.images.filter(image => {
             if(!tokenSet.has(image?._smartPasteToken)) return true;
-            releaseSmartImportedPreview(image.url);
             removed += 1;
             return false;
         });
@@ -28112,8 +21152,19 @@ function cleanupStaleSmartPasteImages(){
     if(removed) toast(tr('smart.pasteUploadIncomplete'));
     return removed > 0;
 }
-async function handleFiles(files, targetId='', opts={}){
-    const fileList = [...(files || [])].filter(isSupportedUploadFile);
+function captureSmartImport(targetId, options){
+    const canvasId = canvas?.id;
+    const id = options.forceNew ? '' : targetId || selectedNode()?.id || '';
+    const sameCanvas = () => Boolean(canvasId && canvas?.id === canvasId);
+    return {
+        id, sameCanvas,
+        current:() => sameCanvas() && (!id || nodes.some(node => node.id === id)),
+        options:id ? options : {...options, forceNew:true, point:options.point || viewportCenter()},
+    };
+}
+async function handleFiles(files, targetId='', opts={}, destination=captureSmartImport(targetId, opts)){
+    if(!destination.current()) return;
+    const fileList = Array.from(files || []).filter(isSupportedUploadFile);
     if(!fileList.length){ toast(tr('smart.unsupportedUploadFile')); return; }
 
     // Ctrl+V should feel like a local canvas operation. Put the Blob URLs into
@@ -28130,17 +21181,17 @@ async function handleFiles(files, targetId='', opts={}){
             _smartPasteToken:uid('paste')
         }));
         if(!opts.skipUndo) pushUndo();
-        const nodeBefore = nodes.find(item => item.id === targetId) || selectedNode();
-        const createdNode = !nodeBefore || !isSmartImageNode(nodeBefore) || opts.forceNew;
-        const node = appendImagesToSmartNode(localItems, targetId, {...opts, skipUndo:true, skipSave:true});
+        const node = appendImagesToSmartNode(localItems, destination.id, {...destination.options, skipUndo:true, skipSave:true});
         if(!node){
             localItems.forEach(item => releaseSmartImportedPreview(item.url));
             return;
         }
+        const remaining = new Map(localItems.map(item => [item._smartPasteToken, item.url]));
+        const createdNode = destination.id !== node.id ? node : null;
         smartPendingPasteUploads += 1;
         try {
             const uploaded = await uploadFiles(fileList);
-            const uploadedTokens = new Set();
+            if(!destination.sameCanvas()) return;
             uploaded.forEach((item, index) => {
                 const local = localItems[index];
                 const target = findSmartPasteImageByToken(local?._smartPasteToken);
@@ -28150,18 +21201,18 @@ async function handleFiles(files, targetId='', opts={}){
                 Object.assign(image, item, {kind:item.kind || local.kind || 'image'});
                 delete image._smartPastePending;
                 delete image._smartPasteToken;
-                uploadedTokens.add(local?._smartPasteToken);
+                remaining.delete(local._smartPasteToken);
                 rememberSmartImportedPreview(item.url, localUrl);
                 replaceSmartImportedPreviewWithThumbnail(item.url, localUrl);
             });
-            const missingTokens = localItems.map(item => item._smartPasteToken).filter(token => !uploadedTokens.has(token));
-            if(missingTokens.length) removeSmartPendingPasteImages(missingTokens, createdNode);
-            render();
-            scheduleSave();
         } catch(error) {
-            removeSmartPendingPasteImages(localItems.map(item => item._smartPasteToken), createdNode);
-            toast(error.message || tr('smart.toastUploadFail'));
+            if(destination.sameCanvas()) toast(error.message || tr('smart.toastUploadFail'));
         } finally {
+            if(destination.sameCanvas()){
+                if(remaining.size) removeSmartPendingPasteImages([...remaining.keys()], createdNode);
+                render();
+            }
+            for(const url of remaining.values()) releaseSmartImportedPreview(url);
             smartPendingPasteUploads = Math.max(0, smartPendingPasteUploads - 1);
             if(smartPendingPasteUploads === 0) scheduleSave();
         }
@@ -28174,19 +21225,21 @@ async function handleFiles(files, targetId='', opts={}){
     try {
         if(fileList.some(file => SMART_DOCUMENT_UPLOAD_EXT_RE.test(file.name || ''))) toast(tr('smart.readingUploadFile'));
         [uploaded, previews] = await Promise.all([uploadFiles(fileList), previewPromise]);
+        if(!destination.current()) return;
         uploaded.forEach((item, index) => {
             if(item?.url && previews[index]) rememberSmartImportedPreview(item.url, previews[index]);
         });
         if(!uploaded.length) return;
         if(!opts.skipUndo) pushUndo();
-        appendImagesToSmartNode(uploaded.map((file, index) => ({...file, kind:file.kind || mediaKindForFile(fileList[index])})), targetId, opts);
+        appendImagesToSmartNode(uploaded, destination.id, destination.options);
         const documents = documentRefsOnly(uploaded);
         if(documents.length) toast(documents.some(file => file.document?.status !== 'ready') ? tr('smart.uploadFileNeedsReview') : tr('smart.uploadFileReady'));
         uploaded.forEach((item, index) => {
             if(item?.url && previews[index]) replaceSmartImportedPreviewWithThumbnail(item.url, previews[index]);
         });
-    } catch(e) { toast(e.message || tr('smart.toastUploadFail')); }
-    finally {
+    } catch(error) {
+        if(destination.sameCanvas()) toast(error.message || tr('smart.toastUploadFail'));
+    } finally {
         previews.forEach((preview, index) => {
             if(preview && smartImportedPreviews.get(uploaded[index]?.url) !== preview) releaseSmartImportedPreview(preview);
         });
@@ -28204,159 +21257,104 @@ async function importSmartLocalImages(paths){
     showSmartAutoCompressedUploadNotice(data.files || []);
     return data.files || [];
 }
-async function handleSmartImageDropPayload(payload, targetId='', opts={}){
+async function importSmartDrop(transfer, targetId='', options={}){
+    const destination = captureSmartImport(targetId, options);
     try {
-        if(payload.type === 'files') await handleFiles(payload.files, targetId, opts);
-        else if(payload.type === 'asset'){
-            if(!opts.skipUndo) pushUndo();
-            appendImagesToSmartNode([payload.image], targetId, opts);
+        const payload = await resolveSmartImageDropPayload(transfer);
+        if(!destination.current() || payload.type === 'none') return;
+        if(payload.type === 'files'){
+            await handleFiles(payload.files, targetId, options, destination);
+            return;
         }
-        else if(payload.type === 'localPaths') {
-            if(!opts.skipUndo) pushUndo();
-            appendImagesToSmartNode(await importSmartLocalImages(payload.localPaths), targetId, opts);
-        } else if(payload.type === 'url') {
-            if(!opts.skipUndo) pushUndo();
-            const image = {url:payload.url, name:smartImageNameFromUrl(payload.url), kind:'image'};
-            if(payload.natural_w > 0 && payload.natural_h > 0){
-                image.natural_w = payload.natural_w;
-                image.natural_h = payload.natural_h;
-            }
-            appendImagesToSmartNode([image], targetId, opts);
+        let images;
+        if(payload.type === 'localPaths') images = await importSmartLocalImages(payload.localPaths);
+        else if(payload.type === 'asset') images = [payload.image];
+        else {
+            const {url, natural_w, natural_h} = payload;
+            images = [{url, name:smartImageNameFromUrl(url), kind:'image',
+                ...(natural_w && natural_h ? {natural_w, natural_h} : {}),
+            }];
         }
-    } catch(e) {
-        toast(e.message || tr('smart.toastUploadFail'));
+        if(!images.length || !destination.current()) return;
+        if(!options.skipUndo) pushUndo();
+        if(payload.type === 'asset' && destination.options.forceNew){
+            createImageNodeAt(destination.options.point, images, {skipUndo:true});
+        } else {
+            appendImagesToSmartNode(images, destination.id, destination.options);
+        }
+    } catch(error){
+        if(destination.sameCanvas()) toast(error.message || tr('smart.toastUploadFail'));
     }
 }
-function sizeForRun(sourceSettings=settings){
-    if(usesSmartGifOutput(sourceSettings)) return 'auto';
-    const fallbackResolution = sourceSettings.engine === 'api' && isGptImageAutoSizeModel(sourceSettings.model)
-        ? defaultSmartApiResolution(sourceSettings.model)
-        : '1k';
-    // OpenAI Images 兼容网关通常忽略单独的 aspect_ratio 字段；GPT Image
-    // 的“自动”必须先落成具体尺寸，否则 9:16 会被上游按 auto 默认成 1:1。
-    const requestedResolution = sourceSettings.resolution || fallbackResolution;
-    const effectiveResolution = requestedResolution === 'auto' && isGptImageAutoSizeModel(sourceSettings.model)
-        ? fallbackResolution
-        : requestedResolution;
-    const value = apiImageSize(sourceSettings.ratio || 'square', effectiveResolution, sourceSettings.customRatio || '', sourceSettings.customSize || '') || '1024x1024';
-    return isGptImageAutoSizeModel(sourceSettings.model) ? normalizeGptImage2Size(value) : value;
+const {
+    gridSize:outputGridSize, references:outputRunReferences, mentionDraft:renderOutputMentionDraft,
+    stripImageGenerationMeta,
+} = XiaomeiSmartOutput;
+function sizeForRun(config=settings){
+    if(usesSmartGifOutput(config)) return 'auto';
+    const gpt = isGptImageAutoSizeModel(config.model);
+    const preferred = config.engine === 'api' && gpt ? defaultSmartApiResolution(config.model) : '1k';
+    const requested = config.resolution || preferred;
+    const resolution = requested === 'auto' && gpt ? preferred : requested;
+    const size = apiImageSize(config.ratio || 'square', resolution, config.customRatio, config.customSize) || '1024x1024';
+    return gpt ? normalizeGptImage2Size(size) : size;
 }
-function aspectRatioForRun(sourceSettings=settings){
-    const explicitRatio = String(sourceSettings.ratio || '').trim();
-    // 扩图会锁定精确像素画布，并刻意清空普通比例选择。此前这里把空值
-    // 回退成 1:1，导致 3840x2880 一类扩图底图仍向上游声明为正方形。
-    // 优先从精确尺寸还原宽高比，保证 size 与 aspect_ratio 指向同一画幅。
-    if(!explicitRatio && sourceSettings.resolution === 'custom'){
-        const parsed = parseSizePair(sourceSettings.customSize)
-            || (() => {
-                const width = Math.round(Number(sourceSettings.customWidth || 0));
-                const height = Math.round(Number(sourceSettings.customHeight || 0));
-                return width > 0 && height > 0 ? {width, height} : null;
-            })();
-        if(parsed?.width > 0 && parsed?.height > 0){
-            const divisor = gcdInt(parsed.width, parsed.height);
-            return `${Math.round(parsed.width / divisor)}:${Math.round(parsed.height / divisor)}`;
+function aspectRatioForRun(config=settings){
+    const ratio = String(config.ratio || '').trim();
+    if(ratio === 'source') return ratio;
+    if(ratio === 'custom') return String(config.customRatio || '').trim();
+    if(!ratio && config.resolution === 'custom'){
+        const size = parseSizePair(config.customSize) || {width:Number(config.customWidth), height:Number(config.customHeight)};
+        const width = Math.round(size.width);
+        const height = Math.round(size.height);
+        if(Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0){
+            const divisor = gcdInt(width, height);
+            return `${width / divisor}:${height / divisor}`;
         }
     }
-    const value = explicitRatio || 'square';
-    if(value === 'source') return 'source';
-    if(value === 'custom') return String(sourceSettings.customRatio || '').trim();
-    return SMART_RATIO_VALUE_MAP[value] || '';
+    return SMART_RATIO_VALUE_MAP[ratio || 'square'] || '';
 }
-function expectedOutputSize(){
-    if(settings.engine === 'comfy'){
-        if(settings.comfyMode === 'text'){
-            const w = Number(settings.width) || 1024;
-            const h = Number(settings.height) || 1024;
-            return {w, h};
-        }
-        return {w:1024, h:1024};
+function imageRequestDimensions(config, exactSize=false){
+    const gif = usesSmartGifOutput(config);
+    const outpaint = config.outpaintMode === true && config.outpaintPreserve && typeof config.outpaintPreserve === 'object';
+    const result = {
+        size:sizeForRun(config),
+        aspect_ratio:gif ? '' : outpaint ? 'source' : aspectRatioForRun(config),
+    };
+    if(exactSize && config.resolution === 'custom' && !gif && !usesSmartSvgOutput(config)){
+        result.size = result.output_size = config.customSize;
     }
-    if(settings.engine === 'runninghub') return {w:1024, h:1024};
-    const sizeStr = sizeForRun();
-    const parsed = parseSizeValue(sizeStr);
-    if(parsed){
-        return {w: Number(parsed.width) || 1024, h: Number(parsed.height) || 1024};
-    }
-    return {w:1024, h:1024};
-}
-function explicitRequestOutputSizeForPending(){
-    if(isApiLikeEngine(settings.engine) && settings.apiKind !== 'video'){
-        const parsed = parseSizeValue(sizeForRun());
-        if(parsed) return {w:Number(parsed.width) || 1024, h:Number(parsed.height) || 1024};
-    }
-    if(settings.engine === 'comfy' && settings.comfyMode === 'text'){
-        const w = Number(settings.width) || 1024;
-        const h = Number(settings.height) || 1024;
-        return {w, h};
-    }
-    return null;
-}
-function pendingSizeFromImageRef(img){
-    const w = Number(img?.natural_w || img?.width || 0);
-    const h = Number(img?.natural_h || img?.height || 0);
-    return w > 0 && h > 0 ? {w, h} : null;
-}
-function pendingSourceBoxSize(options={}){
-    const sourceNode = options.sourceNode || null;
-    if(sourceNode && (sourceNode.images || []).length){
-        const rect = nodeRect(sourceNode);
-        if(rect.width > 24 && rect.height > 24) return {w:Math.round(rect.width), h:Math.round(rect.height), display:true};
-    }
-    const ref = (options.refs || []).find(img => img?.url);
-    const refSize = pendingSizeFromImageRef(ref);
-    if(refSize) return refSize;
-    const refNode = ref?.nodeId ? nodes.find(n => n.id === ref.nodeId) : null;
-    if(refNode){
-        const rect = nodeRect(refNode);
-        if(rect.width > 24 && rect.height > 24) return {w:Math.round(rect.width), h:Math.round(rect.height), display:true};
-    }
-    return null;
+    if(!gif && !outpaint && ['1k','2k','4k'].includes(config.resolution)) result.resolution = config.resolution;
+    return result;
 }
 function displayBoxFromNaturalSize(size){
-    const layout = singleImageLayout(
-        {natural_w:size?.w || size?.width || 1024, natural_h:size?.h || size?.height || 1024},
-        {type:'smart-image', images:[{}]},
-        MEDIA_NODE_DEFAULT_SCALE
-    );
-    return {w:layout.width, h:layout.height};
+    const image = {natural_w:size?.w || size?.width || 1024, natural_h:size?.h || size?.height || 1024};
+    const {width, height} = singleImageLayout(image, {type:'smart-image', images:[{}]}, MEDIA_NODE_DEFAULT_SCALE);
+    return {w:width, h:height};
 }
-function pendingBaseBoxSize(options={}){
-    const requestSize = explicitRequestOutputSizeForPending();
-    if(requestSize) return displayBoxFromNaturalSize(requestSize);
-    const sourceSize = pendingSourceBoxSize(options);
-    if(sourceSize?.display) return {w:sourceSize.w, h:sourceSize.h};
-    if(sourceSize) return displayBoxFromNaturalSize(sourceSize);
-    return displayBoxFromNaturalSize(expectedOutputSize());
-}
-function pendingBoxSize(count, options={}){
-    const base = pendingBaseBoxSize(options);
-    const aspect = base.w / Math.max(1, base.h);
-    const c = Math.max(1, Number(count) || 1);
-    if(c <= 1){
-        return {w:Math.round(base.w), h:Math.round(base.h)};
+function pendingBoxSize(count, config, {sourceNode, refs=[], exactSize=false}={}){
+    const isComfy = config.engine === 'comfy';
+    const parsed = isComfy || config.engine === 'runninghub' ? null : parseSizeValue(imageRequestDimensions(config, exactSize).size);
+    const imageSize = parsed ? {w:Number(parsed.width) || 1024, h:Number(parsed.height) || 1024} : null;
+    const requested = isComfy && config.comfyMode === 'text'
+        ? {w:Number(config.width) || 1024, h:Number(config.height) || 1024}
+        : isApiLikeEngine(config.engine) && config.apiKind !== 'video' ? imageSize : null;
+    let base;
+    if(requested) base = displayBoxFromNaturalSize(requested);
+    else {
+        const ref = refs.find(item => item?.url);
+        const source = sourceNode?.images?.length ? nodeRect(sourceNode) : null;
+        const refWidth = Number(ref?.natural_w || ref?.width);
+        const refHeight = Number(ref?.natural_h || ref?.height);
+        if(source?.width > 24 && source.height > 24) base = {w:Math.round(source.width), h:Math.round(source.height)};
+        else if(refWidth > 0 && refHeight > 0) base = displayBoxFromNaturalSize({w:refWidth, h:refHeight});
+        else {
+            const refNode = ref?.nodeId && nodes.find(node => node.id === ref.nodeId);
+            const rect = refNode ? nodeRect(refNode) : null;
+            if(rect?.width > 24 && rect.height > 24) base = {w:Math.round(rect.width), h:Math.round(rect.height)};
+        }
     }
-    const cols = Math.min(4, Math.max(2, Math.ceil(Math.sqrt(c))));
-    const rows = Math.ceil(c / cols);
-    const cellMax = Math.max(96, Math.min(220, Math.max(base.w, base.h) * 0.42));
-    let cellW, cellH;
-    if(base.w >= base.h){
-        cellW = cellMax;
-        cellH = Math.max(40 * MEDIA_NODE_DEFAULT_SCALE, Math.round(cellMax / aspect));
-    } else {
-        cellH = cellMax;
-        cellW = Math.max(40 * MEDIA_NODE_DEFAULT_SCALE, Math.round(cellMax * aspect));
-    }
-    const w = cols * (cellW + 8) + 16;
-    const h = rows * (cellH + 8) + 16;
-    return {w, h};
-}
-function mentionTokenHtml(img){
-    if(!img?.url) return '';
-    const kind = mediaKindForItem(img);
-    const name = img.alias || img.name || (kind === 'audio' ? '音频' : kind === 'video' ? '视频' : '图片');
-    const media = mentionTokenMediaHtml(img, kind);
-    return `<span class="mention-image-token" contenteditable="false" data-url="${escapeHtml(img.url)}" data-kind="${escapeHtml(kind)}" data-name="${escapeHtml(name)}" data-node-id="${escapeHtml(img.nodeId || '')}" data-image-index="${escapeHtml(img.imageIndex ?? '')}">${media}<span>${escapeHtml(name)}</span></span>`;
+    return outputGridSize(base || displayBoxFromNaturalSize(imageSize), count, MEDIA_NODE_DEFAULT_SCALE);
 }
 function mentionTokenMediaHtml(img, kind=mediaKindForItem(img)){
     if(kind === 'audio'){
@@ -28367,99 +21365,55 @@ function mentionTokenMediaHtml(img, kind=mediaKindForItem(img)){
     }
     return smartPreviewImgHtml(img, 256, 'alt=""');
 }
-function mentionOptionMediaHtml(img){
-    const kind = mediaKindForItem(img);
-    if(kind === 'audio'){
-        return `<div class="media-thumb audio-thumb mention-option-audio"><i data-lucide="file-audio"></i><span>${escapeHtml(img.alias || img.name || 'Audio')}</span></div>`;
-    }
-    return kind === 'video' ? smartVideoPreviewHtml(img, 256, 'alt=""') : smartPreviewImgHtml(img, 256, 'alt=""');
+function promptHtmlWithMentionTokens(text, refs){
+    return renderOutputMentionDraft(text, refs, escapeHtml, mentionTokenHtml);
 }
-function promptHtmlWithMentionTokens(text, refs=[]){
-    const value = String(text || '');
-    const items = (refs || []).filter(ref => ref?.url && ref?.name).sort((a, b) => String(b.name || '').length - String(a.name || '').length);
-    if(!value || !items.length || !value.includes('@')) return '';
-    let html = '';
-    let index = 0;
-    while(index < value.length){
-        if(value[index] === '@'){
-            const hit = items.find(ref => value.slice(index + 1, index + 1 + String(ref.name || '').length) === String(ref.name || ''));
-            if(hit){
-                html += mentionTokenHtml(hit);
-                index += 1 + String(hit.name || '').length;
-                continue;
-            }
-        }
-        html += escapeHtml(value[index]);
-        index += 1;
-    }
-    return html;
-}
-function snapshotRunMeta(prompt, sourceId, displayPrompt='', refs=[]){
+function snapshotRunMeta(prompt, sourceId, displayPrompt, refs=[], runSettings=settings, draft){
+    const currentDraft = draft || {text:promptPlainText(), html:promptInput?.innerHTML || ''};
     return {
+        prompt, sourceNodeId:sourceId, createdAt:Date.now(),
+        displayPrompt:displayPrompt || currentDraft.text || prompt,
+        promptHtml:currentDraft.html || escapeHtml(currentDraft.text),
+        promptText:currentDraft.text,
+        promptRefs:outputRunReferences(refs),
+        inputRefs:outputRunReferences(refs, true),
+        settings:settingsForStorage(runSettings),
         localRepair:typeof localRepairRegionFromRefs === 'function' ? localRepairRegionFromRefs(refs) : null,
-        prompt,
-        displayPrompt:displayPrompt || promptPlainText() || prompt,
-        promptHtml: promptInput ? promptInput.innerHTML : '',
-        promptText: promptPlainText(),
-        promptRefs:(refs || []).map(ref => ({url:ref.url || '', name:ref.name || '', nodeId:ref.nodeId || '', imageIndex:ref.imageIndex ?? ''})).filter(ref => ref.url),
-        inputRefs:(refs || []).map(ref => ({url:ref.url || '', name:ref.name || '', nodeId:ref.nodeId || '', imageIndex:ref.imageIndex ?? '', kind:ref.kind || ''})).filter(ref => ref.url),
-        sourceNodeId:sourceId,
-        settings:JSON.parse(JSON.stringify(settings)),
-        createdAt:Date.now()
     };
 }
-function attachRunMeta(targetNode, meta, applyRepair=true){
-    if(!targetNode || !meta) return;
-    targetNode.localRepairRunContext=meta.localRepair||null;
-    if(applyRepair && meta.localRepair && typeof localRepairApplyMeta === 'function') targetNode.images=localRepairApplyMeta(targetNode.images,meta.localRepair);
-    delete targetNode.appliedPromptCaseId;
-    delete targetNode.appliedPromptCaseAt;
-    delete targetNode.appliedPromptCaseTitle;
-    targetNode.runPrompt = meta.displayPrompt || meta.promptText || meta.prompt;
-    targetNode.runModelPrompt = meta.prompt;
-    targetNode.runPromptRefs = meta.promptRefs || [];
-    targetNode.runInputRefs = (meta.inputRefs || meta.promptRefs || []).map(ref => ({
-        url:ref.url || '',
-        name:ref.name || '',
-        nodeId:ref.nodeId || '',
-        imageIndex:ref.imageIndex ?? '',
-        kind:ref.kind || ''
-    })).filter(ref => ref.url);
-    targetNode.runSettings = meta.settings;
-    if(meta.sourceNodeId) targetNode.sourceNodeId = meta.sourceNodeId;
-    else delete targetNode.sourceNodeId;
-    targetNode.runAt = meta.createdAt;
-    // 保存可编辑的 @-提及表单到草稿字段，方便点输出节点时还原原始可编辑形式
+function attachRunMeta(node, meta, applyRepair=true){
+    if(!node || !meta) return;
+    const repair = meta.localRepair || null;
+    if(applyRepair && repair && typeof localRepairApplyMeta === 'function') node.images = localRepairApplyMeta(node.images, repair);
+    const promptRefs = meta.promptRefs || [];
+    Object.assign(node, {
+        localRepairRunContext:repair,
+        runPrompt:meta.displayPrompt || meta.promptText || meta.prompt,
+        runModelPrompt:meta.prompt,
+        runPromptRefs:promptRefs,
+        runInputRefs:outputRunReferences(meta.inputRefs || promptRefs, true),
+        runSettings:meta.settings ? settingsForStorage(meta.settings) : meta.settings,
+        runAt:meta.createdAt,
+    });
+    for(const field of ['appliedPromptCaseId', 'appliedPromptCaseAt', 'appliedPromptCaseTitle']) delete node[field];
+    if(meta.sourceNodeId) node.sourceNodeId = meta.sourceNodeId;
+    else delete node.sourceNodeId;
     if(meta.promptHtml != null){
-        const htmlHasToken = String(meta.promptHtml || '').includes('mention-image-token');
-        const rebuiltHtml = htmlHasToken ? '' : promptHtmlWithMentionTokens(meta.displayPrompt || meta.promptText || '', meta.promptRefs || []);
-        targetNode.promptDraftHtml = meta.sourceNodeId === targetNode.id || htmlHasToken ? meta.promptHtml : (rebuiltHtml || meta.promptHtml);
-        targetNode.promptDraftText = meta.promptText || '';
+        const hasTokens = String(meta.promptHtml).includes('mention-image-token');
+        const keepDraft = node.id === meta.sourceNodeId || hasTokens;
+        node.promptDraftHtml = keepDraft ? meta.promptHtml
+            : promptHtmlWithMentionTokens(meta.displayPrompt || meta.promptText, promptRefs) || meta.promptHtml;
+        node.promptDraftText = meta.promptText || '';
     }
-    targetNode.images = (targetNode.images || []).map(img => stripImageGenerationMeta(img));
+    node.images = (node.images || []).map(stripImageGenerationMeta);
 }
 function stripRunInputMeta(meta){
     if(!meta) return meta;
-    const cleanPrompt = meta.promptText || meta.displayPrompt || meta.prompt || '';
+    const prompt = meta.promptText || meta.displayPrompt || meta.prompt || '';
     return {
-        ...meta,
-        promptHtml:escapeHtml(cleanPrompt),
-        promptText:cleanPrompt,
-        promptRefs:[],
-        inputRefs:meta.inputRefs || meta.promptRefs || [],
-        sourceNodeId:''
+        ...meta, sourceNodeId:'', promptText:prompt, promptHtml:escapeHtml(prompt),
+        promptRefs:[], inputRefs:meta.inputRefs || meta.promptRefs || [],
     };
-}
-function stripImageGenerationMeta(img){
-    if(!img) return img;
-    delete img.runPrompt;
-    delete img.runModelPrompt;
-    delete img.runSettings;
-    delete img.sourceNodeId;
-    delete img.runAt;
-    delete img.promptDraftHtml;
-    delete img.promptDraftText;
-    return img;
 }
 function addConnection(fromId, toId, kind='flow', inputSlot=''){
     if(!fromId || !toId || fromId === toId) return;
@@ -29082,16 +22036,7 @@ function splitSmartLoopPromptFields(node, separator=''){
     });
     return result;
 }
-function smartLoopPromptFieldValues(node){
-    const fields = Array.isArray(node?.variablePrompts)
-        ? node.variablePrompts.map(text => String(text || '').trim())
-        : [];
-    if(fields.length) return fields;
-    const legacyPrompt = String(node?.variablePrompt || '').trim();
-    // 配对节点按输入框计数；一条提示词里的换行只是排版，不是配对分隔符。
-    if(smartLoopIsPaired(node)) return legacyPrompt ? [legacyPrompt] : [];
-    return splitSmartPromptItems(legacyPrompt);
-}
+function smartLoopPromptFieldValues(node){ return smartLoopEditor.fields(node); }
 function smartLoopActivePromptFieldValues(node){
     return smartLoopPromptFieldValues(node).filter(Boolean);
 }
@@ -29105,12 +22050,7 @@ function isSmartLoopDefaultPrompt(text){
         || value === '现在生成第《计数》张卖点图片'
         || value === 'Generate selling-point image 《计数》';
 }
-function setSmartLoopPromptFieldValues(node, values){
-    if(!node || node.type !== 'smart-loop') return;
-    const fields = (values || []).map(text => String(text || '').trim());
-    node.variablePrompts = fields.length ? fields : [''];
-    node.variablePrompt = fields.filter(Boolean).join('\n');
-}
+function setSmartLoopPromptFieldValues(node, values){ smartLoopEditor.writeFields(node, values); }
 function smartLoopPromptFieldText(node, fieldIndex){
     const values = smartLoopPromptFieldValues(node);
     return values[fieldIndex] || '';
@@ -29163,26 +22103,18 @@ function smartLoopPrompt(node, ctx=smartLoopContext){
     const combined = smartLoopIsPaired(node)
         ? [visualGuide, localPrompt].filter(Boolean).join('\n\n')
         : [selected, effectiveLocalPrompt].map(text => String(text || '').trim()).filter(Boolean).join('\n\n');
-    return String(combined || '')
-        .replaceAll('《计数》', String(index))
-        .replaceAll('[计数]', String(index))
-        .replaceAll(`[${tr('canvas.counterToken')}]`, String(index))
-        .replaceAll('《总数》', String(total))
-        .replaceAll('[总数]', String(total))
-        .replaceAll('《进度》', `${index}/${total}`)
-        .replaceAll('[进度]', `${index}/${total}`)
-        .trim();
+    return smartLoopEditor.expandTokens(combined, index, total);
 }
 function smartLoopInputImages(node, ctx=smartLoopContext){
     if(!node?.imageInput) return [];
     const refs = smartLoopIsPaired(node) ? smartLoopPreviewImages(node) : uniqueReferenceImages(inputNodesFor(node).flatMap(input => input?.type === 'smart-loop' ? smartLoopInputImages(input, ctx) : imagesForNode(input)).filter(img => img?.url && !isInputRefBlocked(node, img)));
     if(!refs.length) return [];
-    if(node.batchDetailModeV2 && smartLoopIsPaired(node)) return refs;
-    // 简洁模式的批量生成会把唯一的产品素材复用到每一屏。
-    // 高级模式和多图模式仍按原来的起始图片/批量大小取图。
-    if(smartLoopIsPaired(node) && refs.length === 1 && smartLoopPairedPromptValues(node).length > 1){
-        return [refs[0]];
-    }
+    // 批量生图的每一屏都共用同一套素材：产品图锁定外观，参考图只借风格。
+    // 旧画布可能没有 batchDetailModeV2 标记，但仍按批量生图界面运行；若沿用
+    // “每屏只取一张图”的旧循环逻辑，参考图排在前面时产品图（图9、图10）
+    // 会被丢掉，模型只能用参考图里的商品充当产品。
+    if(smartLoopIsPaired(node)) return refs;
+    // 高级循环模式仍按原来的起始图片和每次取图数量取图。
     const startBase = Math.max(1, Number(node.loopStart) || 1);
     const batchSize = Math.max(1, Math.min(100, Number(node.imageBatchSize) || 1));
     const currentIndex = Math.max(1, Number(ctx?.index || startBase) || startBase);
@@ -29450,25 +22382,7 @@ function inputRefKey(img){
     return `url|${img.url}`;
 }
 function orderedSmartInputReferences(node, images){
-    const refs = uniqueReferenceImages(images);
-    const storedOrder = Array.isArray(node?.inputRefOrder)
-        ? node.inputRefOrder.map(key => String(key || '')).filter(Boolean)
-        : [];
-    if(refs.length < 2 || storedOrder.length < 2) return refs;
-    const rank = new Map();
-    storedOrder.forEach((key, index) => {
-        if(!rank.has(key)) rank.set(key, index);
-    });
-    return refs
-        .map((ref, index) => ({
-            ref,
-            index,
-            rank:rank.has(`ref|${typeof referenceMaterialKey === 'function' ? referenceMaterialKey(ref) : ''}`)
-                ? rank.get(`ref|${referenceMaterialKey(ref)}`)
-                : rank.has(inputRefKey(ref)) ? rank.get(inputRefKey(ref)) : storedOrder.length + index
-        }))
-        .sort((a, b) => a.rank - b.rank || a.index - b.index)
-        .map(item => item.ref);
+    return generationReferences.ordered(node, images);
 }
 function blockedInputRefKeys(node){
     const blocked = new Set(Array.isArray(node?.blockedInputRefs) ? node.blockedInputRefs.filter(Boolean) : []);
@@ -29513,9 +22427,6 @@ function pruneBlockedSmartBatchConnections(node){
     if(Array.isArray(node.inputNodeIds))node.inputNodeIds=node.inputNodeIds.filter(id=>!sourceIds.has(id)||canvas.connections.some(conn=>conn.from===id&&conn.to===node.id));
     clearDetachedRunInputRefs(node);
     scheduleSave();
-}
-function activeInputImagesFor(node, consume=false, ctx=smartLoopContext){
-    return inputImagesFor(node, consume, ctx).filter(img => img?.url && !isInputRefBlocked(node, img));
 }
 function toggleInputRefBlocked(node, img){
     if(!node || !img?.url) return;
@@ -29611,107 +22522,10 @@ function removePromptNodeInputReference(nodeId, key, sourceNodeId=''){
     scheduleSave();
 }
 function defaultReferenceImagesFor(node, consume=false, ctx=smartLoopContext){
-    if(!node) return [];
-    // 智能对话的图片输出由“下游输出”开关控制；默认继续透传参考图片。
-    if(node.type === 'smart-agent') return agentOutputImages(node);
-    if(isSmartAiRenderNode(node)) return smartAiRenderInputReferences(node, ctx).filter(img => !isInputRefBlocked(node, img));
-    if(node.smartEditSource?.sourceUrl){
-        const source=node.smartEditSource;
-        // 智能改图绑定打开编辑器时的单张原图，包括再次运行时。
-        const original={url:source.sourceUrl,nodeId:source.nodeId,imageIndex:source.imageIndex,name:'智能改图原图',kind:'image',width:source.width,height:source.height};
-        return [original,...manualReferenceImagesFor(node)].filter(img=>!isInputRefBlocked(node,img));
-    }
-    const self = selfReferenceImagesForNode(node, consume, ctx).filter(img => img?.url && !isInputRefBlocked(node, img));
-    const upstream = (smartImageUsesWorkflowInput(node, ctx) ? workflowInputImagesFor(node, consume, ctx) : inputImagesFor(node, consume, ctx))
-        .filter(img => img?.url && !isInputRefBlocked(node, img));
-    const manual = manualReferenceImagesFor(node).filter(img => !isInputRefBlocked(node, img));
-    if(smartImageUsesWorkflowInput(node, ctx)) return orderedSmartInputReferences(node, [...upstream, ...manual]);
-    if(self.length) return orderedSmartInputReferences(node, [...self, ...upstream, ...manual]);
-    return orderedSmartInputReferences(node, [...upstream, ...manual]);
+    return generationReferences.defaults(node, consume, ctx);
 }
 function stableReferenceImagesFor(node, consume=false, ctx=smartLoopContext){
-    // 智能对话节点仍需在自身面板和请求中看到上游参考图；这里只禁止它
-    // 作为图片输出流向下游，不能把节点自己的输入缩略图一并隐藏。
-    if(node?.type === 'smart-agent') return promptNodeInputMediaForLLM(node);
-    const base = defaultReferenceImagesFor(node, consume, ctx);
-    // The first edit replaces a standalone source image with its generated result.
-    // Keep the exact request inputs as provenance so later reruns continue editing
-    // the same source instead of silently degrading into text-to-image.
-    const saved = Array.isArray(node?.runInputRefs)
-        ? node.runInputRefs.filter(ref => ref?.url && !isInputRefBlocked(node, ref))
-        : [];
-    const savedSelf = saved.filter(ref => ref.nodeId && ref.nodeId === node?.id);
-    // 旧版本可能把智能对话透传的图片写进下游绘画节点的 runInputRefs。
-    // 当前仍连接智能对话且没有其它图片输入时，不要用这份旧快照把图片带回来。
-    const hasTextOnlyAgentInput = workflowInputNodesFor(node).some(input => input?.type === 'smart-agent');
-    const savedFallback = hasTextOnlyAgentInput ? [] : saved;
-    return orderedSmartInputReferences(node, [...base, ...(base.length ? savedSelf : savedFallback)]);
-}
-function upstreamRerunReferenceImagesFor(node, consume=false, ctx=smartLoopContext){
-    if(!node) return [];
-    const selected = window.UpstreamRerunUtils.selectUpstreamRerunReferences({
-        upstream:activeInputImagesFor(node, consume, ctx),
-        manual:manualReferenceImagesFor(node),
-        fallback:defaultReferenceImagesFor(node, consume, ctx)
-    });
-    return uniqueReferenceImages(selected);
-}
-function lineConnectionsFor(node){
-    if(!node) return [];
-    return (canvas?.connections || []).filter(conn => {
-        if(!conn?.from || !conn?.to || conn.from === conn.to) return false;
-        return ['input', 'flow'].includes(conn.kind || 'flow');
-    });
-}
-function connectedLineNodeIds(node){
-    if(!node) return [];
-    const conns = lineConnectionsFor(node);
-    const upstream = [];
-    const downstream = [];
-    const seenUp = new Set([node.id]);
-    const seenDown = new Set([node.id]);
-    const walkUp = id => {
-        conns.filter(conn => conn.to === id).forEach(conn => {
-            if(seenUp.has(conn.from)) return;
-            seenUp.add(conn.from);
-            walkUp(conn.from);
-            upstream.push(conn.from);
-        });
-    };
-    const walkDown = id => {
-        conns.filter(conn => conn.from === id).forEach(conn => {
-            if(seenDown.has(conn.to)) return;
-            seenDown.add(conn.to);
-            downstream.push(conn.to);
-            walkDown(conn.to);
-        });
-    };
-    walkUp(node.id);
-    walkDown(node.id);
-    return [...upstream, node.id, ...downstream];
-}
-function upstreamLineNodeIds(node){
-    if(!node) return [];
-    const conns = lineConnectionsFor(node);
-    const upstream = [];
-    const seen = new Set([node.id]);
-    const walk = id => {
-        conns.filter(conn => conn.to === id).forEach(conn => {
-            if(seen.has(conn.from)) return;
-            seen.add(conn.from);
-            walk(conn.from);
-            upstream.push(conn.from);
-        });
-    };
-    walk(node.id);
-    return [...upstream, node.id];
-}
-function lineImagesFor(node){
-    const ids = upstreamLineNodeIds(node).filter(id => id !== node?.id);
-    return ids.flatMap(id => {
-        const source = nodes.find(n => n.id === id);
-        return imagesForNode(source);
-    }).filter(img => img?.url);
+    return generationReferences.stable(node, consume, ctx);
 }
 function collectMentionedImagesFromPrompt(){
     const images = [];
@@ -29721,240 +22535,18 @@ function collectMentionedImagesFromPrompt(){
     return images;
 }
 function uniqueReferenceImages(images){
-    const refs = [];
-    const byUrl = new Map(), byAsset = new Map(), byMaterial = new Map();
-    (images || []).forEach((img, index) => {
-        if(!img?.url) return;
-        const asset = img.asset_ref_id || img.assetRefId || '';
-        const material = typeof referenceMaterialKey === 'function' ? referenceMaterialKey(img) : img.url;
-        const existing = byUrl.get(img.url) || (asset && byAsset.get(asset)) || byMaterial.get(material);
-        if(existing){
-            // Duplicate paths may carry complementary registration and file metadata.
-            Object.entries(img).forEach(([key,value]) => { if(existing[key] == null || existing[key] === '') existing[key] = value; });
-            existing.asset_uris = {...(existing.asset_uris || {}), ...(img.asset_uris || {})};
-            if(img.referenceId) existing.referenceId = img.referenceId;
-            if(img.sourceImageId){ existing.sourceImageId = img.sourceImageId; existing.sourceMissing = Boolean(img.sourceMissing); }
-            byUrl.set(img.url, existing);
-            byMaterial.set(material, existing);
-            if(asset) byAsset.set(asset, existing);
-            return;
-        }
-        refs.push({
-            ...img,
-            name:img.name || `图${refs.length + 1}`,
-            role:img.role || `image_${refs.length + 1}`,
-            imageIndex:Number.isFinite(Number(img.imageIndex)) ? Number(img.imageIndex) : index
-        });
-        byUrl.set(img.url, refs[refs.length - 1]);
-        byMaterial.set(material, refs[refs.length - 1]);
-        if(asset) byAsset.set(asset, refs[refs.length - 1]);
-    });
-    return refs;
+    return generationReferences.distinct(images);
 }
 function visibleReferenceImagesFor(node){
-    const blocked = typeof blockedInputRefKeys === 'function'
-        ? blockedInputRefKeys(node)
-        : new Set(Array.isArray(node?.blockedInputRefs) ? node.blockedInputRefs : []);
-    // 被用户点叉移除的图片即使仍以 @图片 形式留在提示词编辑器里，也不能
-    // 重新出现在输入栏；显示引用与实际请求共用这份过滤结果。
-    return orderedSmartInputReferences(node, [
-        ...stableReferenceImagesFor(node),
-        ...collectMentionedImagesFromPrompt()
-    ].filter(image => !blocked.has(inputRefKey(image)) && !blocked.has(`ref|${typeof referenceMaterialKey === 'function' ? referenceMaterialKey(image) : ''}`)));
+    return generationReferences.visible(node, stableReferenceImagesFor(node), collectMentionedImagesFromPrompt());
 }
 function inputMentionCandidateImages(node){
-    const current = node ? [...lineImagesFor(node), ...manualReferenceImagesFor(node)] : [];
-    const seen = new Set();
-    return current.filter(img => {
-        if(!img?.url || seen.has(img.url)) return false;
-        seen.add(img.url);
-        return true;
-    }).map((img, index) => ({
-        ...img,
-        mentionId:`mention_${index}_${Math.random().toString(36).slice(2, 7)}`,
-        alias:img.name || `图片${index + 1}`
-    }));
-}
-// 一个素材可注册到多个平台：收集所有「已通过」的 asset:// 地址，按平台映射。
-function assetRegisteredUris(item){
-    const regs = (item && item.registrations && typeof item.registrations === 'object') ? item.registrations : {};
-    const out = {};
-    Object.keys(regs).forEach(platform => {
-        const reg = regs[platform];
-        if(reg && reg.status === 'Active' && reg.asset_uri) out[platform] = reg.asset_uri;
-    });
-    return out;
-}
-function assetUrlLibraryItems(){
-    return (Array.isArray(assetUrlLibrary?.items) ? assetUrlLibrary.items : [])
-        .filter(item => item?.url)
-        .map((item, index) => ({
-            ...item,
-            id:item.id || `url_${index}`,
-            kind:item.kind || assetMediaKind(item),
-            name:item.name || `URL ${index + 1}`
-        }));
-}
-function assetMentionCandidateImages(categoryId=''){
-    const cats = assetCategories('image');
-    const cat = cats.find(c => c.id === categoryId) || assetCategoryForMention();
-    const urlItems = assetUrlLibraryItems().map(item => ({...item, categoryName:'URL', categoryId:'__url__', urlAsset:true}));
-    if(!cat && !urlItems.length) return [];
-    if(cat) mentionAssetCategoryId = cat.id;
-    const items = [...urlItems, ...(cat?.items || []).map(item => ({...item, categoryName:cat.name || '', categoryId:cat.id}))];
-    const seen = new Set();
-    return items.filter(item => {
-        if(!item?.url || seen.has(item.url)) return false;
-        seen.add(item.url);
-        return true;
-    }).map((item, index) => ({
-        url:item.url,
-        kind:assetMediaKind(item),
-        name:item.name || `资产${index + 1}`,
-        alias:item.name || `资产${index + 1}`,
-        role:'asset',
-        categoryName:item.categoryName || '',
-        asset_uris:item.urlAsset ? {} : assetRegisteredUris(item),
-        mentionId:`asset_${index}_${Math.random().toString(36).slice(2, 7)}`
-    }));
-}
-function mentionCandidateImages(node, source=mentionSource){
-    return source === 'asset' ? assetMentionCandidateImages(mentionAssetCategoryId) : inputMentionCandidateImages(node);
+    if(!node) return [];
+    const upstream = smartRunGraph().ancestors(node.id).flatMap(imagesForNode);
+    return generationReferences.mentionCandidates([...upstream, ...manualReferenceImagesFor(node)]);
 }
 function referenceImagesFor(node){
     return defaultReferenceImagesFor(node);
-}
-function closeMentionPicker(){
-    mentionPicker.classList.remove('open');
-    mentionPicker.innerHTML = '';
-    if(selectedNode()) renderInputThumbsRow(selectedNode());
-}
-function saveMentionRange(){
-    const sel = window.getSelection();
-    if(sel && sel.rangeCount && promptInput.contains(sel.anchorNode)){
-        mentionRange = sel.getRangeAt(0).cloneRange();
-    }
-}
-function textBeforeCaret(){
-    const sel = window.getSelection();
-    if(!sel || !sel.rangeCount || !promptInput.contains(sel.anchorNode)) return '';
-    const range = sel.getRangeAt(0).cloneRange();
-    range.selectNodeContents(promptInput);
-    range.setEnd(sel.anchorNode, sel.anchorOffset);
-    return range.toString();
-}
-function renderMentionPicker(source){
-    const node = selectedNode();
-    const inputItems = inputMentionCandidateImages(node);
-    const assetLibs = assetLibraries();
-    if(!activeAssetLibraryId || !assetLibs.some(lib => lib.id === activeAssetLibraryId)) activeAssetLibraryId = assetLibrary.active_library_id || assetLibs[0]?.id || '';
-    const libraryWithMentionAssets = assetLibs.find(lib => (lib.categories || []).some(cat => (cat.type || 'image') === 'image' && (cat.items || []).some(item => item?.url)));
-    const assetCats = assetCategories('image');
-    const hasUrlAssets = assetUrlLibraryItems().length > 0;
-    const hasInput = inputItems.length > 0;
-    const hasAssets = Boolean(libraryWithMentionAssets) || hasUrlAssets;
-    mentionSource = source || (hasInput ? 'input' : 'asset');
-    if(mentionSource === 'asset' && hasAssets && !assetCats.some(cat => (cat.items || []).some(item => item?.url)) && libraryWithMentionAssets){
-        activeAssetLibraryId = libraryWithMentionAssets.id;
-        activeAssetCategoryId = '';
-        mentionAssetCategoryId = '';
-    }
-    if(mentionSource === 'input' && !hasInput && hasAssets) mentionSource = 'asset';
-    if(mentionSource === 'asset' && !hasAssets && hasInput) mentionSource = 'input';
-    if(!hasInput && !hasAssets){ closeMentionPicker(); return; }
-    const nextAssetCats = assetCategories('image');
-    const currentAssetCat = assetCategoryForMention();
-    const assetItems = assetMentionCandidateImages(currentAssetCat?.id || '');
-    const candidates = (mentionSource === 'asset' ? assetItems : inputItems).slice(0, 36);
-    const body = candidates.length ? `<div class="mention-option-grid">${candidates.map((img, i) => `
-            <button class="mention-option" type="button" data-mention-index="${i}">
-                ${mentionOptionMediaHtml(img)}
-                <span>${escapeHtml(img.alias)}</span>
-            </button>
-        `).join('')}</div>` : `<div class="mention-empty">${escapeHtml(tr('smart.mentionEmpty'))}</div>`;
-    const librarySelect = (mentionSource === 'asset' && assetLibs.length)
-        ? `<label class="mention-library-row"><span>${escapeHtml(tr('smart.assetLibrary'))}</span><select class="mention-library-select" data-mention-library>${assetLibs.map(lib => `<option value="${escapeHtml(lib.id)}" ${lib.id === activeAssetLibraryId ? 'selected' : ''}>${escapeHtml(lib.name || '资产库')}</option>`).join('')}</select></label>`
-        : '';
-    const folderChips = (mentionSource === 'asset' && nextAssetCats.length)
-        ? nextAssetCats.map(cat => {
-            const label = cat.name || tr('smart.assetFolder');
-            return `<button class="mention-folder-chip ${cat.id === mentionAssetCategoryId ? 'active' : ''}" type="button" data-mention-folder="${escapeHtml(cat.id)}" title="${escapeHtml(label)}">${escapeHtml(label)}</button>`;
-          }).join('')
-        : '';
-    mentionPicker.innerHTML = `
-        <div class="mention-picker-shell">
-            <div class="mention-source-tabs">
-                <button class="mention-source-tab ${mentionSource === 'input' ? 'active' : ''}" type="button" data-mention-source="input" title="${escapeHtml(tr('smart.mentionInput'))}" ${hasInput ? '' : 'disabled'}>
-                    <i data-lucide="image"></i><span>${escapeHtml(tr('smart.mentionInput'))}</span>
-                </button>
-                <button class="mention-source-tab ${mentionSource === 'asset' ? 'active' : ''}" type="button" data-mention-source="asset" title="${escapeHtml(tr('smart.mentionAssets'))}" ${hasAssets ? '' : 'disabled'}>
-                    <i data-lucide="library"></i><span>${escapeHtml(tr('smart.mentionAssets'))}</span>
-                </button>
-            </div>
-            ${librarySelect}
-            <div class="mention-folder-chips ${folderChips ? '' : 'hidden'}">
-                ${folderChips}
-            </div>
-            <div class="mention-content">
-                ${body}
-            </div>
-        </div>
-    `;
-    mentionPicker._items = candidates;
-    bindSmartPreviewImageFallbacks(mentionPicker);
-    placeMentionPickerInPromptRow();
-    positionMentionPickerAtCaret();
-    mentionPicker.classList.add('open');
-    mentionPicker.querySelectorAll('[data-mention-source]').forEach(btn => {
-        btn.addEventListener('mousedown', e => {
-            e.preventDefault(); e.stopPropagation();
-            if(btn.disabled) return;
-            renderMentionPicker(btn.dataset.mentionSource);
-        });
-    });
-    mentionPicker.querySelectorAll('[data-mention-library]').forEach(select => {
-        select.addEventListener('mousedown', e => e.stopPropagation());
-        select.addEventListener('change', e => {
-            activeAssetLibraryId = e.target.value || '';
-            activeAssetCategoryId = '';
-            mentionAssetCategoryId = '';
-            renderAssetLibrary();
-            renderMentionPicker('asset');
-        });
-    });
-    mentionPicker.querySelectorAll('[data-mention-folder]').forEach(btn => {
-        btn.addEventListener('mousedown', e => {
-            e.preventDefault(); e.stopPropagation();
-            mentionAssetCategoryId = btn.dataset.mentionFolder || '';
-            renderMentionPicker('asset');
-        });
-    });
-    mentionPicker.querySelectorAll('[data-mention-index]').forEach(btn => {
-        btn.addEventListener('mousedown', e => {
-            e.preventDefault(); e.stopPropagation();
-            const item = mentionPicker._items[Number(btn.dataset.mentionIndex)];
-            insertMentionToken(item);
-        });
-    });
-    refreshIcons();
-}
-function showMentionPicker(){
-    const node = selectedNode();
-    const hasInput = inputMentionCandidateImages(node).length > 0;
-    placeMentionPickerInPromptRow();
-    mentionSource = hasInput ? 'input' : 'asset';
-    renderMentionPicker(mentionSource);
-}
-function setPromptCaretToEnd(){
-    if(!promptInput) return;
-    promptInput.focus();
-    const range = document.createRange();
-    range.selectNodeContents(promptInput);
-    range.collapse(false);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-    mentionRange = range.cloneRange();
 }
 function referenceMaterialKey(ref){
     const asset=ref?.asset_ref_id || ref?.assetRefId;
@@ -30077,7 +22669,7 @@ function referenceMediaLimits(runSettings={}, targetType='node-image'){
         const family = scnetVideoOptions(runSettings.videoModel).family;
         limits = family === 'happyhorse' ? {image:0,video:0,audio:0} : family === 'wan' ? {image:0,video:0,audio:1} : {image:9,video:3,audio:3};
     }
-    else if(is6789) limits = {image:seedance6789DurationOptions(model)?.[0] === 30 ? 30 : 9, video:0, audio:0};
+    else if(is6789) limits = {image:seedance25 ? 30 : 9, video:0, audio:0};
     else if(platform === 'apimart') limits = /veo/.test(model) ? {image:/lite/.test(model) ? 0 : /quality/.test(model) ? 2 : 3, video:0, audio:0} : {image:9, video:3, audio:3};
     else if(runSettings.videoProvider === 'jimeng') limits = {image:9, video:seedance ? 3 : 0, audio:seedance ? 3 : 0};
     else if(provider?.id === 'lingjing' || base.includes('apistudio.vip')) limits.image = 3;
@@ -30156,7 +22748,6 @@ function startNodeReferencePicker(nodeId){
     if(!node || !collabCanMutateCanvas(true) || !collabCanEditNode(nodeId,true)) return false;
     closeMentionPicker();
     hidePaintInputRefHover();
-    clearImageClickTimer();
     return window.SmartCanvasReferencePicker?.start({type:referencePickerTypeForNode(node),targetId:nodeId}) || false;
 }
 function initializeReferencePicker(){
@@ -30202,148 +22793,6 @@ function initializeReferencePicker(){
         event.preventDefault();event.stopPropagation();
         startNodeReferencePicker(button.dataset.referencePickerNode);
     },true);
-}
-function placeMentionPickerInPromptRow(){
-    const row = promptInput?.closest?.('.prompt-row');
-    if(row && mentionPicker.parentElement !== row) row.insertBefore(mentionPicker, promptResize || null);
-}
-function positionMentionPickerAtCaret(){
-    const row = promptInput.closest('.prompt-row');
-    const rowRect = row.getBoundingClientRect();
-    let caretRect = null;
-    const sel = window.getSelection();
-    if(sel && sel.rangeCount){
-        const range = sel.getRangeAt(0).cloneRange();
-        caretRect = range.getClientRects()[0] || range.getBoundingClientRect();
-    }
-    const inputRect = promptInput.getBoundingClientRect();
-    const rowScale = rowRect.width / (row.offsetWidth || rowRect.width) || 1;
-    const rowLogicalWidth = rowRect.width / rowScale;
-    const pickerWidth = mentionPicker.offsetWidth || 340;
-    const maxLeft = Math.max(4, rowLogicalWidth - pickerWidth - 4);
-    const rawLeft = ((caretRect?.left || inputRect.left) - rowRect.left) / rowScale - 6;
-    const caretBottom = caretRect?.bottom || inputRect.top + 24 * rowScale;
-    const rawTop = (caretBottom - rowRect.top) / rowScale + 2;
-    const left = Math.max(4, Math.min(rawLeft, maxLeft));
-    const top = Math.max(2, rawTop);
-    mentionPicker.style.left = `${left}px`;
-    mentionPicker.style.top = `${top}px`;
-}
-function maybeOpenMentionPicker(){
-    saveMentionRange();
-    const before = textBeforeCaret();
-    if(/[@＠]$/.test(before)) showMentionPicker();
-    else closeMentionPicker();
-}
-function insertMentionToken(img){
-    if(!img?.url) return;
-    promptInput.focus();
-    const sel = window.getSelection();
-    if(mentionRange){
-        sel.removeAllRanges();
-        sel.addRange(mentionRange);
-    }
-    const range = sel.rangeCount ? sel.getRangeAt(0) : document.createRange();
-    let removedAt = false;
-    if(range.startContainer?.nodeType === Node.TEXT_NODE && range.startOffset > 0){
-        const text = range.startContainer.textContent || '';
-        if(['@', '＠'].includes(text[range.startOffset - 1])){
-            range.setStart(range.startContainer, range.startOffset - 1);
-            range.deleteContents();
-            removedAt = true;
-        }
-    }
-    if(!removedAt) {
-        const walker = document.createTreeWalker(promptInput, NodeFilter.SHOW_TEXT);
-        let lastText = null;
-        while(walker.nextNode()) lastText = walker.currentNode;
-        if(lastText && /[@＠]$/.test(lastText.textContent || '')) {
-            lastText.textContent = lastText.textContent.slice(0, -1);
-            range.selectNodeContents(promptInput);
-            range.collapse(false);
-        }
-    }
-    const token = document.createElement('span');
-    token.className = 'mention-image-token';
-    token.contentEditable = 'false';
-    token.dataset.url = img.url;
-    token.dataset.kind = mediaKindForItem(img);
-    token.dataset.name = img.alias || img.name || (token.dataset.kind === 'audio' ? '音频' : token.dataset.kind === 'video' ? '视频' : '图片');
-    token.dataset.nodeId = img.nodeId || '';
-    token.dataset.imageIndex = String(img.imageIndex ?? '');
-    token.dataset.assetUris = JSON.stringify(img.asset_uris || {});
-    token.innerHTML = `${mentionTokenMediaHtml(img, token.dataset.kind)}<span>${escapeHtml(token.dataset.name)}</span>`;
-    range.insertNode(token);
-    bindSmartPreviewImageFallbacks(token);
-    const spacer = document.createTextNode(' ');
-    token.after(spacer);
-    range.setStartAfter(spacer);
-    range.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(range);
-    closeMentionPicker();
-    promptInput.focus();
-    renderInputThumbsRow(selectedNode());
-}
-function insertPlainTextIntoPrompt(text){
-    if(!promptInput) return;
-    const value = String(text || '').replace(/\r\n?/g, '\n');
-    if(!value) return;
-    promptInput.focus();
-    const selection = window.getSelection();
-    let range = selection?.rangeCount ? selection.getRangeAt(0) : null;
-    if(!range || !promptInput.contains(range.commonAncestorContainer)){
-        range = document.createRange();
-        range.selectNodeContents(promptInput);
-        range.collapse(false);
-    }
-    range.deleteContents();
-    const textNode = document.createTextNode(value);
-    range.insertNode(textNode);
-    range.setStartAfter(textNode);
-    range.collapse(true);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    promptInput.dispatchEvent(new Event('input', {bubbles:true}));
-}
-function collectPromptParts(){
-    const parts = [];
-    const walk = node => {
-        if(node.nodeType === Node.TEXT_NODE){
-            if(node.textContent) parts.push({type:'text', text:node.textContent});
-            return;
-        }
-        if(node.nodeType !== Node.ELEMENT_NODE) return;
-        if(node.classList?.contains('mention-image-token')){
-            let assetUris = {};
-            try { assetUris = JSON.parse(node.dataset.assetUris || '{}') || {}; } catch(e) { assetUris = {}; }
-            const kind = node.dataset.kind || 'image';
-            parts.push({type:'image', kind, url:node.dataset.url || '', name:node.dataset.name || (kind === 'audio' ? '音频' : '图片'), nodeId:node.dataset.nodeId || '', imageIndex:Number(node.dataset.imageIndex || 0), asset_uris:assetUris});
-            return;
-        }
-        if(node.tagName === 'BR'){
-            parts.push({type:'text', text:'\n'});
-            return;
-        }
-        const blockTags = new Set(['DIV','P','LI','SECTION','ARTICLE','HEADER','FOOTER','BLOCKQUOTE']);
-        const isBlock = node !== promptInput && blockTags.has(node.tagName);
-        if(isBlock && parts.length && parts[parts.length - 1]?.text && !/\n$/.test(parts[parts.length - 1].text)) parts.push({type:'text', text:'\n'});
-        node.childNodes.forEach(walk);
-        if(isBlock) parts.push({type:'text', text:'\n'});
-    };
-    promptInput.childNodes.forEach(walk);
-    return parts;
-}
-function originalPromptTextFromParts(parts){
-    let text = '';
-    (parts || []).forEach(part => {
-        if(part.type === 'text'){
-            text += part.text || '';
-            return;
-        }
-        if(part.type === 'image') text += `@${part.name || '图片'}`;
-    });
-    return text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 function buildPromptRequest(node, overrideDefaultImages=null, consumeDefault=false, ctx=smartLoopContext){
     const parts = collectPromptParts();
@@ -30471,7 +22920,7 @@ function existingComfyWorkflowOutputNode(sourceNode){
         .sort((a, b) => Number(b.runAt || 0) - Number(a.runAt || 0))[0] || null;
 }
 function createPendingOutputFromSource(sourceNode, expectedCount, meta, options={}){
-    const pendingBox = pendingBoxSize(expectedCount, {sourceNode, refs:options.refs || meta?.promptRefs || []});
+    const pendingBox = pendingBoxSize(expectedCount, meta.settings, {sourceNode, refs:options.refs || meta.promptRefs});
     const pos = nextOutputPositionForSource(sourceNode, pendingBox, options);
     const isUploadOutput = isProductRetouchNode(sourceNode) || isSmartComfyWorkflowNode(sourceNode) || meta?.settings?.engine === 'comfy';
     const output = {
@@ -30499,239 +22948,125 @@ function createPendingOutputFromSource(sourceNode, expectedCount, meta, options=
     selectedImage = {nodeId:'', index:-1};
     return output;
 }
-function createParallelLoopOutputNode(templateNode, sourceNode, roundIndex, roundOffset=0){
-    const rect = nodeRect(templateNode);
-    const output = cloneSmartNode(templateNode, 0, 0);
-    output.id = uid('smart');
-    output.type = 'smart-image';
-    output.x = (Number(templateNode.x) || 0) + (Number(rect.width) || 260) + 80;
-    output.y = (Number(templateNode.y) || 0) + roundOffset * ((Number(rect.height) || 180) + 28);
-    output.title = `Image ${roundIndex}`;
-    output.images = [];
-    output.pending = 0;
-    output.running = false;
-    output.created_at = Date.now();
-    delete output.w;
-    delete output.h;
-    delete output.historyFor;
-    delete output.isHistoryGroup;
-    delete output.sourceNodeId;
-    delete output.runAt;
-    delete output.runPrompt;
-    delete output.runModelPrompt;
-    delete output.runPromptRefs;
-    delete output.runInputRefs;
-    // 克隆自模板节点会带上 inputNodeIds（含上游提示词节点），而生成出的输出槽并未真正
-    // 连线到这些上游；若不清空，节点即便没有任何连线也会一直显示"上游输入xxxx"。
-    output.inputNodeIds = [];
-    delete output.blockedInputRefs;
-    delete output.manualInputRefs;
-    {
-        const position = smartAutoAvoidNodePosition(output, {x:output.x, y:output.y});
-        output.x = position.x;
-        output.y = position.y;
+function loopOutputSlotsForRoot(root){
+    if(!root?.id) return [];
+    return downstreamNodesForId(root.id)
+        .filter(node => isSmartImageNode(node) && !isHistoryGroupNode(node))
+        .sort((a, b) => (Number(a.x) || 0) - (Number(b.x) || 0) || (Number(a.y) || 0) - (Number(b.y) || 0));
+}
+function loopOutputSlotForRound(root, loop, round, offset){
+    const slots = loopOutputSlotsForRoot(root).filter(slot => slot.sourceNodeId === root.id &&
+        (!loop?.id || !slot.loopSourceId || slot.loopSourceId === loop.id));
+    for(const [field, value] of [['loopRoundIndex', round], ['loopSlotIndex', offset]]){
+        const assigned = slots.find(slot => Number(slot[field]) === Number(value));
+        if(assigned) return assigned;
     }
-    nodes.push(output);
-    connectInputNode(sourceNode.id, output.id);
-    return output;
+    return slots.filter(slot => !Number.isFinite(Number(slot.loopRoundIndex)) &&
+        !Number.isFinite(Number(slot.loopSlotIndex)))[Math.max(0, Number(offset) || 0)] || null;
 }
-function loopOutputSlotsForRoot(rootNode){
-    if(!rootNode?.id) return [];
-    return downstreamNodesForId(rootNode.id)
-        .filter(n => isSmartImageNode(n) && !isHistoryGroupNode(n))
-        .sort((a, b) => {
-            const ax = Number(a.x) || 0, bx = Number(b.x) || 0;
-            if(ax !== bx) return ax - bx;
-            return (Number(a.y) || 0) - (Number(b.y) || 0);
-        });
+function tagLoopOutputSlot(slot, root, loop, round, offset){
+    if(!slot) return slot;
+    if(root?.id) slot.sourceNodeId = slot.loopRootId = root.id;
+    if(loop?.id) slot.loopSourceId = loop.id;
+    slot.loopRoundIndex = Number(round) || 0;
+    slot.loopSlotIndex = Math.max(0, Number(offset) || 0);
+    return slot;
 }
-function loopOutputSlotForRound(rootNode, loopNode, roundIndex, slotIndex){
-    if(!rootNode?.id) return null;
-    const candidates = loopOutputSlotsForRoot(rootNode)
-        .filter(node => node.sourceNodeId === rootNode.id)
-        .filter(node => !loopNode?.id || !node.loopSourceId || node.loopSourceId === loopNode.id);
-    const untagged = candidates.filter(node => !Number.isFinite(Number(node.loopRoundIndex)) && !Number.isFinite(Number(node.loopSlotIndex)));
-    return candidates.find(node => Number(node.loopRoundIndex) === Number(roundIndex))
-        || candidates.find(node => Number(node.loopSlotIndex) === Number(slotIndex))
-        || untagged[Math.max(0, Number(slotIndex) || 0)]
-        || null;
-}
-function tagLoopOutputSlot(output, rootNode, loopNode, roundIndex, slotIndex){
-    if(!output) return output;
-    output.sourceNodeId = rootNode?.id || output.sourceNodeId || '';
-    output.loopSourceId = loopNode?.id || output.loopSourceId || '';
-    output.loopRootId = rootNode?.id || output.loopRootId || '';
-    output.loopRoundIndex = Number(roundIndex) || 0;
-    output.loopSlotIndex = Math.max(0, Number(slotIndex) || 0);
-    return output;
-}
-function createLoopOutputSlot(rootNode, roundIndex, roundOffset=0, options={}){
-    const rootRect = nodeRect(rootNode);
-    const output = cloneSmartNode(rootNode, 0, 0);
-    output.id = uid('smart');
-    output.type = 'smart-image';
-    output.x = (Number(rootNode.x) || 0) + (Number(rootRect.width) || 260) + 80;
-    output.title = `Image ${roundIndex}`;
-    output.images = [];
-    output.pending = options.pending ? Math.max(1, Number(options.pending) || 1) : 0;
-    output.running = Boolean(options.pending);
-    output.queued = Boolean(options.queued);
-    if(options.pending){
-        output.runStartedAt = nowMs();
-        output.runTimerHidden = false;
-    }
-    output.created_at = Date.now();
-    delete output.w;
-    delete output.h;
-    delete output.historyFor;
-    delete output.isHistoryGroup;
-    delete output.sourceNodeId;
-    delete output.runAt;
-    delete output.runPrompt;
-    delete output.runModelPrompt;
-    delete output.runPromptRefs;
-    delete output.runInputRefs;
-    delete output.runFinishedAt;
-    delete output.runElapsedMs;
-    // 同 createParallelLoopOutputNode：清空克隆带来的 inputNodeIds，否则输出槽虽只用 flow
-    // 连接到 root，却会因继承 root 的 inputNodeIds 而误显示上游提示词输入。
-    output.inputNodeIds = [];
-    delete output.blockedInputRefs;
-    delete output.manualInputRefs;
-    tagLoopOutputSlot(output, rootNode, options.loopNode || null, roundIndex, options.slotIndex ?? roundOffset);
-    if(smartLoopIsPaired(options.loopNode) && options.loopNode.batchDetailModeV2){
-        output.title = trf('smart.loopDetailScreen', {n:Number(roundIndex)});
-        output.promptDraftText = smartLoopPrompt(options.loopNode, {index:roundIndex, total:smartLoopCount(options.loopNode)});
-        output.promptDraftHtml = escapeHtml(output.promptDraftText);
-        output.loopVisualGuide = smartLoopDetailVisualGuide(options.loopNode);
-    }
-    const slots = loopOutputSlotsForRoot(rootNode).map(nodeRect);
-    let y = (Number(rootNode.y) || 0) + roundOffset * ((Number(rootRect.height) || 180) + 28);
-    slots.forEach(rect => {
-        if((Number(rect.x) || 0) >= (Number(output.x) || 0) - 24){
-            y = Math.max(y, (Number(rect.y) || 0) + (Number(rect.height) || 0) + 28);
-        }
+function createLoopOutputSlot(root, round, offset, options){
+    const rootRect = nodeRect(root);
+    const {loopNode:loop, slotIndex, runState, queued} = options;
+    const slot = Object.assign(cloneSmartNode(root, 0, 0), {
+        id:uid('smart'), type:'smart-image', title:'Image ' + round, images:[], created_at:Date.now(),
+        pending:0, running:false, queued:Boolean(queued), inputNodeIds:[],
     });
-    output.y = y;
-    {
-        const position = smartAutoAvoidNodePosition(output, {x:output.x, y:output.y});
-        output.x = position.x;
-        output.y = position.y;
+    for(const key of ['w','h','historyFor','isHistoryGroup','runAt','runPrompt','runModelPrompt','runPromptRefs',
+        'runInputRefs','runFinishedAt','runElapsedMs','blockedInputRefs','manualInputRefs']){
+        delete slot[key];
     }
-    nodes.push(output);
-    addConnection(rootNode.id, output.id, 'flow');
-        const runPath = smartCascadePathForCtx(options.ctx || options.runState);
-    if(runPath?.states) runPath.states[`${rootNode.id}->${output.id}`] = 'wait';
-    return output;
+    tagLoopOutputSlot(slot, root, loop, round, slotIndex ?? offset);
+    if(smartLoopIsPaired(loop) && loop.batchDetailModeV2){
+        slot.title = trf('smart.loopDetailScreen', {n:round});
+        slot.promptDraftText = smartLoopPrompt(loop, {index:round, total:smartLoopCount(loop)});
+        slot.promptDraftHtml = escapeHtml(slot.promptDraftText);
+        slot.loopVisualGuide = smartLoopDetailVisualGuide(loop);
+    }
+    const x = rootRect.x + rootRect.width + 80;
+    const minimumY = rootRect.y + offset * (rootRect.height + 28);
+    const bottoms = loopOutputSlotsForRoot(root).map(nodeRect)
+        .filter(rect => rect.x >= x - 24)
+        .map(rect => rect.y + rect.height + 28);
+    const position = smartAutoAvoidNodePosition(slot, {x, y:Math.max(minimumY, ...bottoms)});
+    slot.x = position.x;
+    slot.y = position.y;
+    nodes.push(slot);
+    addConnection(root.id, slot.id, 'flow');
+    if(runState) runState.runPath.states[root.id + '->' + slot.id] = 'wait';
+    return slot;
 }
-function consolidateLoopOutputSlots(rootNode, outputSlots=[], options={}){
-    if(!rootNode?.id || !Array.isArray(outputSlots) || outputSlots.length < 2) return null;
-    const slots = [];
-    const seen = new Set();
-    outputSlots.forEach(slot => {
-        const current = liveSmartNode(slot);
-        if(!current || seen.has(current.id) || !isSmartImageNode(current) || isHistoryGroupNode(current)) return;
-        seen.add(current.id);
-        slots.push(current);
-    });
-    const filledSlots = slots.filter(slot => cleanHistoryImages(slot.images || []).length);
-    if(filledSlots.length < 2) return null;
-    const additions = cleanHistoryImages(slots.flatMap(slot => slot.images || []));
-    if(additions.length < 2) return null;
+function consolidateLoopOutputSlots(root, slots, {loopNode:loop, startIndex}){
+    const unique = new Set(slots.filter(slot => nodes.includes(slot) && isSmartImageNode(slot) && !isHistoryGroupNode(slot)));
+    const ready = [...unique].map(slot => ({slot, images:cleanHistoryImages(slot.images || [])}))
+        .filter(({slot, images}) => images.length && !slot.running && !slot.queued && !slot.runError &&
+            !slot.jimengPending && !smartPendingTasks(slot).length);
+    if(ready.length < 2) return;
+    const images = cleanHistoryImages(ready.flatMap(result => result.images));
+    if(images.length < 2) return;
+    const primary = ready[0].slot;
+    const width = nodeRect(primary).width;
+    const kind = mediaKindForUrls(images, ready.find(result => result.slot.outputKind)?.slot.outputKind || 'image');
+    const archives = [...new Set(ready.map(({slot}) => historyGroupForNode(slot)).filter(Boolean))];
+    let archive = archives.find(group => group.historyFor === primary.id);
+    const previousArchive = archive;
+    const history = cleanHistoryImages(archives.flatMap(group => group.images || []));
+    if(history.length) archive = archiveCascadeMedia(primary, history, kind);
 
-    // Reuse the first output slot so another run can archive the whole previous
-    // batch through the existing history path instead of creating a second state
-    // model for grouped loop results.
-    const primary = slots[0];
-    const beforeRight = (Number(primary.x) || 0) + nodeRect(primary).width;
-    const fallbackKind = slots.find(slot => slot.outputKind)?.outputKind || 'image';
-    const kind = mediaKindForUrls(additions, fallbackKind);
-    const historyGroups = slots
-        .map(slot => historyGroupForNode(slot))
-        .filter(Boolean)
-        .filter((group, index, list) => list.findIndex(item => item.id === group.id) === index);
-    let primaryHistory = historyGroups.find(group => group.historyFor === primary.id) || null;
-    let createdPrimaryHistory = false;
-    const historyImages = cleanHistoryImages(historyGroups.flatMap(group => group.images || []));
-    if(historyImages.length){
-        if(!primaryHistory){
-            primaryHistory = ensureHistoryGroupForNode(primary);
-            createdPrimaryHistory = true;
+    const mergedSlots = new Set(ready.slice(1).map(({slot}) => slot.id));
+    const removed = new Set([...mergedSlots, ...archives.filter(group => group !== archive).map(group => group.id)]);
+    const preserved = [];
+    const incoming = new Set();
+    const rewritten = [];
+    for(const connection of canvas.connections || []){
+        const {from, to} = connection;
+        if(!removed.has(from) && !removed.has(to)){
+            preserved.push(connection);
+            continue;
         }
-        primaryHistory.images = cleanHistoryImages([...(primaryHistory.images || []), ...historyImages]);
-        primaryHistory.title = '历史分组';
-        primaryHistory.outputKind = kind;
-        primaryHistory.scale = MEDIA_GROUP_DEFAULT_SCALE;
-        delete primaryHistory.w;
-        delete primaryHistory.h;
+        const kind = connection.kind || 'flow';
+        if(kind === 'history' || (removed.has(from) && removed.has(to))) continue;
+        if((removed.has(from) && !mergedSlots.has(from)) || (removed.has(to) && !mergedSlots.has(to))) continue;
+        const newFrom = mergedSlots.has(from) ? primary.id : from;
+        const newTo = mergedSlots.has(to) ? primary.id : to;
+        if(newFrom === newTo) continue;
+        rewritten.push({from:newFrom, to:newTo, kind, slot:connection.input_slot || connection.inputSlot || ''});
+        if(kind === 'input' && newFrom === primary.id) incoming.add(newTo);
     }
-
-    const removedSlotIds = new Set(slots.slice(1).map(slot => slot.id));
-    const removedHistoryIds = new Set(historyGroups
-        .filter(group => group.id !== primaryHistory?.id)
-        .map(group => group.id));
-    const removedIds = new Set([...removedSlotIds, ...removedHistoryIds]);
-    const rewired = [];
-    const addRewire = (from, to, connectionKind) => {
-        if(!from || !to || from === to || removedIds.has(from) || removedIds.has(to)) return;
-        if(!rewired.some(item => item.from === from && item.to === to && item.kind === connectionKind)){
-            rewired.push({from, to, kind:connectionKind});
-        }
-    };
-    (canvas?.connections || []).forEach(connection => {
-        const connectionKind = connection.kind || 'flow';
-        const fromRemoved = removedIds.has(connection.from);
-        const toRemoved = removedIds.has(connection.to);
-        if(!fromRemoved && !toRemoved) return;
-        // History nodes are folded into the primary history node above; their
-        // old edges must not become live generation connections.
-        if(connectionKind === 'history'
-            || removedHistoryIds.has(connection.from)
-            || removedHistoryIds.has(connection.to)) return;
-        if(fromRemoved && !toRemoved) addRewire(primary.id, connection.to, connectionKind);
-        else if(toRemoved && !fromRemoved) addRewire(connection.from, primary.id, connectionKind);
-    });
-
-    nodes = nodes.filter(node => !removedIds.has(node.id));
-    canvas.connections = (canvas.connections || []).filter(connection => !removedIds.has(connection.from) && !removedIds.has(connection.to));
-    const inputRewireTargets = new Set(rewired.filter(item => item.kind === 'input').map(item => item.to));
-    nodes.forEach(node => {
+    nodes = nodes.filter(node => !removed.has(node.id));
+    canvas.connections = preserved;
+    for(const edge of rewritten) addConnection(edge.from, edge.to, edge.kind, edge.slot);
+    addConnection(root.id, primary.id, 'flow');
+    if(archive) addConnection(primary.id, archive.id, 'history');
+    for(const node of nodes){
         if(Array.isArray(node.inputNodeIds)){
-            node.inputNodeIds = node.inputNodeIds.filter(id => !removedIds.has(id));
-            if(inputRewireTargets.has(node.id) && !node.inputNodeIds.includes(primary.id)) node.inputNodeIds.push(primary.id);
+            const refs = node.inputNodeIds.filter(id => !removed.has(id));
+            if(incoming.has(node.id) && !refs.includes(primary.id)) refs.push(primary.id);
+            node.inputNodeIds = refs;
         }
         clearDetachedRunInputRefs(node);
-    });
-    rewired.forEach(connection => {
-        addConnection(connection.from, connection.to, connection.kind);
-    });
-    addConnection(rootNode.id, primary.id, 'flow');
-    if(primaryHistory) addConnection(primary.id, primaryHistory.id, 'history');
-
-    primary.images = additions;
-    primary.outputKind = kind;
-    primary.title = cascadeOutputTitle(kind, additions.length);
-    primary.scale = additions.length > 1 ? MEDIA_GROUP_DEFAULT_SCALE : MEDIA_NODE_DEFAULT_SCALE;
-    if(primary.manualSize !== true){
-        delete primary.w;
-        delete primary.h;
     }
-    primary.sourceNodeId = rootNode.id;
-    primary.loopRootId = rootNode.id;
-    if(options.loopNode?.id) primary.loopSourceId = options.loopNode.id;
-    primary.loopRoundIndex = Number(primary.loopRoundIndex) || Number(options.startIndex) || 1;
-    primary.loopSlotIndex = 0;
-    markSmartNodeComplete(primary);
+    if(mergedSlots.has(selectedId)) selectedId = primary.id;
+    selectedIds = [...new Set(selectedIds.map(id => mergedSlots.has(id) ? primary.id : id).filter(id => !removed.has(id)))];
+    if(removed.has(selectedImage.nodeId)) selectedImage = {nodeId:'', index:-1};
+    tagLoopOutputSlot(primary, root, loop, Number(primary.loopRoundIndex) || startIndex, primary.loopSlotIndex);
+    applyCascadeMedia(primary, images, kind);
     primary.runFinishedAt = nowMs();
     primary.runElapsedMs = Math.max(0, primary.runFinishedAt - Number(primary.runStartedAt || primary.runFinishedAt));
-    if(createdPrimaryHistory){
-        delete primaryHistory.x;
-        delete primaryHistory.y;
-        positionHistoryGroupForNode(primary, primaryHistory);
+    if(archive && !previousArchive){
+        delete archive.x;
+        delete archive.y;
+        positionHistoryGroupForNode(primary, archive);
     }
-    const afterRight = (Number(primary.x) || 0) + nodeRect(primary).width;
-    if(afterRight > beforeRight) pushRightSideNodes(primary, afterRight - beforeRight + 36);
-    return {node:primary, count:additions.length};
+    const growth = nodeRect(primary).width - width;
+    if(growth > 0) pushRightSideNodes(primary, growth + 36);
 }
 function extractCurrentImagesToSource(node, meta=null){
     const imgs = (node.images || []).slice();
@@ -30802,8 +23137,7 @@ function finalizePendingNode(pendingNode, urls, meta, kind='image', options={}){
         pendingNode.images = imgs;
         markSmartNodeComplete(pendingNode, meta);
         pendingNode.outputKind = kind;
-        if(imgs.length > 1) pendingNode.title = kind === 'video' ? 'Videos' : kind === 'audio' ? 'Audios' : kind === 'text' ? 'Texts' : 'Group';
-        else pendingNode.title = kind === 'video' ? 'Video' : kind === 'audio' ? 'Audio' : kind === 'text' ? 'Text' : kind === 'file' ? 'File' : 'Image';
+        pendingNode.title = cascadeOutputTitle(kind, imgs.length);
         pendingNode.scale = mediaNodeDefaultScale(pendingNode);
         // 用户手动拉伸的节点保持尺寸；普通占位框在结果返回后按实际图片比例收紧。
         if(pendingNode.manualSize !== true){
@@ -30891,456 +23225,142 @@ function showDirectLoopRoundPreview(loopNode, target, refs, loopIndex, total){
     delete target.runFinishedAt;
     delete target.runElapsedMs;
     target.runTimerHidden = false;
-    target.runInputRefs = cleanRefs.map(ref => ({
-        url:ref.url || '',
-        name:ref.name || '',
-        nodeId:ref.nodeId || '',
-        imageIndex:ref.imageIndex ?? '',
-        kind:ref.kind || ''
-    })).filter(ref => ref.url);
+    target.runInputRefs = outputRunReferences(cleanRefs, true);
     target.outputKind = mediaKindForUrls(preview, preview.some(isVideoMediaItem) ? 'video' : 'image');
     target.scale = preview.length > 1 ? MEDIA_GROUP_DEFAULT_SCALE : MEDIA_NODE_DEFAULT_SCALE;
     target.title = total > 1 ? `Image ${loopIndex}/${total}` : (target.title || 'Image');
     if(target.manualSize !== true){
-        const pendingBox = pendingBoxSize(1, {sourceNode:loopNode, refs:cleanRefs});
+        const pendingBox = pendingBoxSize(1, smartSettingsForNode(target), {sourceNode:loopNode, refs:cleanRefs});
         target.w = pendingBox.w;
         target.h = pendingBox.h;
     }
     render();
     return true;
 }
-function directImageInputsFor(node){
-    const upstream = smartImageUsesWorkflowInput(node) ? workflowInputNodesFor(node) : inputNodesFor(node);
-    return upstream
-        .filter(n => isSmartImageNode(n) && !isHistoryGroupNode(n) && (n.images || []).some(img => img?.url))
-        .sort((a, b) => {
-            const ax = Number(a.x) || 0, bx = Number(b.x) || 0;
-            if(ax !== bx) return bx - ax;
-            return (Number(a.y) || 0) - (Number(b.y) || 0);
-        });
-}
-function directImageInputsForKinds(node, kinds=['input']){
-    const upstream = upstreamNodesForKinds(node, kinds);
-    return upstream
-        .filter(n => isSmartImageNode(n) && !isHistoryGroupNode(n) && (n.images || []).some(img => img?.url))
-        .sort((a, b) => {
-            const ax = Number(a.x) || 0, bx = Number(b.x) || 0;
-            if(ax !== bx) return bx - ax;
-            return (Number(a.y) || 0) - (Number(b.y) || 0);
-        });
-}
-function primaryImageInputFor(node, options={}){
-    const direct = options.includeFlow
-        ? directImageInputsForKinds(node, ['input', 'flow'])[0]
-        : directImageInputsFor(node)[0];
-    if(direct) return direct;
-    const inputs = options.includeFlow ? upstreamNodesForKinds(node, ['input', 'flow']) : (smartImageUsesWorkflowInput(node) ? workflowInputNodesFor(node) : inputNodesFor(node));
-    const loop = inputs.find(n => n?.type === 'smart-loop');
-    if(loop?.imageInput){
-        const upstream = upstreamNodesForKinds(loop, options.includeFlow ? ['input', 'flow'] : ['input']).find(n => isSmartImageNode(n) && (n.images || []).some(img => img?.url));
-        if(upstream) return upstream;
-    }
-    return null;
-}
-function hasDownstreamImageNode(node){
-    return downstreamNodesForId(node?.id).some(n => isSmartImageNode(n) && !isHistoryGroupNode(n));
-}
-function isGeneratedOutputForNode(sourceNode, targetNode){
-    return Boolean(sourceNode?.id && targetNode?.sourceNodeId === sourceNode.id);
-}
-function downstreamWorkflowImageTargetsFor(node){
-    return downstreamImageTargetsFor(node).filter(target => !isGeneratedOutputForNode(node, target));
-}
-function hasDownstreamWorkflowImageNode(node){
-    return downstreamWorkflowImageTargetsFor(node).length > 0;
-}
-function smartImageChainTo(nodeId, options={}){
-    const tail = nodes.find(n => n.id === nodeId);
-    if(!isSmartImageNode(tail) || isHistoryGroupNode(tail)) return [];
-    const chain = [];
-    const seen = new Set();
-    let cur = tail;
-    while(cur && !seen.has(cur.id)){
-        seen.add(cur.id);
-        chain.unshift(cur);
-        cur = primaryImageInputFor(cur, options);
-    }
-    return chain;
-}
-function upstreamNodesForId(nodeId, kinds=['input']){
-    const result = [];
-    const seen = new Set([nodeId]);
-    const walk = id => {
-        upstreamNodesForKinds(nodes.find(n => n.id === id), kinds).forEach(input => {
-            if(seen.has(input.id)) return;
-            seen.add(input.id);
-            walk(input.id);
-            result.push(input);
-        });
-    };
-    walk(nodeId);
-    return result;
-}
-function resolveSmartCascadeLoop(nodeId){
-    const loops = upstreamNodesForId(nodeId, ['input', 'flow']).filter(n => n.type === 'smart-loop');
-    if(!loops.length) return null;
-    const loop = loops[loops.length - 1];
-    return {node:loop, count:smartLoopCount(loop), mode:loop.mode === 'parallel' ? 'parallel' : 'serial'};
-}
-function relayLoopPromptNodesForEdge(sourceNode, targetNode){
-    if(!sourceNode?.id || !targetNode?.id) return [];
-    const directLoopIds = new Set(promptInputNodesFor(targetNode).filter(n => n?.type === 'smart-loop' && n.showPrompt).map(n => n.id));
-    return inputNodesFor(sourceNode)
-        .filter(n => n?.type === 'smart-loop' && n.showPrompt && !directLoopIds.has(n.id));
+function smartRunGraph(){
+    return XiaomeiSmartRunGraph.index(nodes, canvas?.connections || [], {
+        legacyInputs:!canvasUsesConnections,
+        isImage:isSmartImageNode,
+        isHistory:isHistoryGroupNode,
+        isBoard:isSmartDrawingBoardNode,
+        loopCount:smartLoopCount,
+    });
 }
 function relayLoopPromptNodesForTarget(node){
-    if(!node?.id) return [];
-    return inputNodesFor(node).filter(n => n?.type === 'smart-loop' && n.showPrompt);
+    return inputNodesFor(node).filter(input => input.type === 'smart-loop' && input.showPrompt);
 }
-function downstreamNodesForId(nodeId){
-    const result = [];
-    const seen = new Set([nodeId]);
-    const walk = id => {
-        (canvas?.connections || [])
-            .filter(conn => conn.from === id && ['input','flow'].includes(conn.kind || 'flow'))
-            .map(conn => nodes.find(n => n.id === conn.to))
-            .filter(Boolean)
-            .forEach(next => {
-                if(seen.has(next.id)) return;
-                seen.add(next.id);
-                result.push(next);
-                walk(next.id);
-            });
-    };
-    walk(nodeId);
-    return result;
+function relayLoopPromptNodesForEdge(sourceNode, targetNode){
+    const direct = new Set(promptInputNodesFor(targetNode).map(node => node.id));
+    return relayLoopPromptNodesForTarget(sourceNode).filter(node => !direct.has(node.id));
+}
+function downstreamNodesForId(id){
+    return smartRunGraph().descendants(id);
 }
 function downstreamImageTargetsFor(node){
-    if(!node?.id) return [];
-    return (canvas?.connections || [])
-        .filter(conn => conn.from === node.id && ['input','flow'].includes(conn.kind || 'flow'))
-        .map(conn => nodes.find(n => n.id === conn.to))
-        .filter(n => isSmartImageNode(n) && !isHistoryGroupNode(n))
-        .sort((a, b) => {
-            const ax = Number(a.x) || 0, bx = Number(b.x) || 0;
-            if(ax !== bx) return ax - bx;
-            return (Number(a.y) || 0) - (Number(b.y) || 0);
-        });
+    return node?.id && canvas?.connections?.length ? smartRunGraph().imageTargets(node.id) : [];
 }
-function downstreamCascadeTargetsFor(node){
-    if(!node?.id) return [];
-    return (canvas?.connections || [])
-        .filter(conn => conn.from === node.id && ['input','flow'].includes(conn.kind || 'flow'))
-        .map(conn => nodes.find(n => n.id === conn.to))
-        .filter(n => n && !isHistoryGroupNode(n) && (isSmartImageNode(n) || n.type === 'smart-loop'))
-        .sort((a, b) => {
-            const ax = Number(a.x) || 0, bx = Number(b.x) || 0;
-            if(ax !== bx) return ax - bx;
-            return (Number(a.y) || 0) - (Number(b.y) || 0);
-        });
-}
-function directLoopRunTargets(loop){
-    if(!loop?.id) return [];
-    return downstreamImageTargetsFor(loop)
-        .filter(node => !hasDownstreamWorkflowImageNode(node));
-}
-function smartCascadeGraphForTail(tail){
-    const path = smartImageChainTo(tail?.id, {includeFlow:true}).filter(n => isSmartImageNode(n) && !isHistoryGroupNode(n));
-    if(!path.length) return {root:null, path:[], edges:[], children:new Map()};
-    const loop = resolveSmartCascadeLoop(tail?.id);
-    const loopRoots = loop?.node?.id ? downstreamImageTargetsFor(loop.node) : [];
-    const loopRoot = loopRoots.find(n => path.some(p => p.id === n.id));
-    const root = loopRoot || path[0];
-    const edges = [];
-    const children = new Map();
-    const seenEdges = new Set();
-    const visiting = new Set();
-    const walk = node => {
-        if(!node?.id || visiting.has(node.id)) return;
-        visiting.add(node.id);
-        const targets = downstreamCascadeTargetsFor(node);
-        children.set(node.id, targets);
-        targets.forEach(target => {
-            const key = `${node.id}->${target.id}`;
-            if(!seenEdges.has(key)){
-                seenEdges.add(key);
-                edges.push({source:node, target, key});
-            }
-            walk(target);
-        });
-        visiting.delete(node.id);
-    };
-    walk(root);
-    return {root, path, edges, children};
-}
-function cascadeTailForLoop(loopId){
-    const loop = nodes.find(n => n.id === loopId && n.type === 'smart-loop');
-    const directTargets = directLoopRunTargets(loop);
-    if(directTargets.length) return directTargets[directTargets.length - 1];
-    const directImages = downstreamImageTargetsFor({id:loopId});
-    const directIds = new Set(directImages.map(n => n.id));
-    const candidates = downstreamNodesForId(loopId)
-        .filter(n => isSmartImageNode(n))
-        .filter(n => !isHistoryGroupNode(n))
-        .filter(n => canRunSmartCascade(n));
-    if(!candidates.length) return null;
-    return candidates.sort((a, b) => {
-        const ad = directIds.has(a.id) ? 1 : 0;
-        const bd = directIds.has(b.id) ? 1 : 0;
-        if(ad !== bd) return ad - bd;
-        const ax = Number(a.x) || 0, bx = Number(b.x) || 0;
-        if(ax !== bx) return bx - ax;
-        return (Number(b.y) || 0) - (Number(a.y) || 0);
-    })[0];
-}
-function canRunSmartCascade(node){
-    if(!isSmartImageNode(node) || isSmartDrawingBoardNode(node) || isHistoryGroupNode(node)) return false;
-    const graph = smartCascadeGraphForTail(node);
-    const loop = resolveSmartCascadeLoop(node.id);
-    if(loop && isDirectLoopTargetRun(loop, node, graph)) return true;
-    if(hasDownstreamImageNode(node)) return false;
-    if(graph.edges.length) return true;
-    return Boolean(loop);
-}
-function isDirectLoopTargetRun(loop, tail, graph){
-    if(!loop?.node?.id || !tail?.id) return false;
-    if(graph?.root?.id !== tail.id) return false;
-    if(hasDownstreamWorkflowImageNode(tail)) return false;
-    return downstreamImageTargetsFor(loop.node).some(node => node.id === tail.id);
+function cascadeTailForLoop(id){
+    return smartRunGraph().tailForLoop(id);
 }
 function cascadeConnectionKeys(){
-    const keys = new Set();
-    const addKey = (from, to) => {
-        if(from && to) keys.add(`${from}->${to}`);
-    };
-    const activeLoopIds = new Set(smartCascadeRuns.keys());
-    const loops = activeLoopIds.size
-        ? nodes.filter(n => n?.type === 'smart-loop' && activeLoopIds.has(n.id))
-        : nodes.filter(n => n?.type === 'smart-loop');
-    loops.forEach(loop => {
-        const tail = cascadeTailForLoop(loop.id);
-        if(!tail) return;
-        const graph = smartCascadeGraphForTail(tail);
-        if(!graph.root) return;
-        const chainIds = new Set(graph.path.map(n => n.id));
-        graph.edges.forEach(edge => addKey(edge.source.id, edge.target.id));
-        (canvas?.connections || []).forEach(conn => {
-            if((conn.kind || 'flow') === 'history') return;
-            const toNode = nodes.find(n => n.id === conn.to);
-            if(conn.from === loop.id && (chainIds.has(conn.to) || downstreamNodesForId(conn.to).some(n => chainIds.has(n.id)))) addKey(conn.from, conn.to);
-            if(toNode && chainIds.has(toNode.id)){
-                inputNodesFor(toNode).filter(n => n?.type === 'smart-loop' && n.showPrompt).forEach(inputLoop => addKey(inputLoop.id, toNode.id));
-            }
-        });
-    });
-    return keys;
+    return smartRunGraph().connectionKeys(new Set(smartCascadeRuns.keys()));
 }
-function coolRunButton(ms=2000){
-    if(!runBtn) return 0;
-    const token = ++runBtnCooldownToken;
-    syncRunButtonState();
-    setTimeout(() => {
-        if(token === runBtnCooldownToken) syncRunButtonState();
-    }, ms);
-    return token;
-}
-function coolNodeRunningState(node, ms=2000){
-    if(!node) return 0;
-    const token = ++smartRunStateToken;
-    smartNodeRunTokens.set(node.id, token);
+function markNodeRequestInProgress(node){
+    const request = {canvasId:canvas?.id, startedAt:node.runStartedAt};
+    smartNodeRunTokens.set(node.id, request);
     node.running = true;
     setTimeout(() => {
-        if(smartNodeRunTokens.get(node.id) !== token) return;
+        if(smartNodeRunTokens.get(node.id) !== request) return;
         smartNodeRunTokens.delete(node.id);
-        const current = nodes.find(n => n.id === node.id);
-        if(current){
-            current.running = false;
-            render();
-        }
-    }, ms);
-    return token;
+        if(canvas?.id !== request.canvasId) return;
+        const current = nodes.find(item => item.id === node.id);
+        if(!current?.running || current.runStartedAt !== request.startedAt) return;
+        current.running = false;
+        render();
+    }, 2000);
 }
 function clearNodeRunningState(node){
     if(!node) return;
     smartNodeRunTokens.delete(node.id);
     node.running = false;
 }
-function pushRightSideNodes(sourceNode, delta){
+function pushRightSideNodes(source, delta){
     const shift = Math.ceil(Number(delta) || 0);
-    if(!sourceNode || shift <= 0) return;
-    const sourceRight = (Number(sourceNode.x) || 0) + nodeRect(sourceNode).width - shift;
-    const downstreamIds = new Set(downstreamNodesForId(sourceNode.id).map(n => n.id));
-    nodes.forEach(n => {
-        if(!n || n.id === sourceNode.id) return;
-        const r = nodeRect(n);
-        const shouldShift = downstreamIds.has(n.id) || (Number(r.x) > sourceRight && Math.abs((Number(r.y) || 0) - (Number(sourceNode.y) || 0)) < 520);
-        if(shouldShift) n.x = (Number(n.x) || 0) + shift;
-    });
-}
-function cascadeOutputTitle(kind='image', count=1){
-    if(Number(count) > 1) return kind === 'video' ? 'Videos' : kind === 'audio' ? 'Audios' : kind === 'text' ? 'Texts' : 'Group';
-    return kind === 'video' ? 'Video' : kind === 'audio' ? 'Audio' : kind === 'text' ? 'Text' : kind === 'file' ? 'File' : 'Image';
-}
-function nonPreviewOutputImages(images=[]){
-    return (images || []).filter(img => img?.url && !img.loopInputPreview);
-}
-function cleanHistoryImages(images=[]){
-    const seen = new Set();
-    return nonPreviewOutputImages(images)
-        .map(img => stripImageGenerationMeta({...img}))
-        .filter(img => {
-            const key = `${img.kind || ''}|${img.url || ''}`;
-            if(seen.has(key)) return false;
-            seen.add(key);
-            return true;
-        });
-}
-function hasHistoryConnection(nodeId, groupId){
-    return Boolean(nodeId && groupId && (canvas?.connections || []).some(conn => conn.from === nodeId && conn.to === groupId && (conn.kind || 'flow') === 'history'));
-}
-function demoteHistoryGroupNode(group){
-    if(!group) return;
-    delete group.historyFor;
-    delete group.isHistoryGroup;
-    if(group.title === '历史分组'){
-        const count = (group.images || []).length;
-        group.title = count > 1 ? 'Group' : count === 1 ? 'Image' : tr('smart.createImportNode');
-    }
-}
-function historyGroupForNode(node){
-    if(!node?.id) return null;
-    let matched = null;
-    nodes.forEach(n => {
-        if(!isHistoryGroupNode(n) || n.historyFor !== node.id) return;
-        if(hasHistoryConnection(node.id, n.id)){
-            if(!matched) matched = n;
-        } else {
-            demoteHistoryGroupNode(n);
+    if(!source || shift <= 0) return;
+    const originalRight = (Number(source.x) || 0) + nodeRect(source).width - shift;
+    const sourceY = Number(source.y) || 0;
+    const downstream = new Set(downstreamNodesForId(source.id));
+    for(const node of nodes){
+        if(!node || node.id === source.id) continue;
+        const {x, y} = nodeRect(node);
+        if(downstream.has(node) || (Number(x) > originalRight && Math.abs((Number(y) || 0) - sourceY) < 520)){
+            node.x = (Number(node.x) || 0) + shift;
         }
-    });
-    return matched;
-}
-function positionHistoryGroupForNode(node, group){
-    if(!node || !group) return;
-    const r = nodeRect(node);
-    const gr = nodeRect(group);
-    if(!Number.isFinite(Number(group.x))) group.x = Math.round((Number(node.x) || 0) + Math.max(0, (r.width - gr.width) / 2));
-    if(!Number.isFinite(Number(group.y))) group.y = Math.round((Number(node.y) || 0) + r.height + 56);
-}
-function ensureHistoryGroupForNode(node){
-    if(!node?.id) return null;
-    let group = historyGroupForNode(node);
-    if(!group){
-        const r = nodeRect(node);
-        group = {
-            id:uid('smart'),
-            type:'smart-image',
-            x:Math.round(Number(node.x || 0)),
-            y:Math.round(Number(node.y || 0) + r.height + 56),
-            title:'历史分组',
-            images:[],
-            historyFor:node.id,
-            isHistoryGroup:true,
-            scale:MEDIA_GROUP_DEFAULT_SCALE,
-            created_at:Date.now()
-        };
-        nodes.push(group);
     }
-    group.type = 'smart-image';
-    group.title = '历史分组';
-    group.isHistoryGroup = true;
-    group.historyFor = node.id;
-    if(!Number.isFinite(Number(group.scale))) group.scale = MEDIA_GROUP_DEFAULT_SCALE;
-    addConnection(node.id, group.id, 'history');
-    positionHistoryGroupForNode(node, group);
-    return group;
 }
+const {
+    nonPreview:nonPreviewOutputImages, uniqueMedia:cleanHistoryImages, mediaTitle:cascadeOutputTitle,
+    createHistory:createOutputHistory,
+} = XiaomeiSmartOutput;
+const {
+    connected:hasHistoryConnection, detach:demoteHistoryGroupNode, groupFor:historyGroupForNode,
+    position:positionHistoryGroupForNode, archive:archiveCascadeMedia,
+} = createOutputHistory({
+    nodes:() => nodes, connections:() => canvas?.connections || [], isHistory:isHistoryGroupNode, rect:nodeRect,
+    id:() => uid('smart'), addNode:node => nodes.push(node), connect:(from, to) => addConnection(from, to, 'history'),
+    scale:MEDIA_GROUP_DEFAULT_SCALE, emptyTitle:() => tr('smart.createImportNode'),
+});
+
+function applyCascadeMedia(node, images, kind, {meta=null}={}){
+    node.images = images;
+    markSmartNodeComplete(node, meta);
+    Object.assign(node, {outputKind:kind, title:cascadeOutputTitle(kind, images.length),
+        scale:images.length > 1 ? MEDIA_GROUP_DEFAULT_SCALE : MEDIA_NODE_DEFAULT_SCALE});
+    if(node.manualSize !== true){
+        delete node.w;
+        delete node.h;
+    }
+    if(meta) attachRunMeta(node, meta);
+}
+
 function replaceOutputsToNodeWithHistory(node, additions, kind='image', meta=null, options={}){
     if(!node || !additions?.length) return [];
+    const images = cleanHistoryImages(additions);
+    if(!images.length) return [];
     node = liveSmartNode(node);
-    const beforeRight = (Number(node.x) || 0) + nodeRect(node).width;
-    const oldBatchSiblings = generatedBatchSiblings(node);
-    const existing = cleanHistoryImages([
-        ...(node.images || []),
-        ...oldBatchSiblings.flatMap(item => item.images || [])
-    ]);
+    const before = nodeRect(node).width;
+    const siblings = generatedBatchSiblings(node);
+    const archived = cleanHistoryImages([...(node.images || []), ...siblings.flatMap(sibling => sibling.images || [])]);
     removeGeneratedBatchSiblings(node);
-    const next = cleanHistoryImages(additions);
-    if(!next.length) return [];
-    const history = existing.length ? ensureHistoryGroupForNode(node) : historyGroupForNode(node);
-    if(history){
-        const archived = cleanHistoryImages([...existing, ...(history.images || [])]);
-        history.images = archived;
-        history.title = '历史分组';
-        history.outputKind = kind;
-        history.scale = MEDIA_GROUP_DEFAULT_SCALE;
-        delete history.w;
-        delete history.h;
-    }
-    node.images = next;
-    markSmartNodeComplete(node, meta);
-    node.outputKind = kind;
-    node.title = cascadeOutputTitle(kind, node.images.length);
-    node.scale = node.images.length > 1 ? MEDIA_GROUP_DEFAULT_SCALE : MEDIA_NODE_DEFAULT_SCALE;
-    delete node.w;
-    delete node.h;
-    if(meta) attachRunMeta(node, meta);
-    const afterRight = (Number(node.x) || 0) + nodeRect(node).width;
-    const skipShift = options.skipShift || Boolean(smartLoopContext?.nodeId);
-    if(!skipShift) pushRightSideNodes(node, afterRight - beforeRight + 36);
+    archiveCascadeMedia(node, archived, kind);
+    applyCascadeMedia(node, images, kind, {meta});
+    if(!options.skipShift && !smartLoopContext?.nodeId) pushRightSideNodes(node, nodeRect(node).width - before + 36);
     selectedImage = {nodeId:'', index:-1};
-    return next;
+    return images;
 }
-function appendOutputsToNode(node, additions, kind='image', options={}){
+
+function appendLoopOutputsToNode(node, additions, kind, ctx){
     if(!node || !additions?.length) return [];
-    node = liveSmartNode(node);
-    const beforeRight = (Number(node.x) || 0) + nodeRect(node).width;
-    const existing = cleanHistoryImages(node.images || []);
-    const seen = new Set(existing.map(img => `${img.kind || ''}|${img.url || ''}`));
-    const next = cleanHistoryImages(additions).filter(img => {
-        const key = `${img.kind || ''}|${img.url || ''}`;
-        if(seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
-    if(!next.length) return [];
-    node.images = [...existing, ...next];
-    markSmartNodeComplete(node);
-    node.outputKind = kind;
-    node.title = node.images.length > 1 ? (kind === 'video' ? 'Videos' : kind === 'audio' ? 'Audios' : kind === 'text' ? 'Texts' : 'Group') : (kind === 'video' ? 'Video' : kind === 'audio' ? 'Audio' : kind === 'text' ? 'Text' : kind === 'file' ? 'File' : 'Image');
-    delete node.w;
-    delete node.h;
-    const afterRight = (Number(node.x) || 0) + nodeRect(node).width;
-    const skipShift = options.skipShift || Boolean(smartLoopContext?.nodeId);
-    if(!skipShift) pushRightSideNodes(node, afterRight - beforeRight + 36);
-    return next;
-}
-function appendLoopOutputsToNode(node, additions, kind='image', ctx=smartLoopContext){
-    if(!node || !additions?.length) return [];
-    const runState = ctx?.runState;
-    if(runState && !runState.loopAppendInitialized) runState.loopAppendInitialized = new Set();
-    const initialized = runState?.loopAppendInitialized;
-    if(initialized && !initialized.has(node.id)){
-        initialized.add(node.id);
-        const existing = cleanHistoryImages(node.images || []);
-        if(existing.length){
-            const history = ensureHistoryGroupForNode(node);
-            history.images = cleanHistoryImages([...existing, ...(history.images || [])]);
-            history.title = '历史分组';
-            history.outputKind = kind;
-            history.scale = MEDIA_GROUP_DEFAULT_SCALE;
-            delete history.w;
-            delete history.h;
-        }
+    const run = ctx?.runState;
+    if(run) run.loopAppendInitialized ??= new Set();
+    let existing = cleanHistoryImages(node.images || []);
+    if(run && !run.loopAppendInitialized.has(node.id)){
+        run.loopAppendInitialized.add(node.id);
+        if(existing.length) archiveCascadeMedia(node, existing, kind);
+        existing = [];
         node.images = [];
     }
-    return appendOutputsToNode(node, additions, kind, {skipShift:true});
+    const images = cleanHistoryImages([...existing, ...additions]);
+    if(images.length === existing.length) return [];
+    applyCascadeMedia(node, images, kind);
+    return images.slice(existing.length);
 }
 function syncCascadeRunButton(node=selectedNode()){
     if(!cascadeRunBtn) return;
-    const visible = canRunSmartCascade(node);
+    const plan = smartRunGraph().plan(node?.id);
+    const visible = plan.runnable;
     cascadeRunBtn.style.display = visible ? 'inline-flex' : 'none';
-    const nodeLoopId = resolveSmartCascadeLoop(node?.id)?.node?.id || '';
+    const nodeLoopId = plan.loop?.node?.id || '';
     const loopRunState = smartCascadeRunForLoop(nodeLoopId);
     const runningForNode = Boolean(loopRunState);
     cascadeRunBtn.disabled = !visible || (!runningForNode && Boolean(node?.running)) || Boolean(loopRunState?.stopRequested);
@@ -31390,12 +23410,14 @@ function assertMultiAgentGenerationScope(runSettings){
     if(runSettings?.multiAgentCanvasId&&(String(canvas?.id||'')!==runSettings.multiAgentCanvasId
         ||runSettings.multiAgentProjectId&&String(canvas?.project||'default')!==runSettings.multiAgentProjectId))throw new Error('画布已切换，生成结果等待原画布恢复');
 }
-async function runQueuedSmartComfyGenerate(payload, progressNode=null, executionSettings=null){
+async function runQueuedSmartComfyGenerate(payload, progressNode=null, executionSettings=null, check=null){
+    check?.();
     if(executionSettings?.multiAgentActionId){
         assertMultiAgentGenerationScope(executionSettings);
         payload={...payload,project_id:executionSettings.multiAgentProjectId,multi_agent_action_id:executionSettings.multiAgentActionId,multi_agent_execution_token:executionSettings.multiAgentExecutionToken,client_request_id:executionSettings.multiAgentActionId};
     }
     const task = await createSmartComfyTask(payload);
+    check?.();
     const taskId = String(task?.task_id || task?.id || '').trim();
     if(executionSettings?.multiAgentActionId){
         assertMultiAgentGenerationScope(executionSettings);
@@ -31407,6 +23429,7 @@ async function runQueuedSmartComfyGenerate(payload, progressNode=null, execution
         }
     }
     const updateProgress = remoteTask => {
+        check?.();
         if(executionSettings?.multiAgentActionId){try{assertMultiAgentGenerationScope(executionSettings);}catch(_){return;}}
         if(!progressNode?.id || !taskId || !remoteTask || typeof remoteTask !== 'object') return;
         const progressTask = {...remoteTask, taskId};
@@ -31489,64 +23512,55 @@ function buildPromptRequestForNode(node, defaultImages, ctx=smartLoopContext, co
         promptInput.innerHTML = oldHtml;
     }
 }
-async function generateUrlsForCurrentSettings(node, prompt, refs, runSettings=settings, ctx=smartLoopContext, sourceNode=node){
+async function generateUrlsForCurrentSettings(node, prompt, refs, config=settings, ctx=smartLoopContext, source=node, check=()=>{}){
+    check();
     cameraGenerationContextFor(node, refs, ctx);
-    const activeSettings = apiOnlySettings(runSettings || settings);
-    if(typeof validateProductFidelityRun === 'function') validateProductFidelityRun(node, activeSettings);
+    const active = apiOnlySettings(config);
+    if(typeof validateProductFidelityRun === 'function') validateProductFidelityRun(node, active);
     const preserve = outpaintPreserveInfo(node);
-    const requestSettings = preserve ? {...activeSettings, outpaintPreserve:preserve, outpaintMode:true} : activeSettings;
-    if(activeSettings.engine === 'comfy') return generateComfyUrlsWithSettings(activeSettings, prompt, refs, node, sourceNode);
-    if(activeSettings.engine === 'runninghub' && runningHubSelectedModel(activeSettings)){
-        const taskResult = await runApiGeneration(prompt, refs, runningHubModelApiSettings(requestSettings));
-        const taskIds = Array.isArray(taskResult?.taskIds) ? taskResult.taskIds : [];
+    const request = preserve ? {...active, outpaintPreserve:preserve, outpaintMode:true} : active;
+    if(active.engine === 'comfy') return generateComfyUrlsWithSettings(active, prompt, refs, node, source, check);
+    const hubModel = active.engine === 'runninghub' && runningHubSelectedModel(active);
+    if(!hubModel && isApiLikeEngine(active.engine) && active.apiKind === 'video'){
+        return {urls:await runApiVideoGeneration(prompt, refs, active), kind:'video'};
+    }
+    let urls = [];
+    if(hubModel || isApiLikeEngine(active.engine)){
+        const accepted = await runApiGeneration(prompt, refs, hubModel ? runningHubModelApiSettings(request) : request);
+        check();
+        const taskIds = Array.isArray(accepted?.taskIds) ? accepted.taskIds : [];
         if(taskIds.length){
-            const settled = await Promise.all(taskIds.map(taskId => pollSmartCanvasTask(taskId)));
-            const urls = settled.flatMap(result => resultMediaUrls(result?.image_items?.length ? result.image_items : (result?.images?.length ? result.images : result))).filter(Boolean);
-            return {urls, kind:mediaKindForUrls(urls, 'image')};
-        }
-        const urls = resultMediaUrls(taskResult);
-        return {urls, kind:mediaKindForUrls(urls, 'image')};
+            const results = await Promise.all(taskIds.map(taskId => pollSmartCanvasTask(taskId)));
+            check();
+            urls = results.flatMap(result => resultMediaUrls(result?.image_items?.length ? result.image_items : result?.images?.length ? result.images : result));
+        } else urls = resultMediaUrls(accepted);
+    } else if(active.engine === 'runninghub'){
+        urls = await runRunningHubGeneration(prompt, refs, active);
     }
-    if(isApiLikeEngine(activeSettings.engine) && activeSettings.apiKind === 'video'){
-        return {urls:await runApiVideoGeneration(prompt, refs, activeSettings), kind:'video'};
-    }
-    if(isApiLikeEngine(activeSettings.engine)){
-        const taskResult = await runApiGeneration(prompt, refs, requestSettings);
-        const taskIds = Array.isArray(taskResult?.taskIds) ? taskResult.taskIds : [];
-        if(taskIds.length){
-            const settled = await Promise.all(taskIds.map(taskId => pollSmartCanvasTask(taskId)));
-            const urls = settled.flatMap(result => resultMediaUrls(result?.image_items?.length ? result.image_items : (result?.images?.length ? result.images : result))).filter(Boolean);
-            return {urls, kind:mediaKindForUrls(urls, 'image')};
-        }
-        const urls = resultMediaUrls(taskResult);
-        return {urls, kind:mediaKindForUrls(urls, 'image')};
-    }
-    const urls = activeSettings.engine === 'runninghub'
-        ? await runRunningHubGeneration(prompt, refs, activeSettings)
-        : [];
     return {urls, kind:mediaKindForUrls(urls, 'image')};
 }
-async function generateComfyUrlsWithSettings(runSettings, prompt, refs, progressNode=null, sourceNode=progressNode){
+async function generateComfyUrlsWithSettings(runSettings, prompt, refs, progressNode, sourceNode, check){
     const allRefs = refs || [];
     const imageRefs = imageRefsOnly(allRefs);
+    const queue = payload => runQueuedSmartComfyGenerate(payload, progressNode, runSettings, check);
     const mode = runSettings.comfyMode || 'text';
     if(mode === 'text'){
-        const data = await runQueuedSmartComfyGenerate({prompt, width:Number(runSettings.width || 1024), height:Number(runSettings.height || 1024), workflow_json:'Z-Image.json', type:'zimage', client_id:smartClientId}, progressNode);
+        const data = await queue({prompt, width:Number(runSettings.width || 1024), height:Number(runSettings.height || 1024), workflow_json:'Z-Image.json', type:'zimage', client_id:smartClientId});
         const urls = resultMediaUrls(data);
         return {urls, kind:mediaKindForUrls(urls, 'image')};
     }
     if(mode === 'enhance'){
         if(!imageRefs.length) throw new Error(tr('smart.errEnhanceNeedRefs'));
-        const inputName = await comfyNameForRef(imageRefs[0]);
-        const data = await runQueuedSmartComfyGenerate({workflow_json:'Z-Image-Enhance.json', type:'enhance', params:{"15":{image:inputName},"204":{value:Number(runSettings.enhanceStrength ?? 0.5)}}, client_id:smartClientId}, progressNode);
+        const inputName = await comfyNameForRef(imageRefs[0], runSettings);
+        const data = await queue({workflow_json:'Z-Image-Enhance.json', type:'enhance', params:{"15":{image:inputName},"204":{value:Number(runSettings.enhanceStrength ?? 0.5)}}, client_id:smartClientId});
         const urls = resultMediaUrls(data);
         return {urls, kind:mediaKindForUrls(urls, 'image')};
     }
     if(mode === 'edit'){
         if(!imageRefs.length) throw new Error(tr('smart.errEditNeedRefs'));
         const names = [];
-        for(const ref of imageRefs.slice(0, 3)) names.push(await comfyNameForRef(ref));
-        const data = await runQueuedSmartComfyGenerate({prompt, workflow_json:'Flux2-Klein.json', type:'klein', params:{"168":{text:prompt},"158":{noise_seed:Math.floor(Math.random()*1000000)},"278":{image:names[0] || ""},"270":{image:names[1] || ""},"292":{image:names[2] || ""},"313":{value:Boolean(names[1])},"314":{value:Boolean(names[2])}}, client_id:smartClientId}, progressNode);
+        for(const ref of imageRefs.slice(0, 3)) names.push(await comfyNameForRef(ref, runSettings));
+        const data = await queue({prompt, workflow_json:'Flux2-Klein.json', type:'klein', params:{"168":{text:prompt},"158":{noise_seed:Math.floor(Math.random()*1000000)},"278":{image:names[0] || ""},"270":{image:names[1] || ""},"292":{image:names[2] || ""},"313":{value:Boolean(names[1])},"314":{value:Boolean(names[2])}}, client_id:smartClientId});
         const urls = resultMediaUrls(data);
         return {urls, kind:mediaKindForUrls(urls, 'image')};
     }
@@ -31576,266 +23590,233 @@ async function generateComfyUrlsWithSettings(runSettings, prompt, refs, progress
             values[field.id] = runSettings.comfyParams?.[field.id] ?? field.default;
         }
     });
+    check();
     syncSmartComfyRandomValues(sourceNode, runSettings, fields, values);
-    const result = await runQueuedSmartComfyGenerate({prompt, workflow_json:workflowName, app_id:String(runSettings.comfyAppId || runSettings.workflowAppId || '').trim(), params:comfyParamsFromWorkflowValues(wf.config || {fields:[]}, values, runSettings.comfyParams || {}), type:'workflow-custom', client_id:smartClientId}, progressNode);
+    const result = await queue({prompt, workflow_json:workflowName, app_id:String(runSettings.comfyAppId || runSettings.workflowAppId || '').trim(), params:comfyParamsFromWorkflowValues(wf.config || {fields:[]}, values, runSettings.comfyParams || {}), type:'workflow-custom', client_id:smartClientId});
     const urls = resultMediaUrls(result);
     const fallbackKind = result.videos?.length ? 'video' : result.audios?.length ? 'audio' : result.texts?.length ? 'text' : 'image';
     return {urls, kind:mediaKindForUrls(urls, fallbackKind)};
 }
-async function runCascadeStepIntoNode(sourceNode, targetNode, inputRefs, ctx=smartLoopContext){
-    const outputNode = targetNode || sourceNode;
-    if(!sourceNode || !targetNode || !outputNode) return [];
-    const requestNode = sourceNode?.type === 'smart-loop' ? targetNode : sourceNode;
-    const previousSettings = cloneSmartSettings(settings);
-    const runSettings = smartLoopRoundSettings({...cloneSmartSettings(settings), ...cloneSmartSettings(smartSettingsForNode(requestNode) || {})}, ctx);
-    settings = runSettings;
-    const outpaintSize = validOutpaintSize(requestNode);
-    const selfRefs = sourceNode?.type === 'smart-loop' ? [] : selfReferenceImagesForNode(sourceNode, false, ctx).filter(img => img?.url);
-    const sourceRefs = (selfRefs.length ? selfRefs : defaultReferenceImagesFor(requestNode, false, ctx)).filter(img => img?.url);
-    const refsForRequest = sourceRefs.length
-        ? sourceRefs
-        : (inputRefs && inputRefs.length ? inputRefs : null);
-    const request = buildPromptRequestForNode(
-        requestNode,
-        refsForRequest,
-        ctx
-    );
-    // 记录本次合并进来的上游文本，后续恢复草稿时用来识别旧版本写入的上游回显。
-    requestNode.runUpstreamText = String(request.upstreamText || '').trim();
-    const prompt = (request.prompt || '').trim();
-    const displayPrompt = (request.displayPrompt || '').trim();
-    if((!prompt || !displayPrompt) && smartRunNeedsPrompt(runSettings, request.refs)){
-        settings = previousSettings;
-        throw new Error('链路节点缺少提示词');
-    }
-    try {
-        if(typeof validateProductFidelityRun === 'function') validateProductFidelityRun(requestNode, runSettings);
-        cameraGenerationContextFor(outputNode, request.refs || [], ctx);
-    } catch(error) {
-        settings = previousSettings;
-        throw error;
-    }
-    const meta = {
-        prompt,
-        displayPrompt:request.displayPrompt || '',
-        promptRefs:(request.refs || []).map(ref => ({url:ref.url || '', name:ref.name || '', nodeId:ref.nodeId || '', imageIndex:ref.imageIndex ?? ''})).filter(ref => ref.url),
-        inputRefs:(request.refs || []).map(ref => ({url:ref.url || '', name:ref.name || '', nodeId:ref.nodeId || '', imageIndex:ref.imageIndex ?? '', kind:ref.kind || ''})).filter(ref => ref.url),
-        sourceNodeId:sourceNode.id,
-        settings:JSON.parse(JSON.stringify(runSettings)),
-        createdAt:Date.now()
+function smartCascadeTaskScope(...participants){
+    const owner = canvas;
+    const current = node => canvas === owner && nodes.includes(node);
+    return {
+        current,
+        check(){
+            if(!participants.every(current)) throw smartCascadeAbortError();
+        },
     };
-    if(requestNode.promptDraftHtml != null){
-        meta.promptHtml = requestNode.promptDraftHtml;
-        meta.promptText = requestNode.promptDraftText || request.displayPrompt || '';
-    }
-    const logKind = isApiLikeEngine(runSettings.engine) && runSettings.apiKind === 'video' ? 'video' : 'image';
-    const runLog = smartRunSnapshot(requestNode, prompt, request.refs || [], logKind);
-    const runLogStart = nowMs();
-    const targetPromptState = {
-        promptDraftHtml:targetNode.promptDraftHtml,
-        promptDraftText:targetNode.promptDraftText,
-        runPrompt:targetNode.runPrompt,
-        runModelPrompt:targetNode.runModelPrompt,
-        runPromptRefs:targetNode.runPromptRefs ? targetNode.runPromptRefs.map(ref => ({...ref})) : undefined,
-        runInputRefs:targetNode.runInputRefs ? targetNode.runInputRefs.map(ref => ({...ref})) : undefined,
-        runSettings:targetNode.runSettings ? cloneSmartSettings(targetNode.runSettings) : undefined,
-        sourceNodeId:targetNode.sourceNodeId,
-        runAt:targetNode.runAt
-    };
-    outputNode.running = true;
-    outputNode.runStartedAt = nowMs();
-    delete outputNode.runFinishedAt;
-    delete outputNode.runElapsedMs;
-    outputNode.runTimerHidden = false;
-    rememberRecentSmartSettings(runSettings, requestNode);
-    render();
-    settings = previousSettings;
-    try {
-        const result = await generateUrlsForCurrentSettings(outputNode, prompt, request.refs || [], runSettings, ctx, requestNode);
-        if(!result.urls?.length) throw new Error(result.kind === 'video' ? tr('smart.errNoOutVideos') : tr('smart.errNoOutImages'));
-        if(outpaintSize) delete requestNode.outpaintSize;
-        addSmartGenerationLog({run:{...runLog, kind:result.kind || logKind}, outputs:result.urls, runMs:nowMs() - runLogStart});
-        const ext = result.kind === 'video' ? 'mp4' : result.kind === 'audio' ? 'mp3' : result.kind === 'text' ? 'txt' : 'png';
-        const additions = result.urls.map((item, i) => {
-            const url = typeof item === 'string' ? item : item?.url || '';
-            return stripImageGenerationMeta(copyMediaSizeFields(item, {url, name:(typeof item === 'object' && item.name) || `output-${i + 1}.${ext}`, kind:(typeof item === 'object' && item.kind) || result.kind, generatedResult:true}));
-        }).filter(item => item.url);
-        if(ctx?.appendLoopOutputs) {
-            appendLoopOutputsToNode(outputNode, additions, result.kind, ctx);
-        } else {
-            replaceOutputsToNodeWithHistory(outputNode, additions, result.kind, null, {skipShift:Boolean(ctx?.nodeId)});
-        }
-        outputNode.runPrompt = targetPromptState.runPrompt;
-        outputNode.runModelPrompt = targetPromptState.runModelPrompt;
-        outputNode.runPromptRefs = targetPromptState.runPromptRefs || [];
-        outputNode.runInputRefs = targetPromptState.runInputRefs || [];
-        outputNode.runSettings = targetPromptState.runSettings;
-        outputNode.sourceNodeId = targetPromptState.sourceNodeId;
-        outputNode.runAt = targetPromptState.runAt;
-        if(targetPromptState.promptDraftHtml === undefined) delete outputNode.promptDraftHtml;
-        else outputNode.promptDraftHtml = targetPromptState.promptDraftHtml;
-        if(targetPromptState.promptDraftText === undefined) delete outputNode.promptDraftText;
-        else outputNode.promptDraftText = targetPromptState.promptDraftText;
-        ['runPrompt','runModelPrompt','runSettings','sourceNodeId','runAt'].forEach(key => {
-            if(targetPromptState[key] === undefined) delete outputNode[key];
-        });
-        settings = previousSettings;
-        render();
-        return rememberRoundOutputs(ctx, outputNode, additions);
-    } catch(e) {
-        settings = previousSettings;
-        if(handleJimengPendingSignal(outputNode, e)){
-            render();
-            return [];
-        }
-        outputNode.running = false;
-        if(!e?.smartGenerationLogged) addSmartGenerationLog({run:runLog, outputs:[], runMs:nowMs() - runLogStart, error:e.message || String(e)});
-        render();
-        throw e;
-    }
 }
-async function runLoopRoundIntoSlot(loopNode, rootNode, outputSlot, loopIndex, ctx){
-    if(!loopNode || !rootNode || !outputSlot) return [];
-    outputSlot = liveSmartNode(outputSlot);
-    const detailScreen = smartLoopIsPaired(loopNode) && loopNode.batchDetailModeV2;
-    const previousSettings = cloneSmartSettings(settings);
-    const edgeKey = `${rootNode.id}->${outputSlot.id}`;
-    const runSettings = smartLoopRoundSettings({...cloneSmartSettings(settings), ...cloneSmartSettings(smartSettingsForNode(rootNode) || {})}, ctx);
-    settings = runSettings;
+
+function prepareCascadeRequest(requestNode, target, ctx, getRefs, loop=null){
+    const previous = settings;
+    const config = smartLoopRoundSettings({...cloneSmartSettings(settings), ...cloneSmartSettings(smartSettingsForNode(requestNode) || {})}, ctx);
+    settings = config;
     try {
-        if(typeof validateProductFidelityRun === 'function') validateProductFidelityRun(rootNode, runSettings);
-        const refsForRequest = outputImagesForNode(loopNode, true, ctx).filter(img => img?.url);
-        // 绘画节点里保留对应屏幕提示词；详情页批量节点本身只负责提供共享素材。
-        const request = buildPromptRequestForNode(rootNode, refsForRequest.length ? refsForRequest : null, ctx);
-        // 记录本次合并进来的上游文本，后续恢复草稿时用来识别旧版本写入的上游回显。
-        rootNode.runUpstreamText = String(request.upstreamText || '').trim();
+        if(loop && typeof validateProductFidelityRun === 'function') validateProductFidelityRun(requestNode, config);
+        const request = buildPromptRequestForNode(requestNode, getRefs(), ctx);
+        requestNode.runUpstreamText = String(request.upstreamText || '').trim();
         const prompt = (request.prompt || '').trim();
         const displayPrompt = (request.displayPrompt || '').trim();
-        if(detailScreen){
-            outputSlot.loopVisualGuide = smartLoopDetailVisualGuide(loopNode);
-            outputSlot.promptDraftText = displayPrompt || prompt;
-            outputSlot.promptDraftHtml = escapeHtml(outputSlot.promptDraftText);
+        const refs = request.refs || [];
+        const detail = Boolean(smartLoopIsPaired(loop) && loop.batchDetailModeV2);
+        if(detail){
+            target.loopVisualGuide = smartLoopDetailVisualGuide(loop);
+            target.promptDraftText = displayPrompt || prompt;
+            target.promptDraftHtml = escapeHtml(target.promptDraftText);
         }
-        if((!prompt || !displayPrompt) && smartRunNeedsPrompt(runSettings, request.refs)) throw new Error('链路节点缺少提示词');
-        cameraGenerationContextFor(outputSlot, request.refs || [], ctx);
-        const meta = {
-            prompt,
-            displayPrompt:request.displayPrompt || '',
-            promptRefs:(request.refs || []).map(ref => ({url:ref.url || '', name:ref.name || '', nodeId:ref.nodeId || '', imageIndex:ref.imageIndex ?? ''})).filter(ref => ref.url),
-            inputRefs:(request.refs || []).map(ref => ({url:ref.url || '', name:ref.name || '', nodeId:ref.nodeId || '', imageIndex:ref.imageIndex ?? '', kind:ref.kind || ''})).filter(ref => ref.url),
-            sourceNodeId:rootNode.id,
-            settings:JSON.parse(JSON.stringify(runSettings)),
-            createdAt:Date.now()
-        };
-        const logKind = isApiLikeEngine(runSettings.engine) && runSettings.apiKind === 'video' ? 'video' : 'image';
-        const runLog = smartRunSnapshot(rootNode, prompt, request.refs || [], logKind);
-        const runLogStart = nowMs();
-        const expectedCount = isApiLikeEngine(runSettings.engine) && runSettings.apiKind !== 'video'
-            ? Math.max(1, Math.min(8, Number(runSettings.count || 1)))
-            : 1;
-        if(detailScreen) clearDetailScreenOutputs(outputSlot);
-        outputSlot.queued = false;
-        delete outputSlot.runError;
-        delete outputSlot.batchGenerationCancelled;
-        outputSlot.running = true;
-        outputSlot.pending = expectedCount;
-        if(outputSlot.manualSize !== true){
-            const pendingBox = pendingBoxSize(expectedCount, {sourceNode:rootNode, refs:request.refs || []});
-            outputSlot.w = pendingBox.w;
-            outputSlot.h = pendingBox.h;
+        if((!prompt || !displayPrompt) && smartRunNeedsPrompt(config, refs)) throw new Error('链路节点缺少提示词');
+        if(!loop && typeof validateProductFidelityRun === 'function') validateProductFidelityRun(requestNode, config);
+        cameraGenerationContextFor(target, refs, ctx);
+        const kind = isApiLikeEngine(config.engine) && config.apiKind === 'video' ? 'video' : 'image';
+        return {config, request, prompt, refs, log:smartRunSnapshot(requestNode, prompt, refs, kind, config, detail), started:nowMs()};
+    } finally {
+        settings = previous;
+    }
+}
+
+function cascadeOutputItems(result){
+    const extensions = {video:'mp4', audio:'mp3', text:'txt'};
+    const ext = extensions[result.kind] || 'png';
+    return (result.urls || []).map((item, index) => {
+        const url = typeof item === 'string' ? item : item?.url;
+        if(!url) return null;
+        return stripImageGenerationMeta(copyMediaSizeFields(item, {
+            url, name:item?.name || 'output-' + (index + 1) + '.' + ext,
+            kind:item?.kind || result.kind, generatedResult:true,
+        }));
+    }).filter(Boolean);
+}
+function saveCascadeResultLog(task, result){
+    addSmartGenerationLog({run:{...task.log, kind:result.kind || task.log.kind}, outputs:result.urls, runMs:nowMs() - task.started});
+}
+function beginCascadeNodeTimer(node){
+    node.running = true;
+    node.runStartedAt = nowMs();
+    delete node.runFinishedAt;
+    delete node.runElapsedMs;
+    node.runTimerHidden = false;
+}
+function trackCascadeWrite(node){
+    smartCascadeWrites.set(node, (smartCascadeWrites.get(node) || 0) + 1);
+    return () => {
+        const remaining = smartCascadeWrites.get(node) - 1;
+        if(remaining) smartCascadeWrites.set(node, remaining);
+        else smartCascadeWrites.delete(node);
+    };
+}
+
+async function runCascadeStepIntoNode(source, target, incoming, ctx){
+    const scope = smartCascadeTaskScope(source, target);
+    scope.check();
+    const sourceIsLoop = source.type === 'smart-loop';
+    const requestNode = sourceIsLoop ? target : source;
+    const task = prepareCascadeRequest(requestNode, target, ctx, () => {
+        const own = sourceIsLoop ? [] : selfReferenceImagesForNode(source, false, ctx).filter(ref => ref?.url);
+        const refs = own.length ? own : defaultReferenceImagesFor(requestNode, false, ctx).filter(ref => ref?.url);
+        return refs.length ? refs : incoming?.length ? incoming : null;
+    });
+    const outpaint = validOutpaintSize(requestNode);
+    beginCascadeNodeTimer(target);
+    const release = trackCascadeWrite(target);
+    try {
+        rememberRecentSmartSettings(task.config, requestNode);
+        render();
+        const result = await generateUrlsForCurrentSettings(target, task.prompt, task.refs, task.config, ctx, requestNode, scope.check);
+        scope.check();
+        const additions = cascadeOutputItems(result);
+        if(!additions.length) throw new Error(tr(result.kind === 'video' ? 'smart.errNoOutVideos' : 'smart.errNoOutImages'));
+        if(outpaint) delete requestNode.outpaintSize;
+        if(ctx?.appendLoopOutputs) appendLoopOutputsToNode(target, additions, result.kind, ctx);
+        else replaceOutputsToNodeWithHistory(target, additions, result.kind, null, {skipShift:Boolean(ctx?.nodeId)});
+        saveCascadeResultLog(task, result);
+        render();
+        return rememberRoundOutputs(ctx, target, additions);
+    } catch(error) {
+        if(!scope.current(target)) throw smartCascadeAbortError();
+        if(!error?.smartCascadeStopped && handleJimengPendingSignal(target, error)){
+            render();
+            return [];
         }
-        outputSlot.runStartedAt = nowMs();
-        delete outputSlot.runFinishedAt;
-        delete outputSlot.runElapsedMs;
-        outputSlot.runTimerHidden = false;
-        const runPath = smartCascadePathForCtx(ctx);
-        if(runPath?.states) {
-            runPath.states[edgeKey] = 'active';
+        target.running = false;
+        if(!error?.smartCascadeStopped && !error?.smartGenerationLogged){
+            addSmartGenerationLog({run:task.log, outputs:[], runMs:nowMs() - task.started, error:error?.message || String(error)});
+        }
+        render();
+        throw error;
+    } finally {
+        release();
+    }
+}
+
+function cascadeSlotMeta(task, source){
+    return {
+        prompt:task.prompt, displayPrompt:task.request.displayPrompt || '',
+        promptRefs:outputRunReferences(task.refs), inputRefs:outputRunReferences(task.refs, true),
+        sourceNodeId:source.id, settings:settingsForStorage(task.config), createdAt:task.started,
+    };
+}
+
+async function runCascadeSlotImage(slot, task, detail, ctx, scope){
+    const accepted = await runApiGeneration(task.prompt, task.refs, task.config, {exactSize:detail});
+    scope.check();
+    const taskIds = Array.isArray(accepted?.taskIds) ? accepted.taskIds : [];
+    if(!taskIds.length) throw new Error(tr('smart.errRunFailed'));
+    const existing = cleanHistoryImages(slot.images || []);
+    if(existing.length){
+        archiveCascadeMedia(slot, existing, 'image');
+        slot.images = [];
+    }
+    for(const key of ['_taskTimingStart','_taskTimingFinish','_terminalFinishedAt']) delete slot[key];
+    const repair = localRepairRegionFromRefs(task.refs);
+    slot.pendingTasks = taskIds.map(taskId => ({
+        taskId, kind:'image', providerId:accepted.providerId, model:accepted.model, status:'queued', localRepair:repair,
+    }));
+    slot.pending = taskIds.length;
+    slot.running = false;
+    if(detail && ctx?.runState?.stopRequested){
+        await cancelSmartBatchTasks(taskIds, ctx.runState);
+        scope.check();
+    }
+    render();
+    scheduleSave();
+    await saveCanvas();
+    scope.check();
+    await resumeSmartPendingNode(slot, {run:task.log, runLogStart:task.started});
+    scope.check();
+    if(detail && ctx?.runState?.stopRequested && slot.jimengPending){
+        markSmartBatchScreenCancelled(slot);
+        throw smartCascadeAbortError();
+    }
+    if(slot.jimengPending || smartRecoverableImageTask(slot)) return null;
+    return {urls:(slot.images || []).filter(img => img?.url), kind:'image'};
+}
+
+async function runLoopRoundIntoSlot(loop, source, slot, ctx){
+    if(!loop || !source || !slot) return [];
+    const scope = smartCascadeTaskScope(loop, source, slot);
+    const detail = Boolean(smartLoopIsPaired(loop) && loop.batchDetailModeV2);
+    const path = smartCascadePathForCtx(ctx);
+    const edge = source.id + '->' + slot.id;
+    const release = trackCascadeWrite(slot);
+    try {
+        scope.check();
+        const task = prepareCascadeRequest(source, slot, ctx, () => {
+            const refs = outputImagesForNode(loop, true, ctx).filter(ref => ref?.url);
+            return refs.length ? refs : null;
+        }, loop);
+        const config = task.config;
+        const meta = cascadeSlotMeta(task, source);
+        const imageTask = isApiLikeEngine(config.engine) && config.apiKind !== 'video';
+        if(detail) clearDetailScreenOutputs(slot);
+        slot.queued = false;
+        delete slot.runError;
+        delete slot.batchGenerationCancelled;
+        slot.pending = imageTask ? Math.max(1, Math.min(8, Number(config.count) || 1)) : 1;
+        if(slot.manualSize !== true){
+            const dimensions = pendingBoxSize(slot.pending, config, {sourceNode:source, refs:task.refs, exactSize:detail});
+            slot.w = dimensions.w;
+            slot.h = dimensions.h;
+        }
+        beginCascadeNodeTimer(slot);
+        if(path?.states){
+            path.states[edge] = 'active';
             scheduleConnectionLayerRefresh();
         }
         render();
-        settings = previousSettings;
-        let result;
-        if(isApiLikeEngine(runSettings.engine) && runSettings.apiKind !== 'video'){
-            const taskResult = await runApiGeneration(prompt, request.refs || [], runSettings, {exactSize:detailScreen});
-            outputSlot = liveSmartNode(outputSlot);
-            const existing = cleanHistoryImages(outputSlot.images || []);
-            if(existing.length){
-                const history = ensureHistoryGroupForNode(outputSlot);
-                history.images = cleanHistoryImages([...existing, ...(history.images || [])]);
-                history.title = '历史分组';
-                history.outputKind = 'image';
-                history.scale = MEDIA_GROUP_DEFAULT_SCALE;
-                delete history.w;
-                delete history.h;
-                outputSlot.images = [];
-            }
-            const taskIds = Array.isArray(taskResult?.taskIds) ? taskResult.taskIds : [];
-            if(!taskIds.length) throw new Error(tr('smart.errRunFailed'));
-            delete outputSlot._taskTimingStart;
-            delete outputSlot._taskTimingFinish;
-            delete outputSlot._terminalFinishedAt;
-            outputSlot.pendingTasks = taskIds.map(taskId => ({taskId, kind:'image', providerId:taskResult.providerId, model:taskResult.model, status:'queued',localRepair:localRepairRegionFromRefs(request.refs||[])}));
-            outputSlot.pending = taskIds.length;
-            outputSlot.running = false;
-            if(detailScreen && ctx?.runState?.stopRequested){
-                // 停止操作可能早于提交接口返回任务编号。
-                await cancelSmartBatchTasks(taskIds, ctx.runState);
-            }
-            render();
-            scheduleSave();
-            await saveCanvas();
-            await resumeSmartPendingNode(outputSlot, {run:runLog, runLogStart});
-            outputSlot = liveSmartNode(outputSlot);
-            if(detailScreen && ctx?.runState?.stopRequested && outputSlot.jimengPending){
-                markSmartBatchScreenCancelled(outputSlot);
-                throw smartCascadeAbortError();
-            }
-            if(outputSlot.jimengPending || smartRecoverableImageTask(outputSlot)){
-                outputSlot.queued = false;
-                return [];
-            }
-            result = {urls:(outputSlot.images || []).map(img => img?.url ? img : null).filter(Boolean), kind:'image'};
-        } else {
-            result = await generateUrlsForCurrentSettings(outputSlot, prompt, request.refs || [], runSettings, ctx, rootNode);
+        const result = imageTask
+            ? await runCascadeSlotImage(slot, task, detail, ctx, scope)
+            : await generateUrlsForCurrentSettings(slot, task.prompt, task.refs, config, ctx, source, scope.check);
+        scope.check();
+        if(!result) return [];
+        const additions = imageTask
+            ? result.urls.map(item => stripImageGenerationMeta({...item}))
+            : cascadeOutputItems(result);
+        if(!additions.length) throw new Error(tr(result.kind === 'video' ? 'smart.errNoOutVideos' : 'smart.errNoOutImages'));
+        if(imageTask) attachRunMeta(slot, meta);
+        else {
+            slot.images = nonPreviewOutputImages(slot.images);
+            replaceOutputsToNodeWithHistory(slot, additions, result.kind, meta, {skipShift:Boolean(ctx?.nodeId)});
         }
-        if(!result.urls?.length) throw new Error(result.kind === 'video' ? tr('smart.errNoOutVideos') : tr('smart.errNoOutImages'));
-        let additions;
-        if(isApiLikeEngine(runSettings.engine) && runSettings.apiKind !== 'video'){
-            additions = (outputSlot.images || []).map(img => stripImageGenerationMeta({...img})).filter(img => img?.url);
-            if(meta) attachRunMeta(outputSlot, meta);
-        } else {
-            const ext = result.kind === 'video' ? 'mp4' : result.kind === 'audio' ? 'mp3' : result.kind === 'text' ? 'txt' : 'png';
-            additions = result.urls.map((item, i) => {
-                const url = typeof item === 'string' ? item : item?.url || '';
-                return stripImageGenerationMeta(copyMediaSizeFields(item, {url, name:(typeof item === 'object' && item.name) || `output-${i + 1}.${ext}`, kind:(typeof item === 'object' && item.kind) || result.kind, generatedResult:true}));
-            }).filter(item => item.url);
-            outputSlot = liveSmartNode(outputSlot);
-            outputSlot.images = nonPreviewOutputImages(outputSlot.images);
-            replaceOutputsToNodeWithHistory(outputSlot, additions, result.kind, meta, {skipShift:Boolean(ctx?.nodeId)});
-        }
-        outputSlot = liveSmartNode(outputSlot);
-        markSmartNodeComplete(outputSlot, meta);
-        clearSourceBusyStateIfDownstreamDone(rootNode);
-        if(runPath?.states) {
-            runPath.states[edgeKey] = 'done';
+        markSmartNodeComplete(slot, meta);
+        clearSourceBusyStateIfDownstreamDone(source);
+        if(path?.states){
+            path.states[edge] = 'done';
             scheduleConnectionLayerRefresh();
         }
-        addSmartGenerationLog({run:{...runLog, kind:result.kind || logKind}, outputs:result.urls, runMs:nowMs() - runLogStart});
-        return rememberRoundOutputs(ctx, outputSlot, additions);
-    } catch(e) {
-        if(detailScreen && e?.cancelledTask) throw smartCascadeAbortError();
-        if(handleJimengPendingSignal(outputSlot, e)){
-            outputSlot.queued = false;
-            return [];
-        }
-        outputSlot.queued = false;
-        outputSlot.pending = 0;
-        outputSlot.running = false;
-        if(detailScreen && !e?.smartCascadeStopped) markSmartNodeFailed(outputSlot, e.message || tr('smart.errRunFailed'));
-        throw e;
+        saveCascadeResultLog(task, result);
+        return rememberRoundOutputs(ctx, slot, additions);
+    } catch(error) {
+        if(!scope.current(slot)) throw smartCascadeAbortError();
+        if(detail && error?.cancelledTask) throw smartCascadeAbortError();
+        slot.queued = false;
+        if(!error?.smartCascadeStopped && handleJimengPendingSignal(slot, error)) return [];
+        slot.pending = 0;
+        slot.running = false;
+        if(detail && !error?.smartCascadeStopped) markSmartNodeFailed(slot, error?.message || tr('smart.errRunFailed'));
+        throw error;
     } finally {
-        settings = previousSettings;
+        release();
     }
 }
 function appendCascadeRefsToReceiver(node, refs, ctx=smartLoopContext){
@@ -31876,6 +23857,27 @@ function throwIfSmartCascadeStopRequested(runState=null){
 function cancelSmartGenerationTask(taskId){
     const path = taskId.startsWith('canvas_comfy_') ? '/api/canvas-comfy-tasks' : '/api/canvas-image-tasks';
     return XiaomeiImageTaskClient.requestJson(`${path}/${encodeURIComponent(taskId)}/cancel`, {method:'POST'});
+}
+async function cancelSmartVideoRun(nodeId){
+    const run = smartVideoRuns.get(nodeId);
+    if(!run || run.cancelled) return;
+    run.cancelled = true;
+    try { run.controller.abort(); } catch(_) {}
+    const node = nodes.find(item => item.id === nodeId);
+    if(node){
+        clearSmartNodeBusyState(node);
+        node.runError = '已取消生成视频';
+        node.runFinishedAt = nowMs();
+        node.runTimerHidden = false;
+        if(node.title === '生成失败') node.title = '视频';
+        syncRunButtonState(node);
+    }
+    render();
+    toast('已取消生成视频');
+    try {
+        await fetch(`/api/canvas-video-tasks/${encodeURIComponent(run.requestId)}/cancel`, {method:'POST'});
+    } catch(_) {}
+    scheduleSave();
 }
 async function cancelSmartBatchTasks(taskIds, runState){
     const results = await Promise.allSettled(taskIds.map(cancelSmartGenerationTask));
@@ -31928,349 +23930,222 @@ function smartCascadeParallelLimit(chain=[], totalRounds=2, loopNode=null){
     const hasComfy = (chain || []).some(node => smartSettingsForNode(node)?.engine === 'comfy');
     return hasComfy ? Math.max(1, Math.min(2, Number(comfyInstanceCount) || 1)) : 2;
 }
-async function runSmartCascadeRoundsWithLimit(roundIndexes, limit, runner, runState=null){
-    let next = 0;
-    const workerCount = Math.max(1, Math.min(Number(limit) || 1, roundIndexes.length));
-    const workers = Array.from({length:workerCount}, async () => {
-        while(next < roundIndexes.length){
-            if(runState?.stopRequested || (!runState && smartCascadeStopRequested)) break;
-            const roundOffset = next++;
-            const current = roundIndexes[roundOffset];
-            try {
-                await runner(current, roundOffset);
-            } catch(e) {
-                if(e?.smartCascadeStopped) break;
-                throw e;
-            }
-        }
-    });
-    await Promise.all(workers);
+function beginSmartCascade(loop, states, detail=false){
+    const runKey = loop?.id || uid('cascade');
+    const runState = {
+        runKey, loopId:loop?.id || '', owner:canvas, stopRequested:false, runPath:{states},
+        initialSelection:selectedId,
+    };
+    if(detail) Object.assign(runState, {screenRuns:new Set(), batchRunning:true});
+    smartCascadeRuns.set(runKey, runState);
+    syncSmartCascadeLegacyState(runKey);
+    smartCascadeSilentSelection = true;
+    runBtn.disabled = true;
+    if(cascadeRunBtn) cascadeRunBtn.disabled = false;
+    pushUndo();
+    return runState;
 }
+
+function cascadeRunCurrent(runState){
+    return canvas === runState.owner && smartCascadeRuns.get(runState.runKey) === runState;
+}
+function checkCascadeRound(runState, ...members){
+    if(!cascadeRunCurrent(runState) || members.some(node => !nodes.includes(node))) throw smartCascadeAbortError();
+    throwIfSmartCascadeStopRequested(runState);
+}
+function setCascadeEdge(runState, key, state){
+    if(!cascadeRunCurrent(runState)) return;
+    runState.runPath.states[key] = state;
+    scheduleConnectionLayerRefresh();
+}
+function finishSmartCascade(runState){
+    const ownsDocument = canvas === runState.owner;
+    if(smartLoopContext?.runState === runState) smartLoopContext = null;
+    if(smartCascadeRuns.get(runState.runKey) === runState && !runState.screenRuns?.size) smartCascadeRuns.delete(runState.runKey);
+    syncSmartCascadeLegacyState();
+    if(!smartCascadeAnyRunning()) smartCascadeSilentSelection = false;
+    syncRunButtonState();
+    if(cascadeRunBtn) cascadeRunBtn.disabled = false;
+    if(ownsDocument) scheduleSave();
+    render();
+}
+function notifyCascadeError(error){
+    toast(error?.smartCascadeStopped ? '已停止一键运行' : (error?.message || tr('smart.errRunFailed')).slice(0, 160));
+}
+function recordCascadeRoundFailure(node, error){
+    if(node && nodes.includes(node) && !node.runError) markSmartNodeFailed(node, error?.message || tr('smart.errRunFailed'));
+    render();
+    scheduleSave();
+}
+function cascadeHost(runState){
+    return {
+        check:(...members) => checkCascadeRound(runState, ...members),
+        edge:(key, status) => setCascadeEdge(runState, key, status),
+        prompts(node){
+            if(!isSmartImageNode(node)) return {direct:[], rotating:null};
+            return {direct:relayLoopPromptNodesForTarget(node), rotating:upstreamLoopPromptNodesFor(node)[0]};
+        },
+        relay:(source, target) => isSmartImageNode(source) && isSmartImageNode(target) ? relayLoopPromptNodesForEdge(source, target) : [],
+        rootRefs:(node, ctx) => defaultReferenceImagesFor(node, true, ctx).filter(img => img?.url),
+        loopRefs:(node, ctx) => cascadeRefsFromOutputs(outputImagesForNode(node, true, ctx).filter(img => img?.url), node),
+        generate:runCascadeStepIntoNode,
+        receive:appendCascadeRefsToReceiver,
+        references:cascadeRefsFromOutputs,
+        canReceive:error => /缺少提示词|需要输入文本|need prompt/i.test(error?.message || ''),
+    };
+}
+
 async function runSmartCascade(targetNode=null){
     const tail = targetNode || selectedNode();
-    if(!canRunSmartCascade(tail)){ toast('请选择链路结尾图片节点'); return; }
+    const graph = smartRunGraph().plan(tail?.id);
+    if(!graph.runnable){ toast('请选择链路结尾图片节点'); return; }
+    const loop = graph.loop?.node;
+    if(loop && smartCascadeIsLoopRunning(loop.id)){ requestSmartCascadeStop(loop.id); return; }
+    if(!loop && smartCascadeAnyRunning()){ requestSmartCascadeStop(); return; }
+    const single = Boolean(loop && (graph.path.length === 1 || graph.direct));
+    if(!graph.edges.length && !single){ toast(tr('smart.loopNoChain')); return; }
     savePromptDraftForCurrent();
-    const graph = smartCascadeGraphForTail(tail);
-    const chain = graph.path;
-    const loop = resolveSmartCascadeLoop(tail.id);
-    const loopId = loop?.node?.id || '';
-    if(loopId && smartCascadeIsLoopRunning(loopId)){ requestSmartCascadeStop(loopId); return; }
-    if(!loopId && smartCascadeAnyRunning()){ requestSmartCascadeStop(); return; }
-    const directLoopTargetRun = Boolean(loop && isDirectLoopTargetRun(loop, tail, graph));
-    const singleNodeLoopRun = Boolean(loop && (chain.length === 1 || directLoopTargetRun));
-    if(!graph.edges.length && !singleNodeLoopRun){ toast(tr('smart.loopNoChain')); return; }
-    const originalSelected = selectedId;
-    const originalSettings = cloneSmartSettings(settings);
-    const originalPromptHtml = promptInput.innerHTML;
-    const runKey = loopId || `cascade-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const runState = {runKey, loopId, stopRequested:false, runPath:null};
-    smartCascadeRuns.set(runKey, runState);
-    syncSmartCascadeLegacyState(runKey);
-    smartCascadeSilentSelection = true;
-    runBtn.disabled = true;
-    if(cascadeRunBtn) cascadeRunBtn.disabled = false;
-    pushUndo();
-    const totalRounds = loop?.count || 1;
-    const startIndex = Math.max(1, Number(loop?.node?.loopStart) || 1);
-    const batchSize = loop?.node?.imageInput ? Math.max(1, Math.min(100, Number(loop.node.imageBatchSize) || 1)) : 1;
-    const endIndex = startIndex + (totalRounds - 1) * batchSize;
-    const loopMode = loop?.mode === 'parallel' ? 'parallel' : 'serial';
-    const parallelLimit = loopMode === 'parallel' && totalRounds > 1 ? smartCascadeParallelLimit(chain, totalRounds, loop?.node) : 1;
-    const detailBatchRun = Boolean(loop && smartLoopIsPaired(loop.node) && loop.node.batchDetailModeV2);
-    const failures = [];
-    const precreateSingleSlots = singleNodeLoopRun && (detailBatchRun || (loopMode === 'parallel' && totalRounds > 1 && parallelLimit > 1));
-    let singleLoopSlots = [];
-    if(singleNodeLoopRun){
-        runState.runPath = {states:{}};
-        smartCascadeRunPath = runState.runPath;
+    const engine = XiaomeiSmartCascade;
+    const start = Math.max(1, Math.trunc(Number(loop?.loopStart) || 1));
+    const stride = loop?.imageInput ? Math.max(1, Math.min(100, Math.trunc(Number(loop.imageBatchSize) || 1))) : 1;
+    const queue = engine.rounds(graph.loop?.count || 1, start, stride);
+    const parallel = graph.loop?.mode === 'parallel' && queue.length > 1;
+    const limit = parallel ? smartCascadeParallelLimit(graph.path, queue.length, loop) : 1;
+    const detail = Boolean(smartLoopIsPaired(loop) && loop.batchDetailModeV2);
+    const states = {};
+    if(!single){
+        if(loop) states[loop.id + '->' + graph.root.id] = 'wait';
+        for(const edge of graph.edges) states[edge.key] = 'wait';
     }
-    if(singleNodeLoopRun){
-        singleLoopSlots = Array.from({length:totalRounds}, (_, round) => {
-            const loopIndex = startIndex + round * batchSize;
-            const slot = loopOutputSlotForRound(tail, loop.node, loopIndex, round);
-            return slot ? tagLoopOutputSlot(slot, tail, loop.node, loopIndex, round) : null;
-        });
-        singleLoopSlots.filter(Boolean).forEach(slot => { runState.runPath.states[`${tail.id}->${slot.id}`] = 'wait'; });
-        if(precreateSingleSlots){
-            for(let slotOffset = 0; slotOffset < totalRounds; slotOffset++){
-                if(singleLoopSlots[slotOffset]) continue;
-                const loopIndex = startIndex + slotOffset * batchSize;
-                singleLoopSlots[slotOffset] = createLoopOutputSlot(tail, loopIndex, slotOffset, {queued:true, loopNode:loop.node, slotIndex:slotOffset, runState});
-            }
+    const runState = beginSmartCascade(loop, states);
+    const slots = [];
+    const reserved = new Set();
+    const host = cascadeHost(runState);
+    const ctxConfig = {runState, loop, forceWorkflow:graph.path.length > 1 && !single,
+        batchConcurrency:loop?.batchDetailModeV2 ? limit : 0};
+
+    function outputSlot(round, createOptions){
+        const {index, offset} = round;
+        let slot = slots[offset];
+        if(!nodes.includes(slot)) slot = loopOutputSlotForRound(tail, loop, index, offset);
+        if(!slot && createOptions){
+            slot = createLoopOutputSlot(tail, index, offset, {...createOptions, loopNode:loop, slotIndex:offset, runState});
+            if(createOptions.queued) reserved.add(slot.id);
         }
-        render();
+        if(slot){
+            slots[offset] = tagLoopOutputSlot(slot, tail, loop, index, offset);
+            if(!states[tail.id + '->' + slot.id]) states[tail.id + '->' + slot.id] = 'wait';
+        }
+        return slot;
     }
-    if(!singleNodeLoopRun){
-        const runStates = {};
-        if(loop?.node?.id && graph.root?.id) runStates[`${loop.node.id}->${graph.root.id}`] = 'wait';
-        graph.edges.forEach(edge => { runStates[edge.key] = 'wait'; });
-        runState.runPath = {states:runStates};
-        smartCascadeRunPath = runState.runPath;
-        scheduleConnectionLayerRefresh();
-        updateComposer();
-    }
+
     try {
-        const runRound = async (loopIndex=startIndex, options={}) => {
-            throwIfSmartCascadeStopRequested(runState);
-            const ctx = loop
-                ? {index:loopIndex, total:endIndex, nodeId:loop.node.id, batchConcurrency:loop.node.batchDetailModeV2 ? parallelLimit : 0, forceWorkflow:chain.length > 1 && !singleNodeLoopRun, runState, roundOutputs:new Map()}
-                : {runState, roundOutputs:new Map()};
-            if(parallelLimit === 1) smartLoopContext = ctx;
-            if(singleNodeLoopRun){
-                const refs = refsForDirectLoopRound(loop.node, loopIndex, endIndex);
-                if(directLoopTargetRun && parallelLimit === 1) showDirectLoopRoundPreview(loop.node, tail, refs, loopIndex, endIndex);
-                const slotIndex = Math.max(0, Math.floor((loopIndex - startIndex) / batchSize));
-                const outputTarget = tagLoopOutputSlot(
-                    options.outputTarget || singleLoopSlots[slotIndex] || loopOutputSlotForRound(tail, loop.node, loopIndex, slotIndex) || createLoopOutputSlot(tail, loopIndex, slotIndex, {loopNode:loop.node, slotIndex, runState}),
-                    tail,
-                    loop.node,
-                    loopIndex,
-                    slotIndex
-                );
-                singleLoopSlots[slotIndex] = outputTarget;
-                await runLoopRoundIntoSlot(loop.node, tail, outputTarget, loopIndex, ctx);
-                return;
-            }
-            const producedRefs = new Map();
-            const runBranch = async (source, incomingRefs=[]) => {
-                throwIfSmartCascadeStopRequested(runState);
-                let targets = graph.children.get(source.id) || [];
-                const loopPrompts = isSmartImageNode(source) ? upstreamLoopPromptNodesFor(source) : [];
-                const sourceLoopPrompts = isSmartImageNode(source) ? relayLoopPromptNodesForTarget(source) : [];
-                if(runState.runPath && sourceLoopPrompts.length && source?.id){
-                    sourceLoopPrompts.forEach(loopNode => {
-                        runState.runPath.states[`${loopNode.id}->${source.id}`] = 'done';
-                    });
-                    scheduleConnectionLayerRefresh();
-                }
-                if(loopPrompts.length && targets.length > 1){
-                    const firstLoop = loopPrompts[0];
-                    const startBase = Math.max(1, Number(firstLoop.loopStart) || 1);
-                    const currentIndex = Math.max(1, Number(ctx?.index || startBase) || startBase);
-                    const selectedTarget = targets[(currentIndex - 1) % targets.length];
-                    if(runState.runPath && firstLoop?.id && source?.id){
-                        runState.runPath.states[`${firstLoop.id}->${source.id}`] = 'done';
-                        scheduleConnectionLayerRefresh();
-                    }
-                    targets = [selectedTarget].filter(Boolean);
-                }
-                let sharedRefs = incomingRefs;
-                for(let index = 0; index < targets.length; index++){
-                    throwIfSmartCascadeStopRequested(runState);
-                    const target = targets[index];
-                    const edgeKey = `${source.id}->${target.id}`;
-                    let outputs = [];
-                    const targetChildren = (graph.children.get(target.id) || []).filter(child => child && child.type !== 'smart-loop');
-                    const targetIsLeaf = target.type !== 'smart-loop' && targetChildren.length === 0;
-                    const relayLoops = isSmartImageNode(source) && isSmartImageNode(target)
-                        ? relayLoopPromptNodesForEdge(source, target)
-                        : [];
-                    const stepCtx = relayLoops.length && isSmartImageNode(target)
-                        ? {...(ctx || {}), appendLoopOutputs:Boolean(ctx?.nodeId && targetIsLeaf), relayPromptNodeIds:[...new Set([...(ctx?.relayPromptNodeIds || []), ...relayLoops.map(n => n.id)])]}
-                        : {...(ctx || {}), appendLoopOutputs:Boolean(ctx?.nodeId && targetIsLeaf)};
-                    try {
-                        if(runState.runPath && relayLoops.length && source?.id && isSmartImageNode(target)){
-                            relayLoops.forEach(loopNode => {
-                                runState.runPath.states[`${loopNode.id}->${source.id}`] = 'done';
-                            });
-                            scheduleConnectionLayerRefresh();
-                        }
-                        if(runState.runPath){
-                            runState.runPath.states[edgeKey] = 'active';
-                            scheduleConnectionLayerRefresh();
-                        }
-                        if(target.type === 'smart-loop'){
-                            outputs = outputImagesForNode(source, true, ctx).filter(img => img?.url);
-                            sharedRefs = cascadeRefsFromOutputs(outputs, source);
-                        } else if(index === 0){
-                            outputs = await runCascadeStepIntoNode(source, target, incomingRefs, stepCtx);
-                            sharedRefs = cascadeRefsFromOutputs(outputs, target);
-                        } else {
-                            outputs = appendCascadeRefsToReceiver(target, sharedRefs, stepCtx);
-                        }
-                    } catch(err) {
-                        if(/缺少提示词|需要输入文本|need prompt/i.test(err.message || '') && incomingRefs.length){
-                            outputs = appendCascadeRefsToReceiver(target, incomingRefs, stepCtx);
-                            if(index === 0){
-                                sharedRefs = cascadeRefsFromOutputs(outputs, target);
-                            }
-                        } else {
-                            throw err;
-                        }
-                    }
-                    if(runState.runPath){
-                        runState.runPath.states[edgeKey] = 'done';
-                        scheduleConnectionLayerRefresh();
-                    }
-                    const refs = target.type === 'smart-loop' ? sharedRefs : (index === 0 ? sharedRefs : cascadeRefsFromOutputs(outputs, target));
-                    producedRefs.set(target.id, refs);
-                    throwIfSmartCascadeStopRequested(runState);
-                    await runBranch(target, refs);
-                }
-            };
-            const rootRefs = defaultReferenceImagesFor(graph.root, true, ctx).filter(img => img?.url);
-            producedRefs.set(graph.root.id, rootRefs);
-            await runBranch(graph.root, rootRefs);
-        };
-        const roundIndexes = Array.from({length:totalRounds}, (_, round) => startIndex + round * batchSize);
-        const runRoundSafely = async (loopIndex, options={}) => {
-            try {
-                await runRound(loopIndex, options);
-            } catch(error){
-                if(error?.smartCascadeStopped) throw error;
-                if(totalRounds <= 1) throw error;
-                failures.push({loopIndex, error});
-                const slotIndex = Math.max(0, Math.floor((loopIndex - startIndex) / batchSize));
-                const failedNode = singleNodeLoopRun
-                    ? (options.outputTarget || singleLoopSlots[slotIndex])
-                    : tail;
-                const current = failedNode?.id ? nodes.find(node => node.id === failedNode.id) : null;
-                if(current && !current.runError) markSmartNodeFailed(current, error?.message || tr('smart.errRunFailed'));
-                render();
-                scheduleSave();
-            }
-        };
-        if(loopMode === 'parallel' && totalRounds > 1){
-            const parallelTargets = singleNodeLoopRun
-                ? singleLoopSlots
-                : [];
-            if(parallelTargets.length) render();
-            await runSmartCascadeRoundsWithLimit(roundIndexes, parallelLimit, (loopIndex, roundOffset) => {
-                const outputTarget = parallelTargets[roundOffset] || null;
-                return runRoundSafely(loopIndex, {outputTarget});
-            }, runState);
+        if(single){
+            const create = detail || limit > 1 ? {queued:true} : null;
+            for(const round of queue) outputSlot(round, create);
+            render();
         } else {
-            for(const loopIndex of roundIndexes){
-                throwIfSmartCascadeStopRequested(runState);
-                await runRoundSafely(loopIndex);
-            }
+            scheduleConnectionLayerRefresh();
+            updateComposer();
         }
-        throwIfSmartCascadeStopRequested(runState);
-        if(singleNodeLoopRun && totalRounds > 1 && !detailBatchRun){
-            consolidateLoopOutputSlots(tail, singleLoopSlots, {
-                loopNode:loop.node,
-                startIndex
-            });
+        const failures = await engine.dispatch(queue, limit, {
+            check:() => checkCascadeRound(runState, tail, ...(loop ? [loop] : [])),
+            async run(round){
+                const ctx = engine.context(round, ctxConfig);
+                if(limit === 1) smartLoopContext = ctx;
+                try {
+                    if(!single) return await engine.runPath(graph, ctx, host);
+                    if(graph.direct && limit === 1){
+                        const refs = refsForDirectLoopRound(loop, round.index, round.total);
+                        showDirectLoopRoundPreview(loop, tail, refs, round.index, round.total);
+                    }
+                    return await runLoopRoundIntoSlot(loop, tail, outputSlot(round, {}), ctx);
+                } finally {
+                    if(smartLoopContext === ctx) smartLoopContext = null;
+                }
+            },
+            onFailure(round, error){
+                if(cascadeRunCurrent(runState)) recordCascadeRoundFailure(single ? slots[round.offset] : tail, error);
+            },
+        });
+        if(single && queue.length > 1 && !detail) consolidateLoopOutputSlots(tail, slots, {loopNode:loop, startIndex:start});
+        if(smartCascadeSilentSelection && selectedId === runState.initialSelection){
+            selectedId = '';
+            selectedIds = [];
+            selectedImage = {nodeId:'', index:-1};
+            activeComposerSubject = null;
+            lastComposerNodeId = '';
+            composer.classList.remove('open');
         }
-        if(parallelLimit === 1) smartLoopContext = null;
-        selectedId = '';
-        selectedIds = [];
-        selectedImage = {nodeId:'', index:-1};
-        activeComposerSubject = null;
-        lastComposerNodeId = '';
-        composer.classList.remove('open');
-        settings = originalSettings;
-        promptInput.innerHTML = originalPromptHtml;
-        scheduleSave();
         toast(failures.length
-            ? trf('smart.loopRunRoundsPartial', {success:totalRounds - failures.length, failed:failures.length})
-            : (totalRounds > 1
-                ? trf(loopMode === 'parallel' ? 'smart.loopParallelRoundsDone' : 'smart.loopRunRoundsDone', {n:totalRounds})
-                : tr('smart.loopRunDone')));
-    } catch(e) {
-        if(parallelLimit === 1) smartLoopContext = null;
-        selectedId = originalSelected;
-        settings = originalSettings;
-        promptInput.innerHTML = originalPromptHtml;
-        toast(e?.smartCascadeStopped ? '已停止一键运行' : (e.message || tr('smart.errRunFailed')).slice(0, 160));
+            ? trf('smart.loopRunRoundsPartial', {success:queue.length - failures.length, failed:failures.length})
+            : queue.length > 1
+                ? trf(parallel ? 'smart.loopParallelRoundsDone' : 'smart.loopRunRoundsDone', {n:queue.length})
+                : tr('smart.loopRunDone'));
+    } catch(error) {
+        if(cascadeRunCurrent(runState)) notifyCascadeError(error);
     } finally {
-        smartCascadeRuns.delete(runKey);
-        if(detailBatchRun) singleLoopSlots.forEach(slot => { if(slot?.queued) slot.queued = false; });
-        syncSmartCascadeLegacyState();
-        smartCascadeSilentSelection = false;
-        syncRunButtonState();
-        if(cascadeRunBtn) cascadeRunBtn.disabled = false;
-        if(directLoopTargetRun) finishLoopTargetPreviewState(tail);
-        scheduleSave();
-        render();
+        if(cascadeRunCurrent(runState)){
+            for(const slot of nodes){
+                if(reserved.has(slot.id) && slot.loopSourceId === loop?.id && slot.queued
+                    && !slot.running && !slot.pending && !slot.jimengPending && !smartPendingTasks(slot).length){
+                    slot.queued = false;
+                }
+            }
+            if(graph.direct && nodes.includes(tail)) finishLoopTargetPreviewState(tail);
+        }
+        finishSmartCascade(runState);
     }
 }
+
 async function runSmartLoopDetailBatch(loop, targets){
     if(!loop || !Array.isArray(targets) || !targets.length) return;
-    const totalRounds = Math.min(smartLoopCount(loop), targets.length);
-    // The batch panel is the source of truth at run time. Older detail nodes
-    // may still carry the resolution/model they had when they were created;
-    // sync the panel settings before the first request so a visible 1K/2K
-    // choice cannot silently submit the stale 4K settings.
+    if(smartCascadeIsLoopRunning(loop.id)){ requestSmartCascadeStop(loop.id); return; }
     applySmartLoopBatchImageSettings(loop, targets);
-    const originalSelected = selectedId;
-    const originalSettings = cloneSmartSettings(settings);
-    const originalPromptHtml = promptInput.innerHTML;
-    const runKey = loop.id;
-    if(smartCascadeIsLoopRunning(runKey)){ requestSmartCascadeStop(runKey); return; }
-    const runState = {runKey, loopId:loop.id, stopRequested:false, runPath:{states:{}}, screenRuns:new Set(), batchRunning:true};
-    smartCascadeRuns.set(runKey, runState);
-    syncSmartCascadeLegacyState(runKey);
-    smartCascadeSilentSelection = true;
-    runBtn.disabled = true;
-    if(cascadeRunBtn) cascadeRunBtn.disabled = false;
-    pushUndo();
-    const startIndex = Math.max(1, Number(loop.loopStart) || 1);
-    const loopMode = loop.mode === 'parallel' ? 'parallel' : 'serial';
-    const parallelLimit = loopMode === 'parallel' ? totalRounds : 1;
-    // 详情页模式直接把结果写回对应的绘画节点，不再为同一屏额外创建一个
-    // “Image” 输出槽；这样画布上始终是一屏一个绘画节点。
-    const slots = targets.slice(0, totalRounds);
-    slots.forEach(target => { runState.runPath.states[`${loop.id}->${target.id}`] = 'wait'; });
-    const failures = [];
-    render();
+    const engine = XiaomeiSmartCascade;
+    const start = Math.max(1, Math.trunc(Number(loop.loopStart) || 1));
+    const queue = engine.rounds(Math.min(smartLoopCount(loop), targets.length), start);
+    const limit = loop.mode === 'parallel' ? queue.length : 1;
+    const edgeFor = node => loop.id + '->' + node.id;
+    const states = Object.fromEntries(targets.slice(0, queue.length).map(node => [edgeFor(node), 'wait']));
+    const runState = beginSmartCascade(loop, states, true);
+    const ctxConfig = {runState, loop, batchConcurrency:limit, forceWorkflow:true};
     try {
-        const runOne = async (loopIndex, offset) => {
-            throwIfSmartCascadeStopRequested(runState);
-            const target = targets[offset];
-            if(!target) return;
-            runState.screenRuns.add(target.id);
-            runState.runPath.states[`${loop.id}->${target.id}`] = 'active';
-            scheduleConnectionLayerRefresh();
-            const ctx = {index:loopIndex, total:startIndex + totalRounds - 1, nodeId:loop.id, batchConcurrency:parallelLimit, forceWorkflow:true, runState, roundOutputs:new Map()};
-            if(parallelLimit === 1) smartLoopContext = ctx;
-            try {
-                await runLoopRoundIntoSlot(loop, target, slots[offset] || target, loopIndex, ctx);
-                runState.runPath.states[`${loop.id}->${target.id}`] = 'done';
-                scheduleConnectionLayerRefresh();
-                throwIfSmartCascadeStopRequested(runState);
-            } catch(error){
-                if(error?.smartCascadeStopped) throw error;
-                if(totalRounds <= 1) throw error;
-                failures.push({targetId:target.id, loopIndex, error});
-                // Keep the failed screen visible, then continue with the next
-                // independent screen in the batch.
-                const current = nodes.find(node => node.id === target.id);
-                if(current && !current.runError) markSmartNodeFailed(current, error?.message || tr('smart.errRunFailed'));
-                runState.runPath.states[`${loop.id}->${target.id}`] = 'done';
-                scheduleConnectionLayerRefresh();
-                render();
-                scheduleSave();
-            } finally {
-                runState.screenRuns.delete(target.id);
-                render();
-            }
-        };
-        const indexes = Array.from({length:totalRounds}, (_, offset) => startIndex + offset);
-        if(parallelLimit > 1) await runSmartCascadeRoundsWithLimit(indexes, parallelLimit, runOne, runState);
-        else for(let offset = 0; offset < indexes.length; offset += 1) await runOne(indexes[offset], offset);
-        throwIfSmartCascadeStopRequested(runState);
-        toast(failures.length
-            ? trf('smart.loopDetailRunPartial', {success:totalRounds - failures.length, failed:failures.length})
-            : trf('smart.loopDetailRunDone', {n:totalRounds}));
-    } catch(error){
-        targets.slice(0, totalRounds).forEach(target => {
-            if(target?.running && !target?.runAt) target.running = false;
-        });
-        toast(error?.smartCascadeStopped ? '已停止一键运行' : (error?.message || tr('smart.errRunFailed')).slice(0, 160));
-    } finally {
-        if(parallelLimit === 1) smartLoopContext = null;
-        selectedId = originalSelected;
-        settings = originalSettings;
-        promptInput.innerHTML = originalPromptHtml;
-        runState.batchRunning = false;
-        if(!runState.screenRuns.size && smartCascadeRuns.get(runKey) === runState) smartCascadeRuns.delete(runKey);
-        syncSmartCascadeLegacyState();
-        smartCascadeSilentSelection = false;
-        syncRunButtonState();
-        if(cascadeRunBtn) cascadeRunBtn.disabled = false;
-        scheduleSave();
         render();
+        const failures = await engine.dispatch(queue, limit, {
+            check:() => checkCascadeRound(runState, loop),
+            async run(round){
+                const node = targets[round.offset];
+                checkCascadeRound(runState, node);
+                const edge = edgeFor(node);
+                runState.screenRuns.add(node.id);
+                setCascadeEdge(runState, edge, 'active');
+                const ctx = engine.context(round, ctxConfig);
+                if(limit === 1) smartLoopContext = ctx;
+                try {
+                    await runLoopRoundIntoSlot(loop, node, node, ctx);
+                    setCascadeEdge(runState, edge, 'done');
+                } finally {
+                    if(smartLoopContext === ctx) smartLoopContext = null;
+                    runState.screenRuns.delete(node.id);
+                    if(cascadeRunCurrent(runState)) render();
+                }
+            },
+            onFailure(round, error){
+                if(!cascadeRunCurrent(runState)) return;
+                const node = targets[round.offset];
+                setCascadeEdge(runState, edgeFor(node), 'done');
+                recordCascadeRoundFailure(node, error);
+            },
+        });
+        toast(failures.length
+            ? trf('smart.loopDetailRunPartial', {success:queue.length - failures.length, failed:failures.length})
+            : trf('smart.loopDetailRunDone', {n:queue.length}));
+    } catch(error){
+        if(cascadeRunCurrent(runState)) notifyCascadeError(error);
+    } finally {
+        runState.batchRunning = false;
+        finishSmartCascade(runState);
     }
 }
 function runSmartCascadeFromLoop(loopId){
@@ -32354,7 +24229,7 @@ function smartDependencySignature(node){
         const provider = node.llmProvider || resolveChatProviderId();
         request = {
             message:promptNodeLLMInputText(node),
-            system:node.llmSystemEnabled ? String(node.llmSystemPrompt || '').trim() : '',
+            system:promptNodeSystemText(node),
             provider,
             model:node.llmModel || resolveChatModel('', provider),
             refs:promptNodeInputMediaForLLM(node)
@@ -32401,10 +24276,22 @@ function smartDependencyAwait(promise, signal){
         Promise.resolve(promise).then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
     });
 }
+function stopReplacedCanvasDependencies(){
+    const active = [...smartDependencyRuns.values()];
+    smartDependencyRuns.clear();
+    for(const state of active) state.controller.abort();
+}
 function cancelAgentNode(nodeId){
     const node = nodes.find(item => item.id === nodeId);
     if(!node || node.type !== 'smart-agent') return;
-    let cancelled = false;
+    let cancelled = agentExecution.cancel(nodeId);
+    const cancelWaitingAgent = state => {
+        if(!state.waitingForExistingTask) return;
+        const waitingNode = nodes.find(item => item.id === state.sourceId);
+        if(waitingNode?.type === 'smart-agent' && waitingNode.running){
+            if(!agentExecution.cancel(waitingNode.id)) agentExecution.finish(waitingNode, SMART_AGENT_CANCELLED);
+        }
+    };
     for(const state of [...smartDependencyRuns.values()]){
         // 正在作为上游运行的智能对话：中止它自己的请求，否则这次占用会一直挂在
         // smartDependencyRuns 里，节点按钮停在“取消”，用户再也无法重新运行。
@@ -32412,13 +24299,7 @@ function cancelAgentNode(nodeId){
             cancelled = true;
             state.owners?.clear();
             state.controller.abort();
-            const waitingNode = nodes.find(item => item.id === state.sourceId);
-            if(state.waitingForExistingTask && waitingNode?.type === 'smart-agent' && waitingNode.running){
-                waitingNode.running = false;
-                waitingNode.runFinishedAt = nowMs();
-                waitingNode.runElapsedMs = Math.max(0, waitingNode.runFinishedAt - Number(waitingNode.runStartedAt || waitingNode.runFinishedAt));
-                waitingNode.runError = SMART_AGENT_CANCELLED;
-            }
+            cancelWaitingAgent(state);
             continue;
         }
         // 作为链路依赖被取消：摘掉占用者，没有其他占用者时中止这次上游运行。
@@ -32426,20 +24307,11 @@ function cancelAgentNode(nodeId){
         cancelled = true;
         if(!state.owners.size){
             state.controller.abort();
-            const waitingNode = nodes.find(item => item.id === state.sourceId);
-            if(state.waitingForExistingTask && waitingNode?.type === 'smart-agent' && waitingNode.running){
-                waitingNode.running = false;
-                waitingNode.runFinishedAt = nowMs();
-                waitingNode.runElapsedMs = Math.max(0, waitingNode.runFinishedAt - Number(waitingNode.runStartedAt || waitingNode.runFinishedAt));
-                waitingNode.runError = SMART_AGENT_CANCELLED;
-            }
+            cancelWaitingAgent(state);
         }
     }
     if(!cancelled && node.running){
-        node.running = false;
-        node.runFinishedAt = nowMs();
-        node.runElapsedMs = Math.max(0, node.runFinishedAt - Number(node.runStartedAt || node.runFinishedAt));
-        node.runError = SMART_AGENT_CANCELLED;
+        agentExecution.finish(node, SMART_AGENT_CANCELLED);
         scheduleSave(); render();
     }
 }
@@ -32454,11 +24326,11 @@ async function runSmartNodeWithDependencies(target, executeTarget, {concurrentTa
     if(!target) return {ok:false, error:'请选择要运行的节点'};
     const targetKey = concurrentTarget && smartDependencyRuns.has(target.id) ? `retouch-submit:${target.id}` : target.id;
     if(smartDependencyRuns.has(targetKey)) return smartDependencyRuns.get(targetKey).promise;
-    const canvasId = canvas?.id;
+    const scope = canvas;
     let graph;
     const currentNode = node => {
         const current = nodes.find(item => item.id === node.id);
-        if(canvas?.id !== canvasId || !current) throw new Error('画布或节点已切换，本次链路已停止');
+        if(canvas !== scope || !current) throw new Error('画布或节点已切换，本次链路已停止');
         return current;
     };
     const visit = (source, force=false) => {
@@ -32526,15 +24398,17 @@ async function runSmartNodeWithDependencies(target, executeTarget, {concurrentTa
                 return result || {ok:true};
             } catch(error){
                 const message = String(error?.message || error);
-                if(canvas?.id === canvasId && nodes.includes(node)){
-                    if(node.running || node.pending || node.jimengPending || smartPendingTasks(node).length) delete node.dependencyRunSignature;
-                    else markSmartDependencyFailed(node, message);
+                if(canvas === scope){
+                    if(nodes.includes(node)){
+                        if(node.running || node.pending || node.jimengPending || smartPendingTasks(node).length) delete node.dependencyRunSignature;
+                        else markSmartDependencyFailed(node, message);
+                    }
+                    scheduleSave();
                 }
-                scheduleSave();
                 return {ok:false, error:message};
             } finally {
                 if(smartDependencyRuns.get(runKey) === state) smartDependencyRuns.delete(runKey);
-                if(canvas?.id === canvasId){ render(); syncRunButtonState(); }
+                if(canvas === scope){ render(); syncRunButtonState(); }
             }
         });
         smartDependencyRuns.set(runKey, state);
@@ -32545,7 +24419,7 @@ async function runSmartNodeWithDependencies(target, executeTarget, {concurrentTa
     try {
         graph = validateSmartDependencyGraph(target);
         const result = await visit(target, true);
-        if(!result.ok && result.error !== SMART_AGENT_CANCELLED) toast(result.error.slice(0, 180));
+        if(canvas === scope && !result.ok && result.error !== SMART_AGENT_CANCELLED) toast(result.error.slice(0, 180));
         return result;
     } catch(error){
         const message = String(error?.message || error);
@@ -32600,7 +24474,7 @@ async function runGenerationDirect(referenceMode='default', referenceOverride=nu
     const overrideRefs = Array.isArray(referenceOverride)
         ? referenceOverride
         : referenceMode === 'upstream'
-            ? upstreamRerunReferenceImagesFor(node, true, smartLoopContext)
+            ? generationReferences.rerun(node, true, smartLoopContext)
             : null;
     const request = buildPromptRequestForNode(node, overrideRefs, smartLoopContext, true, promptOverride);
     const prompt = request.prompt.trim();
@@ -32673,23 +24547,23 @@ async function runGenerationDirect(referenceMode='default', referenceOverride=nu
         settings.outpaintPreserve = outpaintPreserve;
         settings.outpaintMode = true;
     }
-    const meta = snapshotRunMeta(prompt, node.id, displayPrompt, refs);
-    // 只把本节点自己的提示词写回草稿；上游文本由 buildPromptRequest 在提交时合并。
-    // 把合并后的上游文本写进草稿，会让上游删除后旧提示词留在下游节点，
-    // 用户看到的现象就是“提示词跑到生图节点，提示词删不掉”。
     const localDraft = localPromptDraftFor(node, smartLoopContext);
-    meta.promptHtml = localDraft.html || escapeHtml(localDraft.text);
-    meta.promptText = localDraft.text;
+    const meta = snapshotRunMeta(prompt, node.id, displayPrompt, refs, settings, localDraft);
     node.runUpstreamText = String(request.upstreamText || '').trim();
     const logKind = isApiLikeEngine(settings.engine) && settings.apiKind === 'video' ? 'video' : 'image';
-    const runLog = smartRunSnapshot(node, prompt, refs, logKind);
+    const runLog = smartRunSnapshot(node, prompt, refs, logKind, settings);
     rememberRecentSmartSettings(settings, node);
     const runLogStart = nowMs();
-    const expectedCount = settings.engine === 'runninghub'
+    const expectedCount = logKind === 'video'
+        ? 1
+        : settings.engine === 'runninghub'
         ? 1
         : settings.engine === 'comfy'
         ? (settings.comfyMode === 'text' || settings.comfyMode === 'enhance' || settings.comfyMode === 'edit' || settings.comfyMode === 'custom' ? 1 : 1)
         : Math.max(1, Math.min(8, Number(settings.count || 1)));
+    // 视频生成只有一个结果。图片节点的批量数量会写进共享 settings.count，
+    // 不能让它把视频节点渲染成多个占位框。
+    const videoRun = logKind === 'video' ? beginSmartVideoRun(node.id) : null;
     const apiConcurrentRun = isApiLikeEngine(settings.engine) || settings.engine === 'runninghub' || settings.engine === 'comfy';
     const nodeHasImages = isSmartGroupNode(node) ? imagesForNode(node).some(img => img?.url) : (node.images || []).some(img => img?.url);
     const workflowModeRun = smartImageUsesWorkflowInput(node, smartLoopContext);
@@ -32748,7 +24622,7 @@ async function runGenerationDirect(referenceMode='default', referenceOverride=nu
         delete pendingNode.runFinishedAt;
         delete pendingNode.runElapsedMs;
         pendingNode.runTimerHidden = false;
-        const pendingBox = pendingBoxSize(pendingNode.pending, {sourceNode:node, refs});
+        const pendingBox = pendingBoxSize(pendingNode.pending, imageRequestSettings, {sourceNode:node, refs});
         const currentW = Number(pendingNode.w), currentH = Number(pendingNode.h);
         const keepCurrentBox = pendingNode.manualSize === true && Number.isFinite(currentW) && currentW > 40 && Number.isFinite(currentH) && currentH > 40;
         if(!keepCurrentBox){
@@ -32758,7 +24632,7 @@ async function runGenerationDirect(referenceMode='default', referenceOverride=nu
         attachRunMeta(pendingNode, pendingMeta,false);
     }
     if(apiConcurrentRun){
-        coolNodeRunningState(pendingNode, 2000);
+        markNodeRequestInProgress(pendingNode);
         syncRunButtonState();
     } else {
         pendingNode.running = true;
@@ -32782,7 +24656,7 @@ async function runGenerationDirect(referenceMode='default', referenceOverride=nu
             return {ok:true};
         }
         if(isApiLikeEngine(imageRequestSettings.engine) && imageRequestSettings.apiKind === 'video'){
-            const outVideos = await runApiVideoGeneration(prompt, refs,imageRequestSettings);
+            const outVideos = await runApiVideoGeneration(prompt, refs,imageRequestSettings, videoRun);
             if(!multiAgentCanvasCurrent())return {ok:false,error:'画布已切换，请回到原画布恢复视频结果'};
             if(!outVideos.length) throw new Error(tr('smart.errNoOutVideos'));
             finalizePendingNode(pendingNode, outVideos, pendingMeta, 'video');
@@ -32797,7 +24671,7 @@ async function runGenerationDirect(referenceMode='default', referenceOverride=nu
         const outImages = rhModelMode
             ? await runApiGeneration(prompt, refs, runningHubModelApiSettings(imageRequestSettings))
             : imageRequestSettings.engine === 'runninghub'
-                ? await runRunningHubGeneration(prompt, refs)
+                ? await runRunningHubGeneration(prompt, refs, imageRequestSettings)
                 : await runApiGeneration(prompt, refs, imageRequestSettings);
         if(!multiAgentCanvasCurrent())return {ok:false,error:'画布已切换，请回到原画布恢复生成结果'};
         if(isApiLikeEngine(imageRequestSettings.engine) || rhModelMode){
@@ -32858,6 +24732,13 @@ async function runGenerationDirect(referenceMode='default', referenceOverride=nu
         return {ok:true};
     } catch(e) {
         if(!multiAgentCanvasCurrent())return {ok:false,error:'画布已切换，请回到原画布恢复任务'};
+        if(videoRun?.cancelled || e?.name === 'AbortError'){
+            pendingNode = liveSmartNode(pendingNode);
+            markSmartNodeFailed(pendingNode, '已取消生成视频');
+            pendingNode.title = '视频';
+            if(sourceVisualState) restoreSourceVisualState(node, sourceVisualState);
+            return {ok:false, error:'已取消生成视频'};
+        }
         settings = comfyWorkflowRun && activeSettingsSubject()?.id === node.id ? cloneSmartSettings(node.runSettings) : previousSettings;
         if(handleJimengPendingSignal(pendingNode, e)){
             if(sourceVisualState) restoreSourceVisualState(node, sourceVisualState);
@@ -32874,6 +24755,7 @@ async function runGenerationDirect(referenceMode='default', referenceOverride=nu
         toast((e.message || tr('smart.errRunFailed')).slice(0, 160));
         return {ok:false, error:e.message || tr('smart.errRunFailed')};
     } finally {
+        if(videoRun) endSmartVideoRun(node.id, videoRun);
         if(multiAgentCanvasCurrent()&&!apiConcurrentRun){
             clearNodeRunningState(pendingNode);
             syncRunButtonState();
@@ -32886,144 +24768,19 @@ async function runPromptLLMNode(nodeId){
     if(!node || node.type !== 'smart-prompt') return;
     return runSmartNodeWithDependencies(node, (current, signal) => runPromptLLMNodeDirect(current.id, signal));
 }
-async function runPromptLLMNodeDirect(nodeId, signal=null){
-    const node = nodes.find(n => n.id === nodeId);
-    if(!node || node.type !== 'smart-prompt') return;
-    preserveLegacyPromptInstruction(node);
-    const message = promptNodeLLMInputText(node).trim();
-    if(!message){
-        const error = tr('smart.promptLlmNeedText');
-        toast(error);
-        return {ok:false, error};
-    }
-    const systemPrompt = (node.llmSystemPrompt || '').trim();
-    node.llmEnabled = true;
-    node.running = true;
-    node.promptRunStartedAt = nowMs();
-    node.promptRunFinishedAt = 0;
-    delete node.promptRunError;
-    render();
-    try {
-        const provider = node.llmProvider || resolveChatProviderId();
-        const model = node.llmModel || resolveChatModel('', provider);
-        if(!smartConfigReady) throw new Error('模型列表尚未加载，请稍后重试');
-        if(!chatApiProviders().some(item => item.id === provider && (item.chat_models || []).includes(model))){
-            throw new Error('提示词节点所选平台或模型不可用，请重新选择');
-        }
-        const mediaRefs = promptNodeInputMediaForLLM(node);
-        if(mediaRefs.some(ref => ref.sourceMissing)) throw new Error('引用已失效，请移除后重新选择');
-        const images = imageRefsOnly(mediaRefs).map(img => img.url).filter(Boolean);
-        const videos = videoRefsOnly(mediaRefs).map(video => video.url).filter(Boolean);
-        const result = await fetch('/api/canvas-llm', {
-            method:'POST',
-            signal,
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({
-                message,
-                messages:[],
-                images,
-                videos,
-                attachments:documentRefsOnly(mediaRefs).map(item => ({url:item.url, name:item.name || ''})),
-                model,
-                provider,
-                system_prompt:`${node.llmSystemEnabled ? systemPrompt : ''}${nodeSkillPrompt(node)}`.trim()
-            })
-        }).then(async r => {
-            if(!r.ok) throw new Error(await r.text());
-            return r.json();
-        });
-        if(signal?.aborted) throw smartDependencyAbortError();
-        node.text = (result.text || '').trim();
-        node.llmProvider = provider;
-        node.llmModel = model;
-        if(!node.text) throw new Error('提示词节点没有返回文本');
-        node.promptRunAt = nowMs();
-        scheduleSave();
-        return {ok:true, text:node.text};
-    } catch(e) {
-        const error = (signal?.aborted ? SMART_AGENT_CANCELLED : e.message || tr('smart.promptLlmFailed')).slice(0, 160);
-        node.promptRunError = error;
-        if(!signal?.aborted) toast(error);
-        scheduleSave();
-        return {ok:false, error};
-    } finally {
-        node.running = false;
-        node.promptRunFinishedAt = nowMs();
-        render();
-    }
+function runPromptLLMNodeDirect(nodeId, signal=null){
+    return promptExecution.run(nodeId, signal);
 }
 async function runAgentNode(nodeId){
     const node = nodes.find(n => n.id === nodeId);
     if(!node || node.type !== 'smart-agent') return;
     return runSmartNodeWithDependencies(node, (current, signal) => runAgentNodeDirect(current.id, signal));
 }
-async function runAgentNodeDirect(nodeId, signal=null){
-    const node = nodes.find(n => n.id === nodeId);
+function runAgentNodeDirect(nodeId, signal=null){
+    const node = nodes.find(item => item.id === nodeId);
     if(window.SmartExpertWorkflow?.is(node)) return window.SmartExpertWorkflow.runNode(node, signal);
-    if(!node || node.type !== 'smart-agent' || node.running) return;
-    const upstreamText = agentNodeUpstreamText(node);
-    const message = [upstreamText, String(node.userPrompt || '').trim()].filter(Boolean).join('\n\n').trim();
-    const mediaRefs = promptNodeInputMediaForLLM(node);
-    if(mediaRefs.some(ref => ref.sourceMissing)) return {ok:false,error:'引用已失效，请移除后重新选择'};
-    if(!message && !mediaRefs.length) return {ok:false, error:'请填写用户要求或连接图片 / 文件 / 文本节点'};
-    node.running = true;
-    node.runStartedAt = nowMs();
-    node.runFinishedAt = 0;
-    node.runElapsedMs = 0;
-    node.runTimerHidden = false;
-    delete node.runError;
-    render();
-    const requestTimeoutMs = 330000;
-    const requestController = new AbortController();
-    let timedOut = false;
-    const requestTimer = setTimeout(() => { timedOut = true; requestController.abort(); }, requestTimeoutMs);
-    const cancelRequest = () => requestController.abort();
-    signal?.addEventListener('abort', cancelRequest, {once:true});
-    if(signal?.aborted) cancelRequest();
-    try {
-        const provider = node.agentProvider || resolveAgentProviderId();
-        const model = node.agentModel || resolveAgentModel('', provider);
-        if(!smartConfigReady) throw new Error('模型列表尚未加载，请稍后重试');
-        if(!agentChatProviders().some(item => item.id === provider && (item.chat_models || []).includes(model))){
-            throw new Error('智能对话节点所选平台或模型不可用，请重新选择');
-        }
-        const images = imageRefsOnly(mediaRefs).map(item => item.url).filter(Boolean);
-        const videos = videoRefsOnly(mediaRefs).map(item => item.url).filter(Boolean);
-        const skillPrompt = nodeSkillPrompt(node);
-        const response = await fetch('/api/canvas-llm', {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            signal:requestController.signal,
-            body:JSON.stringify({
-                message:message || '请分析连接的参考内容并给出结果。', messages:[], images, videos,
-                attachments:documentRefsOnly(mediaRefs).map(item => ({url:item.url, name:item.name || ''})),
-                model, provider,
-                system_prompt:`${String(node.systemPrompt || '').trim()}${skillPrompt}`.trim()
-            })
-        });
-        if(!response.ok) throw new Error(await smartResponseErrorMessage(response, '智能对话运行失败'));
-        const result = await response.json();
-        if(signal?.aborted) throw smartDependencyAbortError();
-        node.outputText = String(result.text || '').trim();
-        node.agentProvider = provider;
-        node.agentModel = model;
-        if(!node.outputText) throw new Error('智能对话没有返回文本');
-        scheduleSave();
-        return {ok:true, text:node.outputText};
-    } catch(e){
-        node.runError = signal?.aborted ? SMART_AGENT_CANCELLED : timedOut
-            ? '智能对话等待超过 5 分 30 秒，已停止等待；请检查 Antigravity CLI 或切换模型后重试'
-            : (e.message || '智能对话运行失败');
-        if(!signal?.aborted) toast(node.runError.slice(0, 180));
-        return {ok:false, error:node.runError};
-    } finally {
-        clearTimeout(requestTimer);
-        signal?.removeEventListener('abort', cancelRequest);
-        node.running = false;
-        node.runFinishedAt = nowMs();
-        node.runElapsedMs = Math.max(0, node.runFinishedAt - Number(node.runStartedAt || node.runFinishedAt));
-        scheduleSave();
-        render();
-    }
+    if(node?.type !== 'smart-agent') return;
+    return agentExecution.run(node, signal);
 }
 const DEFAULT_PROMPT_OPTIMIZER_SYSTEM = `你是专业的 AI 生图提示词优化师。请在不改变用户核心意图的前提下，重写用户提供的提示词：
 1. 必须保留主体、人物身份、产品特征、数量、构图、尺寸比例、文字要求、禁止事项，以及图1、图2等所有参考图约束；
@@ -33452,19 +25209,12 @@ async function runApiGeneration(prompt, refs, runSettings=settings, {exactSize=f
     const outpaintSourceCanvas = runSettings.outpaintMode === true
         && runSettings.outpaintPreserve
         && typeof runSettings.outpaintPreserve === 'object';
-    // 扩图上传的唯一参考图本身就是用户摆好的目标画布。Gemini/Nano Banana
-    // 在图生图时可直接沿用它的比例；不要再用模型通用的枚举比例把它改成
-    // 1:1 或相邻比例。其它协议仍会收到精确 size。
-    const aspectRatio = gifOutput ? '' : outpaintSourceCanvas ? 'source' : aspectRatioForRun(runSettings);
-    const payload = {prompt:requestPrompt, provider_id:runSettings.provider_id, model:runSettings.model, history_source:'canvas', project_id:currentSmartProjectId(), size:sizeForRun(runSettings), aspect_ratio:aspectRatio, n:1, reference_images:imageRefsOnly(refs)};
-    if(exactSize && runSettings.resolution === 'custom' && !gifOutput && !svgOutput){
-        payload.output_size = runSettings.customSize;
-        payload.size = payload.output_size;
-    }
-    if(runSettings.productRetouch) payload.product_retouch=cloneSmartSettings(runSettings.productRetouch);
-    if(!gifOutput && ['1k','2k','4k'].includes(runSettings.resolution) && !outpaintSourceCanvas){
-        payload.resolution = runSettings.resolution;
-    }
+    const payload = {
+        prompt:requestPrompt, provider_id:runSettings.provider_id, model:runSettings.model,
+        history_source:'canvas', project_id:currentSmartProjectId(), n:1, reference_images:imageRefsOnly(refs),
+        ...imageRequestDimensions(runSettings, exactSize),
+    };
+    if(runSettings.productRetouch) payload.product_retouch = cloneSmartSettings(runSettings.productRetouch);
     if(runSettings.multiAgentActionId){
         payload.client_request_id=runSettings.multiAgentActionId;
         payload.multi_agent_action_id=runSettings.multiAgentActionId;
@@ -33508,46 +25258,47 @@ async function runApiGeneration(prompt, refs, runSettings=settings, {exactSize=f
 async function runRunningHubGeneration(prompt, refs, runSettings=settings){
     const ref = selectedRunningHubRef(runSettings);
     if(!ref) throw new Error(tr('smart.rhNeedConfig'));
-    const fields = rhActiveFields(runSettings);
+
+    const isWorkflow = ref.kind === 'workflow';
+    let fields = rhActiveFields(runSettings);
+    if(!fields.length && isWorkflow){
+        await ensureRunningHubWorkflow(ref.id).catch(() => null);
+        fields = rhActiveFields(runSettings);
+    }
+    let recovered;
+    if(!fields.length && (isWorkflow || ref.kind === 'app')){
+        const useWallet = runSettings.rhPayment === 'wallet' ? '1' : '0';
+        const query = new URLSearchParams({kind:ref.kind, entryId:ref.id, useWallet});
+        const reply = await requestRunningHub(`/api/runninghub/entry-fields?${query}`, 'smart.rhNeedFields');
+        recovered = reply.entry;
+        fields = orderedRhFields(recovered?.fields);
+    }
     if(!fields.length) throw new Error(tr('smart.rhNeedFields'));
-    const randomValues = {};
-    const mode = ref.kind;
-    const media = rhMediaForRun(prompt, refs);
-    const nodeInfoList = await rhBuildNodeInfoList(media, runSettings, randomValues);
-    const workflowExtras = mode === 'workflow' ? await rhBuildWorkflowRequestExtras(media, nodeInfoList, runSettings) : {};
-    const endpoint = mode === 'workflow' ? '/api/runninghub/workflow-submit' : '/api/runninghub/submit';
-    const body = mode === 'workflow'
-        ? {workflowId:ref.id, nodeInfoList, instanceType:runSettings.rhInstanceType || 'default', useWallet:runSettings.rhPayment === 'wallet', ...workflowExtras}
-        : {webappId:ref.id, nodeInfoList, instanceType:runSettings.rhInstanceType || '', useWallet:runSettings.rhPayment === 'wallet'};
-    const submit = await fetch(endpoint, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(body)
-    }).then(async r => {
-        const data = await r.json();
-        if(!r.ok || data.success === false) throw new Error(data.detail || data.error || tr('smart.rhFailed'));
-        return data.data || data;
-    });
-    const taskId = submit.taskId;
+
+    const config = isWorkflow ? recovered || await currentRunningHubWorkflowConfig(ref, runSettings) : null;
+    const body = await buildRunningHubInputs(fields, rhMediaForRun(prompt, refs), runSettings, config);
+    const id = recovered?.id || ref.id;
+    const endpoint = isWorkflow ? '/api/runninghub/workflow-submit' : '/api/runninghub/submit';
+    body[isWorkflow ? 'workflowId' : 'webappId'] = id;
+    body.instanceType = runSettings.rhInstanceType || (isWorkflow ? 'default' : '');
+    const receipt = await requestRunningHub(endpoint, 'smart.rhFailed', body);
+    const taskId = (receipt.data || receipt).taskId;
     if(!taskId) throw new Error(tr('smart.rhNoTaskId'));
-    const useWallet = runSettings.rhPayment === 'wallet';
-    for(let i = 0; i < 720; i++){
+
+    const query = new URLSearchParams({taskId, useWallet:body.useWallet ? '1' : '0'});
+    for(let attempt = 0; attempt < 720; attempt++){
         await sleep(2500);
-        const data = await fetch(`/api/runninghub/query?taskId=${encodeURIComponent(taskId)}&useWallet=${useWallet ? '1' : '0'}`).then(async r => {
-            const json = await r.json();
-            if(!r.ok || json.success === false) throw new Error(json.detail || json.error || tr('smart.rhFailed'));
-            return json.data || json;
-        });
-        if(data.status === 'SUCCESS'){
-            const urls = resultMediaUrls(data.image_items?.length ? data.image_items : (data.urls || []));
-            if(!urls.length) throw new Error(tr('smart.rhOutputsEmpty'));
-            return urls;
-        }
-        if(data.status === 'FAILED') throw new Error(data.failReason || tr('smart.rhFailed'));
+        const reply = await requestRunningHub(`/api/runninghub/query?${query}`, 'smart.rhFailed');
+        const result = reply.data || reply;
+        if(result.status === 'FAILED') throw new Error(result.failReason || tr('smart.rhFailed'));
+        if(result.status !== 'SUCCESS') continue;
+        const urls = resultMediaUrls(result.image_items?.length ? result.image_items : (result.urls || []));
+        if(!urls.length) throw new Error(tr('smart.rhOutputsEmpty'));
+        return urls;
     }
     throw new Error(tr('smart.rhTimeout'));
 }
-async function runApiVideoGeneration(prompt, refs, runSettings=settings){
+async function runApiVideoGeneration(prompt, refs, runSettings=settings, videoRun=null){
     assertMultiAgentGenerationScope(runSettings);
     if(!runSettings.videoModel) throw new Error(tr('smart.errNoVideoModel'));
     const is6789 = is6789VideoProvider(runSettings.videoProvider);
@@ -33572,8 +25323,9 @@ async function runApiVideoGeneration(prompt, refs, runSettings=settings){
         && ['2k','4k'].includes(runSettings.videoResolution) && !modeRefs.length){
         throw new Error('MiniMax H3 生成 2K 或 4K 视频需要至少一张参考图。请选择图生视频并添加图片，或选择 768P、1080P。');
     }
+    const preparedMedia = activeSmartCloudSession().prepare(modeRefs, mediaRefSourceUrl, manualSmartMediaLinks(runSettings));
     try {
-        const uploadedRefs = applyUploadedUrlsToSmartRefs(modeRefs, effectiveVideoSettings);
+        const uploadedRefs = preparedMedia.references;
         const trustedMode = !is6789 && Boolean(effectiveVideoSettings.videoTrustedAsset);
         const trustedSource = trustedMode ? (['library','cloud','manual'].includes(effectiveVideoSettings.videoTrustedSource) ? effectiveVideoSettings.videoTrustedSource : 'library') : 'none';
         // 仅「素材库链接」来源才走 asset:// 认证地址 + 后端可信素材路由；上传云端/手动网址走普通直链。
@@ -33627,12 +25379,16 @@ async function runApiVideoGeneration(prompt, refs, runSettings=settings){
         const result = await fetch('/api/canvas-video', {
             method:'POST',
             headers:{'Content-Type':'application/json'},
-            body:JSON.stringify(payload)
+            body:JSON.stringify({
+                ...payload,
+                ...(videoRun?.requestId ? {client_request_id:videoRun.requestId} : {}),
+            }),
+            signal:videoRun?.controller?.signal,
         }).then(async r => { if(!r.ok) throw new Error(await smartResponseErrorMessage(r, tr('smart.errRunFailed'))); return r.json(); });
         if(result && result.jimeng_pending) throw new JimengPendingSignal({submitId:result.submit_id, kind:result.kind || 'video', queueInfo:result.queue_info, message:result.message});
         return resultMediaUrls(result);
     } finally {
-        transientSmartCloudLinks = [];
+        preparedMedia.release();
     }
 }
 function sleep(ms){ return new Promise(resolve => setTimeout(resolve, ms)); }
@@ -34128,7 +25884,7 @@ function resumeJimengPendingNodes(){
 async function pollSmartCanvasTask(taskId, options={}){
     if(!taskId) throw new Error(tr('smart.errRunFailed'));
     if(activeSmartTaskPolls.has(taskId)) return activeSmartTaskPolls.get(taskId);
-    // 后端单次生图最长约 30 分钟（不含排队与下载），前端额度要明显更长，
+    // 后端单次生图默认查询 1 小时（不含排队与下载），前端额度要明显更长，
     // 且排队等待并发名额的时间不计入，避免平台已成功但画布放弃了任务。
     const classifyTask = task => {
         const decision = XiaomeiDispatchKernel.pollDecision(task);
@@ -34165,7 +25921,7 @@ async function pollSmartCanvasTask(taskId, options={}){
         initialDelayMs:0,
         intervalMs:2000,
         timeoutMs:15000,
-        maxAttempts:1200,
+        maxAttempts:2100,
         isQueuedTask(task){
             return String(task?.status || '').trim().toLowerCase() === 'queued';
         },
@@ -34449,7 +26205,6 @@ function updateSelectionBox(event){
 function beginSelectionGesture(event, options={}){
     const clientX = Number(event?.clientX), clientY = Number(event?.clientY);
     if(!Number.isFinite(clientX) || !Number.isFinite(clientY)) return false;
-    clearImageClickTimer();
     clearSelectionClickGuard();
     if(document.activeElement?.blur) document.activeElement.blur();
     // 智能画布通常运行在 index.html 的 iframe 中。框选开始时如果只清掉
@@ -34478,7 +26233,6 @@ function releaseSelectionPointer(){
     selectionPointerId = null;
 }
 function cancelSelectionGesture(){
-    clearImageClickTimer();
     selectionState = null;
     selectionBox.style.display = 'none';
     releaseSelectionPointer();
@@ -34500,7 +26254,6 @@ function markSelectionClickGuard(){
 }
 function finishSelection(event){
     if(!selectionState) return;
-    clearImageClickTimer();
     const state = selectionState;
     const a = selectionState.startWorld;
     const b = screenToWorld(event);
@@ -34530,123 +26283,82 @@ function finishSelection(event){
     render();
 }
 function groupSelectedNodes(){
-    const ids = selectedIds.length ? selectedIds.slice() : (selectedId ? [selectedId] : []);
-    const selected = ids.map(id => nodes.find(n => n.id === id))
-        .filter(n => n && !isSmartGroupNode(n) && !isSmartDrawingBoardNode(n) && !smartGroupContainingNode(n.id));
-    if(selected.length < 1){ toast('请选择要放入分组的节点'); return; }
+    if(!canvas || !collabCanMutateCanvas()) return;
+    const ids = new Set(selectedNodeIds());
+    const lookup = new Map(nodes.map(node => [node.id, node]));
+    const existingMembers = new Set(nodes.filter(isSmartGroupNode)
+        .flatMap(group => Array.isArray(group.items) ? group.items : []));
+    const selected = [];
+    for(const id of ids){
+        const node = lookup.get(id);
+        if(!node || isSmartGroupNode(node) || isSmartDrawingBoardNode(node) || existingMembers.has(id)) continue;
+        if(isSmartImageNode(node) && !node.images?.length) continue;
+        selected.push(node);
+    }
+    if(!selected.length){ toast('请选择要放入分组的节点'); return; }
+    if(!selected.every(node => collabCanEditNode(node.id))) return;
+
     pushUndo();
-    const rects = selected.map(nodeRect);
-    const minX = Math.min(...rects.map(r => r.x));
-    const minY = Math.min(...rects.map(r => r.y));
-    const maxX = Math.max(...rects.map(r => r.x + r.width));
-    const maxY = Math.max(...rects.map(r => r.y + r.height));
+    const bounds = XiaomeiSmartGroups.selectionBounds(selected.map(node => nodeRect(node)));
     const group = {
-        id:uid('group'),
-        type:'smart-group',
-        x:Math.round(minX - 18),
-        y:Math.round(minY - 44),
-        w:Math.max(340, Math.round(maxX - minX + 36)),
-        h:Math.max(220, Math.round(maxY - minY + 72)),
-        title:'智能分组',
-        items:[],
-        images:[],
-        created_at:Date.now()
+        id:uid('group'), type:'smart-group', ...bounds, title:'智能分组',
+        items:[], images:[], created_at:Date.now()
     };
     nodes.push(group);
-    // 图片成员吸收进分组网格，提示词/循环作为成员节点；随后自动整理。
-    selected.forEach(node => addNodeToSmartGroup(group, node));
+    for(const node of selected) addNodeToSmartGroup(group, node);
     arrangeSmartGroupMembers(group, {skipUndo:true});
-    selectedIds = [];
-    selectedId = group.id;
-    selectedImage = {nodeId:'', index:-1};
+    selectSmartCard(group.id);
     render();
     scheduleSave();
 }
+
 function ungroupNode(groupId){
-    const group = nodes.find(n => n.id === groupId);
-    if(!group) return false;
-    // 释放智能分组：把收进卡片的图片重新拆成独立图片节点（平铺在分组原位置），提示词/循环成员原地保留，再删除分组容器。
-    if(isSmartGroupNode(group)){
-        pushUndo();
-        const members = smartGroupMembers(group);
-        const memberIds = members.map(m => m.id);
-        const groupImages = (group.images || []).filter(img => img?.url);
-        const originIds = groupImages.map(img => String(img?.[SMART_GROUP_ORIGIN_NODE_KEY] || ''));
-        const originConnections = Array.isArray(group[SMART_GROUP_ORIGIN_CONNECTIONS_KEY])
-            ? group[SMART_GROUP_ORIGIN_CONNECTIONS_KEY].map(connection => ({...connection}))
-            : [];
-        let created = [];
-        if(groupImages.length){
-            const layout = imageLayout(group.images || [], nodeScale(group), group);
-            const pad = 16, gap = 8;
-            const cellW = Math.max(28, Math.round(layout.thumbW || layout.thumb || 96));
-            const cellH = Math.max(28, Math.round(layout.thumbH || layout.thumb || 96));
-            const cols = Math.max(1, layout.cols || 1);
-            created = groupImages.map((img, index) => {
-                const col = index % cols;
-                const row = Math.floor(index / cols);
-                const size = thumbDisplaySize(img, Math.min(cellW, cellH));
-                const x = Math.round(Number(group.x || 0) + pad + col * (cellW + gap) + (cellW - size.width) / 2);
-                const y = Math.round(Number(group.y || 0) + 44 + row * (cellH + gap) + (cellH - size.height) / 2);
-                const node = {id:uid('smart'), type:SMART_UPLOAD_NODE_TYPE, x, y, w:size.width, h:size.height, title:'Image', images:[smartGroupImageForStandaloneNode(img)], scale:MEDIA_NODE_DEFAULT_SCALE, created_at:Date.now()};
-                inheritNodeMetaFromImage(node);
-                clearDetachedRunInputRefs(node);
-                return node;
-            });
-        }
-        nodes = nodes.filter(n => n.id !== groupId);
-        smartAutoAvoidNewNodes(created);
-        nodes.push(...created);
-        members.forEach(member => {
-            if(!releaseSmartGroupMemberSize(member)) return;
-            const {x, y} = smartAutoAvoidNodePosition(member, member);
-            member.x = x;
-            member.y = y;
-        });
-        nodes.forEach(node => {
-            if(isSmartGroupNode(node) && Array.isArray(node.items)) node.items = node.items.filter(id => id !== groupId);
-        });
-        restoreConnectionsAfterUngroup(groupId, created, memberIds, originIds, originConnections);
-        selectedIds = [...created.map(n => n.id), ...memberIds].filter(id => nodes.some(n => n.id === id));
-        selectedId = selectedIds.length === 1 ? selectedIds[0] : '';
-        selectedImage = {nodeId:'', index:-1};
-        render();
-        scheduleSave();
-        return true;
-    }
-    if(!Array.isArray(group.images) || group.images.length < 2) return false;
+    const group = nodes.find(node => node.id === groupId);
+    if(!canvas || !group) return false;
+    const smart = isSmartGroupNode(group);
+    const allImages = Array.isArray(group.images) ? group.images : [];
+    if(!smart && allImages.length < 2) return false;
+    const members = smart ? smartGroupMembers(group) : [];
+    if(!collabCanMutateCanvas() || ![group, ...members].every(node => collabCanEditNode(node.id))) return false;
     pushUndo();
-    const layout = imageLayout(group.images || [], nodeScale(group), group);
-    const pad = 16;
-    const gap = 8;
-    const cell = Math.max(28, Math.round(layout.thumb || 96));
-    const created = (group.images || []).map((img, index) => {
-        const col = index % Math.max(1, layout.cols || 1);
-        const row = Math.floor(index / Math.max(1, layout.cols || 1));
-        const size = thumbDisplaySize(img, cell);
-        const x = Math.round(Number(group.x || 0) + pad + col * (cell + gap) + Math.max(0, (cell - size.width) / 2));
-        const y = Math.round(Number(group.y || 0) + pad + row * (cell + gap) + Math.max(0, (cell - size.height) / 2));
-        const node = {
-            id:uid('smart'),
-            type:SMART_UPLOAD_NODE_TYPE,
-            x,
-            y,
-            w:size.width,
-            h:size.height,
-            title:'Image',
-            images:[smartGroupImageForStandaloneNode(img)],
-            scale:MEDIA_NODE_DEFAULT_SCALE,
-            created_at:Date.now()
+
+    const media = smart ? allImages.filter(image => image?.url) : allImages;
+    const layoutNode = group.collapsed ? {...group, collapsed:false} : group;
+    const positions = media.length
+        ? XiaomeiSmartGroups.standalonePositions(group, imageLayout(allImages, nodeScale(layoutNode), layoutNode), media, smart, thumbDisplaySize)
+        : [];
+    const placements = media.map((image, index) => {
+        const child = {
+            id:uid('smart'), type:SMART_UPLOAD_NODE_TYPE, ...positions[index], title:'Image',
+            images:[smartGroupImageForStandaloneNode(image)], scale:MEDIA_NODE_DEFAULT_SCALE, created_at:Date.now()
         };
-        inheritNodeMetaFromImage(node);
-        clearDetachedRunInputRefs(node);
-        return node;
+        inheritNodeMetaFromImage(child);
+        clearDetachedRunInputRefs(child);
+        return {child, origin:smart ? String(image?.[SMART_GROUP_ORIGIN_NODE_KEY] || '') : ''};
     });
-    nodes = nodes.filter(n => n.id !== groupId);
-    smartAutoAvoidNewNodes(created);
-    nodes.push(...created);
-    restoreConnectionsAfterUngroup(groupId, created);
-    selectedIds = created.map(node => node.id);
+
+    removeSmartGroupContainer(groupId);
+    const restored = placements.map(item => item.child);
+    smartAutoAvoidNewNodes(restored);
+    nodes.push(...restored);
+    for(const member of members){
+        if(releaseSmartGroupMemberSize(member)) Object.assign(member, smartAutoAvoidNodePosition(member, member));
+    }
+
+    const liveIds = new Set(nodes.map(node => node.id));
+    const memberIds = members.map(member => member.id).filter(id => liveIds.has(id));
+    const graph = smartGroupGraph.expand({
+        groupId, liveIds, members:memberIds,
+        edges:canvas.connections || [],
+        originals:smart && Array.isArray(group[SMART_GROUP_ORIGIN_CONNECTIONS_KEY]) ? group[SMART_GROUP_ORIGIN_CONNECTIONS_KEY] : [],
+        placements:placements.map(item => ({id:item.child.id, origin:item.origin})),
+        deleted:smartConnectionDeletionTombstones
+    });
+    rememberSmartConnectionDeletions(graph.removed);
+    clearSmartConnectionDeletionTombstones(graph.added);
+    canvas.connections = graph.edges;
+    smartGroupGraph.updateInputIds(nodes, graph.retiredIds, graph.added);
+    selectedIds = [...restored.map(node => node.id), ...memberIds];
     selectedId = selectedIds.length === 1 ? selectedIds[0] : '';
     selectedImage = {nodeId:'', index:-1};
     render();
@@ -34671,76 +26383,22 @@ function mergeImageNodesIntoGroup(sourceId, targetId){
     if(!Number.isFinite(Number(target.scale)) || Number(target.scale) === MEDIA_NODE_DEFAULT_SCALE) target.scale = MEDIA_GROUP_DEFAULT_SCALE;
     delete target.w;
     delete target.h;
-    canvas.connections = (canvas.connections || []).map(c => {
-        if(c.from === source.id) return {...c, from:target.id};
-        if(c.to === source.id) return {...c, to:target.id};
-        return c;
-    }).filter((c, index, arr) => c.from !== c.to && arr.findIndex(x => (
-        x.from === c.from
-        && x.to === c.to
-        && (x.kind || 'flow') === (c.kind || 'flow')
-        && String(x.input_slot || x.inputSlot || '') === String(c.input_slot || c.inputSlot || '')
-    )) === index);
-    nodes.forEach(node => {
-        if(Array.isArray(node.inputNodeIds)){
-            node.inputNodeIds = Array.from(new Set(node.inputNodeIds.map(id => id === source.id ? target.id : id).filter(id => id !== node.id)));
-        }
-    });
+    rerouteSmartConnections(source.id, target.id);
     nodes = nodes.filter(n => n.id !== source.id);
     selectedIds = [];
     selectedId = target.id;
     selectedImage = {nodeId:'', index:-1};
     return true;
 }
-function detachedImageReturnTarget(draggedNode){
-    if(!draggedNode || !isSmartImageNode(draggedNode)) return null;
-    const targetId = String(dragState?.returnGroupId || draggedNode.detachedFromNodeId || '');
-    if(!targetId || targetId === draggedNode.id) return null;
-    const target = nodes.find(node => node.id === targetId);
-    if(!target || (!isSmartGroupNode(target) && !isSmartImageNode(target))) return null;
-    const draggedRect = nodeRect(draggedNode), targetRect = nodeRect(target);
-    const cx = draggedRect.x + draggedRect.width / 2;
-    const cy = draggedRect.y + draggedRect.height / 2;
-    return cx >= targetRect.x && cx <= targetRect.x + targetRect.width && cy >= targetRect.y && cy <= targetRect.y + targetRect.height
-        ? target
-        : null;
-}
-function smartGroupTargetForDraggedNode(draggedNode){
-    // 允许把一个分组拖进另一个分组（拖来的分组的成员会作为输入并入目标分组）。自身/被拖分组及其成员已在 excluded 中排除。
-    if(!draggedNode) return null;
-    if(dragState?.groupRoots?.size && !dragState.ctrlGroup) return null;
-    const r = nodeRect(draggedNode);
-    const excluded = new Set([draggedNode.id, ...(dragState?.groupIds || [])]);
-    const cx = r.x + r.width / 2;
-    const cy = r.y + r.height / 2;
-    const groups = nodes
-        .filter(node => isSmartGroupNode(node) && !excluded.has(node.id))
-        .map(group => ({group, rect:nodeRect(group)}))
-        .filter(item => cx >= item.rect.x && cx <= item.rect.x + item.rect.width && cy >= item.rect.y && cy <= item.rect.y + item.rect.height);
-    if(!groups.length) return null;
-    groups.sort((a, b) => (nodes.indexOf(b.group) - nodes.indexOf(a.group)));
-    return groups[0].group;
-}
-function addDraggedNodeToSmartGroup(draggedNode, group){
-    return addDraggedNodesToSmartGroup(draggedNode ? [draggedNode] : [], group);
-}
-// 把一个或多个被拖动的节点批量加入目标分组（支持多选拖入）。入组后只整理一次并选中目标分组。
 function addDraggedNodesToSmartGroup(draggedNodes, group){
-    if(!group || !isSmartGroupNode(group)) return false;
-    const list = (draggedNodes || []).filter(n => n && n.id !== group.id);
-    if(!list.length) return false;
-    let added = false;
-    list.forEach(n => {
-        if(addNodeToSmartGroup(group, n)) added = true;
-    });
-    if(!added) return false;
-    // 提示词/循环成员入组后自动整理成网格（图片已收进卡片网格，自动平铺）。
+    if(!isSmartGroupNode(group)) return false;
+    const candidates = (draggedNodes || []).filter(node => node && node.id !== group.id);
+    let changed = false;
+    for(const node of candidates) changed = addNodeToSmartGroup(group, node) || changed;
+    if(!changed) return false;
     arrangeSmartGroupMembers(group, {skipUndo:true});
-    selectedIds = [];
-    // 图片被吸收进分组（原节点已删除），统一选中目标分组；仅当单个提示词/循环节点拖入时保持选中它。
-    const survivingSingle = list.length === 1 && nodes.some(n => n.id === list[0].id) ? list[0].id : '';
-    selectedId = survivingSingle || group.id;
-    selectedImage = {nodeId:'', index:-1};
+    const single = candidates.length === 1 && nodes.some(node => node.id === candidates[0].id) ? candidates[0].id : '';
+    selectSmartCard(single || group.id);
     return true;
 }
 function closeCreateMenu(options={}){
@@ -34890,23 +26548,6 @@ shell.addEventListener('click', e => {
     if(nodeEl?.dataset?.id) exitZoomPreviewToNode(nodeEl.dataset.id);
     else exitZoomPreview(screenToWorld(e));
 }, true);
-// 在 shell 捕获阶段建立擦除状态。部分浏览器/触控板会在右键拖动前先接管
-// mousedown/pointerdown；捕获并立即阻止同一事件，才能避免进入节点拖动或中键自动滚动。
-const captureConnectionEraseStart = e => {
-    if(!isConnectionEraseGesture(e) || connectionEraseTargetExcluded(e.target)) return;
-    if(beginConnectionErase(e)){
-        if(e.type === 'pointerdown' && Number.isFinite(e.pointerId)) shell.setPointerCapture?.(e.pointerId);
-        e.stopImmediatePropagation();
-    }
-};
-const captureDocumentConnectionEraseStart = e => {
-    if(!shell.contains(e.target)) return;
-    captureConnectionEraseStart(e);
-};
-document.addEventListener('pointerdown', captureDocumentConnectionEraseStart, true);
-document.addEventListener('mousedown', captureDocumentConnectionEraseStart, true);
-shell.addEventListener('pointerdown', captureConnectionEraseStart, true);
-shell.addEventListener('mousedown', captureConnectionEraseStart, true);
 const selectionPointerTargetExcluded = target => Boolean(target?.closest?.('.smart-selection-resize-handle,.image-node,.composer,.canvas-agent-panel,.canvas-agent-toggle,.canvas-collab-status,.canvas-collab-panel,.smart-back,.asset-panel,.asset-toggle,.smart-log-toggle,.smart-shortcut-toggle,.smart-workflow-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.create-menu,.smart-minimap,.canvas-nav-panel,.smart-selection-toolbar'));
 shell.addEventListener('pointerdown', e => {
     if(e.button !== 0 || !(e.shiftKey || e.ctrlKey || e.metaKey || isRKeyDown) || selectionPointerTargetExcluded(e.target)) return;
@@ -34929,36 +26570,10 @@ shell.addEventListener('pointercancel', e => {
     if(selectionPointerId === null || e.pointerId !== selectionPointerId) return;
     cancelSelectionGesture();
 }, true);
-shell.addEventListener('pointermove', e => {
-    if(!connectionEraseState && connectionEraseModifierActive(e) && (Number(e.buttons) & 6) && !connectionEraseTargetExcluded(e.target)){
-        const button = Number(e.buttons) & 2 ? 2 : 1;
-        if(beginConnectionErase(e, button)) return;
-    }
-    if(!connectionEraseState || connectionEraseState.inputSource !== 'pointer') return;
-    if(connectionEraseState.pointerId !== null && Number.isFinite(e.pointerId) && e.pointerId !== connectionEraseState.pointerId) return;
-    e.preventDefault();
-    e.stopPropagation();
-    updateConnectionEraseTrail(e);
-    eraseConnectionsAlongPointer(e);
-}, true);
-shell.addEventListener('pointerup', e => {
-    if(!connectionEraseState || connectionEraseState.inputSource !== 'pointer') return;
-    if(connectionEraseState.pointerId !== null && Number.isFinite(e.pointerId) && e.pointerId !== connectionEraseState.pointerId) return;
-    e.preventDefault();
-    endConnectionErase({commit:true});
-    if(Number.isFinite(e.pointerId)) shell.releasePointerCapture?.(e.pointerId);
-}, true);
-shell.addEventListener('pointercancel', e => {
-    if(connectionEraseState?.inputSource === 'pointer') endConnectionErase({commit:true});
-}, true);
 shell.onmousedown = e => {
     if(zoomPreviewState && e.button === 0 && !e.target.closest('.canvas-agent-panel,.canvas-agent-toggle,.canvas-collab-status,.canvas-collab-panel,.composer,.smart-back,.asset-panel,.asset-toggle,.smart-log-toggle,.smart-shortcut-toggle,.smart-workflow-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.create-menu,.smart-minimap,.canvas-nav-panel,.smart-selection-toolbar')) return;
     if(e.target.closest('.image-node,.composer,.smart-back,.asset-panel,.asset-toggle,.smart-log-toggle,.smart-shortcut-toggle,.smart-workflow-toggle,.log-modal,.shortcut-modal,.create-menu,.smart-minimap,.canvas-nav-panel,.smart-selection-toolbar')) return;
     closeCreateMenu();
-    if(isConnectionEraseGesture(e)){
-        beginConnectionErase(e);
-        return;
-    }
     if(e.button === 0 && isRKeyDown){
         e.preventDefault();
         if(!selectionState) beginSelectionGesture(e);
@@ -34988,7 +26603,7 @@ shell.onmousedown = e => {
     setSmartCanvasPanningMediaMode(true);
 };
 shell.oncontextmenu = e => {
-    if(dragState || (e.altKey && e.target.closest('.image-node')) || connectionEraseState || connectionEraseModifierActive(e) || isRKeyDown){
+    if(dragState || (e.altKey && e.target.closest('.image-node')) || smartConnectionEraser.active() || smartConnectionEraser.modifier(e) || isRKeyDown){
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -35009,7 +26624,7 @@ shell.oncontextmenu = e => {
     openCreateMenu(e);
 };
 shell.addEventListener('auxclick', e => {
-    if(e.button !== 1 || !connectionEraseModifierActive(e)) return;
+    if(e.button !== 1 || !smartConnectionEraser.modifier(e)) return;
     e.preventDefault();
     e.stopPropagation();
 }, true);
@@ -35085,40 +26700,49 @@ canvasZoomRange?.addEventListener('input', event => {
     setCanvasZoom(Number(event.target.value));
 });
 canvasZoomRange?.addEventListener('change', () => scheduleSave());
-function clearGroupThumbSort(state){
-    state?.ghost?.remove();
-    state?.element?.classList.remove('paint-ref-drag-source');
-    state?.grid?.querySelectorAll('.drop-before,.drop-after').forEach(item => item.classList.remove('drop-before','drop-after'));
-    document.body.classList.remove('smart-input-thumb-drag');
+function reorderSmartThumbnails(node, from, to){
+    capturePendingUndo();
+    const [image] = node.images.splice(from, 1);
+    node.images.splice(to, 0, image);
+    selectedImage = {nodeId:node.id, index:to};
+    suppressSmartImageClicks();
+    suppressNodeClickUntil = Date.now() + 260;
+    commitPendingUndo();
+    render();
+    scheduleSave();
 }
-function updateGroupThumbSort(state, event){
-    const grid = state.grid;
-    if(state.copy || !grid?.isConnected) return false;
-    const bounds = grid.getBoundingClientRect();
-    if(event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) return false;
-    if(!state.ghost){
-        clearImageClickTimer();
-        const rect = state.element.getBoundingClientRect();
-        state.ghost = state.element.cloneNode(true);
-        state.ghost.querySelectorAll('button').forEach(button => button.remove());
-        state.ghost.classList.add('paint-ref-drag-ghost');
-        Object.assign(state.ghost.style, {left:`${rect.left}px`,top:`${rect.top}px`,width:`${rect.width}px`,height:`${rect.height}px`});
-        document.body.appendChild(state.ghost);
-        state.element.classList.add('paint-ref-drag-source');
-        document.body.classList.add('smart-input-thumb-drag');
+function detachSmartThumbnail(source, image, index, copy, event){
+    cancelSmartMediaSelectionPaint();
+    const item = copy ? smartGroupImageForStandaloneNode(XiaomeiHistoryKernel.cloneData(image)) : {...image};
+    applyNodeMetaToImage(item, source);
+    capturePendingUndo();
+    const node = createImageNodeAt(screenToWorld(event), [item], {
+        select:false, skipUndo:true, skipRender:true, skipSave:true, autoAvoid:false
+    });
+    if(!node){
+        discardPendingUndo();
+        return false;
     }
-    state.ghost.style.transform = `translate(${event.clientX - state.startX}px, ${event.clientY - state.startY}px)`;
-    grid.querySelectorAll('.drop-before,.drop-after').forEach(item => item.classList.remove('drop-before','drop-after'));
-    if(event.clientY < bounds.top + 28) grid.scrollTop -= 12;
-    else if(event.clientY > bounds.bottom - 28) grid.scrollTop += 12;
-    const targets = [...grid.querySelectorAll('.thumb-item')].filter(item => !item.dataset.refNodeId || item.dataset.refNodeId === state.nodeId);
-    const target = targets.reduce((best, item) => {
-        const rect = item.getBoundingClientRect();
-        const distance = Math.hypot(event.clientX - (rect.left + rect.width / 2), event.clientY - (rect.top + rect.height / 2));
-        return !best || distance < best.distance ? {item,distance} : best;
-    }, null)?.item;
-    state.sortIndex = target ? Number(target.dataset.imageIndex) : state.imgIndex;
-    if(target && state.sortIndex !== state.imgIndex) target.classList.add(state.sortIndex < state.imgIndex ? 'drop-before' : 'drop-after');
+    if(!copy){
+        source.images.splice(index, 1);
+        node.detachedFromNodeId = source.id;
+        node.detachedFromImageIndex = index;
+        if(isSmartGroupNode(source)){
+            arrangeSmartGroupMembers(source, {skipUndo:true});
+        } else if(source.images.length <= 1){
+            source.title = 'Image';
+            delete source.w;
+            delete source.h;
+            inheritNodeMetaFromImage(source);
+        }
+    }
+    selectedId = '';
+    selectedImage = {nodeId:'', index:-1};
+    dragState = {
+        id:node.id, startX:event.clientX, startY:event.clientY, ox:node.x, oy:node.y,
+        thumbDetached:true, moved:true, returnGroupId:copy ? '' : source.id
+    };
+    render();
     return true;
 }
 window.onmousemove = e => {
@@ -35126,24 +26750,8 @@ window.onmousemove = e => {
         finishSmartNodeDrag(Boolean(dragState.moved || dragState.thumbDetached));
         return;
     }
-    if(thumbDragState && !(e.buttons & 1)){
-        clearGroupThumbSort(thumbDragState);
-        thumbDragState = null;
-        discardPendingUndo();
-    }
-    // 如果按下事件被浏览器的中键自动滚动或系统手势吞掉，仍可在第一次拖动
-    // 事件中恢复擦除状态；buttons 位掩码：右键=2，中键=4。
-    if(!connectionEraseState && connectionEraseModifierActive(e) && (Number(e.buttons) & 6) && !connectionEraseTargetExcluded(e.target)){
-        const button = Number(e.buttons) & 2 ? 2 : 1;
-        if(beginConnectionErase(e, button)) return;
-    }
-    if(connectionEraseState && connectionEraseState.inputSource !== 'mouse') return;
-    if(connectionEraseState?.inputSource === 'mouse'){
-        e.preventDefault();
-        updateConnectionEraseTrail(e);
-        eraseConnectionsAlongPointer(e);
-        return;
-    }
+    if(!(e.buttons & 1)) smartThumbnailDrag.cancel();
+    if(smartConnectionEraser.move(e)) return;
     // 平移过程中不需要把鼠标换算到世界坐标。该换算会读取 world 的屏幕矩形，
     // 而平移正好持续写入 world transform，连续读写会迫使浏览器每次 mousemove
     // 都同步回流，节点/图片越多越明显。
@@ -35160,7 +26768,7 @@ window.onmousemove = e => {
     }
     // 普通悬停只保留一帧一次的世界坐标，避免高刷新率鼠标在空闲状态下
     // 连续读取 world 的屏幕矩形；正在进行画布手势时仍即时更新。
-    if(smartMinimapDrag || portDragState || selectionState || thumbDragState || dragState){
+    if(smartMinimapDrag || portDragState || selectionState || smartThumbnailDrag.active() || dragState){
         lastMouseWorld = screenToWorld(e);
     } else {
         scheduleLastMouseWorld(e);
@@ -35200,56 +26808,6 @@ window.onmousemove = e => {
     if(selectionState){
         e.preventDefault();
         updateSelectionBox(e);
-        return;
-    }
-    if(previewCompareDrag){
-        e.preventDefault();
-        setPreviewComparePos(e.clientX);
-        return;
-    }
-    if(panoramaState.drag){
-        e.preventDefault();
-        const dx = e.clientX - panoramaState.drag.clientX;
-        const dy = e.clientY - panoramaState.drag.clientY;
-        panoramaState.yaw = panoramaState.drag.yaw - dx * 0.18;
-        panoramaState.pitch = Math.max(-85, Math.min(85, panoramaState.drag.pitch + dy * 0.18));
-        document.getElementById('previewStage')?.classList.add('panning');
-        return;
-    }
-    if(previewPanDrag){
-        const stage = document.getElementById('previewStage');
-        previewPan = {
-            x:previewPanDrag.startX + (e.clientX - previewPanDrag.clientX),
-            y:previewPanDrag.startY + (e.clientY - previewPanDrag.clientY)
-        };
-        stage?.classList.add('panning');
-        applyPreviewTransform();
-        return;
-    }
-    if(imageEditPanDrag){
-        const stage = document.getElementById('imageEditStage');
-        if(stage){
-            stage.scrollLeft = imageEditPanDrag.scrollLeft - (e.clientX - imageEditPanDrag.clientX);
-            stage.scrollTop = imageEditPanDrag.scrollTop - (e.clientY - imageEditPanDrag.clientY);
-        }
-        return;
-    }
-    if(cropDrag && cropState){
-        const dx = e.clientX - cropDrag.sx;
-        const dy = e.clientY - cropDrag.sy;
-        if(cropDrag.mode === 'move'){
-            cropState.x = cropDrag.start.x + dx;
-            cropState.y = cropDrag.start.y + dy;
-        } else if(cropDrag.mode === 'image'){
-            cropState.x = cropDrag.start.x + dx;
-            cropState.y = cropDrag.start.y + dy;
-        } else if(String(cropDrag.mode || '').startsWith('outpaint-')){
-            resizeOutpaintFromDrag(dx, dy);
-        } else {
-            resizeCropFromDrag(dx, dy);
-        }
-        clampCrop();
-        renderCropBox();
         return;
     }
     if(resizeState){
@@ -35376,144 +26934,95 @@ window.onmousemove = e => {
         applyResizePush(resizeState, node);
         return;
     }
-    if(llmInstructionResizeState){
-        const node = nodes.find(n => n.id === llmInstructionResizeState.id);
-        if(!node) return;
-        const dy = (e.clientY - llmInstructionResizeState.startY) / viewport.scale;
-        const newInstrH = Math.max(PROMPT_LLM_INSTRUCTION_MIN_H, Math.min(PROMPT_LLM_INSTRUCTION_MAX_H, Math.round(llmInstructionResizeState.startH + dy)));
-        node.llmInstructionHeight = newInstrH;
-        // 只把“指令框的高度变化量”叠加到节点总高度上，保留用户手动拉大的上方区域，避免上方被重置变小。
-        node.h = Math.max(promptNodeExpandedHeight(node), Math.round(llmInstructionResizeState.startNodeH + (newInstrH - llmInstructionResizeState.startH)));
-        node.w = Math.max(Number(node.w) || 0, 316);
-        node.scale = 1;
-        scheduleNodeElementResizeUpdate(node);
-        const ta = world.querySelector(`.image-node[data-id="${CSS.escape(node.id)}"] .prompt-llm-instruction`);
-        if(ta) ta.style.height = `${promptLlmInstructionHeight(node)}px`;
-        applyResizePush(llmInstructionResizeState, node);
-        return;
-    }
-    if(thumbDragState){
-        const dx = e.clientX - thumbDragState.startX;
-        const dy = e.clientY - thumbDragState.startY;
-        const source = nodes.find(n => n.id === thumbDragState.nodeId);
-        if(!thumbDragState.detached && Math.abs(dx) + Math.abs(dy) > 6){
-            if(updateGroupThumbSort(thumbDragState, e)) return;
-            clearGroupThumbSort(thumbDragState);
-            const canDetachThumb = source && (isSmartGroupNode(source) ? (source.images || []).length >= 1 : (source.images || []).length > 1);
-            if(canDetachThumb){
-                const sourceImage = source.images[thumbDragState.imgIndex];
-                if(sourceImage){
-                    const copy = thumbDragState.copy;
-                    const img = copy ? smartGroupImageForStandaloneNode(JSON.parse(JSON.stringify(sourceImage))) : sourceImage;
-                    clearImageClickTimer();
-                    undoSuppressed = true;
-                    applyNodeMetaToImage(img, source);
-                    if(!copy){
-                        source.images.splice(thumbDragState.imgIndex, 1);
-                        if(isSmartGroupNode(source)){
-                            arrangeSmartGroupMembers(source, {skipUndo:true, syncDom:true});
-                        } else if(source.images.length <= 1){
-                            source.title = 'Image';
-                            delete source.w; delete source.h;
-                            inheritNodeMetaFromImage(source);
-                        }
-                    }
-                    const point = screenToWorld(e);
-                    selectedId = '';
-                    selectedImage = {nodeId:'', index:-1};
-                    const newNode = createImageNodeAt(point, [img], {
-                        select:false,
-                        skipUndo:true,
-                        // 缩略图拖出要从当前指针位置开始，允许与来源节点叠加。
-                        autoAvoid:false
-                    });
-                    if(!copy){
-                        newNode.detachedFromNodeId = source.id;
-                        newNode.detachedFromImageIndex = thumbDragState.imgIndex;
-                    }
-                    undoSuppressed = false;
-                    dragState = {id:newNode.id, startX:e.clientX, startY:e.clientY, ox:newNode.x, oy:newNode.y, thumbDetached:true, moved:true, returnGroupId:copy ? '' : source.id};
-                    thumbDragState.detached = true;
-                    render();
-                }
-            }
-        }
-        if(thumbDragState.detached) thumbDragState = null;
-        else return;
-    }
-    if(!dragState) return;
-    if(!dragState.moved && Math.hypot(e.clientX - dragState.startX, e.clientY - dragState.startY) < 4) return;
-    dragState.moved = true;
+    if(promptNodeView.moveResize(e)) return;
+    if(smartThumbnailDrag.move(e)) return;
+    const placement = positionSmartNodeDrag(e);
+    if(!placement) return;
     document.body.classList.add('smart-node-drag');
-    const node = nodes.find(n => n.id === dragState.id);
-    if(!node) return;
-    const raw = XiaomeiNodeKernel.worldDelta({x:e.clientX, y:e.clientY}, {x:dragState.startX, y:dragState.startY}, viewport.scale);
-    const rawMoveDx = raw.x;
-    const rawMoveDy = raw.y;
-    const moveDx = canvasViewPrefs.snap
-        ? (XiaomeiNodeKernel.snappedDelta(dragState.ox, rawMoveDx, CANVAS_SNAP_GRID))
-        : rawMoveDx;
-    const moveDy = canvasViewPrefs.snap
-        ? (XiaomeiNodeKernel.snappedDelta(dragState.oy, rawMoveDy, CANVAS_SNAP_GRID))
-        : rawMoveDy;
-    (dragState.moveGroup || dragState.group || [{id:dragState.id, ox:dragState.ox, oy:dragState.oy}]).forEach(item => {
-        const n = nodes.find(x => x.id === item.id);
-        if(!n) return;
-        n.x = item.ox + moveDx;
-        n.y = item.oy + moveDy;
-    });
-    updateCanvasAlignmentGuides(node, moveDx, moveDy);
+    updateCanvasAlignmentGuides(placement.node, placement.dx, placement.dy);
     if(assetLibraryOpen){
         const hit = document.elementFromPoint(e.clientX, e.clientY);
         if(hit && assetPanel?.contains(hit)){
-            setAssetDragOver(true);
+            localAssetSidebar.setDropActive(true);
             clearDropHighlight();
             moveNodeElementsDuringDrag();
             return;
         }
-        setAssetDragOver(false);
+        localAssetSidebar.setDropActive(false);
     }
-    const draggedRect = nodeRect(node);
-    const rawTarget = dragState.ctrlGroup
-        ? (['smart-prompt','smart-loop','smart-agent'].includes(node.type)
-            ? dragConnectTargetFor(node, screenToWorld(e))
-            : rectOverlapNode(node.id, draggedRect.x, draggedRect.y, draggedRect.width, draggedRect.height, dragState.groupIds))
-        : null;
-    const returnTarget = detachedImageReturnTarget(node);
-    const groupTarget = smartGroupTargetForDraggedNode(node);
-    const target = returnTarget || groupTarget || (isSmartGroupNode(rawTarget) ? null : rawTarget);
-    setDropHighlight(target?.id || '');
+    updateSmartNodeDropPreview(smartNodeDrop.resolve(dragState, screenToWorld(e)));
     moveNodeElementsDuringDrag();
-    updateLoopInsertPreview();
-    if(target) setDropHighlight(target.id);
 };
-function finishSmartNodeDrag(stateChanged){
-    const moved = dragState.moved;
-    if(stateChanged) commitPendingUndo();
+function positionSmartNodeDrag(event){
+    return smartNodeDrop.position(dragState, {x:event.clientX, y:event.clientY}, viewport.scale,
+        canvasViewPrefs.snap ? CANVAS_SNAP_GRID : 0);
+}
+function finishSmartNodeDrag(changed, redraw=false){
+    const state = dragState;
+    if(!state) return;
+    if(changed) commitPendingUndo();
     else discardPendingUndo();
-    if(stateChanged || dragState.thumbDetached) suppressNodeClickUntil = Date.now() + 180;
+    if(changed || state.thumbDetached) suppressNodeClickUntil = Date.now() + 180;
     clearDropHighlight();
     loopInsertPreview = null;
-    setAssetDragOver(false);
-    collabReleaseLocks(dragState.groupIds || [dragState.id]);
-    commitDraggedNodeElementPositions(dragState);
+    localAssetSidebar.setDropActive(false);
+    collabReleaseLocks(state.groupIds || [state.id]);
+    commitDraggedNodeElementPositions(state);
     dragState = null;
     document.body.classList.remove('smart-node-drag');
-    if(!moved) return;
     clearCanvasAlignmentGuides();
-    scheduleLinkPortProximityRefresh();
-    if(stateChanged) scheduleSave();
-    scheduleConnectionLayerRefresh();
-    flushInteractionMinimap();
+    if(redraw) render();
+    if(changed) scheduleSave();
+    if(state.moved || state.thumbDetached){
+        scheduleLinkPortProximityRefresh();
+        scheduleConnectionLayerRefresh();
+        flushInteractionMinimap();
+    }
+}
+function dropSmartNode(event){
+    const state = dragState;
+    if(!state) return;
+    if(state.buttonMask === 2 ? event.button !== 2 : event.button !== 0) return;
+    positionSmartNodeDrag(event);
+    if(!state.moved){ finishSmartNodeDrag(false); return; }
+    const hit = document.elementFromPoint(event.clientX, event.clientY);
+    const overLibrary = Boolean(assetLibraryOpen && hit && assetPanel?.contains(hit));
+    const resolved = smartNodeDrop.resolve(state, screenToWorld(event), overLibrary);
+    let action;
+    try {
+        action = smartNodeDrop.apply(resolved);
+    } catch(error) {
+        toast(error.message || '节点拖放失败');
+        finishSmartNodeDrag(Boolean(state.thumbDetached || smartNodeDrop.moved(state)), true);
+        return;
+    }
+    if(action?.type === 'library'){
+        if(state.thumbDetached && pendingUndoSnapshot){
+            const original = pendingUndoSnapshot;
+            nodes = original.nodes;
+            canvas.connections = original.connections;
+            selectedId = original.selectedId;
+            selectedIds = original.selectedIds;
+            selectedImage = original.selectedImage;
+        } else {
+            smartNodeDrop.restore(state);
+        }
+        suppressNodeClickUntil = Date.now() + 180;
+        finishSmartNodeDrag(false, true);
+        return;
+    }
+    if(action?.type === 'connect'){
+        if(action.restore) smartNodeDrop.restore(state);
+        if(selectedId === resolved.source.id) selectedId = '';
+    }
+    const changed = Boolean(action || state.thumbDetached || smartNodeDrop.moved(state));
+    finishSmartNodeDrag(changed, Boolean(action));
 }
 window.onmouseup = e => {
     document.body.classList.remove('smart-node-drag');
     document.body.classList.remove('smart-node-resize');
-    if(connectionEraseState){
-        endConnectionErase({commit:true});
-        return;
-    }
-    if((e.button === 2 || e.button === 1) && connectionEraseModifierActive(e)){
+    if(smartConnectionEraser.finish(e)) return;
+    if((e.button === 2 || e.button === 1) && smartConnectionEraser.modifier(e)){
         e.preventDefault();
         return;
     }
@@ -35527,20 +27036,6 @@ window.onmouseup = e => {
     }
     if(promptResizeState){ promptResizeState = null; scheduleSave(); }
     if(selectionState) finishSelection(e);
-    if(previewCompareDrag) previewCompareDrag = false;
-    if(panoramaState.drag){
-        panoramaState.drag = null;
-        document.getElementById('previewStage')?.classList.remove('panning');
-    }
-    if(previewPanDrag){
-        previewPanDrag = null;
-        document.getElementById('previewStage')?.classList.remove('panning');
-    }
-    if(imageEditPanDrag) imageEditPanDrag = null;
-    if(cropDrag){
-        document.getElementById('cropCanvas')?.classList.remove('dragging-image');
-        cropDrag = null;
-    }
     if(resizeState?.selection){
         const state = resizeState;
         resizeState = null;
@@ -35578,34 +27073,8 @@ window.onmouseup = e => {
         collabReleaseLocks([resizeNodeId]);
         scheduleSave();
     }
-    if(llmInstructionResizeState){
-        const resizeNodeId = llmInstructionResizeState.id;
-        const node = nodes.find(n => n.id === llmInstructionResizeState.id);
-        const changed = node && promptLlmInstructionHeight(node) !== llmInstructionResizeState.startH;
-        document.body.classList.remove('smart-node-resize', 'smart-llm-instr-resize');
-        if(changed) commitPendingUndo(); else discardPendingUndo();
-        llmInstructionResizeState = null;
-        collabReleaseLocks([resizeNodeId]);
-        render();
-        scheduleSave();
-    }
-    if(thumbDragState){
-        const state = thumbDragState;
-        const source = nodes.find(node => node.id === state.nodeId);
-        const changed = state.ghost && updateGroupThumbSort(state, e) && source?.images?.[state.imgIndex] && Number.isInteger(state.sortIndex) && state.sortIndex !== state.imgIndex;
-        if(changed){
-            const [image] = source.images.splice(state.imgIndex, 1);
-            source.images.splice(state.sortIndex, 0, image);
-            selectedImage = {nodeId:source.id, index:state.sortIndex};
-            clearImageClickTimer();
-            suppressImageClickUntil = Date.now() + 260;
-            suppressNodeClickUntil = Date.now() + 260;
-            commitPendingUndo();
-        } else if(!state.detached) discardPendingUndo();
-        clearGroupThumbSort(state);
-        thumbDragState = null;
-        if(changed){ render(); scheduleSave(); }
-    }
+    promptNodeView.finishResize();
+    smartThumbnailDrag.release(e);
     if(panState) {
         // In Electron/trackpad event sequences mousemove can be coalesced or
         // delivered outside window. Derive the gesture from mouseup as a final
@@ -35637,126 +27106,7 @@ window.onmouseup = e => {
         smartMinimapDrag = false;
         scheduleCanvasViewportRender();
     }
-    if(dragState){
-        if(!(dragState.buttonMask === 2 ? e.button === 2 : e.button === 0)) return;
-        if(!dragState.moved){ finishSmartNodeDrag(false); return; }
-        const draggedNode = nodes.find(n => n.id === dragState.id);
-        let stateChanged = false;
-        const hit = document.elementFromPoint(e.clientX, e.clientY);
-        const droppedOnAssetPanel = assetLibraryOpen && hit && assetPanel?.contains(hit);
-        if(droppedOnAssetPanel && draggedNode && (draggedNode.images || []).length){
-            const imagesToSave = (draggedNode.images || []).filter(img => img?.url);
-            if(imagesToSave.length){
-                const entries = imagesToSave.map(img => ({url:img.url, name:img.name || draggedNode.title || 'image'}));
-                const save = assetLibraryIsLocal()
-                    ? addUrlItemsToLocalAssetLibrary(entries)
-                    : Promise.all(entries.map(item => addUrlToAssetLibrary(item.url, item.name)));
-                save.catch(error => toast(error.message || tr('smart.assetAddFail')));
-            }
-            if(dragState.thumbDetached && pendingUndoSnapshot){
-                const original = pendingUndoSnapshot;
-                nodes = original.nodes;
-                canvas.connections = original.connections;
-                selectedId = original.selectedId;
-                selectedIds = original.selectedIds;
-                selectedImage = original.selectedImage;
-            } else {
-                restoreDraggedNodePosition();
-                commitDraggedNodeElementPositions(dragState);
-            }
-            setAssetDragOver(false);
-            discardPendingUndo();
-            clearDropHighlight();
-            collabReleaseLocks(dragState.groupIds || [dragState.id]);
-            dragState = null;
-            clearCanvasAlignmentGuides();
-            document.body.classList.remove('smart-node-drag');
-            render();
-            suppressNodeClickUntil = Date.now() + 180;
-            return;
-        }
-        const autoTarget = draggedNode && dragState.ctrlGroup ? dragConnectTargetFor(draggedNode, screenToWorld(e)) : null;
-        const insertHit = draggedNode?.type === 'smart-loop' && dragState.ctrlGroup && (dragState.group || []).length <= 1
-            ? insertionConnectionForNode(draggedNode)
-            : null;
-        const draggedRect = draggedNode ? nodeRect(draggedNode) : null;
-        const groupTarget = draggedNode && (draggedNode.images || []).length && (dragState.group || []).length <= 1 && draggedRect
-            ? rectOverlapNode(draggedNode.id, draggedRect.x, draggedRect.y, draggedRect.width, draggedRect.height, dragState.groupIds)
-            : null;
-        // 拖入分组：单个节点、多选（批量拖入）或整个分组（其成员会并入目标分组）都允许并入主分组下的目标分组。
-        // 目标分组由主拖动节点的中心命中决定；smartGroupTargetForDraggedNode 已排除正在被拖动的节点/分组。
-        const draggedNodes = (dragState.group || []).map(item => nodes.find(n => n.id === item.id))
-            .filter(node => node && !dragState.groupRoots?.has(smartGroupContainingNode(node.id)?.id));
-        const smartGroupTarget = draggedNode ? smartGroupTargetForDraggedNode(draggedNode) : null;
-        const returnGroupTarget = draggedNode ? detachedImageReturnTarget(draggedNode) : null;
-        if(
-            insertHit &&
-            insertLoopNodeIntoConnection(draggedNode, insertHit)
-        ){
-            stateChanged = true;
-            render();
-        } else if(
-            returnGroupTarget &&
-            !isSmartGroupNode(returnGroupTarget) &&
-            mergeImageNodesIntoGroup(draggedNode.id, returnGroupTarget.id)
-        ){
-            stateChanged = true;
-            render();
-        } else if(
-            smartGroupTarget &&
-            addDraggedNodesToSmartGroup(draggedNodes.length ? draggedNodes : [draggedNode], smartGroupTarget)
-        ){
-            stateChanged = true;
-            render();
-        } else if(
-            groupTarget &&
-            dragState.ctrlGroup &&
-            (groupTarget.images || []).length > 1 &&
-            mergeImageNodesIntoGroup(draggedNode.id, groupTarget.id)
-        ){
-            stateChanged = true;
-            render();
-        } else if(
-            draggedNode &&
-            autoTarget &&
-            dragState.ctrlGroup &&
-            (dragState.group || []).length <= 1 &&
-            canAutoConnectDraggedNode(draggedNode, autoTarget) &&
-            connectInputNode(draggedNode.id, autoTarget.id)
-        ){
-            stateChanged = true;
-            restoreDraggedNodePosition();
-            if(selectedId === draggedNode.id) selectedId = '';
-            render();
-        } else if(draggedNode && (draggedNode.images || []).length && (dragState.group || []).length <= 1){
-            const r = nodeRect(draggedNode);
-            const target = rectOverlapNode(draggedNode.id, r.x, r.y, r.width, r.height, dragState.groupIds);
-            if(target && isSmartGroupNode(target)){
-                if((dragState.group || []).some(item => {
-                    const n = nodes.find(x => x.id === item.id);
-                    return n && (Math.abs((Number(n.x) || 0) - item.ox) > 1 || Math.abs((Number(n.y) || 0) - item.oy) > 1);
-                })) stateChanged = true;
-            } else if(target && dragState.ctrlGroup && !isSmartGroupNode(target) && canAutoConnectDraggedNode(draggedNode, target)){
-                stateChanged = true;
-                connectInputNode(draggedNode.id, target.id);
-                if(!dragState.thumbDetached) restoreDraggedNodePosition();
-                if(selectedId === draggedNode.id) selectedId = '';
-                render();
-            } else if((dragState.group || []).some(item => {
-                const n = nodes.find(x => x.id === item.id);
-                return n && (Math.abs((Number(n.x) || 0) - item.ox) > 1 || Math.abs((Number(n.y) || 0) - item.oy) > 1);
-            })){
-                stateChanged = true;
-            }
-        } else if((dragState.group || []).some(item => {
-            const n = nodes.find(x => x.id === item.id);
-            return n && (Math.abs((Number(n.x) || 0) - item.ox) > 1 || Math.abs((Number(n.y) || 0) - item.oy) > 1);
-        }) || (draggedNode && (Math.abs((draggedNode.x || 0) - dragState.ox) > 1 || Math.abs((draggedNode.y || 0) - dragState.oy) > 1))){
-            stateChanged = true;
-        }
-        if(dragState.thumbDetached) stateChanged = true;
-        finishSmartNodeDrag(stateChanged);
-    }
+    if(dragState) dropSmartNode(e);
 };
 function composerWheelNeedsInternalScroll(target){
     if(!target?.closest?.('.composer')) return false;
@@ -35779,20 +27129,22 @@ shell.addEventListener('wheel', e => {
     if((target?.closest?.('.canvas-agent-panel,.canvas-agent-toggle,.canvas-collab-status,.canvas-collab-panel,.agent-smart-node,.smart-back,.image-edit-modal,.asset-panel,.asset-toggle,.smart-log-toggle,.smart-shortcut-toggle,.smart-workflow-toggle,.workflow-transfer-panel,.log-modal,.shortcut-modal,.prompt-optimize-modal,.prompt-node-llm,.smart-group-list'))
         ||(agentPanelEl&&target&&agentPanelEl.contains(target))) return;
     if(composerWheelNeedsInternalScroll(e.target)) return;
+    const uploadGrid = target?.closest?.('.upload-node .result-image-grid');
+    if(!e.ctrlKey && !e.metaKey && e.deltaY && uploadGrid && uploadGrid.scrollHeight > uploadGrid.clientHeight) return;
     e.preventDefault();
     // 触控板/高刷新率鼠标会在一帧内派发多次 wheel；合并后只更新一次矩阵。
     beginViewportInteraction();
     queueViewportWheel(e);
 }, {passive:false});
 shell.ondragover = e => {
-    setSmartDropCopyEffect(e, true);
+    setSmartDropCopyEffect(e);
     if(isCanvasDropSurfaceTarget(e.target)) clearMediaDropHighlight();
 };
 shell.ondragleave = e => {
     if(!shell.contains(e.relatedTarget)){
         shell.classList.remove('smart-drop-active');
         clearMediaDropHighlight();
-        setAssetDragOver(false);
+        localAssetSidebar.setDropActive(false);
     }
 };
 shell.ondrop = async e => {
@@ -35800,21 +27152,7 @@ shell.ondrop = async e => {
     shell.classList.remove('smart-drop-active');
     clearMediaDropHighlight();
     if(e.target.closest('.image-node')) return;
-    const p = screenToWorld(e);
-    const assetRaw = e.dataTransfer.getData('application/x-smart-asset');
-    if(assetRaw){
-        try {
-            const asset = JSON.parse(assetRaw);
-            if(asset?.url) {
-                pushUndo();
-                createImageNodeAt(p, [assetNodeImageFromItem(asset)], {skipUndo:true});
-            }
-            return;
-        } catch {}
-    }
-    const payload = await resolveSmartImageDropPayload(e.dataTransfer);
-    if(payload.type === 'none') return;
-    await handleSmartImageDropPayload(payload, '', {point:p, forceNew:true});
+    await importSmartDrop(e.dataTransfer, '', {point:screenToWorld(e), forceNew:true});
 };
 window.addEventListener('paste', e => {
     // 图片编辑器打开时，粘贴是编辑器内部输入框的事，不能往被遮住的画布上贴节点或图片。
@@ -35866,22 +27204,20 @@ window.addEventListener('keydown', handleCanvasRemoveKey, true);
 function applySmartKeyEffect(event, effect){
     if(effect.prevent) event.preventDefault();
     if(effect.type === 'clear-thumb'){
-        clearGroupThumbSort(thumbDragState);
-        thumbDragState = null;
-        discardPendingUndo();
-        suppressImageClickUntil = Date.now() + 260;
-    } else if(effect.type === 'arm-erase') connectionEraseModifierHeld = true;
+        smartThumbnailDrag.cancel();
+        suppressSmartImageClicks();
+    } else if(effect.type === 'arm-erase') smartConnectionEraser.hold(true);
     else if(effect.type === 'arm-rotate') isRKeyDown = true;
     else if(effect.type === 'close-editor') closeImageEditor();
     else if(effect.type === 'preview-step'){
-        if(!seekPreviewVideoFrames(effect.direction)) navigatePreviewImage(effect.direction);
+        if(!smartPreview.stepVideo(effect.direction)) navigatePreviewImage(effect.direction);
     } else if(effect.type === 'toggle-assets') toggleAssetLibrary();
 }
 window.addEventListener('keydown', e => {
     const prelude = XiaomeiCanvasKeys.smartPrelude({
         key:e.key,
         editable:isEditableTarget(e.target),
-        thumbDrag:Boolean(thumbDragState),
+        thumbDrag:smartThumbnailDrag.active(),
         imageEditor:imageEditModal.classList.contains('open'),
         previewMode:imageEditMode === 'preview'
     });
@@ -35934,19 +27270,16 @@ window.addEventListener('keydown', e => {
     }).effects.forEach(effect => applySmartKeyEffect(e, effect));
 });
 window.addEventListener('keyup', e => {
-    if(e.key === 'Control' || e.key === 'Meta') connectionEraseModifierHeld = false;
+    if(e.key === 'Control' || e.key === 'Meta') smartConnectionEraser.hold(false);
     if(String(e.key || '').toLowerCase() === 'r') isRKeyDown = false;
 });
 window.addEventListener('blur', () => {
     if(dragState) finishSmartNodeDrag(Boolean(dragState.moved || dragState.thumbDetached));
-    if(thumbDragState){
-        clearGroupThumbSort(thumbDragState);
-        thumbDragState = null;
-        discardPendingUndo();
-    }
-    connectionEraseModifierHeld = false;
+    smartThumbnailDrag.cancel();
+    promptNodeView.finishResize();
+    smartConnectionEraser.hold(false);
     isRKeyDown = false;
-    if(connectionEraseState) endConnectionErase({commit:true});
+    smartConnectionEraser.finish();
     if(selectionState || selectionPointerId !== null) cancelSelectionGesture();
 });
 engineSelect.onchange = () => {
@@ -35996,7 +27329,7 @@ if(cascadeRunBtn){
     cascadeRunBtn.onclick = () => {
         ensureGenerationNotificationPermission();
         const node = selectedNode();
-        const loopId = resolveSmartCascadeLoop(node?.id)?.node?.id || '';
+        const loopId = smartRunGraph().loopFor(node?.id)?.node?.id || '';
         if(loopId && smartCascadeIsLoopRunning(loopId)) {
             requestSmartCascadeStop(loopId);
             return;
@@ -36019,12 +27352,6 @@ fileInput.onchange = () => {
 };
 if(assetToggle) assetToggle.onclick = () => toggleAssetLibrary();
 if(assetCloseBtn) assetCloseBtn.onclick = () => toggleAssetLibrary(false);
-if(smartWorkflowToggle) smartWorkflowToggle.onclick = event => {
-    event.preventDefault();
-    event.stopPropagation();
-    if(smartWorkflowTransferModal?.classList.contains('open')) closeSmartWorkflowTransferModal();
-    else openSmartWorkflowTransferModal();
-};
 smartWorkflowLibrarySearch?.addEventListener('input', event => {
     smartWorkflowLibraryQuery = event.target.value || '';
     saveSmartWorkflowLibraryPreferences();
@@ -36053,363 +27380,14 @@ smartWorkflowTransferModal?.addEventListener('click', async event => {
     }
     if(event.target.closest?.('[data-smart-workflow-manage]')){
         window.parent?.postMessage({type:'studio-switch-ui', page:'asset-manager', focus:'workflows'}, location.origin);
-        closeSmartWorkflowTransferModal();
+        smartWorkflowTransfer.close();
     }
 });
-smartWorkflowImportInput?.addEventListener('change', event => {
-    const file = event.target.files?.[0];
-    if(file) importSmartWorkflowFile(file);
-    event.target.value = '';
-});
-smartWorkflowImportDropZone?.addEventListener('click', () => smartWorkflowImportInput?.click());
-smartWorkflowImportDropZone?.addEventListener('dragenter', event => {
-    event.preventDefault();
-    event.stopPropagation();
-    smartWorkflowImportDropZone.classList.add('drag-over');
-});
-smartWorkflowImportDropZone?.addEventListener('dragover', event => {
-    event.preventDefault();
-    event.stopPropagation();
-    event.dataTransfer.dropEffect = 'copy';
-    smartWorkflowImportDropZone.classList.add('drag-over');
-});
-smartWorkflowImportDropZone?.addEventListener('dragleave', event => {
-    event.preventDefault();
-    event.stopPropagation();
-    if(!smartWorkflowImportDropZone.contains(event.relatedTarget)) smartWorkflowImportDropZone.classList.remove('drag-over');
-});
-smartWorkflowImportDropZone?.addEventListener('drop', event => {
-    event.preventDefault();
-    event.stopPropagation();
-    smartWorkflowImportDropZone.classList.remove('drag-over');
-    const file = [...(event.dataTransfer?.files || [])].find(item => /\.(json|zip)$/i.test(item.name || ''));
-    if(file) importSmartWorkflowFile(file);
-    else toast('请拖入 JSON 或 ZIP 工作流文件');
-});
-smartWorkflowTransferModal?.addEventListener('pointerdown', e => e.stopPropagation());
-smartWorkflowTransferModal?.addEventListener('mousedown', e => e.stopPropagation());
-smartWorkflowTransferModal?.addEventListener('click', e => e.stopPropagation());
-smartWorkflowTransferModal?.addEventListener('wheel', event => {
-    event.stopPropagation();
-}, {passive:true, capture:true});
-smartWorkflowTransferModal?.addEventListener('dragover', event => {
-    event.preventDefault();
-    event.stopPropagation();
-    if(smartWorkflowImportDropZone){
-        event.dataTransfer.dropEffect = 'copy';
-        smartWorkflowImportDropZone.classList.add('drag-over');
-    }
-});
-smartWorkflowTransferModal?.addEventListener('dragleave', event => {
-    event.preventDefault();
-    event.stopPropagation();
-    if(!smartWorkflowTransferModal.contains(event.relatedTarget)) smartWorkflowImportDropZone?.classList.remove('drag-over');
-});
-smartWorkflowTransferModal?.addEventListener('drop', event => {
-    event.preventDefault();
-    event.stopPropagation();
-    smartWorkflowImportDropZone?.classList.remove('drag-over');
-    const file = [...(event.dataTransfer?.files || [])].find(item => /\.(json|zip)$/i.test(item.name || ''));
-    if(file) importSmartWorkflowFile(file);
-    else toast('请拖入 JSON 或 ZIP 工作流文件');
-});
-assetPanel?.addEventListener('pointerdown', e => e.stopPropagation());
-assetPanel?.addEventListener('mousedown', e => e.stopPropagation());
-assetPanel?.addEventListener('click', e => e.stopPropagation());
-assetPanel?.addEventListener('wheel', e => {
-    e.stopPropagation();
-    // 滚动时取消待显示的悬浮预览并隐藏，避免滚动中加载大图卡顿。
-    clearTimeout(assetHoverTimer);
-    hideAssetHoverPreview();
-    const scroller = e.target.closest?.('.asset-grid') || assetGrid;
-    if(!scroller || getComputedStyle(scroller).display === 'none') return;
-    const canScroll = scroller.scrollHeight > scroller.clientHeight || scroller.scrollWidth > scroller.clientWidth;
-    if(!canScroll) return;
-    e.preventDefault();
-    scroller.scrollTop += e.deltaY;
-    scroller.scrollLeft += e.deltaX;
-}, {passive:false, capture:true});
-assetDialogBackdrop?.addEventListener('pointerdown', e => e.stopPropagation());
-assetDialogBackdrop?.addEventListener('mousedown', e => e.stopPropagation());
-assetDialogBackdrop?.addEventListener('click', e => e.stopPropagation());
-promptPresetPanel?.addEventListener('pointerdown', e => e.stopPropagation());
-promptPresetPanel?.addEventListener('mousedown', e => e.stopPropagation());
-promptPresetPanel?.addEventListener('click', e => e.stopPropagation());
-promptTemplatePanel?.addEventListener('pointerdown', e => e.stopPropagation());
-promptTemplatePanel?.addEventListener('mousedown', e => e.stopPropagation());
-promptTemplatePanel?.addEventListener('wheel', e => e.stopPropagation(), {passive:false});
-promptTemplatePanel?.addEventListener('click', e => {
-    e.stopPropagation();
-    const apply = e.target.closest('[data-template-apply]');
-    if(apply){ applyPromptTemplateToNode(apply.dataset.templateApply || 'positive'); return; }
-    if(e.target.closest('[data-template-save-current]')){ saveCurrentPromptAsTemplate(); return; }
-    if(e.target.closest('[data-template-new]')){ createBlankPromptTemplate(); return; }
-    if(e.target.closest('[data-template-edit]')) { promptTemplateEditing = true; renderPromptTemplatePanel(); return; }
-    if(e.target.closest('[data-template-edit-cancel]')) { promptTemplateEditing = false; renderPromptTemplatePanel(); return; }
-    if(e.target.closest('[data-template-edit-save]')){ savePromptTemplateEdit(); return; }
-    if(e.target.closest('[data-template-delete]')){ deletePromptTemplate(); return; }
-    const cat = e.target.closest('[data-template-cat]');
-    if(cat){
-        promptTemplateCategory = cat.dataset.templateCat || 'all';
-        promptTemplateSelectedId = '';
-        promptTemplateEditing = false;
-        renderPromptTemplatePanel({preserveScroll:false});
-        return;
-    }
-    const catEdit = e.target.closest('[data-template-cat-edit]');
-    if(catEdit){
-        const id = catEdit.dataset.templateCatEdit || '';
-        renamePromptTemplateGroup(id);
-        return;
-    }
-    const catDelete = e.target.closest('[data-template-cat-delete]');
-    if(catDelete){
-        deletePromptTemplateGroup(catDelete.dataset.templateCatDelete || '');
-        return;
-    }
-    if(e.target.closest('[data-template-group-edit]')){
-        promptTemplateGroupEditMode = !promptTemplateGroupEditMode;
-        renderPromptTemplatePanel({preserveScroll:false});
-        return;
-    }
-    if(e.target.closest('[data-template-cat-new]')) { createPromptTemplateGroup(); return; }
-    const card = e.target.closest('[data-template-id]');
-    if(card){
-        promptTemplateSelectedId = card.dataset.templateId || '';
-        promptTemplateEditing = false;
-        renderPromptTemplatePanel();
-        return;
-    }
-});
-if(promptPresetClose) promptPresetClose.onclick = closePromptPresetPanel;
-if(promptTemplateClose) promptTemplateClose.onclick = closePromptTemplatePanel;
-if(promptTemplateSearch) promptTemplateSearch.oninput = () => renderPromptTemplatePanel({preserveScroll:false});
-if(promptTemplateLibrarySelect) promptTemplateLibrarySelect.onchange = async () => {
-    activePromptLibraryId = promptTemplateLibrarySelect.value || 'system';
-    promptTemplateSelectedId = '';
-    // 切换词库必须重置分类筛选，否则上一个库的分类（如系统的“视角”）会把新库内容过滤为空。
-    promptTemplateCategory = 'all';
-    promptTemplateEditing = false;
-    // 拉取最新数据，确保素材库管理里新建/新增的词库与提示词在画布即时可见。
-    const want = activePromptLibraryId;
-    try { await loadPromptTemplates(); } catch(e){}
-    if(promptLibraries.some(lib => lib.id === want)) activePromptLibraryId = want;
-    renderPromptLibrarySelect();
-    renderPromptTemplatePanel({preserveScroll:false});
-};
-if(composerTemplateBtn) composerTemplateBtn.onclick = event => {
-    event.preventDefault();
-    event.stopPropagation();
-    if(promptTemplatePanel?.classList?.contains('open') && promptTemplatePanel.dataset.target === 'composer'){
-        closePromptTemplatePanel();
-        return;
-    }
-    openPromptTemplatePanel(activeComposerNode()?.id || selectedNode()?.id || '', promptTemplateSelectedId, {target:'composer'});
-};
 if(composerFindBtn) composerFindBtn.onclick = event => {
     event.preventDefault();
     event.stopPropagation();
     toggleComposerFind();
 };
-if(promptPresetSelect) promptPresetSelect.onchange = () => renderPromptPresetPanel(promptPresetSelect.value);
-[promptPresetName, promptPresetText].forEach(input => {
-    input?.addEventListener('input', () => {
-        resetPromptPresetDeleteState();
-        setPromptPresetStatus(tr('smart.promptPresetEditing'));
-    });
-});
-if(promptPresetApply) promptPresetApply.onclick = () => {
-    const preset = currentPromptPreset(promptPresetSelect.value);
-    const node = promptPresetPanelNode();
-    if(!preset || !node) return;
-    node.promptPresetId = preset.id;
-    node.text = preset.text || '';
-    closePromptPresetPanel();
-    render();
-    scheduleSave();
-};
-if(promptPresetSave) promptPresetSave.onclick = () => {
-    const preset = currentPromptPreset(promptPresetSelect.value);
-    if(!preset) return;
-    const name = promptPresetName.value.trim();
-    const text = promptPresetText.value.trim();
-    if(!name || !text){ setPromptPresetStatus(tr('smart.promptPresetRequired'), 'warn'); return; }
-    const idx = promptPresets.findIndex(p => p.id === preset.id);
-    if(idx >= 0) promptPresets[idx] = {...promptPresets[idx], name, text, updatedAt:Date.now()};
-    savePromptPresets();
-    const node = promptPresetPanelNode();
-    if(node?.promptPresetId === preset.id) node.text = text;
-    renderPromptPresetPanel(preset.id, tr('smart.promptPresetSaved'));
-    setPromptPresetStatus(tr('smart.promptPresetSaved'), 'ok');
-    render();
-    scheduleSave();
-};
-if(promptPresetNew) promptPresetNew.onclick = () => {
-    const node = promptPresetPanelNode();
-    const preset = createPromptPresetFromNode(node, {openPanel:false});
-    if(!preset) return;
-    renderPromptPresetPanel(preset.id, tr('smart.promptPresetSavedNew'));
-    setPromptPresetStatus(tr('smart.promptPresetSavedNew'), 'ok');
-    promptPresetName?.focus();
-    promptPresetName?.select();
-};
-if(promptPresetDelete) promptPresetDelete.onclick = () => {
-    const preset = currentPromptPreset(promptPresetSelect.value);
-    if(!preset) return;
-    if(!promptPresetDeleteArmed){
-        promptPresetDeleteArmed = true;
-        promptPresetDelete.textContent = tr('smart.promptPresetDeleteAgain');
-        promptPresetDelete.classList.add('confirm-danger');
-        setPromptPresetStatus(tr('smart.promptPresetDeleteConfirm').replace('{name}', preset.name || tr('smart.promptPresetUnnamed')), 'warn');
-        return;
-    }
-    promptPresets = promptPresets.filter(p => p.id !== preset.id);
-    nodes.forEach(node => { if(node.promptPresetId === preset.id) node.promptPresetId = ''; });
-    savePromptPresets();
-    renderPromptPresetPanel(promptPresets[0]?.id || '', tr('smart.promptPresetDeleted'));
-    setPromptPresetStatus(tr('smart.promptPresetDeleted'), 'ok');
-    render();
-    scheduleSave();
-};
-document.querySelectorAll('[data-asset-tab]').forEach(btn => {
-    btn.onclick = () => {
-        assetTab = btn.dataset.assetTab;
-        if(assetTab === 'workflow' && assetLibraryIsLocal()){
-            activeAssetLibraryId = assetLibrary.active_library_id || assetLibraries()[0]?.id || '';
-        }
-        renderAssetLibrary();
-    };
-});
-if(assetAddUrlBtn) assetAddUrlBtn.onclick = () => addUrlToUrlAssetLibrary();
-if(assetLibrarySelect) assetLibrarySelect.onchange = () => {
-    activeAssetLibraryId = assetLibrarySelect.value || '';
-    activeAssetCategoryId = '';
-    activeWorkflowAssetCategoryId = '';
-    mentionAssetCategoryId = '';
-    if(activeAssetLibraryId === LOCAL_ASSET_LIBRARY_ID) assetTab = 'image';
-    renderAssetLibrary();
-};
-if(assetCategorySelect) assetCategorySelect.onchange = () => {
-    if(assetTab === 'workflow') activeWorkflowAssetCategoryId = assetCategorySelect.value;
-    else activeAssetCategoryId = assetCategorySelect.value;
-    renderAssetLibrary();
-};
-if(assetAddCategoryBtn) assetAddCategoryBtn.onclick = async () => {
-    const workflowMode = currentAssetTabIsWorkflow();
-    const fallbackName = workflowMode ? '工作流' : tr('smart.assetFolder');
-    const name = await openAssetNameDialog({title:tr('smart.assetNewFolder'), value:fallbackName, placeholder:fallbackName});
-    if(!name) return;
-    if(assetLibraryIsLocal()){
-        const data = await fetch('/api/local-assets/folders', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({parent:localAssetFolderPath(), name})
-        }).then(async r => {
-            if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || '新建文件夹失败');
-            return r.json();
-        });
-        setLocalAssetLibraryFromResponse(data);
-        activeAssetCategoryId = data.folder?.path || activeAssetCategoryId;
-        renderAssetLibrary();
-        return;
-    }
-    const data = await fetch('/api/asset-library/categories', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({library_id:activeAssetLibraryId, name, type:workflowMode ? 'workflow' : 'image'})}).then(r => r.json());
-    setActiveAssetTabCategory(data.category?.id || '');
-    setAssetLibraryFromResponse(data);
-};
-if(assetRenameCategoryBtn) assetRenameCategoryBtn.onclick = async () => {
-    const cat = activeAssetTabCategory();
-    if(!cat) return;
-    const name = await openAssetNameDialog({title:tr('smart.assetRenameFolder'), value:cat.name || '', placeholder:currentAssetTabIsWorkflow() ? '工作流' : tr('smart.assetFolder')});
-    if(!name) return;
-    if(assetLibraryIsLocal()){
-        const data = await fetch('/api/local-assets/folders', {
-            method:'PATCH',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({path:cat.id || '', name})
-        }).then(async r => {
-            if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || '重命名文件夹失败');
-            return r.json();
-        });
-        setLocalAssetLibraryFromResponse(data);
-        activeAssetCategoryId = data.folder?.path || activeAssetCategoryId;
-        renderAssetLibrary();
-        return;
-    }
-    const data = await fetch(`/api/asset-library/categories/${encodeURIComponent(cat.id)}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name})}).then(r => r.json());
-    setAssetLibraryFromResponse(data);
-};
-function hasCanvasImageDrag(event){
-    return Array.from(event.dataTransfer?.types || []).includes('application/x-smart-canvas-image');
-}
-function setAssetDragOver(active){
-    if(!assetDropZone || !assetPanel) return;
-    assetDropZone.classList.toggle('drag-over', !!active);
-    assetPanel.classList.toggle('drag-over', !!active);
-    if(active){
-        shell?.classList.remove('smart-drop-active');
-        clearMediaDropHighlight();
-    }
-}
-function handleAssetPanelDragOver(e){
-    if(hasCanvasImageDrag(e) || hasSmartImageDropData(e.dataTransfer)){
-        e.preventDefault();
-        e.stopPropagation();
-        e.dataTransfer.dropEffect = 'copy';
-        setAssetDragOver(true);
-    }
-}
-async function handleAssetPanelDrop(e){
-    if(!hasCanvasImageDrag(e) && !hasSmartImageDropData(e.dataTransfer)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setAssetDragOver(false);
-    const raw = e.dataTransfer.getData('application/x-smart-canvas-image');
-    if(raw){
-        try {
-            const payload = JSON.parse(raw);
-            if(payload?.url) await addUrlToAssetLibrary(payload.url, payload.name || '');
-            return;
-        } catch(e) {
-            toast(tr('smart.assetAddFail'));
-            return;
-        }
-    }
-    try {
-        const payload = await resolveSmartImageDropPayload(e.dataTransfer);
-        if(payload.type === 'files') {
-            if(assetLibraryIsLocal()) await addFilesToLocalAssetLibrary(payload.files);
-            else {
-                const uploaded = await uploadFiles(payload.files);
-                for(const file of uploaded) if(file?.url) await addUrlToAssetLibrary(file.url, file.name || '');
-            }
-        } else if(payload.type === 'localPaths') {
-            if(assetLibraryIsLocal()) await addLocalPathsToLocalAssetLibrary(payload.localPaths);
-            else {
-                const imported = await importSmartLocalImages(payload.localPaths);
-                for(const file of imported) if(file?.url) await addUrlToAssetLibrary(file.url, file.name || '');
-            }
-        } else if(payload.type === 'url') {
-            await addUrlToAssetLibrary(payload.url, smartImageNameFromUrl(payload.url));
-        }
-    } catch(err) {
-        toast(err.message || tr('smart.assetAddFail'));
-    }
-}
-assetDropZone?.addEventListener('dragover', e => {
-    if(hasCanvasImageDrag(e) || hasSmartImageDropData(e.dataTransfer)){
-        e.preventDefault();
-        e.stopPropagation();
-        setAssetDragOver(true);
-    }
-});
-assetDropZone?.addEventListener('dragleave', e => {
-    if(!assetDropZone?.contains(e.relatedTarget)) setAssetDragOver(false);
-});
-assetDropZone?.addEventListener('drop', handleAssetPanelDrop);
-assetPanel?.addEventListener('dragover', handleAssetPanelDragOver);
-assetPanel?.addEventListener('dragleave', e => { if(!assetPanel?.contains(e.relatedTarget)) setAssetDragOver(false); });
-assetPanel?.addEventListener('drop', handleAssetPanelDrop);
 createMenu?.addEventListener('mousedown', event => event.stopPropagation());
 createMenu?.addEventListener('click', event => {
     event.stopPropagation();
@@ -36431,7 +27409,7 @@ composer.addEventListener('click', event => {
     if(!event.target.closest('.smart-control') && !event.target.closest('#runBtn') && !event.target.closest('#cascadeRunBtn')) closeAllSmartPopovers();
     event.stopPropagation();
 });
-promptInput.addEventListener('input', maybeOpenMentionPicker);
+promptInput.addEventListener('input', promptMentionMenu.update);
 promptInput.addEventListener('input', () => {
     delete promptInput.dataset.preserveDraftOnce;
     savePromptDraftForCurrent();
@@ -36439,11 +27417,12 @@ promptInput.addEventListener('input', () => {
     renderInputThumbsRow(selectedNode());
     scheduleSave();
 });
-promptInput.addEventListener('keyup', maybeOpenMentionPicker);
+promptInput.addEventListener('keyup', promptMentionMenu.update);
 promptInput.addEventListener('mouseup', saveMentionRange);
 promptInput.addEventListener('focus', saveMentionRange);
-promptInput.addEventListener('blur', () => {
-    if(composerPromptPointerDown) return;
+promptInput.addEventListener('blur', event => {
+    if(composerPromptPointerDown || promptMentionMenu.contains(event.relatedTarget)) return;
+    closeMentionPicker();
     collapseComposerPromptAfterEditing();
 });
 promptInput.addEventListener('paste', event => {
@@ -36455,80 +27434,13 @@ promptInput.addEventListener('paste', event => {
     event.stopPropagation();
     insertPlainTextIntoPrompt(text);
 });
-// 图片/视频胶囊(.mention-image-token)是 contenteditable=false 的内联原子块。光标一旦被浏览器
-// 放进这块不可编辑区域，退格/Delete/方向键就全部失灵——用户看到的就是"点一下胶囊，删不掉也走不出去"。
-// 这里统一收口：点胶囊只把光标吸附到它的前后，按键时把整颗胶囊当成一个字符删掉。
-function mentionTokenOf(node){
-    if(!node) return null;
-    const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
-    return el?.closest?.('.mention-image-token') || null;
-}
-function promptCaretRange(){
-    const sel = window.getSelection();
-    if(!sel || !sel.rangeCount) return null;
-    const range = sel.getRangeAt(0);
-    return promptInput.contains(range.startContainer) ? range : null;
-}
-function setCaretBesideToken(token, side){
-    if(!token?.isConnected) return;
-    const range = document.createRange();
-    const next = token.nextSibling;
-    if(side === 'before') range.setStartBefore(token);
-    else if(next && next.nodeType === Node.TEXT_NODE && next.textContent) range.setStart(next, 0);
-    else range.setStartAfter(token);
-    range.collapse(true);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-}
-function removeMentionToken(token){
-    if(!token?.isConnected) return false;
-    const parent = token.parentNode;
-    const next = token.nextSibling;
-    token.remove();
-    const range = document.createRange();
-    if(next && next.parentNode === parent) range.setStart(next, 0);
-    else {
-        range.selectNodeContents(parent || promptInput);
-        range.collapse(false);
-    }
-    range.collapse(true);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-    promptInput.dispatchEvent(new Event('input', {bubbles:true}));
-    return true;
-}
-promptInput.addEventListener('mousedown', event => {
-    const token = mentionTokenOf(event.target);
-    if(!token || promptInput.dataset.promptLocked === '1') return;
-    // 不拦下来，浏览器会把光标塞进不可编辑区域，之后就只剩"删不掉"这一种结局。
-    event.preventDefault();
-    if(document.activeElement !== promptInput) promptInput.focus();
-    const rect = token.getBoundingClientRect();
-    setCaretBesideToken(token, event.clientX < rect.left + rect.width / 2 ? 'before' : 'after');
-});
 promptInput.addEventListener('keydown', event => {
     if(event.key === 'Escape'){
         closeMentionPicker();
         if(composerFindState) closeComposerFind();
     }
     if(event.isComposing || event.altKey || event.shiftKey) return;
-    // 光标万一仍在胶囊内部（双击、拖选、恢复草稿），退格/Delete 直接删掉整颗胶囊。
-    const caret = promptInput.dataset.promptLocked === '1' ? null : promptCaretRange();
-    const tokenAtCaret = caret && caret.collapsed ? mentionTokenOf(caret.startContainer) : null;
-    if(tokenAtCaret){
-        if(event.key === 'Backspace' || event.key === 'Delete'){
-            event.preventDefault();
-            removeMentionToken(tokenAtCaret);
-            return;
-        }
-        if(event.key === 'ArrowLeft' || event.key === 'ArrowRight'){
-            event.preventDefault();
-            setCaretBesideToken(tokenAtCaret, event.key === 'ArrowLeft' ? 'before' : 'after');
-            return;
-        }
-    }
+    if(promptContent.handleKey(event)) return;
     if((event.ctrlKey || event.metaKey) && event.key === 'Enter'){
         event.preventDefault();
         event.stopPropagation();
@@ -36630,7 +27542,6 @@ promptInput.addEventListener('mouseout', event => {
         media?.load?.();
     }
 });
-mentionPicker.addEventListener('mousedown', event => event.stopPropagation());
 document.addEventListener('click', event => {
     const state = smartNodeSettingsPanelState;
     if(state && !state.panel.contains(event.target) && !state.button.contains(event.target)
@@ -36641,9 +27552,7 @@ document.addEventListener('click', event => {
 document.addEventListener('click', event => {
     if(smartNodeTransformSession && !event.target.closest('.smart-node-transform-menu')) closeSmartNodeTransform();
     if(!event.target.closest('.smart-control')) closeAllSmartPopovers();
-    if(!event.target.closest('.mention-picker') && !event.target.closest('#promptInput')) closeMentionPicker();
-    if(!event.target.closest('.prompt-preset-panel') && !event.target.closest('.prompt-preset-edit') && !event.target.closest('.prompt-preset-save')) closePromptPresetPanel();
-    if(!event.target.closest('.prompt-template-panel') && !event.target.closest('.prompt-preset-edit') && !event.target.closest('#composerTemplateBtn')) closePromptTemplatePanel();
+    if(!event.target.closest('.prompt-template-panel') && !event.target.closest('.prompt-preset-edit') && !event.target.closest('#composerTemplateBtn')) smartPromptLibrary.close();
 });
 document.addEventListener('keydown', event => {
     if(event.key === 'Escape') {
@@ -36653,49 +27562,8 @@ document.addEventListener('keydown', event => {
             return;
         }
         if(smartNodeTransformSession){ closeSmartNodeTransform(); return; }
-        closeSmartLogLightbox(); closeAllSmartPopovers(); closeCreateMenu(); closeSmartCanvasLog(); closeSmartCanvasShortcuts(); closePromptPresetPanel(); closePromptTemplatePanel();
+        closeSmartLogLightbox(); closeAllSmartPopovers(); closeCreateMenu(); closeSmartCanvasLog(); closeSmartCanvasShortcuts(); smartPromptLibrary.close();
     }
-});
-function cropDragModeFromPointer(event){
-    const explicit = event.target.closest?.('[data-crop-handle]')?.dataset?.cropHandle;
-    if(explicit) return `crop-${explicit}`;
-    if(imageEditMode !== 'crop') return 'move';
-    const box = document.getElementById('cropBox');
-    const rect = box?.getBoundingClientRect?.();
-    if(!rect) return 'move';
-    const slop = 16;
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    const nearL = x <= slop;
-    const nearR = rect.width - x <= slop;
-    const nearT = y <= slop;
-    const nearB = rect.height - y <= slop;
-    if(nearT && nearL) return 'crop-nw';
-    if(nearT && nearR) return 'crop-ne';
-    if(nearB && nearL) return 'crop-sw';
-    if(nearB && nearR) return 'crop-se';
-    if(nearT) return 'crop-n';
-    if(nearR) return 'crop-e';
-    if(nearB) return 'crop-s';
-    if(nearL) return 'crop-w';
-    return 'move';
-}
-document.getElementById('cropBox').addEventListener('mousedown', event => beginCropDrag(event, cropDragModeFromPointer(event)));
-document.querySelectorAll('[data-crop-handle]').forEach(handle => {
-    handle.addEventListener('mousedown', event => beginCropDrag(event, `crop-${handle.dataset.cropHandle || 'se'}`));
-});
-document.querySelectorAll('[data-crop-ratio]').forEach(btn => {
-    btn.addEventListener('click', event => {
-        event.stopPropagation();
-        setCropAspectPreset(btn.dataset.cropRatio || 'free');
-    });
-});
-document.getElementById('outpaintFrame').addEventListener('mousedown', event => {
-    if(event.target.closest('[data-outpaint-handle]')) return;
-    beginCropDrag(event, 'image');
-});
-document.querySelectorAll('[data-outpaint-handle]').forEach(handle => {
-    handle.addEventListener('mousedown', event => beginCropDrag(event, `outpaint-${handle.dataset.outpaintHandle || 'corner'}`));
 });
 document.querySelectorAll('[data-outpaint-action]').forEach(button => {
     button.addEventListener('click', event => {
@@ -36801,11 +27669,6 @@ imageEditModal.addEventListener('click', event => {
         document.getElementById('outpaintModelBtn')?.setAttribute('aria-expanded', 'false');
     }
 });
-document.getElementById('cropImage').addEventListener('mousedown', event => {
-    if(imageEditMode !== 'outpaint' || !cropState) return;
-    document.getElementById('cropCanvas')?.classList.add('dragging-image');
-    beginCropDrag(event, 'image');
-});
 document.querySelectorAll('[data-image-edit-mode]').forEach(btn => {
     btn.addEventListener('click', event => {
         event.stopPropagation();
@@ -36827,10 +27690,7 @@ document.getElementById('outpaintResetBtn')?.addEventListener('click', () => {
 imageEditModal.addEventListener('mousedown', event => {
     event.stopPropagation();
 });
-imageEditModal.addEventListener('mousemove', event => {
-    if(previewPanDrag || previewCompareDrag || panoramaState.drag || imageEditPanDrag || cropDrag) return;
-    event.stopPropagation();
-});
+imageEditModal.addEventListener('mousemove', event => event.stopPropagation());
 imageEditModal.addEventListener('click', event => {
     event.stopPropagation();
     if(event.target === imageEditModal) closeImageEditor();
@@ -36840,7 +27700,6 @@ imageEditModal.addEventListener('wheel', event => {
 }, {passive:false});
 const previewImageContextMenu = document.getElementById('previewImageContextMenu');
 document.getElementById('previewCurrentImage')?.addEventListener('contextmenu', openPreviewImageContextMenu);
-document.getElementById('previewRetryBtn')?.addEventListener('click', retryCurrentPreviewImage);
 previewImageContextMenu?.addEventListener('pointerdown', event => event.stopPropagation());
 previewImageContextMenu?.addEventListener('mousedown', event => event.stopPropagation());
 previewImageContextMenu?.addEventListener('click', event => {
@@ -36848,7 +27707,7 @@ previewImageContextMenu?.addEventListener('click', event => {
     if(event.target.closest('#previewImageContextBackgroundRemove')) removeBackgroundFromPreviewContextMenu(event);
     if(event.target.closest('#previewImageContextRetouch')){
         closePreviewImageContextMenu();
-        const nodeId=previewNavState.nodeId,index=previewNavState.index;
+        const {nodeId, index} = smartPreview.location();
         closeImageEditor();
         void openProductRetouch(nodeId,index);
     }
@@ -36864,198 +27723,26 @@ document.addEventListener('keydown', event => {
     closePreviewImageContextMenu();
 }, true);
 window.addEventListener('blur', closePreviewImageContextMenu);
-document.getElementById('previewStage').addEventListener('mousedown', event => {
-    if(imageEditMode !== 'preview' || event.button !== 0) return;
-    if(event.target.closest('.preview-tools-overlay, .preview-download-overlay')) return;
-    if(event.target.closest('.preview-compare-handle')) return;
-    if(event.target.closest('video')) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if(panoramaState.enabled){
-        panoramaState.drag = {
-            clientX:event.clientX,
-            clientY:event.clientY,
-            yaw:panoramaState.yaw,
-            pitch:panoramaState.pitch
-        };
-        document.getElementById('previewStage')?.classList.add('panning');
-        return;
-    }
-    previewPanDrag = {clientX:event.clientX, clientY:event.clientY, startX:previewPan.x, startY:previewPan.y};
-});
-document.getElementById('imageEditStage').addEventListener('mousedown', event => {
-    if(imageEditMode === 'preview' || event.button !== 0) return;
-    if(event.target.closest('.image-edit-actions, .preview-tools-overlay, .preview-download-overlay, .crop-box, .crop-handle')) return;
-    if(event.target.closest('#editDrawCanvas, #editTextCanvas, .edit-text-inline') && imageEditMode !== 'crop') return;
-    const stage = event.currentTarget;
-    if(stage.scrollWidth <= stage.clientWidth && stage.scrollHeight <= stage.clientHeight) return;
-    event.preventDefault();
-    event.stopPropagation();
-    imageEditPanDrag = {
-        clientX:event.clientX,
-        clientY:event.clientY,
-        scrollLeft:stage.scrollLeft,
-        scrollTop:stage.scrollTop
-    };
-});
-document.getElementById('previewCompareHandle').addEventListener('mousedown', event => {
-    if(imageEditMode !== 'preview' || !previewCompareOn || previewCompareIndex < 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    previewPanDrag = null;
-    previewCompareDrag = true;
-    setPreviewComparePos(event.clientX);
-});
-document.getElementById('previewCompareHandle').addEventListener('pointerdown', event => {
-    if(imageEditMode !== 'preview' || !previewCompareOn || previewCompareIndex < 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    previewPanDrag = null;
-    previewCompareDrag = true;
-    setPreviewComparePos(event.clientX);
-});
-document.getElementById('previewCompareHandle').addEventListener('pointermove', event => {
-    if(!previewCompareDrag) return;
-    event.preventDefault();
-    event.stopPropagation();
-    setPreviewComparePos(event.clientX);
-});
-document.getElementById('previewCompareHandle').addEventListener('pointerup', event => {
-    if(previewCompareDrag){
-        event.preventDefault();
-        event.stopPropagation();
-    }
-    previewCompareDrag = false;
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-});
-document.getElementById('previewCompareHandle').addEventListener('pointercancel', event => {
-    previewCompareDrag = false;
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-});
-document.getElementById('editDrawCanvas').addEventListener('pointerdown', beginEditDraw);
-document.getElementById('editDrawCanvas').addEventListener('pointermove', moveEditDraw);
-document.getElementById('editDrawCanvas').addEventListener('pointerup', endEditDraw);
-document.getElementById('editDrawCanvas').addEventListener('pointercancel', endEditDraw);
-document.getElementById('editDrawCanvas').addEventListener('pointerleave', endEditDraw);
-document.getElementById('gridJoinCanvas')?.addEventListener('pointerdown', beginGridJoinDrag);
-document.getElementById('gridJoinCanvas')?.addEventListener('pointermove', moveGridJoinDrag);
-document.getElementById('gridJoinCanvas')?.addEventListener('pointerup', endGridJoinDrag);
-document.getElementById('gridJoinCanvas')?.addEventListener('pointercancel', endGridJoinDrag);
-document.getElementById('gridJoinCanvas')?.addEventListener('pointerleave', endGridJoinDrag);
-document.getElementById('editTextCanvas')?.addEventListener('pointerdown', beginEditText);
-document.getElementById('editTextCanvas')?.addEventListener('pointermove', moveEditText);
-document.getElementById('editTextCanvas')?.addEventListener('pointerup', endEditText);
-document.getElementById('editTextCanvas')?.addEventListener('pointercancel', endEditText);
-document.getElementById('editTextCanvas')?.addEventListener('pointerleave', endEditText);
-document.getElementById('editTextCanvas')?.addEventListener('dblclick', event => {
-    if(imageEditMode !== 'brush' || brushTool !== 'text') return;
-    event.preventDefault(); event.stopPropagation();
-    const hit = hitEditTextItem(editTextPoint(event));
-    if(hit){
-        setSelectedEditTextItem(hit.id);
-        beginEditTextInline(hit);
-    }
-});
-['paintBrushSize','paintBrushColor'].forEach(id => {
-    const control = document.getElementById(id);
-    if(!control) return;
-    control.addEventListener('input', syncSelectedEditTextStyleFromBrush);
-    control.addEventListener('change', () => { editTextDirty = false; });
-});
-['gridHorizontalLines','gridVerticalLines','gridGapSize'].forEach(id => {
-    document.getElementById(id).addEventListener('input', () => {
-        syncGridGapValue();
-        refreshGridSplitPreview();
-    });
-});
-['imageResizeScaleRange','imageResizeScaleInput'].forEach(id => {
-    document.getElementById(id)?.addEventListener('input', event => setImageResizeScale(event.target.value));
-});
-document.querySelectorAll('[data-panorama-ratio]').forEach(btn => {
-    btn.addEventListener('click', event => {
-        event.preventDefault();
-        event.stopPropagation();
-        applyPanoramaRatio(btn.dataset.panoramaRatio || 'wide');
-    });
-});
-['panoramaRatioW','panoramaRatioH'].forEach(id => {
-    document.getElementById(id)?.addEventListener('input', () => {
-        panoramaState.ratio = 'custom';
-        panoramaState.customW = Math.max(1, Math.min(999, Number(document.getElementById('panoramaRatioW')?.value || 16)));
-        panoramaState.customH = Math.max(1, Math.min(999, Number(document.getElementById('panoramaRatioH')?.value || 9)));
-        refreshPanoramaControls();
-        resizePanoramaViewer();
-    });
-});
 document.getElementById('imageEditStage').addEventListener('wheel', event => {
     if(!cropState) return;
     event.preventDefault();
     event.stopPropagation();
     if(imageEditMode === 'preview'){
-        if(seekPreviewVideoFrames(event.deltaY > 0 ? 1 : -1)) return;
-        if(panoramaState.enabled){
-            const factor = event.deltaY < 0 ? 0.92 : 1 / 0.92;
-            panoramaState.fov = Math.max(35, Math.min(100, panoramaState.fov * factor));
-            updateZoomLabel();
-            return;
-        }
-        const oldZoom = previewZoom;
-        const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
-        previewZoom = Math.max(0.05, previewZoom * factor);
-        const frame = document.getElementById('previewFrame');
-        const rect = frame?.getBoundingClientRect();
-        if(rect){
-            const originX = event.clientX - rect.left - rect.width / 2;
-            const originY = event.clientY - rect.top - rect.height / 2;
-            const ratio = previewZoom / oldZoom;
-            previewPan.x -= originX * (ratio - 1);
-            previewPan.y -= originY * (ratio - 1);
-        }
-        applyPreviewTransform();
+        if(smartPreview.stepVideo(event.deltaY > 0 ? 1 : -1)) return;
+        smartPreview.wheel(event);
         return;
     }
-    if(imageEditMode === 'grid' && gridOperationMode === 'join'){
-        const stage = event.currentTarget;
-        const oldZoom = imageEditZoom;
-        const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
-        imageEditZoom = Math.max(0.15, Math.min(6.0, imageEditZoom * factor));
-        const stageRect = stage.getBoundingClientRect();
-        const mx = event.clientX - stageRect.left;
-        const my = event.clientY - stageRect.top;
-        const contentX = stage.scrollLeft + mx;
-        const contentY = stage.scrollTop + my;
-        const scale = imageEditZoom / oldZoom;
-        refreshGridSplitPreview();
-        syncImageEditOverflow();
-        updateZoomLabel();
-        stage.scrollLeft = contentX * scale - mx;
-        stage.scrollTop = contentY * scale - my;
-        return;
-    }
-    const stage = event.currentTarget;
-    const oldZoom = imageEditZoom;
-    const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
-    imageEditZoom = Math.max(0.15, Math.min(6.0, imageEditZoom * factor));
-    const stageRect = stage.getBoundingClientRect();
-    const mx = event.clientX - stageRect.left;
-    const my = event.clientY - stageRect.top;
-    const contentX = stage.scrollLeft + mx;
-    const scale = imageEditZoom / oldZoom;
-    const contentY = stage.scrollTop + my;
-    applyImageEditZoom(scale);
-    stage.scrollLeft = contentX * scale - mx;
-    stage.scrollTop = contentY * scale - my;
+    smartImageEditor.wheel(event);
 }, {passive:false});
 window.addEventListener('resize', () => {
     syncSmartNodeSettingsPanel();
     scheduleSmartCanvasImageResolution();
     if(composer.classList.contains('open')) positionComposerForNode(selectedNode());
-    scheduleOcrPanelPosition();
+    smartOcr.schedule();
     if(cropState) syncImageEditOverflow();
-    if(panoramaState.enabled) resizePanoramaViewer();
+    if(imageEditModal.classList.contains('open') && imageEditMode === 'preview') smartPreview.syncFrame();
 });
-window.addEventListener('scroll', scheduleOcrPanelPosition, true);
+window.addEventListener('scroll', smartOcr.schedule, true);
 window.addEventListener('studio-theme-change', event => applyTheme(event.detail?.theme || 'light'));
 try {
     const apiChannel = new BroadcastChannel('studio-api');
@@ -37105,23 +27792,31 @@ window.addEventListener('message', event => {
 window.addEventListener('studio-lang-change', () => {
     renderDynamicParams();
     renderInputThumbsRow(selectedNode());
-    renderAssetLibrary();
+    localAssetSidebar.render();
     if(document.getElementById('imageEditModal')?.classList.contains('open')){
         setImageEditMode(imageEditMode);
     }
-    if(promptTemplatePanel?.classList?.contains('open')) renderPromptTemplatePanel();
+    smartPromptLibrary.render();
     render();
 });
 initializeReferencePicker();
 window.onload = async () => {
+    // X6 引擎只读灰度（?engine=x6）。整条旧启动链在这里止步：不建 DOM、不开协作
+    // socket、不恢复待执行任务、不写任何接口。回滚方式就是去掉地址里的 engine=x6。
+    if(window.SmartCanvasEngineGray?.active){
+        try {
+            await window.SmartCanvasEngineGray.boot();
+        } catch (error) {
+            console.error('[xm-gray]', error);
+        }
+        return;
+    }
     loadSmartWorkflowLibraryPreferences();
     loadCanvasViewPreferences();
     syncCanvasViewControls();
     initCollabUi();
     applyTheme(window.StudioTheme?.get?.() || 'light');
-    loadPromptPresets();
-    loadPromptTemplateGroups();
-    loadPromptTemplateOverrides();
+    smartPromptLibrary.loadLocal();
     if(window.StudioI18n) window.StudioI18n.apply();
     if(window.lucide) lucide.createIcons();
     const shareReady = await loadCanvasShareSession();
@@ -37152,7 +27847,7 @@ window.onload = async () => {
     syncApiKindToggleVisibility();
     render();
     if(!sharedCanvasMode){
-        void Promise.allSettled([loadPromptTemplates(), loadAssetLibrary(), loadPromptCaseIndex()]);
+        void Promise.allSettled([smartPromptLibrary.refresh(), loadAssetLibrary(), loadPromptCaseIndex()]);
     }
 };
 window.addEventListener('beforeunload', () => {

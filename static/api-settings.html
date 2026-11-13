@@ -11,19 +11,22 @@
             } catch(e) {}
         })();
     </script>
-    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.11.06.1784161005"></script>
-    <script src="/static/vendor/js/lucide.js?v=2026.11.06.1784161005"></script>
-    <script src="/static/vendor/js/qrcode-generator-2.0.4.js?v=2026.11.06.499162500"></script>
-    <script src="/static/vendor/js/qrcode-generator-utf8-2.0.4.js?v=2026.11.06.499162500"></script>
-    <script src="/static/js/xiaomei-shell-kernel.js?v=2026.11.09.8"></script>
-    <script src="/static/js/theme.js?v=2026.11.09.10"></script>
-    <script src="/static/js/i18n.js?v=2026.11.06.1793877008&web-search=1"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.11.06.1792900345">
-    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=2026.11.06.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=2026.11.06.1792843621">
-    <link rel="stylesheet" href="/static/css/api-settings.css?v=2026.11.06.1793877221">
-    <link rel="stylesheet" href="/static/css/api-recommendations.css?v=2026.11.06.1793842274&web-search=1">
-    <script type="module" src="/static/vendor/fluent/fluent.js?v=2026.11.06.1790178173"></script>
+    <script src="/static/vendor/js/tailwindcss-cdn.js?v=1.0.21.1784161005"></script>
+    <script src="/static/vendor/js/lucide.js?v=1.0.21.1784161005"></script>
+    <script src="/static/vendor/js/qrcode-generator-2.0.4.js?v=1.0.21.499162500"></script>
+    <script src="/static/vendor/js/qrcode-generator-utf8-2.0.4.js?v=1.0.21.499162500"></script>
+    <script src="/static/js/xiaomei-shell-kernel.js?v=1.0.21.1794542393&models=1&rh-cleanup=1"></script>
+    <script src="/static/js/theme.js?v=1.0.21.1794196667"></script>
+    <script src="/static/js/i18n.js?v=1.0.21.1794545156&web-search=1"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=1.0.21.1794192428">
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=1.0.21.1790178173">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=1.0.21.1794192428">
+    <link rel="stylesheet" href="/static/css/api-settings.css?v=1.0.21.1794542393&settings-nav=1&models=1&accounts=1&rh-cleanup=1&integrated=1">
+    <link rel="stylesheet" href="/static/css/api-settings-navigation.css?v=1.0.21.1794542393">
+    <link rel="stylesheet" href="/static/css/api-settings-models.css?v=1.0.21.1794542393">
+    <link rel="stylesheet" href="/static/css/api-settings-accounts.css?v=1.0.21.1794542393">
+    <link rel="stylesheet" href="/static/css/api-recommendations.css?v=1.0.21.1794192428&web-search=1">
+    <script type="module" src="/static/vendor/fluent/fluent.js?v=1.0.21.1790178173"></script>
 </head>
 <body>
     <div class="page">
@@ -41,7 +44,7 @@
             </header>
 
             <div class="layout">
-                <aside class="sidebar">
+                <aside class="sidebar settings-navigation">
                     <div class="side-section-title"><span data-i18n="api.providersTitle">平台列表</span><b id="providerCount" class="side-section-count" aria-hidden="true"></b></div>
                     <div id="providerList" class="provider-list"></div>
                     <button class="add-btn" type="button" onclick="addProvider()"><i data-lucide="plus" class="w-4 h-4"></i><span data-i18n="api.addProvider">新增平台</span></button>
@@ -69,7 +72,6 @@
                         </div>
                     </div>
 
-                    <section id="providerOnboardingCard" class="provider-onboarding-card" hidden></section>
 
                     <section class="block">
                         <div class="block-head">
@@ -105,24 +107,23 @@
                                             <div class="key-profile-title" data-i18n="api.savedKeyProfiles">已保存账号</div>
                                             <div id="keyProfileHint" class="key-profile-status" aria-live="polite"></div>
                                         </div>
-                                        <button id="keyProfileAddBtn" class="ghost-btn key-profile-add-btn" type="button" onclick="prepareNewKeyProfile()" title="新增账号" data-i18n-title="api.addKeyProfileTitle">
+                                        <button id="keyProfileAddBtn" class="ghost-btn key-profile-add-btn" type="button" title="新增账号" data-i18n-title="api.addKeyProfileTitle">
                                             <i data-lucide="plus" class="w-3.5 h-3.5"></i><span data-i18n="api.addKeyProfile">新增账号</span>
                                         </button>
                                     </div>
                                     <div id="keyProfileSelectRow" class="key-profile-select-row">
                                         <div id="keyProfileSwitchFrame" class="field-frame key-profile-select-frame">
-                                            <button id="keyProfileTrigger" class="key-profile-trigger" type="button" onclick="toggleKeyProfileMenu()" aria-haspopup="listbox" aria-expanded="false" aria-label="切换已保存账号">
+                                            <button id="keyProfileTrigger" class="key-profile-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="keyProfileMenu" aria-label="切换已保存账号">
                                                 <span class="key-profile-trigger-copy">
                                                     <span id="keyProfileTriggerName" class="key-profile-trigger-name"></span>
                                                     <span id="keyProfileTriggerMeta" class="key-profile-trigger-meta"></span>
                                                 </span>
                                                 <i data-lucide="chevron-down" class="w-4 h-4 key-profile-trigger-icon"></i>
                                             </button>
-                                            <select id="keyProfileSelect" aria-label="已保存账号" hidden></select>
                                             <div id="keyProfileMenu" class="key-profile-menu" role="listbox" aria-label="已保存账号" hidden></div>
                                         </div>
                                         <div class="key-profile-select-actions">
-                                            <button id="keyProfileEditBtn" class="ghost-btn key-profile-edit-btn" type="button" onclick="prepareEditKeyProfile()" hidden title="编辑账号" data-i18n-title="api.editKeyProfile">
+                                            <button id="keyProfileEditBtn" class="ghost-btn key-profile-edit-btn" type="button" hidden title="编辑账号" data-i18n-title="api.editKeyProfile">
                                                 <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
                                             </button>
                                             <button id="keyProfileDeleteBtn" class="ghost-btn key-profile-delete-btn" type="button" onclick="clearKeyOnly()" hidden title="删除账号" data-i18n-title="api.deleteKeyProfile">
@@ -136,7 +137,7 @@
                                                 <div id="keyProfileEditTitle" class="key-profile-edit-title"></div>
                                                 <div id="keyProfileEditHint" class="key-profile-edit-hint"></div>
                                             </div>
-                                            <button id="keyProfileCancelBtn" class="ghost-btn key-profile-cancel-btn" type="button" onclick="cancelKeyProfileEdit()" title="取消编辑" data-i18n-title="api.cancelKeyProfileEditTitle">
+                                            <button id="keyProfileCancelBtn" class="ghost-btn key-profile-cancel-btn" type="button" title="取消编辑" data-i18n-title="api.cancelKeyProfileEditTitle">
                                                 <span data-i18n="api.cancel">取消</span>
                                             </button>
                                         </div>
@@ -335,7 +336,7 @@
                             <div class="block-head">
                                 <div>
                                     <div class="block-title" data-i18n="api.imageModels">生图模型</div>
-                                    <div class="block-desc" data-i18n="api.imageHint">在线生图和无限画布 API 生成使用</div>
+                                    <div class="block-desc" data-i18n="api.imageHint">供在线生图和画布生图节点使用。</div>
 
                                 </div>
                                 <button class="ghost-btn" type="button" onclick="addModel('image')"><i data-lucide="plus" class="w-3.5 h-3.5"></i><span data-i18n="api.model">模型</span></button>
@@ -358,7 +359,7 @@
                             <div class="block-head">
                                 <div>
                                     <div class="block-title" data-i18n="api.videoModels">视频模型</div>
-                                    <div class="block-desc" data-i18n="api.videoHint">无限画布视频生成节点使用</div>
+                                    <div class="block-desc" data-i18n="api.videoHint">供画布视频生成节点使用。</div>
                                 </div>
                                 <button class="ghost-btn" type="button" onclick="addModel('video')"><i data-lucide="plus" class="w-3.5 h-3.5"></i><span data-i18n="api.model">模型</span></button>
                             </div>
@@ -458,17 +459,17 @@
                     <div id="pickerCount" class="picker-count">—</div>
                     <div id="pickerSourceNote" class="picker-count" hidden></div>
                 </div>
-                <button class="picker-close" type="button" onclick="closeModelPicker()" aria-label="关闭模型选择" data-i18n-aria-label="api.closeModelPicker"><i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i></button>
+                <button class="picker-close" type="button" data-close-model-picker aria-label="关闭模型选择" data-i18n-aria-label="api.closeModelPicker"><i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i></button>
             </div>
             <div class="picker-toolbar">
-                <input id="pickerFilter" class="picker-search" type="text" placeholder="按名称搜索模型…" aria-label="搜索模型" data-i18n-aria-label="api.searchModels" oninput="renderModelPicker()">
+                <input id="pickerFilter" class="picker-search" type="text" placeholder="按名称搜索模型…" aria-label="搜索模型" data-i18n-aria-label="api.searchModels">
                 <div class="picker-cat-tabs">
-                    <button class="picker-cat-tab active" data-cat="all" onclick="selectPickerCat('all')">全部 <span class="cat-count">0</span></button>
-                    <button class="picker-cat-tab" data-cat="image" onclick="selectPickerCat('image')">生图 <span class="cat-count">0</span></button>
-                    <button class="picker-cat-tab" data-cat="chat" onclick="selectPickerCat('chat')">LLM <span class="cat-count">0</span></button>
-                    <button class="picker-cat-tab" data-cat="video" onclick="selectPickerCat('video')">视频 <span class="cat-count">0</span></button>
+                    <button class="picker-cat-tab active" type="button" data-cat="all" aria-pressed="true">全部 <span class="cat-count">0</span></button>
+                    <button class="picker-cat-tab" type="button" data-cat="image" aria-pressed="false">生图 <span class="cat-count">0</span></button>
+                    <button class="picker-cat-tab" type="button" data-cat="chat" aria-pressed="false">LLM <span class="cat-count">0</span></button>
+                    <button class="picker-cat-tab" type="button" data-cat="video" aria-pressed="false">视频 <span class="cat-count">0</span></button>
                 </div>
-                <button id="pickerSelectAllBtn" class="action-btn" type="button" data-i18n="bulk.selectAll" onclick="selectAllPickerModels()" disabled>全选</button>
+                <button id="pickerSelectAllBtn" class="action-btn" type="button" data-i18n="bulk.selectAll" disabled>全选</button>
             </div>
             <div id="pickerList" class="picker-body"></div>
             <div id="pickerSummary" class="picker-summary">
@@ -479,8 +480,8 @@
                 <span id="sumUnsel" style="margin-left:auto;color:var(--faint)">未选 0</span>
             </div>
             <div class="picker-foot">
-                <button class="action-btn" type="button" onclick="closeModelPicker()">取消</button>
-                <button class="action-btn save-btn" type="button" onclick="applyModelPicker()">应用到模型列表</button>
+                <button class="action-btn" type="button" data-close-model-picker>取消</button>
+                <button class="action-btn save-btn" type="button" data-apply-model-picker>应用到模型列表</button>
             </div>
     </dialog>
 
@@ -566,7 +567,10 @@
         </div>
     </div>
 
-    <script src="/static/js/api-settings.js?v=2026.11.09.10&web-search=2"></script>
-    <script src="/static/js/api-recommendations.js?v=2026.11.06.1793356500"></script>
+    <script src="/static/js/api-settings-navigation.js?v=1.0.21.1794542393"></script>
+    <script src="/static/js/api-settings-models.js?v=1.0.21.1794542393&integrated=1"></script>
+    <script src="/static/js/api-settings-accounts.js?v=1.0.21.1794542393"></script>
+    <script src="/static/js/api-settings.js?v=1.0.21.1794542393&web-search=2&settings-nav=1&models=1&accounts=1&rh-cleanup=1&integrated=1"></script>
+    <script src="/static/js/api-recommendations.js?v=1.0.21.1794192428"></script>
 </body>
 </html>

@@ -4076,6 +4076,14 @@
     }
     async function sendCurrentMessage(){
         if(sharedCanvasMode)return;
+        if(folderBatch?.hasActive()&&!window.CanvasMultiAgent?.enabled()){
+            const text=input.value.trim();
+            if(!text||busy)return;
+            const context=folderBatchContext();
+            const accepted=await folderBatch.send(text,context);
+            if(accepted&&store.activeId===context.conversationId&&String(canvas?.id||'')===context.canvasId&&input.value.trim()===text){input.value='';resizeComposerInput();}
+            return;
+        }
         if(window.SmartCanvasReferencePicker?.active?.type==='composer-agent')window.SmartCanvasReferencePicker.finish('send');
         syncComposerReferenceContext();
         const referenceOwner=composerReferenceOwner();
@@ -4090,15 +4098,6 @@
                 if(input.value.trim()===text){input.value='';resizeComposerInput();clearComposerFileReferences(referenceOwner);}
             }catch(error){reportAgentSendError(error?.message||'智能分工启动失败');}
             finally{$('canvasAgentSend').disabled=false;}
-            return;
-        }
-        // Folder requests must be handled before message edits or node scope checks.
-        if(folderBatch?.hasActive()){
-            const text=input.value.trim();
-            if(!text||busy)return;
-            const context=folderBatchContext();
-            const accepted=await folderBatch.send(text,context);
-            if(accepted&&store.activeId===context.conversationId&&String(canvas?.id||'')===context.canvasId&&input.value.trim()===text){input.value='';resizeComposerInput();}
             return;
         }
         if(editingUserMessageIndex>=0)return sendEditedUserMessage(editingUserMessageIndex);

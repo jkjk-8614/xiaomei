@@ -3,7 +3,8 @@
 
     const DEFAULT_TASK_PATH = taskId => `/api/canvas-image-tasks/${encodeURIComponent(taskId)}`;
     const DEFAULT_INTERVAL_MS = 1800;
-    const DEFAULT_MAX_ATTEMPTS = 1800;
+    // 后端生图任务默认查询 1 小时，前端保留少量余量（约 72 分钟）。
+    const DEFAULT_MAX_ATTEMPTS = 2400;
 
     function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
@@ -356,6 +357,7 @@
         extractMediaUrls,
         httpError,
         pollImageTask,
+        recoverCanvasImageTask,
         requestJson,
         requestOnlineImage,
         responseMessageFromBody,

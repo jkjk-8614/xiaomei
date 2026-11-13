@@ -1,0 +1,469 @@
+.settings-navigation {
+    --nav-paper: #fffefa;
+    --nav-edge: #e5e0d8;
+    --nav-rule: #e7e3dd;
+    --nav-ink: #252a31;
+    --nav-secondary: #69717c;
+    --nav-heading: var(--nav-ink);
+    --nav-accent: var(--studio-accent-color, #0e7490);
+    --nav-primary: #b66a17;
+    --nav-primary-hover: #a96013;
+    --nav-primary-hover-edge: #9f5b12;
+    --nav-primary-shadow: 0 10px 18px rgb(182 106 23 / 18%);
+    --nav-card-ink: var(--nav-ink);
+    --nav-card: transparent;
+    --nav-card-edge: transparent;
+    --nav-card-hover: #fffaf3;
+    --nav-card-hover-edge: #e5b477;
+    --nav-card-hover-shadow: 0 8px 18px rgb(182 106 23 / 8%);
+    --nav-current: #fff6e9;
+    --nav-current-edge: #e8bd88;
+    --nav-current-shadow: inset 0 0 0 1px rgb(182 106 23 / 8%), 0 8px 20px rgb(182 106 23 / 8%);
+    --nav-recommend-card: white;
+    --nav-recommend-ink: var(--nav-ink);
+    --nav-recommend-edge: var(--nav-rule);
+    --nav-recommend-shadow: 0 3px 10px rgb(45 42 38 / 3.5%);
+    --nav-recommend-indicator: var(--nav-accent);
+    --nav-recommend-icon: var(--nav-accent);
+    --nav-badge: #f7f8fa;
+    --nav-badge-ink: #64748b;
+    --nav-current-badge: #fff0dc;
+    --nav-current-badge-ink: var(--nav-primary);
+    --nav-count: rgb(15 23 42 / 6%);
+    --nav-outer-shadow: 0 18px 38px rgb(63 48 31 / 12%);
+    --nav-inset: 18px 14px 16px;
+
+    position: sticky;
+    inset-block-start: 24px;
+    max-block-size: calc(100vh - 48px);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow: hidden;
+    color: var(--nav-ink);
+}
+
+html.studio-theme-dark .settings-navigation {
+    --nav-paper: linear-gradient(160deg, #182532 0%, #141c26 100%);
+    --nav-edge: rgb(174 196 222 / 18%);
+    --nav-rule: #575757;
+    --nav-ink: #f0f0f2;
+    --nav-secondary: #a8a8ae;
+    --nav-heading: #8f8f96;
+    --nav-primary: color-mix(in srgb, var(--nav-accent) 95%, white);
+    --nav-primary-hover: color-mix(in srgb, var(--nav-accent) 84%, white);
+    --nav-primary-hover-edge: var(--nav-primary);
+    --nav-primary-shadow: none;
+    --nav-card-ink: #e9f0f8;
+    --nav-card: #1b2a38;
+    --nav-card-edge: #547798;
+    --nav-card-hover: var(--nav-card);
+    --nav-card-hover-edge: var(--nav-card-edge);
+    --nav-card-hover-shadow: none;
+    --nav-current: #263b4b;
+    --nav-current-edge: #6f9eb5;
+    --nav-current-shadow: none;
+    --nav-recommend-card: var(--nav-card);
+    --nav-recommend-edge: #30485c;
+    --nav-recommend-shadow: none;
+    --nav-recommend-indicator: color-mix(in srgb, var(--nav-accent) 58%, white);
+    --nav-recommend-icon: color-mix(in srgb, var(--nav-accent) 45%, white);
+    --nav-badge: #141b24;
+    --nav-badge-ink: #aebdce;
+    --nav-cli-icon: #c5d9e7;
+    --nav-current-badge: #232d39;
+    --nav-current-badge-ink: var(--nav-card-ink);
+    --nav-count: rgb(255 255 255 / 10%);
+    --nav-outer-shadow: 0 20px 48px rgb(0 0 0 / 26%);
+    --nav-inset: 18px;
+    gap: 14px;
+}
+
+/* These surfaces share the same cascade layer as the app-wide Fluent buttons. */
+@layer fluent {
+    .layout > .settings-navigation {
+        padding: var(--nav-inset) !important;
+        border: 1px solid var(--nav-edge) !important;
+        border-radius: 18px !important;
+        background: var(--nav-paper) !important;
+        box-shadow: var(--nav-outer-shadow) !important;
+    }
+
+    .settings-navigation .add-btn {
+        background: var(--nav-primary) !important;
+        color: white !important;
+        border: 1px solid var(--nav-primary) !important;
+        box-shadow: var(--nav-primary-shadow) !important;
+    }
+
+    .settings-navigation .add-btn:hover {
+        background: var(--nav-primary-hover) !important;
+        border-color: var(--nav-primary-hover-edge) !important;
+    }
+
+    .settings-navigation :is(.provider-card, .add-btn, .api-link-btn, .cli-quick-btn) {
+        border-radius: 13px !important;
+    }
+
+    .settings-navigation .provider-card:hover {
+        box-shadow: var(--nav-card-hover-shadow) !important;
+    }
+
+    .settings-navigation .provider-card.active {
+        background: var(--nav-current) !important;
+        color: var(--nav-card-ink) !important;
+        box-shadow: var(--nav-current-shadow) !important;
+    }
+
+    body.show-recommend-mode .settings-navigation .provider-card.active {
+        background: var(--nav-recommend-card) !important;
+        color: var(--nav-recommend-ink) !important;
+        box-shadow: var(--nav-recommend-shadow) !important;
+    }
+
+    html.studio-theme-dark .settings-navigation .cli-quick-btn {
+        border-color: var(--nav-card-edge) !important;
+        background: var(--nav-card) !important;
+        color: var(--nav-card-ink) !important;
+    }
+
+    html.studio-theme-dark .settings-navigation .api-link-btn {
+        border-color: #49667b !important;
+        background: #223746 !important;
+        color: #e5f0f7 !important;
+    }
+
+    body.show-recommend-mode .settings-navigation .api-link-btn {
+        border-color: color-mix(in srgb, var(--nav-accent) 45%, var(--line)) !important;
+        background: color-mix(in srgb, var(--nav-accent) 13%, var(--panel)) !important;
+        color: var(--text) !important;
+        box-shadow: inset 3px 0 var(--nav-recommend-indicator) !important;
+    }
+
+    body.show-recommend-mode .settings-navigation .api-link-btn:hover {
+        background: color-mix(in srgb, var(--nav-accent) 19%, var(--panel)) !important;
+    }
+}
+
+.settings-navigation .side-section-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 8px 2px;
+    color: var(--nav-heading);
+    font-size: var(--api-caption-size);
+    font-weight: 900;
+    line-height: 1.5;
+    letter-spacing: .01em;
+}
+
+html.studio-theme-dark .settings-navigation > .side-section-title {
+    padding: 2px 6px 0;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+}
+
+.settings-navigation .side-section-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: 18px;
+    block-size: 16px;
+    padding-inline: 5px;
+    border-radius: 999px;
+    background: var(--nav-count);
+    color: var(--nav-secondary);
+    font-weight: 800;
+    letter-spacing: normal;
+    font-variant-numeric: tabular-nums;
+}
+
+.settings-navigation .side-section-count:empty { display: none; }
+
+.settings-navigation .provider-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-block-size: 88px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-color: var(--nav-rule);
+    border-block-end: 1px solid var(--nav-rule);
+    margin-block-end: 2px;
+    padding: 0 2px 10px 1px;
+}
+
+.settings-navigation .provider-card {
+    display: grid;
+    grid-template-columns: 14px 38px minmax(0, 1fr) max-content;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+    inline-size: 100%;
+    min-block-size: 56px;
+    padding: 7px 9px;
+    color: var(--nav-card-ink);
+    background: var(--nav-card);
+    border: 1px solid var(--nav-card-edge);
+    border-radius: 13px;
+    text-align: start;
+    transition: background-color .18s ease, border-color .18s ease, transform .18s ease;
+}
+
+.settings-navigation .provider-card[draggable="true"] { cursor: grab; }
+.settings-navigation .provider-card[draggable="true"]:active { cursor: grabbing; }
+
+.settings-navigation .provider-card:hover {
+    background: var(--nav-card-hover);
+    border-color: var(--nav-card-hover-edge);
+    transform: translateY(-1px);
+}
+
+.settings-navigation .provider-card.active { border-color: var(--nav-current-edge); }
+
+body.show-recommend-mode .settings-navigation .provider-card.active { border-color: var(--nav-recommend-edge); }
+
+.settings-navigation .provider-card.is-dragging { opacity: .55; }
+.settings-navigation .provider-card-drop-target { box-shadow: inset 0 0 0 1px var(--line-strong); }
+
+.settings-navigation .provider-drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9b9da1;
+    opacity: .9;
+}
+
+.settings-navigation .provider-card.is-dragging .provider-drag-handle { opacity: 1; }
+
+.settings-navigation .provider-mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 36px;
+    block-size: 36px;
+    border: 1px solid #dbe7fb;
+    border-radius: 11px;
+    background: #f1f6ff;
+    color: #4675c2;
+}
+
+.settings-navigation .api-provider-mark svg {
+    inline-size: 20px;
+    block-size: 20px;
+    stroke-width: 2.35;
+    transform: rotate(-45deg);
+}
+
+.settings-navigation .provider-favicon {
+    display: none;
+    inline-size: 20px;
+    block-size: 20px;
+    object-fit: contain;
+    border-radius: 6px;
+}
+
+.settings-navigation .provider-favicon.is-loaded { display: block; }
+.settings-navigation .provider-favicon.is-loaded ~ svg { display: none; }
+
+.settings-navigation .provider-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-inline-size: 0;
+    overflow: hidden;
+}
+
+.settings-navigation :is(.provider-name, .provider-meta) {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.settings-navigation .provider-name {
+    font-size: var(--api-body-size);
+    font-weight: 900;
+    line-height: 1.25;
+}
+
+html.studio-theme-dark .settings-navigation .provider-card:not(.active) .provider-name { color: #edf5f8; }
+html.studio-theme-dark .settings-navigation .provider-card.active .provider-name { color: var(--nav-card-ink); }
+
+.settings-navigation .provider-meta {
+    margin-block-start: 4px;
+    color: var(--nav-secondary);
+    font-size: var(--api-caption-size);
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.settings-navigation .provider-side-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: flex-end;
+    gap: 7px;
+    white-space: nowrap;
+}
+
+.settings-navigation .provider-protocol-pill {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    min-inline-size: 34px;
+    max-inline-size: 66px;
+    min-block-size: 26px;
+    padding: 4px 9px;
+    border: 1px solid #d8e3f3;
+    border-radius: 999px;
+    background: var(--nav-badge);
+    color: var(--nav-badge-ink);
+    font-size: var(--api-caption-size);
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: .04em;
+}
+
+.settings-navigation .active .provider-protocol-pill {
+    border-color: #f2d6b2;
+    background: var(--nav-current-badge);
+    color: var(--nav-current-badge-ink);
+}
+
+.settings-navigation .provider-chevron {
+    inline-size: 17px;
+    block-size: 17px;
+    color: #9ba0a7;
+}
+
+.settings-navigation .provider-cli-row {
+    min-inline-size: 0;
+    border-radius: 15px;
+}
+
+.settings-navigation :is(.provider-cli-row + *, .provider-card + .provider-cli-row) {
+    border-block-start: 1px solid rgb(148 163 184 / 16%);
+}
+
+.settings-navigation .cli-provider-card {
+    min-inline-size: 0;
+    block-size: auto;
+}
+
+.settings-navigation .cli-provider-card .provider-name {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.settings-navigation .cli-provider-mark {
+    background: #f1f2f3;
+    border-color: #eceeef;
+    color: var(--nav-cli-icon, var(--nav-badge-ink));
+}
+
+.settings-navigation .cli-provider-mark svg {
+    inline-size: 25px;
+    block-size: 25px;
+    padding: 5px;
+    border-radius: 7px;
+    background: #50535b;
+    color: white;
+    stroke-width: 2.5;
+}
+
+.settings-navigation .cli-provider-mark-jimeng {
+    background: #fff0dc;
+    border-color: #f2dfc6;
+}
+
+.settings-navigation .cli-provider-mark-jimeng svg { background: #ad6518; }
+
+.settings-navigation .cli-provider-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 3px 7px;
+    line-height: 1.25;
+    white-space: normal;
+}
+
+.settings-navigation :is(.cli-install-state, .cli-update-state, .cli-provider-version) {
+    min-inline-size: 0;
+    color: inherit;
+    font-weight: 800;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.settings-navigation .cli-provider-version { flex-basis: 100%; }
+.settings-navigation :is(.cli-install-state.installed, .cli-update-state.latest) { color: #62d6ae; }
+.settings-navigation :is(.cli-install-state.missing, .cli-update-state.update) { color: #f3bd64; }
+
+.settings-navigation :is(.add-btn, .api-link-btn) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    position: relative;
+    inline-size: 100%;
+    border-radius: 13px;
+}
+
+.settings-navigation .add-btn {
+    min-block-size: 48px;
+    margin-block-start: 4px;
+}
+
+.settings-navigation .add-btn:hover,
+body:not(.show-recommend-mode) .settings-navigation .api-link-btn:hover { transform: translateY(-1px); }
+
+.settings-navigation :is(.add-btn, .api-link-btn) svg { opacity: .9; }
+
+.settings-navigation .api-link-btn { min-block-size: 42px; }
+body:not(.show-recommend-mode) .settings-navigation .api-link-btn:hover { filter: brightness(.94); }
+body.show-recommend-mode .settings-navigation .api-link-btn svg { color: var(--nav-recommend-icon); }
+
+.settings-navigation .cli-quick-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 2px 1px 0;
+}
+
+.settings-navigation .cli-quick-group .side-section-title {
+    color: var(--nav-ink);
+    padding: 3px 8px 7px;
+    letter-spacing: .04em;
+}
+
+.settings-navigation .cli-quick-list {
+    display: grid;
+    gap: 7px;
+}
+
+.settings-navigation .cli-quick-btn {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) 16px;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 9px;
+    inline-size: 100%;
+    min-block-size: 40px;
+    padding: 7px 10px;
+    border-radius: 13px;
+    text-align: start;
+}
+
+.settings-navigation .cli-quick-chevron {
+    inline-size: 16px;
+    block-size: 16px;
+    color: #a1a5aa;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .settings-navigation .provider-card { transition: none; }
+}

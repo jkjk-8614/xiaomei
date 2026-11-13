@@ -18,7 +18,7 @@ _UPLOAD_STEM = re.compile(r"[^0-9A-Za-z\u4e00-\u9fff._-]+")
 _QUERY_SPLIT = re.compile(r"\s+")
 
 BUCKETS = ("upload", "generated", "local")
-VIDEO_EXT = {".mp4", ".webm", ".mov", ".m4v", ".avi", ".mkv"}
+VIDEO_EXT = {".mp4", ".webm", ".mov", ".m4v", ".avi", ".mkv", ".mpeg", ".mpg"}
 AUDIO_EXT = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"}
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"}
 WORKFLOW_EXT = {".json", ".zip"}
@@ -333,24 +333,19 @@ def drop_category(catalog: dict, shelf: dict, category_id: str) -> None:
         catalog["categories"] = shelf.get("categories") or []
 
 
-def rename_item(catalog: dict, item_id: str, name: Any) -> dict:
-    for shelf in catalog.get("libraries") or []:
-        for group in shelf.get("categories") or []:
-            for row in group.get("items") or []:
-                if isinstance(row, dict) and row.get("id") == item_id:
-                    row["name"] = display_name(name, row.get("name") or "asset")
-                    return {"item": row}
-    return {"error": "资产不存在", "status": 404}
-
-
-def mark_favorite(catalog: dict, item_id: str, favorite: bool) -> dict:
-    for shelf in catalog.get("libraries") or []:
-        for group in shelf.get("categories") or []:
-            for row in group.get("items") or []:
-                if isinstance(row, dict) and row.get("id") == item_id:
-                    row["favorite"] = bool(favorite)
-                    return {"item": row}
-    return {"error": "资产不存在", "status": 404}
+def rename_item(catalog: dict, item_id: str, name: Any, library_id="", category_id="", source_url=None) -> dict:
+    locations = locate_items(catalog, [item_id], library_id, category_id)
+    if source_url is not None:
+        locations = [location for location in locations if location[2].get("url") == source_url]
+        if not locations:
+            return {"error": "源素材已变化，请刷新后重试", "status": 409}
+    if not locations:
+        return {"error": "资产不存在", "status": 404}
+    if len(locations) > 1 and (library_id or category_id or source_url is not None):
+        return {"error": "存在多条匹配素材，请指定来源分组", "status": 409}
+    item = locations[0][2]
+    item["name"] = display_name(name, item.get("name") or "asset")
+    return {"item": item}
 
 
 def locate_items(catalog: Mapping[str, Any], ids: Iterable[Any], library_id: str = "", category_id: str = "") -> list:
@@ -398,11 +393,23 @@ def drop_empty_image_group(catalog: dict, library_id: str, category_id: str) -> 
     return ""
 
 
-def move_items(catalog: dict, ids: Iterable[Any], library_id: str, target_library_id: str, target_category_id: str) -> dict:
+def scoped_item_locations(catalog, ids, library_id, sources):
+    locations = locate_items(catalog, ids, library_id)
+    if sources is None:
+        return locations
+    expected = {(entry["category_id"], entry["id"], entry["url"]) for entry in sources}
+    matches = [entry for entry in locations if (entry[1].get("id"), entry[2].get("id"), entry[2].get("url")) in expected]
+    actual = {(group.get("id"), row.get("id"), row.get("url")) for _, group, row in matches}
+    if actual != expected or len(matches) != len(expected) or {row["id"] for _, _, row in matches} != set(ids):
+        return None
+    return matches
+
+
+def move_items(catalog: dict, ids: Iterable[Any], library_id: str, target_library_id: str, target_category_id: str, sources=None) -> dict:
     wanted = {str(item) for item in ids if str(item)}
     if not wanted:
         return {"error": "没有选择资产", "status": 400}
-    target_shelf = pick_library(catalog, target_library_id, strict=False)
+    target_shelf = pick_library(catalog, target_library_id, strict=bool(target_library_id))
     target = None
     if target_shelf is not None:
         for group in target_shelf.get("categories") or []:
@@ -412,28 +419,19 @@ def move_items(catalog: dict, ids: Iterable[Any], library_id: str, target_librar
     if target is None:
         return {"error": "目标分组不存在", "status": 404}
     target_type = target.get("type") or "image"
-    carried = []
-    for shelf in catalog.get("libraries") or []:
-        if not isinstance(shelf, dict):
-            continue
-        if library_id and shelf.get("id") != library_id:
-            continue
-        for group in shelf.get("categories") or []:
-            if not isinstance(group, dict) or (group.get("type") or "image") != target_type:
-                continue
-            stay = []
-            for row in group.get("items") or []:
-                if isinstance(row, dict) and row.get("id") in wanted:
-                    carried.append(row)
-                else:
-                    stay.append(row)
-            group["items"] = stay
+    locations = scoped_item_locations(catalog, wanted, library_id, sources)
+    if locations is None:
+        return {"error": "源素材已变化，请刷新后重试", "status": 409}
+    carried = [row for _, group, row in locations if group is not target and (group.get("type") or "image") == target_type]
+    if sources is not None and len(carried) != len(locations):
+        return {"error": "源分组与目标分组相同或类型不匹配", "status": 409}
     present = {row.get("id") for row in (target.get("items") or []) if isinstance(row, dict)}
-    target.setdefault("items", [])
     for row in carried:
-        if row.get("id") not in present:
-            target["items"].append(row)
-            present.add(row.get("id"))
+        if row["id"] in present:
+            return {"error": "目标或源分组存在同 ID 素材，请选择其他目标", "status": 409}
+        present.add(row["id"])
+    detach_objects(catalog, carried)
+    target.setdefault("items", []).extend(carried)
     return {"moved": len(carried)}
 
 

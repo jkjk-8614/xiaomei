@@ -291,12 +291,12 @@
     }
 
     function distinct(values) {
-        var seen = {};
+        var seen = new Set();
         var out = [];
         (values || []).forEach(function (value) {
             var text = String(value || '').trim();
-            if (!text || seen[text]) return;
-            seen[text] = true;
+            if (!text || seen.has(text)) return;
+            seen.add(text);
             out.push(text);
         });
         return out;
@@ -384,16 +384,14 @@
             item.chat_models = distinct(item.chat_models || []);
             item.video_models = distinct(item.video_models || []);
             var labels = item.model_names && typeof item.model_names === 'object' ? item.model_names : {};
-            var renamed = {};
+            var renamed = Object.create(null);
             item.image_models.concat(item.chat_models, item.video_models).forEach(function (model) {
                 var raw = String(model || '').trim();
-                var label = String(labels[raw] || (hooks.displayName ? hooks.displayName(raw, item) : '') || '').trim();
+                var savedLabel = Object.hasOwn(labels, raw) ? labels[raw] : '';
+                var label = String(savedLabel || (hooks.displayName ? hooks.displayName(raw, item) : '') || '').trim();
                 if (raw && label && label !== raw) renamed[raw] = label;
             });
             item.model_names = renamed;
-            var normalizeRh = hooks.normalizeRh || function (values) { return values || []; };
-            item.rh_apps = normalizeRh(item.rh_apps || [], 'app');
-            item.rh_workflows = normalizeRh(item.rh_workflows || [], 'workflow');
         });
         var ids = {};
         for (var i = 0; i < working.length; i++) {
@@ -422,8 +420,6 @@
                 model_selection_managed: item.model_selection_managed === true,
                 model_names: item.model_names && typeof item.model_names === 'object' ? item.model_names : {},
                 model_protocols: item.model_protocols && typeof item.model_protocols === 'object' ? item.model_protocols : {},
-                rh_apps: item.id === 'runninghub' ? (item.rh_apps || []) : [],
-                rh_workflows: item.id === 'runninghub' ? (item.rh_workflows || []) : [],
                 volcengine_project_name: item.id === 'volcengine' ? (item.volcengine_project_name || 'default') : '',
                 volcengine_region: item.id === 'volcengine' ? (item.volcengine_region || 'cn-beijing') : '',
                 volcengine_access_key_id: item.volcengine_access_key_id || undefined,

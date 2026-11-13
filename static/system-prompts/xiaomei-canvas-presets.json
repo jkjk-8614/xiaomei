@@ -1,0 +1,122 @@
+[
+  {
+    "id": "builtin_md_1",
+    "number": "1",
+    "name": "多机位九宫格",
+    "name_en": "Nine-view subject sheet",
+    "category": "view",
+    "scene": "用一张图记录同一商品或角色的九个观察方向，供后续建模或选机位。",
+    "scene_en": "Record nine viewpoints of one product or character for modeling or camera planning.",
+    "positive": "为[主体]制作一张三列三行的观察图。由左至右先看正面、左前斜面和左侧，再看略低机位、平视近景和略高机位，最后看背面、右后斜面和顶部。镜头移动时主体保持静止。每格保留完整外轮廓、相近的画面占比和可比较的明暗，留出细窄的空隙。",
+    "negative": "外形随角度变化、缺失视图、画框越界、图例文字",
+    "params": { "画幅": "正方形，九格等大" }
+  },
+  {
+    "id": "builtin_md_2",
+    "number": "2",
+    "name": "多机位九宫格 4K",
+    "name_en": "4K detail contact sheet",
+    "category": "view",
+    "scene": "为需要检查材质纹理和接缝的主体制作高分辨率九视图。",
+    "scene_en": "Inspect material texture and construction across nine high-resolution views.",
+    "positive": "把[主体]放在消光台面上，制作可放大检查的三行三列样张。第一行显示前三面，第二行显示左右侧面与背面，第三行显示顶部、底部和最关键的结构细节。通过统一的柔光展示真实材料和接合处。各格独立取景并保留边距，不让近拍细节跨入邻格。",
+    "negative": "过度锐化、重复格、材质被抹平、错误结构",
+    "params": { "画幅": "正方形", "分辨率": "在生成设置中选择 4K" }
+  },
+  {
+    "id": "builtin_md_3",
+    "number": "3",
+    "name": "剧情推演四宫格",
+    "name_en": "Four-beat story board",
+    "category": "storyboard",
+    "scene": "用四个清楚的叙事节点推演一个短场景。",
+    "scene_en": "Plan a short scene in four distinct visual beats.",
+    "positive": "把[剧情]组织成四格连续画面，依次呈现地点与人物关系、促成变化的动作、另一方的反应、动作结束后出现的结果。按左上、右上、左下、右下阅读。保持角色服装、道具位置和行动方向可追踪。用景别变化传达重点，依靠画面本身讲清因果。",
+    "negative": "重复动作、突变服装、无法追踪的人物走位、对白框",
+    "params": { "版式": "两行两列" }
+  },
+  {
+    "id": "builtin_md_4",
+    "number": "4",
+    "name": "角色脸部三视图",
+    "name_en": "Three-angle facial study",
+    "category": "character",
+    "scene": "建立角色脸型、发际线和五官比例的统一参考。",
+    "scene_en": "Establish a consistent reference for face shape, hairline and feature placement.",
+    "positive": "用三个并排的头肩像描述[角色]，头部依次正对镜头、向侧面旋转约四十五度、转到九十度侧面。保持视线平稳、下颌放松，三个机位的眼睛位于同一高度。准确呈现眉骨、鼻梁、耳廓和发际线，背景与发色有适度的明度差。",
+    "negative": "换脸、夸张透视、表情干扰轮廓、头顶被裁切",
+    "params": { "画幅": "横向" }
+  },
+  {
+    "id": "builtin_md_5",
+    "number": "5",
+    "name": "产品三视图",
+    "name_en": "Product elevation sheet",
+    "category": "product",
+    "scene": "展示产品正面、侧面和俯视的结构，方便比对比例。",
+    "scene_en": "Compare product proportions in front, side and overhead views.",
+    "positive": "为[产品]制作一张三栏结构展示图。第一栏从正前方观察，第二栏从右侧观察，第三栏从正上方观察。采用接近平行投影的效果，保持三栏比例一致。保留旋钮、接口、拼接线和原有图案等辨识细节。用均匀散射光把产品与中性底色分开。",
+    "negative": "广角畸变、添加不存在的配件、反射遮挡、说明箭头",
+    "params": { "版式": "三栏横排" }
+  },
+  {
+    "id": "builtin_md_6",
+    "number": "6",
+    "name": "25 宫格连贯分镜",
+    "name_en": "Twenty-five frame sequence",
+    "category": "storyboard",
+    "scene": "把较长的动作或情节拆成可审阅的 25 格分镜。",
+    "scene_en": "Review a longer action or story as a sequence of twenty-five frames.",
+    "positive": "将[故事或动作]画成五行五列的分镜，每行从左到右延续到下一行。五行分别解决建立空间、出现目标、遭遇障碍、采取行动和展示结果。用每行的五格交代动作的起始、推进和落点。景别按信息需要切换，跨镜头时维持人物运动方向、道具状态和光源位置。",
+    "negative": "格数错误、跨格图像、跳切造成因果断裂、画面编号",
+    "params": { "版式": "五行五列，适合大尺寸输出" }
+  },
+  {
+    "id": "builtin_md_7",
+    "number": "7",
+    "name": "电影光影校正",
+    "name_en": "Cinematic light correction",
+    "category": "lighting",
+    "scene": "以现有画面为参考调整曝光、光向与综合色调。",
+    "scene_en": "Adjust exposure, light direction and overall color while retaining the reference scene.",
+    "positive": "以参考图为构图依据，对[画面]做电影摄影式光影校正。保留原机位、主体姿态与背景结构。根据画面中的窗户或灯具确定主光方向，在该方向保留高光层次，让环境反射轻轻抬起暗部。综合色温与[时间、地点或氛围]相符，主体材质和局部颜色仍可辨认。",
+    "negative": "灰雾、黑位堵塞、无来源的轮廓光、过强滤镜、构图改变",
+    "params": { "输入": "使用需要校正的参考图" }
+  },
+  {
+    "id": "builtin_md_8",
+    "number": "8",
+    "name": "角色设定参考表",
+    "name_en": "Character design reference",
+    "category": "character",
+    "scene": "用胸像和全身正、侧、背视图记录服装及配件。",
+    "scene_en": "Document clothing and accessories with a bust and three full-body views.",
+    "positive": "制作[角色]的设定表。左侧安排一张胸像，清楚展示脸部、领口与上身面料。右侧把站立全身像的正面、左侧和背面放在同一地平线上，保持脚下接触线与头顶高度一致。以自然放松的站姿展现服装垂坠，准确保留左右不对称的配件。",
+    "negative": "人体比例变化、缺少背面、左右配件互换、背景布景抢眼",
+    "params": { "画幅": "宽幅，给全身像保留脚下空间" }
+  },
+  {
+    "id": "builtin_md_9",
+    "number": "9",
+    "name": "六种表情胸像",
+    "name_en": "Six-expression portrait sheet",
+    "category": "character",
+    "scene": "比较同一角色在六种情绪下的面部变化。",
+    "scene_en": "Compare one character’s facial movement across six emotions.",
+    "positive": "以固定镜位和肩部构图拍摄[角色]的六张胸像，排成两行三列。第一行是平静、微笑和惊讶，第二行是愤怒、忧伤和担心。重点通过眼睑、眉形、嘴角和面部肌肉的变化区分情绪。服装、发型、肤色、光位及背景保持一致。",
+    "negative": "身份改变、表情重复、夸张变形、配饰跳变",
+    "params": { "版式": "两行三列" }
+  },
+  {
+    "id": "builtin_md_10",
+    "number": "10",
+    "name": "360 度全景图",
+    "name_en": "360-degree environment",
+    "category": "view",
+    "scene": "生成适用于全景查看器的等距柱状环境图。",
+    "scene_en": "Generate an equirectangular environment for a panoramic viewer.",
+    "positive": "从[地点]的单一站位向四周观察，把完整球面投影到一张等距柱状图。视平线沿画布中部通过，天顶和地底分别落在上下边缘。让最左和最右边能够无缝拼合，地板、天空、地平线及横跨接缝的物体保持连续。用[天气和时间]统一整个空间的色彩与光线。",
+    "negative": "接缝错位、重复地标、单张超广角照片、极点缺失",
+    "params": { "画幅": "2:1", "投影": "等距柱状" }
+  }
+]

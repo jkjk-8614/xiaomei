@@ -5,8 +5,9 @@
         if (!documentRef) return false;
         let handled = false;
         const onCopy = event => {
+            if (!event.clipboardData) return;
             event.preventDefault();
-            event.clipboardData?.setData('text/plain', String(value ?? ''));
+            event.clipboardData.setData('text/plain', String(value ?? ''));
             handled = true;
         };
         documentRef.addEventListener('copy', onCopy);
@@ -16,6 +17,62 @@
             return false;
         } finally {
             documentRef.removeEventListener('copy', onCopy);
+        }
+    }
+
+    function copyViaSelection(value) {
+        const document = global.document;
+        if (!document?.body) return false;
+        const active = document.activeElement;
+        const offsets = Number.isInteger(active?.selectionStart)
+            ? [active.selectionStart, active.selectionEnd, active.selectionDirection || 'none'] : null;
+        const selection = document.getSelection();
+        const ranges = Array.from({ length: selection?.rangeCount || 0 }, (_, index) => selection.getRangeAt(index).cloneRange());
+        const field = document.createElement('textarea');
+        field.value = value;
+        field.readOnly = true;
+        field.tabIndex = -1;
+        Object.assign(field.style, { position: 'fixed', left: '-10000px', top: '0', opacity: '0' });
+        document.body.append(field);
+        try {
+            field.focus({ preventScroll: true });
+            field.select();
+            return document.execCommand('copy');
+        } catch (_) {
+            return false;
+        } finally {
+            field.remove();
+            active?.focus({ preventScroll: true });
+            if (offsets) active.setSelectionRange(...offsets);
+            else if (selection && ranges.length) {
+                selection.removeAllRanges();
+                for (const range of ranges) selection.addRange(range);
+            }
+        }
+    }
+
+    async function copiedTextMatches(value) {
+        if (!global.isSecureContext) return undefined;
+        try {
+            const clipboard = global.navigator.clipboard;
+            if (clipboard?.readText) return (await clipboard.readText()) === value;
+        } catch (_) {}
+        return undefined;
+    }
+
+    async function copyText(value) {
+        const text = String(value || '');
+        if (!text) return false;
+        const copied = copyTextWithCopyEvent(text) || copyViaSelection(text);
+        if (copied && await copiedTextMatches(text) !== false) return true;
+        if (global.isSecureContext === false) return false;
+        try {
+            const clipboard = global.navigator.clipboard;
+            if (!clipboard?.writeText) return false;
+            await clipboard.writeText(text);
+            return await copiedTextMatches(text) !== false;
+        } catch (_) {
+            return false;
         }
     }
 
@@ -235,6 +292,7 @@
         boardCenterWorld,
         commitGridState,
         copyTextWithCopyEvent,
+        copyText,
         cropRatioFromPreset,
         downloadHref,
         editCanvasScale,

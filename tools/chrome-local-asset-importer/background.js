@@ -1,58 +1,50 @@
-// 后台嗅探：很多站点的视频/音频是通过 XHR/fetch 加载的，DOM 里看不到。
-// 这里用 webRequest 监听媒体请求，按标签页记录，供 popup 扫描时取用。
+const mediaByTab = new Map();
 
-// 整段可下载的媒体文件
-const MEDIA_EXT = /\.(mp4|webm|mov|m4v|flv|mkv|avi|mp3|m4a|wav|ogg|flac|aac)(?:[?#]|$)/i;
-// 流媒体清单（HLS/DASH）
-const STREAM_EXT = /\.(m3u8|mpd)(?:[?#]|$)/i;
-// 切片文件——数量巨大且单独无意义，忽略
-const SEGMENT_EXT = /\.(ts|m4s|cmf[vat])(?:[?#]|$)/i;
-const MEDIA_CT = /^(?:video\/|audio\/|application\/(?:vnd\.apple\.mpegurl|x-mpegurl|dash\+xml))/i;
-
-const MAX_PER_TAB = 120;
-const byTab = new Map(); // tabId -> Map(url -> {url, contentType, kind})
-
-function kindFor(url, ct){
-  if(STREAM_EXT.test(url) || /mpegurl|dash/i.test(ct || '')) return 'stream';
-  if(/^audio\//i.test(ct || '') || /\.(mp3|m4a|wav|ogg|flac|aac)(?:[?#]|$)/i.test(url)) return 'audio';
-  return 'video';
+function classify(url, headers) {
+    const path = new URL(url).pathname;
+    const mime = (headers || []).find(header => header.name.toLowerCase() === 'content-type')?.value || '';
+    if (/\.(m3u8|mpd)$/i.test(path) || /mpegurl|dash\+xml/i.test(mime)) return 'stream';
+    if (/\.(ts|m4s)$/i.test(path) || /mp2t|iso\.segment/i.test(mime)) return '';
+    if (/\.(mp4|webm|mov|m4v|flv)$/i.test(path) || /^video\//i.test(mime)) return 'video';
+    return '';
 }
 
-function record(tabId, url, contentType){
-  if(typeof tabId !== 'number' || tabId < 0 || !url) return;
-  if(url.startsWith('data:') || url.startsWith('blob:')) return;
-  let map = byTab.get(tabId);
-  if(!map){ map = new Map(); byTab.set(tabId, map); }
-  if(map.has(url) || map.size >= MAX_PER_TAB) return;
-  map.set(url, {url, contentType: contentType || '', kind: kindFor(url, contentType)});
+function tabMedia(tabId) {
+    const key = 'media:' + tabId;
+    if (!mediaByTab.has(tabId)) {
+        mediaByTab.set(tabId, chrome.storage.session.get(key).then(data => data[key] || []));
+    }
+    return mediaByTab.get(tabId);
 }
 
-chrome.webRequest.onHeadersReceived.addListener(
-  details => {
-    // 主文档导航 = 翻到新页面，清空上一页记录
-    if(details.type === 'main_frame'){
-      byTab.delete(details.tabId);
-      return;
-    }
-    if(SEGMENT_EXT.test(details.url)) return;
-    const ctHeader = (details.responseHeaders || [])
-      .find(h => (h.name || '').toLowerCase() === 'content-type');
-    const ct = (ctHeader?.value || '').split(';', 1)[0].trim();
-    if(/mp2t/i.test(ct)) return; // HLS 切片的 content-type，忽略
-    if(MEDIA_CT.test(ct) || MEDIA_EXT.test(details.url) || STREAM_EXT.test(details.url)){
-      record(details.tabId, details.url, ct);
-    }
-  },
-  {urls: ['<all_urls>']},
-  ['responseHeaders']
-);
+async function remember(details) {
+    if (details.tabId < 0 || details.statusCode < 200 || details.statusCode >= 300) return;
+    const kind = classify(details.url, details.responseHeaders);
+    if (!kind) return;
+    const pending = tabMedia(details.tabId);
+    const records = await pending;
+    if (mediaByTab.get(details.tabId) !== pending) return;
+    const index = records.findIndex(item => item.url === details.url);
+    if (index >= 0) return;
+    records.push({url: details.url, kind, frameId: Math.max(0, details.frameId)});
+    if (records.length > 200) records.shift();
+    await chrome.storage.session.set({['media:' + details.tabId]: records});
+}
 
-chrome.tabs.onRemoved.addListener(tabId => byTab.delete(tabId));
+function forget(tabId) {
+    mediaByTab.delete(tabId);
+    void chrome.storage.session.remove('media:' + tabId).catch(() => {});
+}
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if(message?.type === 'ic-get-media'){
-    const map = byTab.get(message.tabId);
-    sendResponse({items: map ? [...map.values()] : []});
-  }
-  return true;
+chrome.webRequest.onHeadersReceived.addListener(details => {
+    void remember(details).catch(() => {});
+}, {urls: ['http://*/*', 'https://*/*'], types: ['media', 'xmlhttprequest', 'other']}, ['responseHeaders']);
+chrome.tabs.onRemoved.addListener(forget);
+chrome.tabs.onUpdated.addListener((tabId, change) => { if (change.status === 'loading') forget(tabId); });
+chrome.runtime.onMessage.addListener((message, sender, reply) => {
+    if (sender.id !== chrome.runtime.id || message?.type !== 'observed-media' || !Number.isInteger(message.tabId)) {
+        return false;
+    }
+    tabMedia(message.tabId).then(reply, () => reply([]));
+    return true;
 });

@@ -67,7 +67,14 @@
         const urls=new Set();
         function visit(item){
             if(typeof item==='string' && /^(?:\/assets\/|\/output\/|\/api\/storage-files\/|https?:\/\/)/i.test(item) && /\.(?:png|jpe?g|webp|gif|mp4|webm|mov|mp3|wav)(?:[?#]|$)/i.test(item)) urls.add(item);
-            else if(Array.isArray(item)) item.forEach(visit); else if(item&&typeof item==='object') Object.values(item).forEach(visit);
+            else if (Array.isArray(item)) item.forEach(visit);
+            else if (item && typeof item === 'object') {
+                for (const [key, value] of Object.entries(item)) {
+                    if (key === 'ltxTimelineData' && typeof value === 'string') {
+                        try { visit(JSON.parse(value)); } catch (_) {}
+                    } else visit(value);
+                }
+            }
         }
         visit(graphOf(value).nodes); return urls.size;
     }

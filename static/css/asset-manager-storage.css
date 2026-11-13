@@ -1,0 +1,511 @@
+.storage-settings-overlay {
+    --storage-top: clamp(24px, 5vh, 48px);
+    --storage-gutter: 18px;
+    --storage-field-gap: 10px;
+    --storage-divider: var(--line);
+    --storage-dialog-fill: var(--panel);
+    --storage-dialog-shadow: 0 28px 80px rgba(15, 23, 42, .28);
+    --storage-card-fill: var(--panel);
+    --storage-active-tab: var(--panel);
+    --storage-active-text: var(--text);
+    --storage-active-shadow: 0 1px 2px rgba(15, 23, 42, .08);
+    --storage-fold-edge: rgba(15, 23, 42, .22);
+    --storage-fold-fill: var(--soft);
+    --storage-selection-edge: var(--text);
+    --storage-selection-ring: rgba(15, 23, 42, .08);
+    --storage-tabs-edge: var(--line);
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    display: grid;
+    justify-items: center;
+    align-items: start;
+    padding: var(--storage-top) 24px 24px;
+    overflow: auto;
+    backdrop-filter: blur(12px);
+    background-color: rgba(15, 23, 42, .42);
+    color: var(--text);
+    color-scheme: light;
+}
+
+.theme-dark .storage-settings-overlay {
+    --storage-divider: rgba(148, 163, 184, .18);
+    --storage-dialog-fill: rgba(17, 18, 22, .98);
+    --storage-dialog-shadow: 0 28px 90px rgba(0, 0, 0, .54);
+    --storage-card-fill: var(--card);
+    --storage-active-tab: var(--strong);
+    --storage-active-text: var(--strong-text);
+    --storage-active-shadow: none;
+    --storage-fold-edge: rgba(232, 232, 234, .32);
+    --storage-fold-fill: var(--soft-2);
+    --storage-selection-edge: rgba(232, 232, 234, .86);
+    --storage-selection-ring: rgba(232, 232, 234, .12);
+    --storage-tabs-edge: rgba(148, 163, 184, .2);
+    background-color: rgba(0, 0, 0, .62);
+    color-scheme: dark;
+}
+
+.storage-settings-modal {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    inline-size: min(1120px, 96vw);
+    block-size: min(840px, 100vh - var(--storage-top) - 24px);
+    overflow: hidden;
+    border: 1px solid var(--storage-tabs-edge);
+    border-radius: 18px;
+    background-color: var(--storage-dialog-fill);
+    box-shadow: var(--storage-dialog-shadow);
+}
+
+.storage-settings-overlay :is(.storage-settings-head, .asset-pref-tabs, .asset-pref-section, .storage-file-head) {
+    padding-inline: var(--storage-gutter);
+    border-block-end: 1px solid var(--storage-divider);
+}
+
+.storage-settings-head {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 16px;
+    padding-block: 16px;
+}
+
+.storage-settings-head strong {
+    display: block;
+    font-size: 18px;
+    font-weight: 950;
+}
+
+.storage-settings-head span {
+    display: block;
+    margin-block-start: 4px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.storage-settings-head button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 34px;
+    block-size: 34px;
+    border-radius: 10px;
+    background-color: var(--soft);
+    color: var(--muted);
+}
+
+.storage-settings-overlay :is(.asset-pref-tabs, .storage-tabs) {
+    display: flex;
+    background-color: var(--soft);
+}
+
+.asset-pref-tabs {
+    gap: 8px;
+    padding-block: 10px;
+}
+
+.storage-settings-overlay :is(.asset-pref-tabs, .storage-tabs) button {
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.asset-pref-tabs button {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    block-size: 34px;
+    padding-inline: 12px;
+    border: 1px solid transparent;
+    font-weight: 900;
+}
+
+.storage-settings-overlay :is(.asset-pref-tabs, .asset-pref-title, .asset-pref-fold > span) svg {
+    inline-size: 15px;
+    block-size: 15px;
+}
+
+.theme-dark .storage-settings-overlay :is(.asset-pref-tabs, .storage-tabs) button {
+    background-color: transparent;
+}
+
+.theme-dark .storage-settings-overlay :is(.asset-pref-tabs, .storage-tabs) button:hover {
+    background-color: var(--soft-2);
+    color: var(--text);
+}
+
+.storage-settings-overlay :is(.asset-pref-tabs, .storage-tabs) button.active {
+    border-color: var(--storage-divider);
+    background-color: var(--storage-active-tab);
+    color: var(--storage-active-text);
+    box-shadow: var(--storage-active-shadow);
+}
+
+.theme-dark .storage-settings-overlay :is(.asset-pref-tabs, .storage-tabs) button.active {
+    border-color: var(--storage-active-tab);
+    background-color: var(--storage-active-tab);
+    color: var(--storage-active-text);
+}
+
+.asset-pref-body {
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+}
+
+.asset-pref-section {
+    padding-block: 14px;
+}
+
+.storage-settings-overlay .asset-pref-section:last-child {
+    border-block-end: 0;
+}
+
+.asset-pref-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-block-end: 10px;
+    font-size: 12px;
+    font-weight: 950;
+}
+
+.storage-settings-overlay :is(.asset-pref-grid, .storage-dir-grid) {
+    display: grid;
+    grid-template-columns: repeat(var(--storage-columns), minmax(0, 1fr));
+    gap: var(--storage-field-gap);
+}
+
+.asset-pref-grid { --storage-columns: 2; }
+.storage-dir-grid { --storage-columns: 3; }
+
+.image-storage-mode-grid { margin-block-end: 12px; }
+
+.image-storage-mode-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: 9px;
+    min-inline-size: 0;
+    padding: 11px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background-color: var(--panel);
+    cursor: pointer;
+}
+
+.image-storage-mode-card:is(:hover, .active) { border-color: var(--line-2); }
+
+.image-storage-mode-card.active {
+    background-color: var(--soft);
+    box-shadow: 0 0 0 2px rgba(15, 23, 42, .06);
+}
+
+.image-storage-mode-card input {
+    margin: 2px 0 0;
+    accent-color: var(--strong);
+}
+
+.image-storage-mode-card span {
+    display: grid;
+    gap: 4px;
+    min-inline-size: 0;
+}
+
+.image-storage-mode-card b {
+    font-size: 12px;
+    font-weight: 950;
+}
+
+.storage-settings-overlay :is(.image-storage-mode-card em, .image-space-hint) {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.45;
+    font-weight: 700;
+}
+
+.image-storage-mode-card em { font-style: normal; }
+.image-space-hint { margin: -2px 0 12px; }
+
+.asset-pref-fold {
+    display: grid;
+    grid-template-columns: minmax(150px, .7fr) minmax(0, 1fr) 18px;
+    align-items: center;
+    gap: 12px;
+    inline-size: 100%;
+    min-block-size: 48px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background-color: var(--storage-card-fill);
+    color: var(--text);
+    text-align: start;
+}
+
+.asset-pref-fold + .asset-pref-fold { margin-block-start: 10px; }
+
+.asset-pref-fold.open {
+    border-color: var(--storage-fold-edge);
+    background-color: var(--storage-fold-fill);
+}
+
+.asset-pref-fold > span {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-inline-size: 0;
+    font-size: 12px;
+    font-weight: 950;
+}
+
+.asset-pref-fold > em {
+    min-inline-size: 0;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 11.5px;
+    font-weight: 750;
+    font-style: normal;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.asset-pref-fold svg { color: var(--muted); }
+.asset-pref-fold > svg { inline-size: 16px; block-size: 16px; }
+
+.asset-pref-editor {
+    margin-block: 10px 12px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background-color: var(--soft);
+}
+
+.asset-pref-editor .storage-dir-row + .storage-dir-row { margin-block-start: 10px; }
+.image-space-root-row { margin-block-end: 10px; }
+
+.storage-dir-row {
+    display: grid;
+    align-content: start;
+    gap: 6px;
+    min-inline-size: 0;
+}
+
+.storage-dir-row span {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 900;
+}
+
+.storage-dir-row :is(input, select, textarea) {
+    inline-size: 100%;
+    padding-inline: 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    outline: none;
+    background-color: var(--soft);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.storage-dir-row :is(input, select) { block-size: 36px; padding-block: 0; }
+
+.storage-dir-row textarea {
+    min-block-size: 70px;
+    padding-block: 9px;
+    line-height: 1.5;
+    resize: vertical;
+}
+
+.storage-dir-row .asset-pref-rule-textarea {
+    min-block-size: 220px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    font-weight: 650;
+}
+
+.storage-dir-row input[readonly] { color: var(--muted); }
+.storage-dir-row input[readonly]:not(.storage-root-input) { cursor: default; }
+.storage-dir-row .storage-root-input { cursor: pointer; }
+
+.storage-dir-row .storage-root-input:hover {
+    border-color: var(--line-2);
+    background-color: var(--panel);
+}
+
+.storage-dir-row .storage-root-input:focus-visible {
+    border-color: var(--text);
+    box-shadow: 0 0 0 3px rgba(15, 23, 42, .12);
+}
+
+.storage-dir-control {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: center;
+    column-gap: 6px;
+    min-inline-size: 0;
+}
+
+.image-space-root-row .storage-dir-control { grid-template-columns: minmax(0, 1fr) auto; }
+
+.storage-dir-control button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    block-size: 36px;
+    padding-inline: 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background-color: var(--panel);
+    color: var(--text);
+    font-size: 11px;
+    font-weight: 850;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
+}
+
+.storage-dir-control button:hover { border-color: var(--text); }
+.storage-dir-control button:disabled { opacity: .55; cursor: wait; }
+.storage-dir-control button svg { inline-size: 14px; block-size: 14px; }
+
+.storage-settings-overlay .asset-inline-link {
+    margin-inline-start: 8px;
+    padding: 0;
+    background-color: transparent;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 850;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.storage-settings-overlay .asset-inline-link:hover { color: var(--text); }
+
+.storage-settings-overlay :is(.asset-pref-editor-actions, .storage-settings-actions) {
+    display: flex;
+    justify-content: end;
+}
+
+.asset-pref-editor-actions { margin-block-start: 10px; }
+.storage-settings-actions { padding-block-start: 12px; }
+
+.storage-file-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-block: 12px;
+}
+
+.storage-tabs {
+    gap: 6px;
+    padding: 3px;
+    border: 1px solid var(--storage-tabs-edge);
+    border-radius: 11px;
+}
+
+.storage-tabs button {
+    block-size: 30px;
+    padding-inline: 11px;
+    font-weight: 850;
+}
+
+.storage-file-actions { display: flex; align-items: center; gap: 8px; }
+
+.storage-file-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+    align-content: start;
+    gap: 12px;
+    min-block-size: 0;
+    padding: 16px var(--storage-gutter);
+    overflow: auto;
+    background-color: var(--soft);
+}
+
+.storage-file-card {
+    position: relative;
+    display: grid;
+    gap: 6px;
+    min-inline-size: 0;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background-color: var(--storage-card-fill);
+    cursor: pointer;
+}
+
+.storage-file-card.selected {
+    border-color: var(--storage-selection-edge);
+    box-shadow: 0 0 0 2px var(--storage-selection-ring);
+}
+
+.storage-file-card input {
+    position: absolute;
+    inset-block-start: 8px;
+    inset-inline-start: 8px;
+    z-index: 2;
+}
+
+.storage-file-thumb {
+    position: relative;
+    display: grid;
+    place-items: center;
+    inline-size: 100%;
+    aspect-ratio: 1;
+    overflow: hidden;
+    border-radius: 9px;
+    background-color: var(--soft);
+}
+
+.storage-file-thumb :is(img, video) {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: contain;
+}
+
+.storage-file-card > span {
+    overflow: hidden;
+    font-size: 11.5px;
+    font-weight: 850;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.storage-file-card > em {
+    color: var(--muted);
+    font-size: 10.5px;
+    font-style: normal;
+    font-weight: 700;
+}
+
+.storage-file-grid :is(.storage-empty, .storage-load-more) {
+    grid-column: 1 / -1;
+    color: var(--muted);
+    text-align: center;
+}
+
+.storage-empty {
+    padding: 48px 12px;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.storage-load-more {
+    padding: 12px;
+    font-size: 11.5px;
+    font-weight: 850;
+}
+
+.storage-file-grid .storage-load-more.done { color: var(--faint); }
+
+@media (max-width: 860px) {
+    .storage-settings-overlay { padding: 16px; }
+    .storage-settings-modal { inline-size: 100%; block-size: calc(100vh - 32px); }
+    .storage-settings-overlay :is(.asset-pref-grid, .storage-dir-grid) { --storage-columns: 1; }
+    .asset-pref-fold { grid-template-columns: minmax(0, 1fr) 18px; }
+    .asset-pref-fold > em { grid-column: 1 / -1; grid-row: 2; }
+    .storage-file-head { flex-direction: column; align-items: stretch; }
+}
