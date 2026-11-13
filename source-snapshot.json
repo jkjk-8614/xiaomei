@@ -1,6 +1,17 @@
 {
   "schemaVersion": 1,
   "criticalPackagedPaths": [
+    "asset_kernel.py",
+    "dispatch_kernel.py",
+    "release_info.py",
+    "static/js/xiaomei-canvas-surface.js",
+    "static/js/xiaomei-smart-surface.js",
+    "static/js/xiaomei-dispatch-kernel.js",
+    "static/js/xiaomei-document-kernel.js",
+    "static/js/xiaomei-history-kernel.js",
+    "static/js/xiaomei-node-kernel.js",
+    "static/js/xiaomei-shell-kernel.js",
+    "static/js/xiaomei-viewport-kernel.js",
     "main.py",
     "runtime_paths.py",
     "skill_capabilities.py",
@@ -53,8 +64,8 @@
   "files": [
     {
       "path": "API/.env.example",
-      "sourceSha256": "1977194a5cfc88fac00deda53dd2a83f77f0c51211eb2dc8747c370d029d3765",
-      "releaseSha256": "1977194a5cfc88fac00deda53dd2a83f77f0c51211eb2dc8747c370d029d3765"
+      "sourceSha256": "17095307a0b453ab7559cfdb5a2332ff56b4c5f04eea03ba9f01c5365c153f57",
+      "releaseSha256": "17095307a0b453ab7559cfdb5a2332ff56b4c5f04eea03ba9f01c5365c153f57"
     },
     {
       "path": "ComfyUI/integration/__init__.py",
@@ -68,8 +79,13 @@
     },
     {
       "path": "ComfyUI/integration/comfy_apps.py",
-      "sourceSha256": "7593ce3c86ea71b61b85e3a21080a166b035f8079ed495c6bb55f2231fbd022f",
-      "releaseSha256": "7593ce3c86ea71b61b85e3a21080a166b035f8079ed495c6bb55f2231fbd022f"
+      "sourceSha256": "a68d2a3e2944ea9e97eecbf94895860d38ba2b04d44fa147cf7be3f42894c2cf",
+      "releaseSha256": "a68d2a3e2944ea9e97eecbf94895860d38ba2b04d44fa147cf7be3f42894c2cf"
+    },
+    {
+      "path": "ComfyUI/integration/comfy_execution.py",
+      "sourceSha256": "240ce073f2415f0e5c8f940111178c47d7dd707e238435c02c7bfa9924fdaeca",
+      "releaseSha256": "240ce073f2415f0e5c8f940111178c47d7dd707e238435c02c7bfa9924fdaeca"
     },
     {
       "path": "ComfyUI/integration/comfy_model_downloads.py",
@@ -92,9 +108,19 @@
       "releaseSha256": "908238a0b562e65ae3125432cfff7598d0e0ead9eeee23efc8d0fe90c828163d"
     },
     {
+      "path": "ComfyUI/integration/comfy_outputs.py",
+      "sourceSha256": "04796214c59926bbc00642752619a0e05c445224258f878f028cff1a4678f214",
+      "releaseSha256": "04796214c59926bbc00642752619a0e05c445224258f878f028cff1a4678f214"
+    },
+    {
       "path": "ComfyUI/integration/comfy_workflow_inspection.py",
       "sourceSha256": "d721911b28cfe403319f824ab8df22dbeed338c41223e398da80b625713f9b8b",
       "releaseSha256": "d721911b28cfe403319f824ab8df22dbeed338c41223e398da80b625713f9b8b"
+    },
+    {
+      "path": "ComfyUI/integration/workflow_invocations.py",
+      "sourceSha256": "fd679c2e7c004969f26200d14f47786530f6f1741789cd3e456315cc519609a4",
+      "releaseSha256": "fd679c2e7c004969f26200d14f47786530f6f1741789cd3e456315cc519609a4"
     },
     {
       "path": "ComfyUI/tools/comfy-app-bridge/README.md",
@@ -113,13 +139,13 @@
     },
     {
       "path": "ComfyUI/web/comfyui-settings.html",
-      "sourceSha256": "5bb4b697b183d091cb36117fc5509a2a9c08fada7b6d23926d522e1f929680b7",
-      "releaseSha256": "5bb4b697b183d091cb36117fc5509a2a9c08fada7b6d23926d522e1f929680b7"
+      "sourceSha256": "ccc1510c66e193da36dadd53a60e41a6540e3e269bc5e0b7238d94d2240f7f75",
+      "releaseSha256": "ccc1510c66e193da36dadd53a60e41a6540e3e269bc5e0b7238d94d2240f7f75"
     },
     {
       "path": "ComfyUI/web/comfyui.html",
-      "sourceSha256": "a501239b5787ae1a1687301ee50826052d8d3a6eb31421585b30afae2f35ffbb",
-      "releaseSha256": "a501239b5787ae1a1687301ee50826052d8d3a6eb31421585b30afae2f35ffbb"
+      "sourceSha256": "fc084a136e526379b47ad7e26221ea16a16fca74b769c6178b64f9dd6b7d39c7",
+      "releaseSha256": "fc084a136e526379b47ad7e26221ea16a16fca74b769c6178b64f9dd6b7d39c7"
     },
     {
       "path": "ComfyUI/web/css/comfy-apps.css",
@@ -138,8 +164,8 @@
     },
     {
       "path": "ComfyUI/web/css/comfyui-settings.css",
-      "sourceSha256": "35898999d7c869f0be5becf08522b8816bd629058d8071b4bfc4af102b750f2a",
-      "releaseSha256": "35898999d7c869f0be5becf08522b8816bd629058d8071b4bfc4af102b750f2a"
+      "sourceSha256": "11a757c24b67d9a624c6671c43a95b6af5cf7be262e6ef6d8bb39015979762df",
+      "releaseSha256": "11a757c24b67d9a624c6671c43a95b6af5cf7be262e6ef6d8bb39015979762df"
     },
     {
       "path": "ComfyUI/web/css/comfyui-workspace.css",
@@ -158,8 +184,8 @@
     },
     {
       "path": "ComfyUI/web/js/comfyui-settings.js",
-      "sourceSha256": "0823f562bc7dac5c5676418551408cdd6fa0bf4fafa1b46b34b92f251d0b7f02",
-      "releaseSha256": "0823f562bc7dac5c5676418551408cdd6fa0bf4fafa1b46b34b92f251d0b7f02"
+      "sourceSha256": "cbb840f7d5413b46e3b1184703ec6b31bb7e1c830ef1d6a8470a665614dcea5a",
+      "releaseSha256": "cbb840f7d5413b46e3b1184703ec6b31bb7e1c830ef1d6a8470a665614dcea5a"
     },
     {
       "path": "ComfyUI/web/js/comfyui-workspace.js",
@@ -168,8 +194,8 @@
     },
     {
       "path": "ComfyUI/web/js/i18n/comfyui-settings.js",
-      "sourceSha256": "0a316fa932eee76650ad547625d03b50b57d80a424a9d4e17b32572ae2658a32",
-      "releaseSha256": "0a316fa932eee76650ad547625d03b50b57d80a424a9d4e17b32572ae2658a32"
+      "sourceSha256": "9cffd07f1148b2d6b3e3d1e171838df074230ecf0b15c7b36faba840e9a57412",
+      "releaseSha256": "9cffd07f1148b2d6b3e3d1e171838df074230ecf0b15c7b36faba840e9a57412"
     },
     {
       "path": "agent_skill_store.py",
@@ -177,9 +203,54 @@
       "releaseSha256": "7735ca4afca750803426ac8eba0210c51fb8d0011605e6f33f90d41d11b927c1"
     },
     {
+      "path": "agnes_video.py",
+      "sourceSha256": "fece7c00efec153abd41f43ed6ab3dfdab072cf4cb7083f1812e5abcec137c60",
+      "releaseSha256": "fece7c00efec153abd41f43ed6ab3dfdab072cf4cb7083f1812e5abcec137c60"
+    },
+    {
+      "path": "api6789_video.py",
+      "sourceSha256": "73f632379652b3f16ef8adf811b60567c132a793ee53b2ef6d3cb3ec8b7ba45d",
+      "releaseSha256": "73f632379652b3f16ef8adf811b60567c132a793ee53b2ef6d3cb3ec8b7ba45d"
+    },
+    {
+      "path": "apimart_media.py",
+      "sourceSha256": "ff264b75049f17015f5b490d804a889ddcdf048b14ca5a1b23c08d75d206f6c2",
+      "releaseSha256": "ff264b75049f17015f5b490d804a889ddcdf048b14ca5a1b23c08d75d206f6c2"
+    },
+    {
+      "path": "apimart_video.py",
+      "sourceSha256": "c9dc525a9cbf60d95d533342c54788bd75b9e36b0071f64955d24939fd14e5af",
+      "releaseSha256": "c9dc525a9cbf60d95d533342c54788bd75b9e36b0071f64955d24939fd14e5af"
+    },
+    {
+      "path": "asset_annotations.py",
+      "sourceSha256": "e431f0ef9b7b306cf9dc47c10dbee93522edc7fe39e35bce5f75718a85d0fa9c",
+      "releaseSha256": "e431f0ef9b7b306cf9dc47c10dbee93522edc7fe39e35bce5f75718a85d0fa9c"
+    },
+    {
+      "path": "asset_kernel.py",
+      "sourceSha256": "eef30b800f8108daec5430e7991e1112023d6018fe4732eec87c653cb4ef4c5b",
+      "releaseSha256": "eef30b800f8108daec5430e7991e1112023d6018fe4732eec87c653cb4ef4c5b"
+    },
+    {
+      "path": "asset_library_storage.py",
+      "sourceSha256": "767160e40f90b5b9ef7b02c4db280d4642a93208b6e40e60cd1d282ae9bf75f6",
+      "releaseSha256": "767160e40f90b5b9ef7b02c4db280d4642a93208b6e40e60cd1d282ae9bf75f6"
+    },
+    {
+      "path": "asset_library_workflows.py",
+      "sourceSha256": "55c4b0e8a8d939f77514235d56830b888a927a88407bd1d8360dad5a9fa01cb6",
+      "releaseSha256": "55c4b0e8a8d939f77514235d56830b888a927a88407bd1d8360dad5a9fa01cb6"
+    },
+    {
       "path": "asset_registry.py",
-      "sourceSha256": "8140385c17f67b03bf36bda3d14d4c55d95f5652a8a72df8850d342d144eaec2",
-      "releaseSha256": "8140385c17f67b03bf36bda3d14d4c55d95f5652a8a72df8850d342d144eaec2"
+      "sourceSha256": "ec84571190d6fa7fd934493367e8cb67cac4cc4c0d9efd217bfe61e1a1e8b5b1",
+      "releaseSha256": "ec84571190d6fa7fd934493367e8cb67cac4cc4c0d9efd217bfe61e1a1e8b5b1"
+    },
+    {
+      "path": "avatar_reviews.py",
+      "sourceSha256": "1e7fed8168569692ceabd274f8404aab2c33c2dac9a7d065b2613b6a7986c8e9",
+      "releaseSha256": "1e7fed8168569692ceabd274f8404aab2c33c2dac9a7d065b2613b6a7986c8e9"
     },
     {
       "path": "bridge_api.py",
@@ -190,6 +261,21 @@
       "path": "canvas_agent_commands.py",
       "sourceSha256": "51a335f207edc730aaf311e1a77fd00ba31b6b899a5171cffa8958468ed2a627",
       "releaseSha256": "51a335f207edc730aaf311e1a77fd00ba31b6b899a5171cffa8958468ed2a627"
+    },
+    {
+      "path": "canvas_agent_inputs.py",
+      "sourceSha256": "e02592b3ec914406b59133dd4014fe0ca08a67ec153462413b34807a6911f27d",
+      "releaseSha256": "e02592b3ec914406b59133dd4014fe0ca08a67ec153462413b34807a6911f27d"
+    },
+    {
+      "path": "canvas_agent_transport.py",
+      "sourceSha256": "4f1957548c01f59b5d9e6152b2e77c609e0b05a1940be56707dd5b381453d31b",
+      "releaseSha256": "4f1957548c01f59b5d9e6152b2e77c609e0b05a1940be56707dd5b381453d31b"
+    },
+    {
+      "path": "canvas_asset_archive.py",
+      "sourceSha256": "cd46149f13c0e186dec723164f7309be5d854e55a1cf88efa872e16b39a106f0",
+      "releaseSha256": "cd46149f13c0e186dec723164f7309be5d854e55a1cf88efa872e16b39a106f0"
     },
     {
       "path": "canvas_folder_batches.py",
@@ -207,6 +293,11 @@
       "releaseSha256": "d167775f76c3e36c8d337413d930bf90cd0aa46f96d4f35d235f95b50450a114"
     },
     {
+      "path": "canvas_media.py",
+      "sourceSha256": "eb2bc06c5b9c028a867005bfcf41fc9a1b6277590219b209115269b09633008d",
+      "releaseSha256": "eb2bc06c5b9c028a867005bfcf41fc9a1b6277590219b209115269b09633008d"
+    },
+    {
       "path": "canvas_sku.py",
       "sourceSha256": "107838bfbfbd601f044130cccec4761fe52805d9d3410ae6fe2839122980f20b",
       "releaseSha256": "107838bfbfbd601f044130cccec4761fe52805d9d3410ae6fe2839122980f20b"
@@ -215,6 +306,51 @@
       "path": "canvas_video_timeline.py",
       "sourceSha256": "77d993cc616704bb7dff99e24989697b0b332e3d23d9ddb7feb2898265a88e7d",
       "releaseSha256": "77d993cc616704bb7dff99e24989697b0b332e3d23d9ddb7feb2898265a88e7d"
+    },
+    {
+      "path": "canvas_workflow_archive.py",
+      "sourceSha256": "413d95ab9612de4ca19b267243dd2721ab48e2a2b31e233c6b8fbb4bf588da16",
+      "releaseSha256": "413d95ab9612de4ca19b267243dd2721ab48e2a2b31e233c6b8fbb4bf588da16"
+    },
+    {
+      "path": "chat_conversations.py",
+      "sourceSha256": "3db439f1aa94a681c8541623d0ae16ece36f810df7c96c81853169d83100100f",
+      "releaseSha256": "3db439f1aa94a681c8541623d0ae16ece36f810df7c96c81853169d83100100f"
+    },
+    {
+      "path": "chat_errors.py",
+      "sourceSha256": "ec028c6c4a302158efac23146bf0350a9a362a394052f77bfc6d70c9143ade71",
+      "releaseSha256": "ec028c6c4a302158efac23146bf0350a9a362a394052f77bfc6d70c9143ade71"
+    },
+    {
+      "path": "chat_image_requests.py",
+      "sourceSha256": "080b7c41995e07075f6837e1a93c6755bf156272af6ae0ae7577a2f3e4229305",
+      "releaseSha256": "080b7c41995e07075f6837e1a93c6755bf156272af6ae0ae7577a2f3e4229305"
+    },
+    {
+      "path": "chat_replies.py",
+      "sourceSha256": "bdba69e76fda70f60fec54b40e22e8d6ac7795943296ec19030b1b8eaf302d58",
+      "releaseSha256": "bdba69e76fda70f60fec54b40e22e8d6ac7795943296ec19030b1b8eaf302d58"
+    },
+    {
+      "path": "chat_streaming.py",
+      "sourceSha256": "88b11f136b0c656f6ab2ab39da1d6e6761e88f4a3457450695e862ccbeae1962",
+      "releaseSha256": "88b11f136b0c656f6ab2ab39da1d6e6761e88f4a3457450695e862ccbeae1962"
+    },
+    {
+      "path": "cli_process.py",
+      "sourceSha256": "80af1f1142a5ef883c08cbf7c95f40aad26f5ee178e9648a970ca1be862719d0",
+      "releaseSha256": "80af1f1142a5ef883c08cbf7c95f40aad26f5ee178e9648a970ca1be862719d0"
+    },
+    {
+      "path": "cli_references.py",
+      "sourceSha256": "58c5bc0b3ef78eddcc10ba9b297faa5307c607889b3f2872791fcc4ad8cd2dd8",
+      "releaseSha256": "58c5bc0b3ef78eddcc10ba9b297faa5307c607889b3f2872791fcc4ad8cd2dd8"
+    },
+    {
+      "path": "codex_exec.py",
+      "sourceSha256": "8a2b1c5e03bda796f44fd229458ba0ba651c54136b7737caaa0170705e4f3a26",
+      "releaseSha256": "8a2b1c5e03bda796f44fd229458ba0ba651c54136b7737caaa0170705e4f3a26"
     },
     {
       "path": "commerce_link_method.py",
@@ -233,8 +369,8 @@
     },
     {
       "path": "design_brain_bots.py",
-      "sourceSha256": "cfdd0bda762938c6d0976c24bca930a0364cde5657f9b9db5bc90d7c85831e2e",
-      "releaseSha256": "cfdd0bda762938c6d0976c24bca930a0364cde5657f9b9db5bc90d7c85831e2e"
+      "sourceSha256": "02832d464db9a35e035da110fddef1703afd907f474c9f24d56bdba542c8e98a",
+      "releaseSha256": "02832d464db9a35e035da110fddef1703afd907f474c9f24d56bdba542c8e98a"
     },
     {
       "path": "design_brain_decisions.py",
@@ -248,7 +384,7 @@
     },
     {
       "path": "design_brain_quality.py",
-      "sourceSha256": "c5d290e19a75d463b3010805447121d96fe133b0c94ea90beeff9892ff45aa52",
+      "sourceSha256": "0cafa2e5df2c9c4a647de8e37dc85b26fe9da9dd0abe446726cbec7918960051",
       "releaseSha256": "0cafa2e5df2c9c4a647de8e37dc85b26fe9da9dd0abe446726cbec7918960051"
     },
     {
@@ -258,13 +394,13 @@
     },
     {
       "path": "design_brain_store.py",
-      "sourceSha256": "1c804ab3901fb21e409c0c2621bb877ccc07aa79f7aec3b245f2ba6505c8c66a",
-      "releaseSha256": "1c804ab3901fb21e409c0c2621bb877ccc07aa79f7aec3b245f2ba6505c8c66a"
+      "sourceSha256": "8e5e71756eeb19648ac5b69a9bca9fd04ff22ac74024be8be11cd65b05c72268",
+      "releaseSha256": "8e5e71756eeb19648ac5b69a9bca9fd04ff22ac74024be8be11cd65b05c72268"
     },
     {
       "path": "design_brain_team.py",
-      "sourceSha256": "4e963bfff97e7a74a9180199b19c5bee16422269106f5f16a3afec1a10fe60eb",
-      "releaseSha256": "4e963bfff97e7a74a9180199b19c5bee16422269106f5f16a3afec1a10fe60eb"
+      "sourceSha256": "0f3bd97156f60653b8851ce39e14b3732ebe70e26ae775dfdae897ee5f6c73f4",
+      "releaseSha256": "0f3bd97156f60653b8851ce39e14b3732ebe70e26ae775dfdae897ee5f6c73f4"
     },
     {
       "path": "design_brain_team_api.py",
@@ -293,13 +429,18 @@
     },
     {
       "path": "desktop/brand-electron-exe.cjs",
-      "sourceSha256": "8c65dacc044707e7b7119320d54e67da2c3d5d8a131db6e81b16815c06ffc3d0",
-      "releaseSha256": "8c65dacc044707e7b7119320d54e67da2c3d5d8a131db6e81b16815c06ffc3d0"
+      "sourceSha256": "267a1965833b28cd0782c7887c8e5ca6f9ce54ce01e244e02766a14e441af288",
+      "releaseSha256": "267a1965833b28cd0782c7887c8e5ca6f9ce54ce01e244e02766a14e441af288"
     },
     {
       "path": "desktop/commerce-agent.cjs",
       "sourceSha256": "449fecbd5810c769b600f178bb1d4ca107568697577982b5a16b8b7fb695f2c4",
       "releaseSha256": "449fecbd5810c769b600f178bb1d4ca107568697577982b5a16b8b7fb695f2c4"
+    },
+    {
+      "path": "desktop/dabi-agent.cjs",
+      "sourceSha256": "c9953957c8fb04c0d5848006adec84176dccdb120fe316437995c435b4aabdfe",
+      "releaseSha256": "c9953957c8fb04c0d5848006adec84176dccdb120fe316437995c435b4aabdfe"
     },
     {
       "path": "desktop/deepseek-updater.cjs",
@@ -318,7 +459,7 @@
     },
     {
       "path": "desktop/harness-model-check.cjs",
-      "sourceSha256": "e7edc4d12e8c1b4607553a7b87de9e8e6a0b71cf267ca2397177e1ab4f63b82f",
+      "sourceSha256": "bc3f09c341f01023687b54602e1f4e3c9899d192480e20c16c6583ef47936e64",
       "releaseSha256": "bc3f09c341f01023687b54602e1f4e3c9899d192480e20c16c6583ef47936e64"
     },
     {
@@ -347,9 +488,14 @@
       "releaseSha256": "f2af2d78022517257068ee433560a85de8180fd8f70e46cfc9cd44f6bfedce2c"
     },
     {
+      "path": "desktop/launch-hidden.vbs",
+      "sourceSha256": "b6252a52d252302cf5eceba05e1755fc270dafa630d8f0e40a2dca859ca2faca",
+      "releaseSha256": "b6252a52d252302cf5eceba05e1755fc270dafa630d8f0e40a2dca859ca2faca"
+    },
+    {
       "path": "desktop/main.cjs",
-      "sourceSha256": "6546d094d56c265f330a5e776d7095aa9d83082cd8abbd9acf1c712f52011baf",
-      "releaseSha256": "9f5111c135e96950ff61210979e3eb0941914e6e0d81e2b6398cb3234008be39"
+      "sourceSha256": "cbc4c49bc9069e03f3e4266b4e98814b23661412033e98100495ae25af8d4773",
+      "releaseSha256": "08859a8f58cd7889799b29bd6bf9d8d1ab3a9ac86ae46615e63e61b7b76e421c"
     },
     {
       "path": "desktop/marketplace-assistant.cjs",
@@ -358,7 +504,7 @@
     },
     {
       "path": "desktop/preload.cjs",
-      "sourceSha256": "2cac63e54a568dda5f4560316be0e9c286b55cf472ede95f95a85c37403be1ea",
+      "sourceSha256": "a115cbe987fe42b0c4f0a93275ab1228527c2fb5e73b35e687e42e65d7167776",
       "releaseSha256": "a115cbe987fe42b0c4f0a93275ab1228527c2fb5e73b35e687e42e65d7167776"
     },
     {
@@ -382,8 +528,18 @@
       "releaseSha256": "fdcbdfbc5bd90f32467f6376c20920369fcb10472bc13062c6fb96f484fcdb72"
     },
     {
+      "path": "desktop/update-network.cjs",
+      "sourceSha256": "d315039a283f54f186ec852727ddee6a1626cd3a50b536fa90c86fa32c8f497d",
+      "releaseSha256": "d315039a283f54f186ec852727ddee6a1626cd3a50b536fa90c86fa32c8f497d"
+    },
+    {
+      "path": "desktop/update-preload.cjs",
+      "sourceSha256": "2c683295c8571aeee006e79b9074304099af0d824e682e4e4914a9448ada5632",
+      "releaseSha256": "2c683295c8571aeee006e79b9074304099af0d824e682e4e4914a9448ada5632"
+    },
+    {
       "path": "desktop/updater.cjs",
-      "sourceSha256": "89af861ccebc60463cd24befc70aa4542a33bcef9f9e6e32e4e8634d99b2827c",
+      "sourceSha256": "3e618e491959b38b840cf6b7262d190ec9efa2f87c065f6066a760a583c78e8b",
       "releaseSha256": "3e618e491959b38b840cf6b7262d190ec9efa2f87c065f6066a760a583c78e8b"
     },
     {
@@ -392,9 +548,14 @@
       "releaseSha256": "ca8b862b3ce80c58b4ef2130a741ee3e9abdf379069bbfeb0b4b00e4f209afeb"
     },
     {
+      "path": "dispatch_kernel.py",
+      "sourceSha256": "31f24826eca2b1c194673ba959799c7e6071b7a583860fd40fca9e9acabbdd71",
+      "releaseSha256": "31f24826eca2b1c194673ba959799c7e6071b7a583860fd40fca9e9acabbdd71"
+    },
+    {
       "path": "document_attachments.py",
-      "sourceSha256": "779b01c4372d0d724a410710f4569a47113c4f58db2be69bd05b8e0711b3a062",
-      "releaseSha256": "779b01c4372d0d724a410710f4569a47113c4f58db2be69bd05b8e0711b3a062"
+      "sourceSha256": "889bf8603e24594b7b4a457b8f619cec03a3a441a58b6a44ecb83bda38a8761e",
+      "releaseSha256": "889bf8603e24594b7b4a457b8f619cec03a3a441a58b6a44ecb83bda38a8761e"
     },
     {
       "path": "expert_workflows.py",
@@ -402,14 +563,44 @@
       "releaseSha256": "8f829231ce571e3c196911dee9b70d7de17225cbce67480d55b7f14670abfc5b"
     },
     {
+      "path": "gateway_images.py",
+      "sourceSha256": "d37bfb47cdc166ceae3e6be9d561eec5d3fac2194da6a2c2923f56de63fb8ed7",
+      "releaseSha256": "d37bfb47cdc166ceae3e6be9d561eec5d3fac2194da6a2c2923f56de63fb8ed7"
+    },
+    {
+      "path": "gateway_video.py",
+      "sourceSha256": "c86be7be56dcbc597e2fca29867fb101111af9daafa2a2c2a87dc13358b2ddfc",
+      "releaseSha256": "c86be7be56dcbc597e2fca29867fb101111af9daafa2a2c2a87dc13358b2ddfc"
+    },
+    {
       "path": "geometry_validator.py",
       "sourceSha256": "3332426258ce95c9d598311d459af226442dcb843645de4b5d0249c2b84772f8",
       "releaseSha256": "3332426258ce95c9d598311d459af226442dcb843645de4b5d0249c2b84772f8"
     },
     {
+      "path": "gpt_image_cli.py",
+      "sourceSha256": "b2b8bc227b5115b0147f826bfb7a3c8403531616b77c9581858f080ae92e2c90",
+      "releaseSha256": "b2b8bc227b5115b0147f826bfb7a3c8403531616b77c9581858f080ae92e2c90"
+    },
+    {
+      "path": "gpt_image_dimensions.py",
+      "sourceSha256": "b89c61c8061941246665999e27f318ff79391045991e962c207935ff4460eb5e",
+      "releaseSha256": "b89c61c8061941246665999e27f318ff79391045991e962c207935ff4460eb5e"
+    },
+    {
+      "path": "image_result_recovery.py",
+      "sourceSha256": "cf61cac319c76123ed013e40a0e88f833bc951641a3bf301a948d99ab85c20ed",
+      "releaseSha256": "cf61cac319c76123ed013e40a0e88f833bc951641a3bf301a948d99ab85c20ed"
+    },
+    {
       "path": "image_space.py",
-      "sourceSha256": "9233327f83432f9b1ed7496e5dd9cc0db393a196633fddc6bb3a5fd78739964e",
-      "releaseSha256": "9233327f83432f9b1ed7496e5dd9cc0db393a196633fddc6bb3a5fd78739964e"
+      "sourceSha256": "54d94aab8cebef14c98d147adea9f575c69fc3b319324745e28008c65ee55137",
+      "releaseSha256": "54d94aab8cebef14c98d147adea9f575c69fc3b319324745e28008c65ee55137"
+    },
+    {
+      "path": "image_task_queries.py",
+      "sourceSha256": "5544a991525bc726d18b41158305fc420d5bae50d057f8f45ee3c56617ebbb07",
+      "releaseSha256": "5544a991525bc726d18b41158305fc420d5bae50d057f8f45ee3c56617ebbb07"
     },
     {
       "path": "image_vectorizer.py",
@@ -422,6 +613,46 @@
       "releaseSha256": "fedefb8aee07651d5daa76f46bcd34e802d6cb08272398aa066782f40b25a1fa"
     },
     {
+      "path": "jimeng_cli.py",
+      "sourceSha256": "8fe402b449e51f0118a8a05b491e1d7eb951ae0a9957dee1b48ed454dabfa47b",
+      "releaseSha256": "8fe402b449e51f0118a8a05b491e1d7eb951ae0a9957dee1b48ed454dabfa47b"
+    },
+    {
+      "path": "jimeng_login.py",
+      "sourceSha256": "5380a2d072b3db355bac45ed10d8262b3aa3ff7fdbd2a52b04c23ebe6b232a17",
+      "releaseSha256": "5380a2d072b3db355bac45ed10d8262b3aa3ff7fdbd2a52b04c23ebe6b232a17"
+    },
+    {
+      "path": "jimeng_media.py",
+      "sourceSha256": "5e445c3bbfd1192fbeabb8969a0aa22decdd5e732fa8589a31f11a8aad0dfdac",
+      "releaseSha256": "5e445c3bbfd1192fbeabb8969a0aa22decdd5e732fa8589a31f11a8aad0dfdac"
+    },
+    {
+      "path": "jimeng_requests.py",
+      "sourceSha256": "96aa8b50ac021cb2678abef397d67d9c91bd0ffea0ac6a4c3caf1f8a8127d629",
+      "releaseSha256": "96aa8b50ac021cb2678abef397d67d9c91bd0ffea0ac6a4c3caf1f8a8127d629"
+    },
+    {
+      "path": "jimeng_results.py",
+      "sourceSha256": "32e7d339909e225d9536988e637277a2b50408afaf7241af3f3097ec13bc4ada",
+      "releaseSha256": "32e7d339909e225d9536988e637277a2b50408afaf7241af3f3097ec13bc4ada"
+    },
+    {
+      "path": "local_asset_catalog.py",
+      "sourceSha256": "31268987c768baea0d547ed4852233b9c6278d25705efd2547eff7a20e3cb02b",
+      "releaseSha256": "31268987c768baea0d547ed4852233b9c6278d25705efd2547eff7a20e3cb02b"
+    },
+    {
+      "path": "local_asset_imports.py",
+      "sourceSha256": "8d7760c9648b07e5b508c281b5fe091d17e38d0d5aef484ee5fc30d9ea8b7207",
+      "releaseSha256": "8d7760c9648b07e5b508c281b5fe091d17e38d0d5aef484ee5fc30d9ea8b7207"
+    },
+    {
+      "path": "local_asset_relocation.py",
+      "sourceSha256": "83183dbd4c0814d737e74e24e25cbf0016d298d964fa663d1c1fb1bde2c7cc58",
+      "releaseSha256": "83183dbd4c0814d737e74e24e25cbf0016d298d964fa663d1c1fb1bde2c7cc58"
+    },
+    {
       "path": "local_fusion.py",
       "sourceSha256": "10ddf347af570f2f0cbb3c67fd21aa63b51ad522c7d32f00fca1045407a32d48",
       "releaseSha256": "10ddf347af570f2f0cbb3c67fd21aa63b51ad522c7d32f00fca1045407a32d48"
@@ -432,9 +663,14 @@
       "releaseSha256": "998e371652009a6907bae3817dbb759304d508a821eaabdc7b8496e4b8a62c17"
     },
     {
+      "path": "local_media_repair.py",
+      "sourceSha256": "e2567b676fb5a897e9bd7fde91f54ab7a637c1e4ed3389b2b74de134f4cf891f",
+      "releaseSha256": "e2567b676fb5a897e9bd7fde91f54ab7a637c1e4ed3389b2b74de134f4cf891f"
+    },
+    {
       "path": "main.py",
-      "sourceSha256": "2ecbb04fe9fcabdd19f2adf5957fbbd379e508a9394fcd49014c8917c99dbfb1",
-      "releaseSha256": "2ecbb04fe9fcabdd19f2adf5957fbbd379e508a9394fcd49014c8917c99dbfb1"
+      "sourceSha256": "6c588777e64b96ddbe5eb9930b840f3832d4e5451f9f62e276c755d8447fe703",
+      "releaseSha256": "6c588777e64b96ddbe5eb9930b840f3832d4e5451f9f62e276c755d8447fe703"
     },
     {
       "path": "mcp_settings.py",
@@ -442,9 +678,44 @@
       "releaseSha256": "a1989ccb108480fca71710cbf89a996086190c2c4ea4098b211c04a8866f399b"
     },
     {
+      "path": "media_cloud.py",
+      "sourceSha256": "0b8d3ad4df8edf37fe820d09ab0e12f66135de712307c7b394b05e350302eea0",
+      "releaseSha256": "0b8d3ad4df8edf37fe820d09ab0e12f66135de712307c7b394b05e350302eea0"
+    },
+    {
+      "path": "media_formats.py",
+      "sourceSha256": "aba78823286f8bda6e061d9ba154f39512fd95c101a37b13419ee17a7f191ee1",
+      "releaseSha256": "aba78823286f8bda6e061d9ba154f39512fd95c101a37b13419ee17a7f191ee1"
+    },
+    {
+      "path": "media_paths.py",
+      "sourceSha256": "c23ff8eed72f923be1cbc9e9283a243e066ab302306df8e031f28477eda499cd",
+      "releaseSha256": "c23ff8eed72f923be1cbc9e9283a243e066ab302306df8e031f28477eda499cd"
+    },
+    {
+      "path": "media_previews.py",
+      "sourceSha256": "5bec3e61fdf5bf118896fe8218bc67a88b9b65f3825a6f57eecee88c96fdf449",
+      "releaseSha256": "5bec3e61fdf5bf118896fe8218bc67a88b9b65f3825a6f57eecee88c96fdf449"
+    },
+    {
+      "path": "media_reference_frames.py",
+      "sourceSha256": "1015b1e6bf679789aded90342521bd5785df965f722666d1f3084d71e6a25b78",
+      "releaseSha256": "1015b1e6bf679789aded90342521bd5785df965f722666d1f3084d71e6a25b78"
+    },
+    {
+      "path": "media_result_payloads.py",
+      "sourceSha256": "12b08685cc48abe355021490ec6020690edbc9cce6fd9ff366b6f1ee00e190fd",
+      "releaseSha256": "12b08685cc48abe355021490ec6020690edbc9cce6fd9ff366b6f1ee00e190fd"
+    },
+    {
+      "path": "media_results.py",
+      "sourceSha256": "bc2caf6dd08ee9ddd1e72fbad8d4c35a2ed4b56f8715b8d2b73fe5c4cf2ea335",
+      "releaseSha256": "bc2caf6dd08ee9ddd1e72fbad8d4c35a2ed4b56f8715b8d2b73fe5c4cf2ea335"
+    },
+    {
       "path": "media_storage.py",
-      "sourceSha256": "cdcc2d77904f433dab48e673f998f185b1fdf234ff8d791df94b41a4167baa77",
-      "releaseSha256": "cdcc2d77904f433dab48e673f998f185b1fdf234ff8d791df94b41a4167baa77"
+      "sourceSha256": "6e2cc88cc8b1cb5cd9b7a4fa7b1693bf2db39bc302dda4ea5674e18c7685f894",
+      "releaseSha256": "6e2cc88cc8b1cb5cd9b7a4fa7b1693bf2db39bc302dda4ea5674e18c7685f894"
     },
     {
       "path": "multi_agent_api.py",
@@ -460,6 +731,11 @@
       "path": "multi_agent_store.py",
       "sourceSha256": "b345e9e254977deb0f27b83ea486153736d0cb030dc4685dbf14894596ac1c27",
       "releaseSha256": "b345e9e254977deb0f27b83ea486153736d0cb030dc4685dbf14894596ac1c27"
+    },
+    {
+      "path": "network_diagnostics.py",
+      "sourceSha256": "33bd3f8317d6d3fa8886bdccdce2f3af49b39c3663b6cbd51c6369bf1fa117e5",
+      "releaseSha256": "33bd3f8317d6d3fa8886bdccdce2f3af49b39c3663b6cbd51c6369bf1fa117e5"
     },
     {
       "path": "physical_dimensions.py",
@@ -487,9 +763,34 @@
       "releaseSha256": "486b94566ab88889c8976fefbd0588459658138b3ddfd6d8a6ae32b5613877d9"
     },
     {
+      "path": "prompt_case_library.py",
+      "sourceSha256": "61279dd524403420c69fbced6ff72f9d1c9dbea7e622a87c5b8c9f9b4514db55",
+      "releaseSha256": "61279dd524403420c69fbced6ff72f9d1c9dbea7e622a87c5b8c9f9b4514db55"
+    },
+    {
+      "path": "prompt_template_library.py",
+      "sourceSha256": "8cef1de4f1ffd11bcbdf365239ae4fb28b5cb106d8b635c65df1c27fbb006f74",
+      "releaseSha256": "8cef1de4f1ffd11bcbdf365239ae4fb28b5cb106d8b635c65df1c27fbb006f74"
+    },
+    {
+      "path": "provider_catalog.py",
+      "sourceSha256": "c3f82f4e084ca5ce80e3700e875d0324b0427912ec211a3ce755a9b23dcfc8fb",
+      "releaseSha256": "c3f82f4e084ca5ce80e3700e875d0324b0427912ec211a3ce755a9b23dcfc8fb"
+    },
+    {
+      "path": "provider_discovery.py",
+      "sourceSha256": "b9effefc287fc460bb28200d10dcec11782ac2d4878fc2a4a83c9ba4a2ec4ccf",
+      "releaseSha256": "b9effefc287fc460bb28200d10dcec11782ac2d4878fc2a4a83c9ba4a2ec4ccf"
+    },
+    {
       "path": "provider_icons.py",
       "sourceSha256": "e749b747e42514fc92911c881039d4fb2a47832914395449c14a81b7002c580a",
       "releaseSha256": "e749b747e42514fc92911c881039d4fb2a47832914395449c14a81b7002c580a"
+    },
+    {
+      "path": "release_info.py",
+      "sourceSha256": "8e56562cc6496446e2ff88160efded93531230262e3ee1c0869158cde37909bb",
+      "releaseSha256": "8e56562cc6496446e2ff88160efded93531230262e3ee1c0869158cde37909bb"
     },
     {
       "path": "remote_media.py",
@@ -507,6 +808,41 @@
       "releaseSha256": "fd22a98eb9badf602fb6adaafa449edab7dcf91aca64e23afc4a1a4b7c62ebd8"
     },
     {
+      "path": "responses_images.py",
+      "sourceSha256": "1b30262f102900209444f10cce9d661e4b81d2f5c9e8bcd7924988668b271c85",
+      "releaseSha256": "1b30262f102900209444f10cce9d661e4b81d2f5c9e8bcd7924988668b271c85"
+    },
+    {
+      "path": "runninghub_catalog.py",
+      "sourceSha256": "99231015121dfcd1cd3599a5c8c86cf1b9351fe6a3ebc9b92fcdb2c9ae7dc5cc",
+      "releaseSha256": "99231015121dfcd1cd3599a5c8c86cf1b9351fe6a3ebc9b92fcdb2c9ae7dc5cc"
+    },
+    {
+      "path": "runninghub_entries.py",
+      "sourceSha256": "cf60a7f63e11c707bf704612528d56cd73128facba7ead08f46ca66183362fec",
+      "releaseSha256": "cf60a7f63e11c707bf704612528d56cd73128facba7ead08f46ca66183362fec"
+    },
+    {
+      "path": "runninghub_inputs.py",
+      "sourceSha256": "eb39a6e567cf207cd08250067bda7a9762a018b0e1f85b70f2f8922b760dbf37",
+      "releaseSha256": "eb39a6e567cf207cd08250067bda7a9762a018b0e1f85b70f2f8922b760dbf37"
+    },
+    {
+      "path": "runninghub_results.py",
+      "sourceSha256": "2ee6898c02cdcf23f82782ed5cfd5ec2375f3c4cc2ea9083e20f80d51369e2c8",
+      "releaseSha256": "2ee6898c02cdcf23f82782ed5cfd5ec2375f3c4cc2ea9083e20f80d51369e2c8"
+    },
+    {
+      "path": "runninghub_tasks.py",
+      "sourceSha256": "c59eb65f998696200fee3cae26518c5eb1f02d60902ad3291de0de3699b4bcfc",
+      "releaseSha256": "c59eb65f998696200fee3cae26518c5eb1f02d60902ad3291de0de3699b4bcfc"
+    },
+    {
+      "path": "runninghub_workflows.py",
+      "sourceSha256": "3c6eaccf5d3d17bdca5bb4d149c137ed91dec271988873f73e1f84b90134064c",
+      "releaseSha256": "3c6eaccf5d3d17bdca5bb4d149c137ed91dec271988873f73e1f84b90134064c"
+    },
+    {
       "path": "runtime_paths.py",
       "sourceSha256": "330010134835e405efca2b7d7931254091569988f5433eae8468c3b6fdfa7808",
       "releaseSha256": "330010134835e405efca2b7d7931254091569988f5433eae8468c3b6fdfa7808"
@@ -517,44 +853,54 @@
       "releaseSha256": "05af9d40621ad5b3802b279d84af9ab7d99dc5f8553580e4115196e3bb321dce"
     },
     {
+      "path": "shared_media.py",
+      "sourceSha256": "95bd2ca71677252e76505be3859244bde1f00780e740bbf0838329e4f1a22257",
+      "releaseSha256": "95bd2ca71677252e76505be3859244bde1f00780e740bbf0838329e4f1a22257"
+    },
+    {
       "path": "skill_capabilities.py",
       "sourceSha256": "bfc22e66400ced4d82db6912e66634346a7a0a4faf8e797490f5e42ab648ac13",
       "releaseSha256": "bfc22e66400ced4d82db6912e66634346a7a0a4faf8e797490f5e42ab648ac13"
     },
     {
       "path": "static/angle.html",
-      "sourceSha256": "42b579c910942b98c659f79e572f328c53cff2e2f4aef2d1c77afd3f34cb1736",
-      "releaseSha256": "42b579c910942b98c659f79e572f328c53cff2e2f4aef2d1c77afd3f34cb1736"
+      "sourceSha256": "341bfa2682669092b3aa7838000ac73c5454e87d380365a00ca96dda117473f6",
+      "releaseSha256": "341bfa2682669092b3aa7838000ac73c5454e87d380365a00ca96dda117473f6"
     },
     {
       "path": "static/api-settings.html",
-      "sourceSha256": "f34b6a7fa29f7aacce6529c129f02a2e0b0fba5535a72144476b1839ccce7c57",
-      "releaseSha256": "f34b6a7fa29f7aacce6529c129f02a2e0b0fba5535a72144476b1839ccce7c57"
+      "sourceSha256": "75d9e42a185c63a1c69f6bf684ab5b6932789e2686e94faa111b8411a1b7f3a4",
+      "releaseSha256": "75d9e42a185c63a1c69f6bf684ab5b6932789e2686e94faa111b8411a1b7f3a4"
     },
     {
       "path": "static/asset-manager.html",
-      "sourceSha256": "9ec4997710070295d0c178e6d688d3535ad9dcf705638a55ce7ad7de14d61539",
-      "releaseSha256": "9ec4997710070295d0c178e6d688d3535ad9dcf705638a55ce7ad7de14d61539"
+      "sourceSha256": "59d253cd59aea569a9cc5351bab8bb00408a31bf6c5a0404e3bac58bd6569cd0",
+      "releaseSha256": "59d253cd59aea569a9cc5351bab8bb00408a31bf6c5a0404e3bac58bd6569cd0"
+    },
+    {
+      "path": "static/canvas-engine-preview.html",
+      "sourceSha256": "c831b3ab2a452d3c081ca3165b9b6d06d4b9b91108f9fe094c047d93ecff2a9b",
+      "releaseSha256": "c831b3ab2a452d3c081ca3165b9b6d06d4b9b91108f9fe094c047d93ecff2a9b"
     },
     {
       "path": "static/canvas-list.html",
-      "sourceSha256": "83dcb18ad371c48e08e10635a4f92410445b7c2c1f5ac5b3536de362ddf95230",
-      "releaseSha256": "83dcb18ad371c48e08e10635a4f92410445b7c2c1f5ac5b3536de362ddf95230"
+      "sourceSha256": "03bbdd1b043076a4303459bfff2015ef63b3fc9051c99d77de593bf5e5a902f4",
+      "releaseSha256": "03bbdd1b043076a4303459bfff2015ef63b3fc9051c99d77de593bf5e5a902f4"
     },
     {
       "path": "static/canvas.html",
-      "sourceSha256": "0f961b0cec0649dcf4c5bf44ede54250bf175ecfabbb21e22db29879c2fdd5f7",
-      "releaseSha256": "0f961b0cec0649dcf4c5bf44ede54250bf175ecfabbb21e22db29879c2fdd5f7"
+      "sourceSha256": "645336136860566dc09e682362198979c2e0ac29fe39dfa578b10e0784274a2a",
+      "releaseSha256": "645336136860566dc09e682362198979c2e0ac29fe39dfa578b10e0784274a2a"
     },
     {
       "path": "static/commerce-analysis.html",
-      "sourceSha256": "3070496868d48c6a42830b60e1993e53623ca013fd1a9e65a03d167c02aefe48",
-      "releaseSha256": "3070496868d48c6a42830b60e1993e53623ca013fd1a9e65a03d167c02aefe48"
+      "sourceSha256": "aaf26f6c11c5bb04bd9e2f45fdcd46997c37930ba4076c9907482ed3849c1b20",
+      "releaseSha256": "aaf26f6c11c5bb04bd9e2f45fdcd46997c37930ba4076c9907482ed3849c1b20"
     },
     {
       "path": "static/commerce.html",
-      "sourceSha256": "cbbd7894a84e383dc4af682a55c9fe3f34523bf702d9d4e644138ccfbc226d6d",
-      "releaseSha256": "cbbd7894a84e383dc4af682a55c9fe3f34523bf702d9d4e644138ccfbc226d6d"
+      "sourceSha256": "fd4bec3b8b56590c816c821b1ed3035f0784949362d8d1360b50d8367121c744",
+      "releaseSha256": "fd4bec3b8b56590c816c821b1ed3035f0784949362d8d1360b50d8367121c744"
     },
     {
       "path": "static/css/api-recommendations.css",
@@ -562,19 +908,49 @@
       "releaseSha256": "dde70180d573675d64173a30300d3f80c921fe0bab918997f60be7e959b8e8a5"
     },
     {
+      "path": "static/css/api-settings-accounts.css",
+      "sourceSha256": "962a30707a769188b7af824f159006c08558797c299b39a307dca85b51e5a41e",
+      "releaseSha256": "962a30707a769188b7af824f159006c08558797c299b39a307dca85b51e5a41e"
+    },
+    {
+      "path": "static/css/api-settings-models.css",
+      "sourceSha256": "7607ff32aa7b6cd9633eeffd980748c67bc1f376d7520649bcff022bdf605020",
+      "releaseSha256": "7607ff32aa7b6cd9633eeffd980748c67bc1f376d7520649bcff022bdf605020"
+    },
+    {
+      "path": "static/css/api-settings-navigation.css",
+      "sourceSha256": "a4136154a3b923a6a6829f0cf88e795ac623f45908250905d824dffb7ec772ad",
+      "releaseSha256": "a4136154a3b923a6a6829f0cf88e795ac623f45908250905d824dffb7ec772ad"
+    },
+    {
       "path": "static/css/api-settings.css",
-      "sourceSha256": "6fcd26bbf779925e58944b69911c72ad512a5cba880744785c504cffa9be251a",
-      "releaseSha256": "6fcd26bbf779925e58944b69911c72ad512a5cba880744785c504cffa9be251a"
+      "sourceSha256": "e3056194650ecaeca0e070f1c0f8cb086f5e007d4d367da05d81536a25fcde6e",
+      "releaseSha256": "e3056194650ecaeca0e070f1c0f8cb086f5e007d4d367da05d81536a25fcde6e"
+    },
+    {
+      "path": "static/css/apple-inspired.css",
+      "sourceSha256": "652d6b9a5dfce7a882830a41af1c6f6afa08e8fffe3f713bc4f5030f39c8784b",
+      "releaseSha256": "652d6b9a5dfce7a882830a41af1c6f6afa08e8fffe3f713bc4f5030f39c8784b"
+    },
+    {
+      "path": "static/css/asset-manager-storage.css",
+      "sourceSha256": "bb86c7e516c64ec39a30de363f8486bcc7a074eecae5b61e8b31aa56ad790b27",
+      "releaseSha256": "bb86c7e516c64ec39a30de363f8486bcc7a074eecae5b61e8b31aa56ad790b27"
     },
     {
       "path": "static/css/asset-manager.css",
-      "sourceSha256": "43185a1602cdf3d354965bdc167b560de9fb28ce3147aee809951363b18cfc83",
-      "releaseSha256": "43185a1602cdf3d354965bdc167b560de9fb28ce3147aee809951363b18cfc83"
+      "sourceSha256": "67d4a4df97fdf65eae4c5fb03e910ccb7cf7aea6b97506b1e4d189449d50839d",
+      "releaseSha256": "67d4a4df97fdf65eae4c5fb03e910ccb7cf7aea6b97506b1e4d189449d50839d"
     },
     {
       "path": "static/css/canvas-editor-common.css",
-      "sourceSha256": "3af47032311c0081e1bf57e0b5b522fb15b37b74c3346c37488b50554e53fd08",
-      "releaseSha256": "3af47032311c0081e1bf57e0b5b522fb15b37b74c3346c37488b50554e53fd08"
+      "sourceSha256": "1ca3a990cd6630cda024c93830ee75f5549482c543f0b6cbfe800f66a3c15f37",
+      "releaseSha256": "1ca3a990cd6630cda024c93830ee75f5549482c543f0b6cbfe800f66a3c15f37"
+    },
+    {
+      "path": "static/css/canvas-engine-x6.css",
+      "sourceSha256": "bb07ed389bd8e952b737d4f9cae71624c5d0793dc688c984ecf8f9a6c201a7fe",
+      "releaseSha256": "bb07ed389bd8e952b737d4f9cae71624c5d0793dc688c984ecf8f9a6c201a7fe"
     },
     {
       "path": "static/css/canvas-folder-batch.css",
@@ -583,8 +959,8 @@
     },
     {
       "path": "static/css/canvas-list.css",
-      "sourceSha256": "1a8465a52720d7e446ea3f7e0b03cff12fbc47dd013795665a3d924188d31f79",
-      "releaseSha256": "1a8465a52720d7e446ea3f7e0b03cff12fbc47dd013795665a3d924188d31f79"
+      "sourceSha256": "658ec3b3d927d8023bdec190e69e2186d742f2b8857d5a1586a31f5bde2eac03",
+      "releaseSha256": "658ec3b3d927d8023bdec190e69e2186d742f2b8857d5a1586a31f5bde2eac03"
     },
     {
       "path": "static/css/canvas-multi-agent.css",
@@ -593,8 +969,13 @@
     },
     {
       "path": "static/css/canvas.css",
-      "sourceSha256": "1c60a0e7c82e25d00f5476ab500869ccaed778a81b0e06a9f40b48791f22eb0f",
-      "releaseSha256": "1c60a0e7c82e25d00f5476ab500869ccaed778a81b0e06a9f40b48791f22eb0f"
+      "sourceSha256": "fadc2aad9e74f430199213631951d68220d5a755f186d87ecf5c04de88e51323",
+      "releaseSha256": "fadc2aad9e74f430199213631951d68220d5a755f186d87ecf5c04de88e51323"
+    },
+    {
+      "path": "static/css/classic-canvas-ltx.css",
+      "sourceSha256": "d1c7bb122d0acf60dd5cbc4c48cdc008f4de40b0befeb7d6193135c03e888a0f",
+      "releaseSha256": "d1c7bb122d0acf60dd5cbc4c48cdc008f4de40b0befeb7d6193135c03e888a0f"
     },
     {
       "path": "static/css/commerce-analysis.css",
@@ -653,13 +1034,18 @@
     },
     {
       "path": "static/css/product-fidelity.css",
-      "sourceSha256": "19355ac42c353a970090d90d19d8e16b36079e47a197bfdfb79535c1105f904c",
+      "sourceSha256": "3961de866bbd8418c89eab1bb6eb003dac876ada8d90d7663219e286bf5cf31a",
       "releaseSha256": "3961de866bbd8418c89eab1bb6eb003dac876ada8d90d7663219e286bf5cf31a"
     },
     {
       "path": "static/css/project-agent.css",
       "sourceSha256": "da3e95c26f521c348301a77041605e66de6693879736dce2aaf7ff4f80e1336c",
       "releaseSha256": "da3e95c26f521c348301a77041605e66de6693879736dce2aaf7ff4f80e1336c"
+    },
+    {
+      "path": "static/css/prompt-library.css",
+      "sourceSha256": "0e4fce6538b882dbded5fc3a529d21f339fe58440871eaa199fa13491097c8d0",
+      "releaseSha256": "0e4fce6538b882dbded5fc3a529d21f339fe58440871eaa199fa13491097c8d0"
     },
     {
       "path": "static/css/skill-manager.css",
@@ -688,8 +1074,8 @@
     },
     {
       "path": "static/css/smart-canvas.css",
-      "sourceSha256": "07b6bf4a0dba26b059c36336cce386916f78c8d5dd489eb9a87311ef5f9dfd29",
-      "releaseSha256": "07b6bf4a0dba26b059c36336cce386916f78c8d5dd489eb9a87311ef5f9dfd29"
+      "sourceSha256": "a26a782f59a1efd5f388475a50de11990680f4570cb17ac58776c1b3acf78c8a",
+      "releaseSha256": "a26a782f59a1efd5f388475a50de11990680f4570cb17ac58776c1b3acf78c8a"
     },
     {
       "path": "static/css/smart-expert-workflow.css",
@@ -737,24 +1123,29 @@
       "releaseSha256": "23641815230940489af9d3b6dac0c5cc047bc4155c267d60176ec9e515db68b6"
     },
     {
+      "path": "static/css/xiaomei-image-viewer.css",
+      "sourceSha256": "0a0a9ef7bccf0fa62c98daf712faa445f143ce26a7d5488001be7b547dfac14d",
+      "releaseSha256": "0a0a9ef7bccf0fa62c98daf712faa445f143ce26a7d5488001be7b547dfac14d"
+    },
+    {
       "path": "static/design-brain.html",
-      "sourceSha256": "bda09bc3383205b5a5c77cbc3961a8eee9de1ec963acb8813ded81f539dc4929",
-      "releaseSha256": "bda09bc3383205b5a5c77cbc3961a8eee9de1ec963acb8813ded81f539dc4929"
+      "sourceSha256": "b2a19760b41e12c31d01e63452218bdb6ac219e3efedb416f228939f9ee1251a",
+      "releaseSha256": "b2a19760b41e12c31d01e63452218bdb6ac219e3efedb416f228939f9ee1251a"
     },
     {
       "path": "static/enhance.html",
-      "sourceSha256": "3c625ce8652a2c5d66164aebd4161b39785261efc448baa9703f05f6919d864a",
-      "releaseSha256": "3c625ce8652a2c5d66164aebd4161b39785261efc448baa9703f05f6919d864a"
+      "sourceSha256": "720ee612adde4acc01a995b6bbcf380994a4fc87f88a8bb98ea23aaa9bf5ddce",
+      "releaseSha256": "720ee612adde4acc01a995b6bbcf380994a4fc87f88a8bb98ea23aaa9bf5ddce"
     },
     {
       "path": "static/gpt-chat.html",
-      "sourceSha256": "6925299a721c978131bb441b79f6c39978d4ca10df5e3df7e2e2dda5ecca1400",
-      "releaseSha256": "6925299a721c978131bb441b79f6c39978d4ca10df5e3df7e2e2dda5ecca1400"
+      "sourceSha256": "6b3e17cb9ff4637ca1beb64cf2b0e02443593fca90f5a06ea5eab6098f03f5a4",
+      "releaseSha256": "6b3e17cb9ff4637ca1beb64cf2b0e02443593fca90f5a06ea5eab6098f03f5a4"
     },
     {
       "path": "static/history.html",
-      "sourceSha256": "127b4d0729a2499a9a0f912500b6e07a22b8acae16084287f2c359e70b773bbb",
-      "releaseSha256": "127b4d0729a2499a9a0f912500b6e07a22b8acae16084287f2c359e70b773bbb"
+      "sourceSha256": "2ecbb463777fd7d98894b184f0b1b8e5b44b81efbbf8b6fbec3f7381218fc65c",
+      "releaseSha256": "2ecbb463777fd7d98894b184f0b1b8e5b44b81efbbf8b6fbec3f7381218fc65c"
     },
     {
       "path": "static/images/RunningHub-B.png",
@@ -883,13 +1274,13 @@
     },
     {
       "path": "static/index.html",
-      "sourceSha256": "b761e1e5fde696822ccf3866b4f33c7fe2f141466fb365238fdbe63c758150a1",
-      "releaseSha256": "d77785f4d0a1d29979b220aaa06a3fe463ca8da6ec602290243df84d60b38f1c"
+      "sourceSha256": "4b06ca587a6fbb70b84f83440cbe528349ecdd7c10ff827181ccfda9be17d7f2",
+      "releaseSha256": "4b06ca587a6fbb70b84f83440cbe528349ecdd7c10ff827181ccfda9be17d7f2"
     },
     {
       "path": "static/inspiration.html",
-      "sourceSha256": "ad33d196476df01ca6e2ea67d3972cd5f7f3911ffe3ee146106ec85572791deb",
-      "releaseSha256": "ad33d196476df01ca6e2ea67d3972cd5f7f3911ffe3ee146106ec85572791deb"
+      "sourceSha256": "b0b7d93a3dc70c15f2150ebcf11eaa59cdcdb1dbe1f5d86a718f6d968390e65e",
+      "releaseSha256": "b0b7d93a3dc70c15f2150ebcf11eaa59cdcdb1dbe1f5d86a718f6d968390e65e"
     },
     {
       "path": "static/js/api-recommendations.js",
@@ -897,14 +1288,94 @@
       "releaseSha256": "ddb10110047b96b2466442c39d71e59602d2d5f43b79c5234434fcdc27a5cc35"
     },
     {
+      "path": "static/js/api-settings-accounts.js",
+      "sourceSha256": "9bcb5f784040acaf1ca446b480f0e07f5af0f448224d37fb703343f6d2dab71a",
+      "releaseSha256": "9bcb5f784040acaf1ca446b480f0e07f5af0f448224d37fb703343f6d2dab71a"
+    },
+    {
+      "path": "static/js/api-settings-models.js",
+      "sourceSha256": "c9817096582899ba7ed326e6bc772ac82b14a1688e77798f75103671e4beec12",
+      "releaseSha256": "c9817096582899ba7ed326e6bc772ac82b14a1688e77798f75103671e4beec12"
+    },
+    {
+      "path": "static/js/api-settings-navigation.js",
+      "sourceSha256": "e8227d6cacb9f8ade20be8f0d46c031bb95e0e14327b84882f9297ccc0d3d7fd",
+      "releaseSha256": "e8227d6cacb9f8ade20be8f0d46c031bb95e0e14327b84882f9297ccc0d3d7fd"
+    },
+    {
       "path": "static/js/api-settings.js",
-      "sourceSha256": "5048e53bd8a4ef46f99875b3d505ab0bbde2c5b00eb55a8e75c52b81bb679639",
-      "releaseSha256": "5048e53bd8a4ef46f99875b3d505ab0bbde2c5b00eb55a8e75c52b81bb679639"
+      "sourceSha256": "6c708e125be251a7e5dbe6f7dc5d7b283bbee1fded9fc276d0c26271fa3bff02",
+      "releaseSha256": "6c708e125be251a7e5dbe6f7dc5d7b283bbee1fded9fc276d0c26271fa3bff02"
+    },
+    {
+      "path": "static/js/asset-manager-annotations.js",
+      "sourceSha256": "d598f158d7229f1f172a8d92337dd7139589157c16010f81585baa033a121537",
+      "releaseSha256": "d598f158d7229f1f172a8d92337dd7139589157c16010f81585baa033a121537"
+    },
+    {
+      "path": "static/js/asset-manager-avatar.js",
+      "sourceSha256": "669411412899180e0891042887c7d7666c13e6141cfa48a2f5c6e12adf221bd2",
+      "releaseSha256": "669411412899180e0891042887c7d7666c13e6141cfa48a2f5c6e12adf221bd2"
+    },
+    {
+      "path": "static/js/asset-manager-canvas-projects.js",
+      "sourceSha256": "a7503be9e7f933b1762ba3f9deadf8cd8d2da85e19e22474418e4f95d9315cfa",
+      "releaseSha256": "a7503be9e7f933b1762ba3f9deadf8cd8d2da85e19e22474418e4f95d9315cfa"
+    },
+    {
+      "path": "static/js/asset-manager-catalogs.js",
+      "sourceSha256": "e3804f9601b3e0566459138489ea1976e8851b313a728a1f9419fe6c52776ac1",
+      "releaseSha256": "e3804f9601b3e0566459138489ea1976e8851b313a728a1f9419fe6c52776ac1"
+    },
+    {
+      "path": "static/js/asset-manager-detail.js",
+      "sourceSha256": "89fe8d52440344f46fad90697bc7f3cab65f8730ee3c14e35ef3cf8fab510943",
+      "releaseSha256": "89fe8d52440344f46fad90697bc7f3cab65f8730ee3c14e35ef3cf8fab510943"
+    },
+    {
+      "path": "static/js/asset-manager-interactions.js",
+      "sourceSha256": "220ccc37b2b5376e237d97ae5381b7a0bd9866a12b26a19273be7890a7db0f11",
+      "releaseSha256": "220ccc37b2b5376e237d97ae5381b7a0bd9866a12b26a19273be7890a7db0f11"
+    },
+    {
+      "path": "static/js/asset-manager-local-files.js",
+      "sourceSha256": "63c0d2861abd1d6f1b799dff6e01c1ace3878d2ee25153aada6e238d42c40150",
+      "releaseSha256": "63c0d2861abd1d6f1b799dff6e01c1ace3878d2ee25153aada6e238d42c40150"
+    },
+    {
+      "path": "static/js/asset-manager-local-view.js",
+      "sourceSha256": "c3a724d9533bd5ceb1e41958702635fef4b8c9225e8f473632b926b879493f92",
+      "releaseSha256": "c3a724d9533bd5ceb1e41958702635fef4b8c9225e8f473632b926b879493f92"
+    },
+    {
+      "path": "static/js/asset-manager-media.js",
+      "sourceSha256": "9c62e2682b7c93d6f58d30afcbddb9051757c2ac3f03d617fee70fc6aea24c2b",
+      "releaseSha256": "9c62e2682b7c93d6f58d30afcbddb9051757c2ac3f03d617fee70fc6aea24c2b"
+    },
+    {
+      "path": "static/js/asset-manager-prompts.js",
+      "sourceSha256": "a0845c2c3e866e32181e50d5876fd85f0778e1604171db0a8e06c60a8efedcd4",
+      "releaseSha256": "a0845c2c3e866e32181e50d5876fd85f0778e1604171db0a8e06c60a8efedcd4"
+    },
+    {
+      "path": "static/js/asset-manager-storage.js",
+      "sourceSha256": "e2b6d99a691b6c45c88f256108a732af6959b91b4e814fd8224f30cccb72abf3",
+      "releaseSha256": "e2b6d99a691b6c45c88f256108a732af6959b91b4e814fd8224f30cccb72abf3"
+    },
+    {
+      "path": "static/js/asset-manager-transfers.js",
+      "sourceSha256": "1303ed5e2acecaad7a45643887141a45f2b952b728f8987a51ed425fe9d94839",
+      "releaseSha256": "1303ed5e2acecaad7a45643887141a45f2b952b728f8987a51ed425fe9d94839"
+    },
+    {
+      "path": "static/js/asset-manager-workflows.js",
+      "sourceSha256": "faf45fc223448091938aa59805ca94af7bcb2800ac9f16878619e0715d3375bc",
+      "releaseSha256": "faf45fc223448091938aa59805ca94af7bcb2800ac9f16878619e0715d3375bc"
     },
     {
       "path": "static/js/asset-manager.js",
-      "sourceSha256": "e62dcdd514e59857abb08ba1f76f06d6714352054b832f05f34dab0f857c72ff",
-      "releaseSha256": "e62dcdd514e59857abb08ba1f76f06d6714352054b832f05f34dab0f857c72ff"
+      "sourceSha256": "c4cdbc5d12a672c2075e347bb056796c2051b599d41b513840e77007f21fcf11",
+      "releaseSha256": "c4cdbc5d12a672c2075e347bb056796c2051b599d41b513840e77007f21fcf11"
     },
     {
       "path": "static/js/background-removal-bridge.js",
@@ -918,13 +1389,43 @@
     },
     {
       "path": "static/js/canvas-agent.js",
-      "sourceSha256": "aec9b795a1da46670bc22ae8b256cc023b38afd78567d7968aa3378006de79f8",
-      "releaseSha256": "aec9b795a1da46670bc22ae8b256cc023b38afd78567d7968aa3378006de79f8"
+      "sourceSha256": "975ff8476cd859f8f82d381257ed9bddf7b3cc208e36d24038bd9c3d1792ad95",
+      "releaseSha256": "975ff8476cd859f8f82d381257ed9bddf7b3cc208e36d24038bd9c3d1792ad95"
+    },
+    {
+      "path": "static/js/canvas-asset-inbox.js",
+      "sourceSha256": "5f7cc00e2f6aca98596a686e4e17dd852ef7f6aa2ba4144b3a1de5276e388b8b",
+      "releaseSha256": "5f7cc00e2f6aca98596a686e4e17dd852ef7f6aa2ba4144b3a1de5276e388b8b"
+    },
+    {
+      "path": "static/js/canvas-drop-data.js",
+      "sourceSha256": "5cfadb221d99a8514db209083963dfa809e5fecb281e634d4a66cbb3c77bd3f9",
+      "releaseSha256": "5cfadb221d99a8514db209083963dfa809e5fecb281e634d4a66cbb3c77bd3f9"
     },
     {
       "path": "static/js/canvas-editor-core.js",
-      "sourceSha256": "87f22895b70e30a9cb30a30dd0f2347ebe601d8170323ff6df422e15fddb4c14",
-      "releaseSha256": "87f22895b70e30a9cb30a30dd0f2347ebe601d8170323ff6df422e15fddb4c14"
+      "sourceSha256": "9b2828947ac5bf477054e4debbf4f11aa1334072fb0e52589ff6132cd51090f1",
+      "releaseSha256": "9b2828947ac5bf477054e4debbf4f11aa1334072fb0e52589ff6132cd51090f1"
+    },
+    {
+      "path": "static/js/canvas-engine-adapter.js",
+      "sourceSha256": "6502cbd6c1dbe47cbbc287e7e67be7c279ca896dee24fcd7406d8682aae9753f",
+      "releaseSha256": "6502cbd6c1dbe47cbbc287e7e67be7c279ca896dee24fcd7406d8682aae9753f"
+    },
+    {
+      "path": "static/js/canvas-engine-gray.js",
+      "sourceSha256": "3912855b3406cba5f09288357e6b2d1fdf0809370574bf8f04dc87b5e2a1d1ea",
+      "releaseSha256": "3912855b3406cba5f09288357e6b2d1fdf0809370574bf8f04dc87b5e2a1d1ea"
+    },
+    {
+      "path": "static/js/canvas-engine-interaction.js",
+      "sourceSha256": "d85a5ad2e365cd404fa5aa0d8f02f5b9c053e368397db6b9121515baf5a031b3",
+      "releaseSha256": "d85a5ad2e365cd404fa5aa0d8f02f5b9c053e368397db6b9121515baf5a031b3"
+    },
+    {
+      "path": "static/js/canvas-engine-x6.js",
+      "sourceSha256": "f6ade2c2e1627f1526e9cecae62bae4ac353a70d34613a6a7f2de6fd5eeebef1",
+      "releaseSha256": "f6ade2c2e1627f1526e9cecae62bae4ac353a70d34613a6a7f2de6fd5eeebef1"
     },
     {
       "path": "static/js/canvas-folder-batch.js",
@@ -933,8 +1434,13 @@
     },
     {
       "path": "static/js/canvas-list.js",
-      "sourceSha256": "3d8f1f651aa6a29033a4744ec60a00f28890939a45c7b65e71073f9b7eef387a",
-      "releaseSha256": "3d8f1f651aa6a29033a4744ec60a00f28890939a45c7b65e71073f9b7eef387a"
+      "sourceSha256": "967acde6021a1053b72cc9364795eb552adc25c01695ba4c146554bdcfbce471",
+      "releaseSha256": "967acde6021a1053b72cc9364795eb552adc25c01695ba4c146554bdcfbce471"
+    },
+    {
+      "path": "static/js/canvas-media-links.js",
+      "sourceSha256": "1285f4005be88f0dceb86725a772db14cbb6531ca5813b34c9d87c73a3ef77a7",
+      "releaseSha256": "1285f4005be88f0dceb86725a772db14cbb6531ca5813b34c9d87c73a3ef77a7"
     },
     {
       "path": "static/js/canvas-multi-agent.js",
@@ -942,9 +1448,189 @@
       "releaseSha256": "cf101820c4daf32ed0efaf5a212a082bc3c06614f3d3738fb5d9e2583dcf7958"
     },
     {
+      "path": "static/js/canvas-runninghub-inputs.js",
+      "sourceSha256": "c860dc02bc13c687211107510962d113b4802fa05e7943c89d4473033fa66dc9",
+      "releaseSha256": "c860dc02bc13c687211107510962d113b4802fa05e7943c89d4473033fa66dc9"
+    },
+    {
       "path": "static/js/canvas.js",
-      "sourceSha256": "33c8c828d352ecc9ce6cf8f5e1f9e76891b5814a71d94d1b1113027fdf9bed6d",
-      "releaseSha256": "33c8c828d352ecc9ce6cf8f5e1f9e76891b5814a71d94d1b1113027fdf9bed6d"
+      "sourceSha256": "e2a13e52d0886beaf9766dc68b0f16a078a6891bb31ccb678812d054fcb0e07b",
+      "releaseSha256": "e2a13e52d0886beaf9766dc68b0f16a078a6891bb31ccb678812d054fcb0e07b"
+    },
+    {
+      "path": "static/js/classic-canvas-annotations.js",
+      "sourceSha256": "7db4f1e9dd00e3c99bd1bda789eb68e856b9de0302a5a4e4331438193a1e82cf",
+      "releaseSha256": "7db4f1e9dd00e3c99bd1bda789eb68e856b9de0302a5a4e4331438193a1e82cf"
+    },
+    {
+      "path": "static/js/classic-canvas-assets.js",
+      "sourceSha256": "43ef4ccecf3659d3e97eccca23deb2d701cc1aedbcc11eb7460c4d9b77609aef",
+      "releaseSha256": "43ef4ccecf3659d3e97eccca23deb2d701cc1aedbcc11eb7460c4d9b77609aef"
+    },
+    {
+      "path": "static/js/classic-canvas-cards.js",
+      "sourceSha256": "2e775baca515ba0a8c756ab2b845d378b6b58beed90833ac8562735eeb20246d",
+      "releaseSha256": "2e775baca515ba0a8c756ab2b845d378b6b58beed90833ac8562735eeb20246d"
+    },
+    {
+      "path": "static/js/classic-canvas-cascade.js",
+      "sourceSha256": "b62e95a1ed8c365379649f6028b3fb2e55e38bd0505be76d028d73268fb27415",
+      "releaseSha256": "b62e95a1ed8c365379649f6028b3fb2e55e38bd0505be76d028d73268fb27415"
+    },
+    {
+      "path": "static/js/classic-canvas-clipboard.js",
+      "sourceSha256": "b98193c31d3cc41a99b33e9a32cb7169a1edd2529cb9e05cbe9e0e750163322d",
+      "releaseSha256": "b98193c31d3cc41a99b33e9a32cb7169a1edd2529cb9e05cbe9e0e750163322d"
+    },
+    {
+      "path": "static/js/classic-canvas-comfy.js",
+      "sourceSha256": "726861c540bb46e92b726b6b4d04b26848190deccdf99ead6a4be0979c52c513",
+      "releaseSha256": "726861c540bb46e92b726b6b4d04b26848190deccdf99ead6a4be0979c52c513"
+    },
+    {
+      "path": "static/js/classic-canvas-connections.js",
+      "sourceSha256": "59c55df33d0f7bc053992ac216db297feedfe691941ad0ff2f50199d6bb5dd17",
+      "releaseSha256": "59c55df33d0f7bc053992ac216db297feedfe691941ad0ff2f50199d6bb5dd17"
+    },
+    {
+      "path": "static/js/classic-canvas-edges.js",
+      "sourceSha256": "121a77d553482c9671d28811f60f24446609d040ee78917f3553d4d0efe88789",
+      "releaseSha256": "121a77d553482c9671d28811f60f24446609d040ee78917f3553d4d0efe88789"
+    },
+    {
+      "path": "static/js/classic-canvas-generation-graph.js",
+      "sourceSha256": "49b801408cc4f9c1b61bae27b0c71a02d48381674e3a931815c73b5f0690d9cb",
+      "releaseSha256": "49b801408cc4f9c1b61bae27b0c71a02d48381674e3a931815c73b5f0690d9cb"
+    },
+    {
+      "path": "static/js/classic-canvas-generation-log.js",
+      "sourceSha256": "84ca8673f06f34035f041b241f6220038fc8c6c27e6fec592f1e9cff2a23d34b",
+      "releaseSha256": "84ca8673f06f34035f041b241f6220038fc8c6c27e6fec592f1e9cff2a23d34b"
+    },
+    {
+      "path": "static/js/classic-canvas-gestures.js",
+      "sourceSha256": "90d974db6e165560d6be48fb3e3f75dbafd76478fe23ee6373ce0e1689a81985",
+      "releaseSha256": "90d974db6e165560d6be48fb3e3f75dbafd76478fe23ee6373ce0e1689a81985"
+    },
+    {
+      "path": "static/js/classic-canvas-grid.js",
+      "sourceSha256": "45eead83cb912cf6cd5d1f580c97c1d29f7d0376702107db9cb124a6540e514c",
+      "releaseSha256": "45eead83cb912cf6cd5d1f580c97c1d29f7d0376702107db9cb124a6540e514c"
+    },
+    {
+      "path": "static/js/classic-canvas-image-editor.js",
+      "sourceSha256": "367f4e396b32659b819d1c87dffd0232be95dda87103077708add94c16b695b5",
+      "releaseSha256": "367f4e396b32659b819d1c87dffd0232be95dda87103077708add94c16b695b5"
+    },
+    {
+      "path": "static/js/classic-canvas-image-generation.js",
+      "sourceSha256": "85eab97a40a4f87ef2e3244ab36a316c108c9a8ec504501b5a3abb127e60e383",
+      "releaseSha256": "85eab97a40a4f87ef2e3244ab36a316c108c9a8ec504501b5a3abb127e60e383"
+    },
+    {
+      "path": "static/js/classic-canvas-image-tasks.js",
+      "sourceSha256": "7341237bd14b777a0c421c3d4634c8db73f9fa9b54cb9614d23959d31042c852",
+      "releaseSha256": "7341237bd14b777a0c421c3d4634c8db73f9fa9b54cb9614d23959d31042c852"
+    },
+    {
+      "path": "static/js/classic-canvas-input-view.js",
+      "sourceSha256": "e29cb98ff4c537e08cb56de9e4be25e5ab0efaabc77cd1602c251298bc54c345",
+      "releaseSha256": "e29cb98ff4c537e08cb56de9e4be25e5ab0efaabc77cd1602c251298bc54c345"
+    },
+    {
+      "path": "static/js/classic-canvas-layout.js",
+      "sourceSha256": "8fee1bed20d346e5828ea6ad670c520a2118e725959d778474535b9c6988ecbb",
+      "releaseSha256": "8fee1bed20d346e5828ea6ad670c520a2118e725959d778474535b9c6988ecbb"
+    },
+    {
+      "path": "static/js/classic-canvas-llm.js",
+      "sourceSha256": "37518d3d566e949d71e0da299746caefc6c3cbecc986d0fd6dcc26ca0567c3db",
+      "releaseSha256": "37518d3d566e949d71e0da299746caefc6c3cbecc986d0fd6dcc26ca0567c3db"
+    },
+    {
+      "path": "static/js/classic-canvas-local-assets.js",
+      "sourceSha256": "60100c5c09c9721496d692135378e40bae43a6240115d802aae60ca1c0446d67",
+      "releaseSha256": "60100c5c09c9721496d692135378e40bae43a6240115d802aae60ca1c0446d67"
+    },
+    {
+      "path": "static/js/classic-canvas-loop.js",
+      "sourceSha256": "a1ba84829772beb787f7e3882c871ae75340090b13339a295dc9227b1c48e54d",
+      "releaseSha256": "a1ba84829772beb787f7e3882c871ae75340090b13339a295dc9227b1c48e54d"
+    },
+    {
+      "path": "static/js/classic-canvas-ltx.js",
+      "sourceSha256": "3be76868a60aa0695894430be697b8eeac347a821fb5155ab24c8b59eacdeaa5",
+      "releaseSha256": "3be76868a60aa0695894430be697b8eeac347a821fb5155ab24c8b59eacdeaa5"
+    },
+    {
+      "path": "static/js/classic-canvas-media-edits.js",
+      "sourceSha256": "f0dd2dc08798d6e53af15dc75021b57bd5f3a5da23048346ffdf8e86561fe08e",
+      "releaseSha256": "f0dd2dc08798d6e53af15dc75021b57bd5f3a5da23048346ffdf8e86561fe08e"
+    },
+    {
+      "path": "static/js/classic-canvas-media-import.js",
+      "sourceSha256": "0329f439f5086570b3ba7d91bcf4326cc9700afe7b7be30baa1a4ad8c7d41a09",
+      "releaseSha256": "0329f439f5086570b3ba7d91bcf4326cc9700afe7b7be30baa1a4ad8c7d41a09"
+    },
+    {
+      "path": "static/js/classic-canvas-media-preview.js",
+      "sourceSha256": "3fdbaaf42b429a44acd4b17c4eefbf9df72342e36fc4d909907663b9d54481d1",
+      "releaseSha256": "3fdbaaf42b429a44acd4b17c4eefbf9df72342e36fc4d909907663b9d54481d1"
+    },
+    {
+      "path": "static/js/classic-canvas-nodes.js",
+      "sourceSha256": "6d11b090fbc973b917ea3c685ccbbf74e5d689fadb268b9284e72b13a2d0e1c5",
+      "releaseSha256": "6d11b090fbc973b917ea3c685ccbbf74e5d689fadb268b9284e72b13a2d0e1c5"
+    },
+    {
+      "path": "static/js/classic-canvas-output-cards.js",
+      "sourceSha256": "c5cdb09a81498793e0626b95d6b56c59e4a1b18fb91fa7881b69a10e6be9a478",
+      "releaseSha256": "c5cdb09a81498793e0626b95d6b56c59e4a1b18fb91fa7881b69a10e6be9a478"
+    },
+    {
+      "path": "static/js/classic-canvas-output-preview.js",
+      "sourceSha256": "904f552e1dec54057f13581e0f9600e18d15e699c386a0ec3fe5f7b76ab7910c",
+      "releaseSha256": "904f552e1dec54057f13581e0f9600e18d15e699c386a0ec3fe5f7b76ab7910c"
+    },
+    {
+      "path": "static/js/classic-canvas-prompt-templates.js",
+      "sourceSha256": "0bd654d7ec66170dcf66b862f4a47c4937e02348f173d6bd553bb0ba686b19da",
+      "releaseSha256": "0bd654d7ec66170dcf66b862f4a47c4937e02348f173d6bd553bb0ba686b19da"
+    },
+    {
+      "path": "static/js/classic-canvas-runninghub.js",
+      "sourceSha256": "69049e15a9b0c9169940a73e353ee09b4bd61ecf02e71903e7bead5bc85336f0",
+      "releaseSha256": "69049e15a9b0c9169940a73e353ee09b4bd61ecf02e71903e7bead5bc85336f0"
+    },
+    {
+      "path": "static/js/classic-canvas-session.js",
+      "sourceSha256": "e5154d927ab930396db0232710c9096bb5c61ef96429c56e555427d38896f557",
+      "releaseSha256": "e5154d927ab930396db0232710c9096bb5c61ef96429c56e555427d38896f557"
+    },
+    {
+      "path": "static/js/classic-canvas-shell.js",
+      "sourceSha256": "66d4ac9dacf5fa07d7ee656e4c3104919dfe3aedf10ed96047815741857e4d91",
+      "releaseSha256": "66d4ac9dacf5fa07d7ee656e4c3104919dfe3aedf10ed96047815741857e4d91"
+    },
+    {
+      "path": "static/js/classic-canvas-video.js",
+      "sourceSha256": "fa6332cd8fc0ae8b9f458205f693498a3bd46a49dcd75435429d2dafd0077c33",
+      "releaseSha256": "fa6332cd8fc0ae8b9f458205f693498a3bd46a49dcd75435429d2dafd0077c33"
+    },
+    {
+      "path": "static/js/classic-canvas-viewport.js",
+      "sourceSha256": "a40418d36e13a2f58763eae170b1a65cf19b62c79e3411ff3110ddde99223639",
+      "releaseSha256": "a40418d36e13a2f58763eae170b1a65cf19b62c79e3411ff3110ddde99223639"
+    },
+    {
+      "path": "static/js/classic-canvas-workflow-transfer.js",
+      "sourceSha256": "1ad1c786834bd2c774d581219904aabf8bf1953bc840e093d4b2aa6f0e5c6ac0",
+      "releaseSha256": "1ad1c786834bd2c774d581219904aabf8bf1953bc840e093d4b2aa6f0e5c6ac0"
+    },
+    {
+      "path": "static/js/classic-canvas-workflow.js",
+      "sourceSha256": "d4514e050c828383a2ad5b837ea0ebac509b612e8493661af51f4fd0be3f826a",
+      "releaseSha256": "d4514e050c828383a2ad5b837ea0ebac509b612e8493661af51f4fd0be3f826a"
     },
     {
       "path": "static/js/commerce-analysis.js",
@@ -973,8 +1659,8 @@
     },
     {
       "path": "static/js/design-brain-team.js",
-      "sourceSha256": "580d4dceb19ce3df4bf3afd5b0bf2fe6f9881496943f8eea5ced0bcf444595f8",
-      "releaseSha256": "580d4dceb19ce3df4bf3afd5b0bf2fe6f9881496943f8eea5ced0bcf444595f8"
+      "sourceSha256": "baffd7c2f3a75c40006c3233df4efd4ba5d2b129864c6d55a58e6c94fa609266",
+      "releaseSha256": "baffd7c2f3a75c40006c3233df4efd4ba5d2b129864c6d55a58e6c94fa609266"
     },
     {
       "path": "static/js/design-brain.js",
@@ -988,8 +1674,8 @@
     },
     {
       "path": "static/js/history-bulk-manager.js",
-      "sourceSha256": "c573b751eecf5663240976781c2b559c4c634d6b8c3908f6d5503b78167e4150",
-      "releaseSha256": "c573b751eecf5663240976781c2b559c4c634d6b8c3908f6d5503b78167e4150"
+      "sourceSha256": "91d1e177ef43052db41ec4b4e8cf87ffa9cf8853d73b011527eb98d5f6cfb35e",
+      "releaseSha256": "91d1e177ef43052db41ec4b4e8cf87ffa9cf8853d73b011527eb98d5f6cfb35e"
     },
     {
       "path": "static/js/i18n-core.js",
@@ -998,18 +1684,18 @@
     },
     {
       "path": "static/js/i18n.js",
-      "sourceSha256": "dcea4b6cfc92392f7af7aaab7834d4eb316c3690c650f603786acf8bb5adf9bc",
-      "releaseSha256": "dcea4b6cfc92392f7af7aaab7834d4eb316c3690c650f603786acf8bb5adf9bc"
+      "sourceSha256": "c1193432bf834cbccc12bc04a7096a316c643360f68dde6c399407e483e6a24a",
+      "releaseSha256": "c1193432bf834cbccc12bc04a7096a316c643360f68dde6c399407e483e6a24a"
     },
     {
       "path": "static/js/i18n/api-settings.js",
-      "sourceSha256": "4f62d11af50fbeea5768212ee3bae5687d8d892141224f6dd5b18984ecaf8e57",
-      "releaseSha256": "4f62d11af50fbeea5768212ee3bae5687d8d892141224f6dd5b18984ecaf8e57"
+      "sourceSha256": "93a968fcde82566fc8da59860c7e517b5ba425f7d087c19d48ad1e5b6e0ee310",
+      "releaseSha256": "93a968fcde82566fc8da59860c7e517b5ba425f7d087c19d48ad1e5b6e0ee310"
     },
     {
       "path": "static/js/i18n/canvas.js",
-      "sourceSha256": "d5503100c1cfe8d9dff79686005dd36e49e8ebe110d875163b69325dd2022b8f",
-      "releaseSha256": "d5503100c1cfe8d9dff79686005dd36e49e8ebe110d875163b69325dd2022b8f"
+      "sourceSha256": "b1c2e00b837671e742f6c507332957bc6817cd0583b872d105575036788e1f58",
+      "releaseSha256": "b1c2e00b837671e742f6c507332957bc6817cd0583b872d105575036788e1f58"
     },
     {
       "path": "static/js/i18n/common.js",
@@ -1018,8 +1704,8 @@
     },
     {
       "path": "static/js/i18n/smart-canvas.js",
-      "sourceSha256": "5b5266c7c596198741fc9caa49d13a3092358dc77e94354d6fad633cdb850e5b",
-      "releaseSha256": "5b5266c7c596198741fc9caa49d13a3092358dc77e94354d6fad633cdb850e5b"
+      "sourceSha256": "f174ece6411c015b4a2c630cfe35d3e52e80e1d4a8ad2e3293143b4e9632c3b5",
+      "releaseSha256": "f174ece6411c015b4a2c630cfe35d3e52e80e1d4a8ad2e3293143b4e9632c3b5"
     },
     {
       "path": "static/js/i18n/studio.js",
@@ -1028,8 +1714,8 @@
     },
     {
       "path": "static/js/i18n/validate-i18n.js",
-      "sourceSha256": "e31100d03db688576fbcb32d8d8554aea0ffa826d32bf24873e0578966cc7d54",
-      "releaseSha256": "e31100d03db688576fbcb32d8d8554aea0ffa826d32bf24873e0578966cc7d54"
+      "sourceSha256": "e226554db41b7cb5caef1393aba553715cdc43561b67c51c30226e2bcc8c0cdc",
+      "releaseSha256": "e226554db41b7cb5caef1393aba553715cdc43561b67c51c30226e2bcc8c0cdc"
     },
     {
       "path": "static/js/image-clipboard.js",
@@ -1047,19 +1733,14 @@
       "releaseSha256": "52e5b70d2058311dba47946d2cd1a50d2f05d8bea68acca7aa9ed45ffc82d20a"
     },
     {
-      "path": "static/js/image-preview.js",
-      "sourceSha256": "c1566d17fafbd0d6ccb77a908e72e5eb2c44f1b51139949c9c4a0670a5ff022a",
-      "releaseSha256": "c1566d17fafbd0d6ccb77a908e72e5eb2c44f1b51139949c9c4a0670a5ff022a"
-    },
-    {
       "path": "static/js/image-space.js",
-      "sourceSha256": "22e1899c000be00731e6f5f1637d435440e4e8a289bd06b656913fb8db9caf93",
-      "releaseSha256": "22e1899c000be00731e6f5f1637d435440e4e8a289bd06b656913fb8db9caf93"
+      "sourceSha256": "4105691c4b7c5c20cf6d5346a9134a25b40a34f02652d5b967cbfaf2762428d3",
+      "releaseSha256": "4105691c4b7c5c20cf6d5346a9134a25b40a34f02652d5b967cbfaf2762428d3"
     },
     {
       "path": "static/js/image-task-client.js",
-      "sourceSha256": "107828193d99795df0b53e1eaccc934af4d98d6d572f54151d2c7b374cb27f72",
-      "releaseSha256": "107828193d99795df0b53e1eaccc934af4d98d6d572f54151d2c7b374cb27f72"
+      "sourceSha256": "8c64a17c9e4ffe6e91aba5ca2c93443d3c410676083c91dca945d03cbbdc5189",
+      "releaseSha256": "8c64a17c9e4ffe6e91aba5ca2c93443d3c410676083c91dca945d03cbbdc5189"
     },
     {
       "path": "static/js/inspiration.js",
@@ -1080,11 +1761,6 @@
       "path": "static/js/local-bridge-ui.js",
       "sourceSha256": "954dd737f401c938018b632cb5bad0f707763906a479bbe99c883f66578da074",
       "releaseSha256": "954dd737f401c938018b632cb5bad0f707763906a479bbe99c883f66578da074"
-    },
-    {
-      "path": "static/js/ltx-director-timeline.js",
-      "sourceSha256": "f2be1ed1781a024e827a375a06a14ce34f4fe152e087416c0990fec88ca22059",
-      "releaseSha256": "f2be1ed1781a024e827a375a06a14ce34f4fe152e087416c0990fec88ca22059"
     },
     {
       "path": "static/js/mcp-settings.js",
@@ -1108,7 +1784,7 @@
     },
     {
       "path": "static/js/product-fidelity.js",
-      "sourceSha256": "0218f0f7dfac3edab7b5a57d536442a44da52bb393e2ef1c651c30ba18b9ba6d",
+      "sourceSha256": "f116bbf7db3399d59d8c76e6bc8738dab5b90c98870be856d229d82752e8a719",
       "releaseSha256": "f116bbf7db3399d59d8c76e6bc8738dab5b90c98870be856d229d82752e8a719"
     },
     {
@@ -1120,6 +1796,11 @@
       "path": "static/js/project-agent.js",
       "sourceSha256": "8b68af4bfb23e1be3ef8fac9bc9ad9765ef9c5980ec3b03f57507dd028e08293",
       "releaseSha256": "8b68af4bfb23e1be3ef8fac9bc9ad9765ef9c5980ec3b03f57507dd028e08293"
+    },
+    {
+      "path": "static/js/prompt-library.js",
+      "sourceSha256": "dde2e2b99e92efb65fd6ea132c88d66a2a7b8e06e32b1838aa297a63a71d4839",
+      "releaseSha256": "dde2e2b99e92efb65fd6ea132c88d66a2a7b8e06e32b1838aa297a63a71d4839"
     },
     {
       "path": "static/js/shared-agent-skill.js",
@@ -1137,6 +1818,26 @@
       "releaseSha256": "9b5775c20b6e8a10deaee30b4a9ef5e8bb75fdc2ba089bc6ecba70d5538dadd5"
     },
     {
+      "path": "static/js/smart-canvas-agent-execution.js",
+      "sourceSha256": "1d92306ba031085e2ac59d5942c3f558aecd1d7f339ebc07d4b6a3ca6136d324",
+      "releaseSha256": "1d92306ba031085e2ac59d5942c3f558aecd1d7f339ebc07d4b6a3ca6136d324"
+    },
+    {
+      "path": "static/js/smart-canvas-card-events.js",
+      "sourceSha256": "29f0c44bf0f48750821a7dbd8b6fe14f1473a5b57095bc4e67d4766541e1e4d4",
+      "releaseSha256": "29f0c44bf0f48750821a7dbd8b6fe14f1473a5b57095bc4e67d4766541e1e4d4"
+    },
+    {
+      "path": "static/js/smart-canvas-cascade.js",
+      "sourceSha256": "6417d9225e049042af30687a523290bde9bb5e834af4750d9c7336ed15192377",
+      "releaseSha256": "6417d9225e049042af30687a523290bde9bb5e834af4750d9c7336ed15192377"
+    },
+    {
+      "path": "static/js/smart-canvas-connection-eraser.js",
+      "sourceSha256": "57f44a2f7182aa50579e16d696124d8addca330a222b660ee35be762e722f4ca",
+      "releaseSha256": "57f44a2f7182aa50579e16d696124d8addca330a222b660ee35be762e722f4ca"
+    },
+    {
       "path": "static/js/smart-canvas-data-video.js",
       "sourceSha256": "50e1334f4a9734ecf10d045f6e372a38aef95afd3409378249039bc44e83b689",
       "releaseSha256": "50e1334f4a9734ecf10d045f6e372a38aef95afd3409378249039bc44e83b689"
@@ -1145,6 +1846,111 @@
       "path": "static/js/smart-canvas-edit-suite.js",
       "sourceSha256": "57715e93696d1e977b18cf9eef66c50598eccba275d3a52b0fa1912f259ec2e7",
       "releaseSha256": "57715e93696d1e977b18cf9eef66c50598eccba275d3a52b0fa1912f259ec2e7"
+    },
+    {
+      "path": "static/js/smart-canvas-generation-references.js",
+      "sourceSha256": "fe236e88f0f80c5b48007def2e486e0aa4063be68e0a51fbb5d7780dcd917ca8",
+      "releaseSha256": "fe236e88f0f80c5b48007def2e486e0aa4063be68e0a51fbb5d7780dcd917ca8"
+    },
+    {
+      "path": "static/js/smart-canvas-gif-preview.js",
+      "sourceSha256": "5a95a1367247aa734cef05c1802521c28dc0b76d915bc3015098d05b1a77901a",
+      "releaseSha256": "5a95a1367247aa734cef05c1802521c28dc0b76d915bc3015098d05b1a77901a"
+    },
+    {
+      "path": "static/js/smart-canvas-grid.js",
+      "sourceSha256": "87c57f1f04b7082c26e038a938c08bc413525912a35394a0558127680be7a14d",
+      "releaseSha256": "87c57f1f04b7082c26e038a938c08bc413525912a35394a0558127680be7a14d"
+    },
+    {
+      "path": "static/js/smart-canvas-group-layout.js",
+      "sourceSha256": "bd868cf07f88b708f6ed213d41d33989b5f2c1fbd5ebd4461c52d3a7faf57cab",
+      "releaseSha256": "bd868cf07f88b708f6ed213d41d33989b5f2c1fbd5ebd4461c52d3a7faf57cab"
+    },
+    {
+      "path": "static/js/smart-canvas-groups.js",
+      "sourceSha256": "47967002f1b6b40af0c4d7d57ce7371ac4472f36552f380866ac534c4b74f5d1",
+      "releaseSha256": "47967002f1b6b40af0c4d7d57ce7371ac4472f36552f380866ac534c4b74f5d1"
+    },
+    {
+      "path": "static/js/smart-canvas-image-editor.js",
+      "sourceSha256": "81170eaa106ef06682c36e894fb15b4f92fd99e7fae3e4fd075bfcca7d8d319d",
+      "releaseSha256": "81170eaa106ef06682c36e894fb15b4f92fd99e7fae3e4fd075bfcca7d8d319d"
+    },
+    {
+      "path": "static/js/smart-canvas-local-assets.js",
+      "sourceSha256": "2eab67a0b45082ce0b99614c64b061e353e5831823ad9a1c452e476b0ca20c68",
+      "releaseSha256": "2eab67a0b45082ce0b99614c64b061e353e5831823ad9a1c452e476b0ca20c68"
+    },
+    {
+      "path": "static/js/smart-canvas-loop-editor.js",
+      "sourceSha256": "d69044e54be9d834533e4ceb1a9535886747707457ab7a1a4f0981bf8723d1c9",
+      "releaseSha256": "d69044e54be9d834533e4ceb1a9535886747707457ab7a1a4f0981bf8723d1c9"
+    },
+    {
+      "path": "static/js/smart-canvas-node-drop.js",
+      "sourceSha256": "40f008f5554469641d37e9abc33dc9729f008bbd53e3f95eead443e5d38c8c29",
+      "releaseSha256": "40f008f5554469641d37e9abc33dc9729f008bbd53e3f95eead443e5d38c8c29"
+    },
+    {
+      "path": "static/js/smart-canvas-node-media.js",
+      "sourceSha256": "da6c8c66d26b586d5a726803bdbb9a308332adba211080aeea1620afd36fc5c4",
+      "releaseSha256": "da6c8c66d26b586d5a726803bdbb9a308332adba211080aeea1620afd36fc5c4"
+    },
+    {
+      "path": "static/js/smart-canvas-ocr.js",
+      "sourceSha256": "9c8abdcc7df08d10b0f5105036d54a8266df90b67f7aed8cb6046a0cd690cbe1",
+      "releaseSha256": "9c8abdcc7df08d10b0f5105036d54a8266df90b67f7aed8cb6046a0cd690cbe1"
+    },
+    {
+      "path": "static/js/smart-canvas-outpaint.js",
+      "sourceSha256": "23982537a1d9bcd5fb05597d3175dddff6bab8f08f1f83e74769400843411afc",
+      "releaseSha256": "23982537a1d9bcd5fb05597d3175dddff6bab8f08f1f83e74769400843411afc"
+    },
+    {
+      "path": "static/js/smart-canvas-output.js",
+      "sourceSha256": "eb82b47b553a0d7e655448a8c15117c36732367aa01e63de482a20752794dff8",
+      "releaseSha256": "eb82b47b553a0d7e655448a8c15117c36732367aa01e63de482a20752794dff8"
+    },
+    {
+      "path": "static/js/smart-canvas-panorama.js",
+      "sourceSha256": "97b67852131c47c2490af71e3efc3d3604862c2294917ef2f57aa8f5268b0d03",
+      "releaseSha256": "97b67852131c47c2490af71e3efc3d3604862c2294917ef2f57aa8f5268b0d03"
+    },
+    {
+      "path": "static/js/smart-canvas-parameter-controls.js",
+      "sourceSha256": "c83c22271faba586a11a1948f239330d89ee4489dad37c1e1a1ea5ef8b3aafcd",
+      "releaseSha256": "c83c22271faba586a11a1948f239330d89ee4489dad37c1e1a1ea5ef8b3aafcd"
+    },
+    {
+      "path": "static/js/smart-canvas-preview.js",
+      "sourceSha256": "4de5c1feb4dca65eb21c6b38bd17b98c3b7db99e235dd59686b923fa29d65c8a",
+      "releaseSha256": "4de5c1feb4dca65eb21c6b38bd17b98c3b7db99e235dd59686b923fa29d65c8a"
+    },
+    {
+      "path": "static/js/smart-canvas-prompt-content.js",
+      "sourceSha256": "6ed1cf303d5e6cdf2ace2e19aa31926237939436f934acb03026bac2beaca28b",
+      "releaseSha256": "6ed1cf303d5e6cdf2ace2e19aa31926237939436f934acb03026bac2beaca28b"
+    },
+    {
+      "path": "static/js/smart-canvas-prompt-execution.js",
+      "sourceSha256": "0b020b7456d342ef96259238eabdf848ba48789a6732353cef9c3a50039127dd",
+      "releaseSha256": "0b020b7456d342ef96259238eabdf848ba48789a6732353cef9c3a50039127dd"
+    },
+    {
+      "path": "static/js/smart-canvas-prompt-library.js",
+      "sourceSha256": "5a7d1d53db5cd09ddc8966ffb0817b79d805786e4e136b8797dfd1152fb0b347",
+      "releaseSha256": "5a7d1d53db5cd09ddc8966ffb0817b79d805786e4e136b8797dfd1152fb0b347"
+    },
+    {
+      "path": "static/js/smart-canvas-prompt-mentions.js",
+      "sourceSha256": "5a989e032361f51ab49020a9c6844cfcd878cac3cbe3cd370dacd3bb5ad569fc",
+      "releaseSha256": "5a989e032361f51ab49020a9c6844cfcd878cac3cbe3cd370dacd3bb5ad569fc"
+    },
+    {
+      "path": "static/js/smart-canvas-prompt-node.js",
+      "sourceSha256": "44fd7523867712f585972b4e2402e4e5f90fcb3b40226ddcf131f5d3f2ca0a80",
+      "releaseSha256": "44fd7523867712f585972b4e2402e4e5f90fcb3b40226ddcf131f5d3f2ca0a80"
     },
     {
       "path": "static/js/smart-canvas-reference-picker.js",
@@ -1157,14 +1963,44 @@
       "releaseSha256": "1e1f75fe09f06fb8a3b79951a101d93ed3d0814299c77d096c1846e193bbb829"
     },
     {
+      "path": "static/js/smart-canvas-run-graph.js",
+      "sourceSha256": "3371619bee65f2a3424b1fa4aa703a89529669d298b5b43e1f80a7b6f666d5a9",
+      "releaseSha256": "3371619bee65f2a3424b1fa4aa703a89529669d298b5b43e1f80a7b6f666d5a9"
+    },
+    {
       "path": "static/js/smart-canvas-sku.js",
       "sourceSha256": "117cae4c0d1f6cd054a6ce9fd33655e5afc3b42796351b95b3acff6f8e36cfad",
       "releaseSha256": "117cae4c0d1f6cd054a6ce9fd33655e5afc3b42796351b95b3acff6f8e36cfad"
     },
     {
+      "path": "static/js/smart-canvas-text-fields.js",
+      "sourceSha256": "ea829211825b8317404862a8c55cc0442329a69a2357a95c3c43774d2ffe240e",
+      "releaseSha256": "ea829211825b8317404862a8c55cc0442329a69a2357a95c3c43774d2ffe240e"
+    },
+    {
+      "path": "static/js/smart-canvas-thumbnail-drag.js",
+      "sourceSha256": "76b5a68d26fb623796489bdd0e16719096af2d5418ed80096bdee3579eed4792",
+      "releaseSha256": "76b5a68d26fb623796489bdd0e16719096af2d5418ed80096bdee3579eed4792"
+    },
+    {
+      "path": "static/js/smart-canvas-thumbnails.js",
+      "sourceSha256": "65b38443855a156a98311cb59663a300cabde2a5c958572436e83cd9556f5d4d",
+      "releaseSha256": "65b38443855a156a98311cb59663a300cabde2a5c958572436e83cd9556f5d4d"
+    },
+    {
+      "path": "static/js/smart-canvas-workflow-params.js",
+      "sourceSha256": "47d295ec74df84042b2f2eae5cbda0f4c094f60eb9f95bbfce2094f158da8121",
+      "releaseSha256": "47d295ec74df84042b2f2eae5cbda0f4c094f60eb9f95bbfce2094f158da8121"
+    },
+    {
+      "path": "static/js/smart-canvas-workflow-transfer.js",
+      "sourceSha256": "1204d1c5d57ffa6fccc9e6c6dbf42e1761b9b1933dc3785e1ae0465517e3b32a",
+      "releaseSha256": "1204d1c5d57ffa6fccc9e6c6dbf42e1761b9b1933dc3785e1ae0465517e3b32a"
+    },
+    {
       "path": "static/js/smart-canvas.js",
-      "sourceSha256": "53e3e4137030f1633642c3fcc7d96005b574886db8b642532441c9e781ad8870",
-      "releaseSha256": "53e3e4137030f1633642c3fcc7d96005b574886db8b642532441c9e781ad8870"
+      "sourceSha256": "6c4038049bff8cbb34aadf7d986c1eded2f1c71d3c3d4d7b04ac67e93ea88880",
+      "releaseSha256": "6c4038049bff8cbb34aadf7d986c1eded2f1c71d3c3d4d7b04ac67e93ea88880"
     },
     {
       "path": "static/js/smart-color-node.js",
@@ -1218,23 +2054,13 @@
     },
     {
       "path": "static/js/theme.js",
-      "sourceSha256": "6148af7f0a30022bb48815947de791f7f96b62296dbe2a0534931b9eaddb08be",
-      "releaseSha256": "6148af7f0a30022bb48815947de791f7f96b62296dbe2a0534931b9eaddb08be"
-    },
-    {
-      "path": "static/js/touch-mouse.js",
-      "sourceSha256": "44e687594d160a3dbc350da88b72bab68d4da079145fbb4de4fcc1cbffc84bd0",
-      "releaseSha256": "44e687594d160a3dbc350da88b72bab68d4da079145fbb4de4fcc1cbffc84bd0"
-    },
-    {
-      "path": "static/js/upstream-rerun-utils.js",
-      "sourceSha256": "c1970eefa7282c8a6cf0cfaa54826daf5c531d15140d8db28463e3550bf316b2",
-      "releaseSha256": "c1970eefa7282c8a6cf0cfaa54826daf5c531d15140d8db28463e3550bf316b2"
+      "sourceSha256": "2993c3fe50b42d808126fc1aeebcab986cb24d5efe2af79e1ad05b1b16674d2f",
+      "releaseSha256": "2993c3fe50b42d808126fc1aeebcab986cb24d5efe2af79e1ad05b1b16674d2f"
     },
     {
       "path": "static/js/workflow-preview.js",
-      "sourceSha256": "aa501d97cb9721a494691b898fcf3c62e11eb2c8135c7d8bfbdddae3ef2701e4",
-      "releaseSha256": "aa501d97cb9721a494691b898fcf3c62e11eb2c8135c7d8bfbdddae3ef2701e4"
+      "sourceSha256": "ba870a754bbf7d377bd95da91884f67118a62be7e87d2482315466597999dbae",
+      "releaseSha256": "ba870a754bbf7d377bd95da91884f67118a62be7e87d2482315466597999dbae"
     },
     {
       "path": "static/js/workflow-save-dialog.js",
@@ -1242,14 +2068,94 @@
       "releaseSha256": "5267c39cdda97276d680a158cbda0c42a5bc8d83c8605fc9c08b1bf61d55efba"
     },
     {
+      "path": "static/js/xiaomei-api-errors.js",
+      "sourceSha256": "fed7650d14eb8825cd713348fc2b85c911c446f90b511fc13c70fa9f9becbc9e",
+      "releaseSha256": "fed7650d14eb8825cd713348fc2b85c911c446f90b511fc13c70fa9f9becbc9e"
+    },
+    {
+      "path": "static/js/xiaomei-canvas-keys.js",
+      "sourceSha256": "26b30deb09620873e3f1591ee1345b843408c2ae761fa467e9625af602bb1c6c",
+      "releaseSha256": "26b30deb09620873e3f1591ee1345b843408c2ae761fa467e9625af602bb1c6c"
+    },
+    {
+      "path": "static/js/xiaomei-canvas-surface.js",
+      "sourceSha256": "15a175484a5c3312fe6df74e1d38264ab6d5ce6bec0464f75e47184eb1d248e2",
+      "releaseSha256": "15a175484a5c3312fe6df74e1d38264ab6d5ce6bec0464f75e47184eb1d248e2"
+    },
+    {
+      "path": "static/js/xiaomei-dispatch-kernel.js",
+      "sourceSha256": "6c6d9c9ee5d387d0bd6400c2b1341da981c4d0d8593954df014c7a19f947bd52",
+      "releaseSha256": "6c6d9c9ee5d387d0bd6400c2b1341da981c4d0d8593954df014c7a19f947bd52"
+    },
+    {
+      "path": "static/js/xiaomei-document-kernel.js",
+      "sourceSha256": "b45a43afae852fbffb7e9b091bbfd04642b6e2d61c6198db361c410a32653d9c",
+      "releaseSha256": "b45a43afae852fbffb7e9b091bbfd04642b6e2d61c6198db361c410a32653d9c"
+    },
+    {
+      "path": "static/js/xiaomei-generation-chime.js",
+      "sourceSha256": "b3669a9179f22f5c03f71dfd6356e4322ea61ff20a2ea40be63ef76180feb5e2",
+      "releaseSha256": "b3669a9179f22f5c03f71dfd6356e4322ea61ff20a2ea40be63ef76180feb5e2"
+    },
+    {
+      "path": "static/js/xiaomei-history-kernel.js",
+      "sourceSha256": "6c2483325060522da91524c80bb5194c7f55475999a189810c12b9f5218ffa7e",
+      "releaseSha256": "6c2483325060522da91524c80bb5194c7f55475999a189810c12b9f5218ffa7e"
+    },
+    {
+      "path": "static/js/xiaomei-image-edit-geometry.js",
+      "sourceSha256": "9f0334823f32b6cc89c144444e93f68fee84e2455091596dfafca69dc400ff95",
+      "releaseSha256": "9f0334823f32b6cc89c144444e93f68fee84e2455091596dfafca69dc400ff95"
+    },
+    {
+      "path": "static/js/xiaomei-image-viewer.js",
+      "sourceSha256": "af2820227c2d4c5e836fb52718e0ad5bae2d8b9a9be6f19da0cdc7154e0d22b5",
+      "releaseSha256": "af2820227c2d4c5e836fb52718e0ad5bae2d8b9a9be6f19da0cdc7154e0d22b5"
+    },
+    {
+      "path": "static/js/xiaomei-media-layout.js",
+      "sourceSha256": "bbfb2edeff0137824df6345f1d1669e0fa3c5e8430480385e48ba0bd3971a9d5",
+      "releaseSha256": "bbfb2edeff0137824df6345f1d1669e0fa3c5e8430480385e48ba0bd3971a9d5"
+    },
+    {
+      "path": "static/js/xiaomei-node-kernel.js",
+      "sourceSha256": "ec5f377338b20aa537a5898c713469bf5f30720140c88a279bff77bf0b9211b4",
+      "releaseSha256": "ec5f377338b20aa537a5898c713469bf5f30720140c88a279bff77bf0b9211b4"
+    },
+    {
+      "path": "static/js/xiaomei-prompt-presentation.js",
+      "sourceSha256": "ac4a137327d9082235899c01dc78c422f1709790fed0cf74835c89002cb4d61f",
+      "releaseSha256": "ac4a137327d9082235899c01dc78c422f1709790fed0cf74835c89002cb4d61f"
+    },
+    {
+      "path": "static/js/xiaomei-shell-kernel.js",
+      "sourceSha256": "9fa74403f94bb9b2e5450e8ee6db23f2b76766a2a5c76e216ff67bfe24ed2082",
+      "releaseSha256": "9fa74403f94bb9b2e5450e8ee6db23f2b76766a2a5c76e216ff67bfe24ed2082"
+    },
+    {
+      "path": "static/js/xiaomei-smart-surface.js",
+      "sourceSha256": "aa1c58476941fd9a3ceed7866fb98d34a6cafb4aa54884df27c5b31c93f60da2",
+      "releaseSha256": "aa1c58476941fd9a3ceed7866fb98d34a6cafb4aa54884df27c5b31c93f60da2"
+    },
+    {
+      "path": "static/js/xiaomei-touch-input.js",
+      "sourceSha256": "3043fee870a81ec32ce8a547d8069d180de108c480acab02af6923b10c2e2001",
+      "releaseSha256": "3043fee870a81ec32ce8a547d8069d180de108c480acab02af6923b10c2e2001"
+    },
+    {
+      "path": "static/js/xiaomei-viewport-kernel.js",
+      "sourceSha256": "e34a430b3e3402e0fda95273f0e86cc9b432a394fda61b2b16dc3988d3150f31",
+      "releaseSha256": "e34a430b3e3402e0fda95273f0e86cc9b432a394fda61b2b16dc3988d3150f31"
+    },
+    {
       "path": "static/klein.html",
-      "sourceSha256": "63ef8f48ce4bcd7b00f2f691a40ac177b89f550bd6ac9a998a5efecd9e79d12c",
-      "releaseSha256": "63ef8f48ce4bcd7b00f2f691a40ac177b89f550bd6ac9a998a5efecd9e79d12c"
+      "sourceSha256": "984179003ea36f83588ea16cd5492f62c4f9d6de9b0fd40a02e584e527ee75b1",
+      "releaseSha256": "984179003ea36f83588ea16cd5492f62c4f9d6de9b0fd40a02e584e527ee75b1"
     },
     {
       "path": "static/online.html",
-      "sourceSha256": "489ad533bc7522028f44144b17b22dfdeee9528591790b55410c0aa7b962b53e",
-      "releaseSha256": "489ad533bc7522028f44144b17b22dfdeee9528591790b55410c0aa7b962b53e"
+      "sourceSha256": "e19310e1e63eec9f373e3921b38c155a196f16cf52ca1114c4f2951cb7e00971",
+      "releaseSha256": "e19310e1e63eec9f373e3921b38c155a196f16cf52ca1114c4f2951cb7e00971"
     },
     {
       "path": "static/photocraft/.htaccess",
@@ -1343,43 +2249,18 @@
     },
     {
       "path": "static/product-3d.html",
-      "sourceSha256": "bf87d5e37c4f25a2755cb2ddbaf449dcbe855450bc97c125d50248f82bdd3384",
-      "releaseSha256": "bf87d5e37c4f25a2755cb2ddbaf449dcbe855450bc97c125d50248f82bdd3384"
+      "sourceSha256": "d0cac2b37b5ae3d38132eefc03335614285c4c62fdd3575bab479e13df1f71e4",
+      "releaseSha256": "d0cac2b37b5ae3d38132eefc03335614285c4c62fdd3575bab479e13df1f71e4"
     },
     {
-      "path": "static/runninghub/api_providers.json",
-      "sourceSha256": "a0c8dea74f8f3d85cc8dc87279f4be89d2973b152de1fe9360ec87b57ad0a41e",
-      "releaseSha256": "a0c8dea74f8f3d85cc8dc87279f4be89d2973b152de1fe9360ec87b57ad0a41e"
-    },
-    {
-      "path": "static/runninghub/thumbnails/workflow-2058541134623891458.jpg",
-      "sourceSha256": "2436280857d86acef00df78ed05aa98fb838bb36f5d64ee39de67f1f974bbc92",
-      "releaseSha256": "2436280857d86acef00df78ed05aa98fb838bb36f5d64ee39de67f1f974bbc92"
-    },
-    {
-      "path": "static/runninghub/thumbnails/workflow-2058554058318897153.jpg",
-      "sourceSha256": "40a479af3a05bc7e58b24a3ea8f4ddb29d1b51ebf84b2b0feb55aa106ffe9248",
-      "releaseSha256": "40a479af3a05bc7e58b24a3ea8f4ddb29d1b51ebf84b2b0feb55aa106ffe9248"
-    },
-    {
-      "path": "static/runninghub/thumbnails/workflow-2058818588181622785.jpg",
-      "sourceSha256": "8b940c930f918275f5b292f65ef3cc9f8fd40a72dcf9e1b0ebb50ca4729d1e80",
-      "releaseSha256": "8b940c930f918275f5b292f65ef3cc9f8fd40a72dcf9e1b0ebb50ca4729d1e80"
-    },
-    {
-      "path": "static/runninghub/thumbnails/workflow-2058824859437850625.jpg",
-      "sourceSha256": "2d2c8cbafc026d8530e4f09cac917bb1e2e458afe1d5324dc2b34f1b55ff4b35",
-      "releaseSha256": "2d2c8cbafc026d8530e4f09cac917bb1e2e458afe1d5324dc2b34f1b55ff4b35"
-    },
-    {
-      "path": "static/runninghub/thumbnails/workflow-2064542485938008065.jpg",
-      "sourceSha256": "52442dccf2d24122c34bc4c4c5eb3124b25a08db9652634d39218b300099d84d",
-      "releaseSha256": "52442dccf2d24122c34bc4c4c5eb3124b25a08db9652634d39218b300099d84d"
+      "path": "static/runninghub/entry-placeholder.svg",
+      "sourceSha256": "cc1a1b4101b5a02f1db250e9aa8b82b64af2537306db34135a0df320f6ee775a",
+      "releaseSha256": "cc1a1b4101b5a02f1db250e9aa8b82b64af2537306db34135a0df320f6ee775a"
     },
     {
       "path": "static/smart-canvas.html",
-      "sourceSha256": "5730e6539996838fa6de7fa2809a5077c81b664c836d5a00ed73c2156a6861e3",
-      "releaseSha256": "5730e6539996838fa6de7fa2809a5077c81b664c836d5a00ed73c2156a6861e3"
+      "sourceSha256": "393c28d2d874785896aaaeb88d62abce83ce4213d8eaa4d45eb70e4acf716077",
+      "releaseSha256": "393c28d2d874785896aaaeb88d62abce83ce4213d8eaa4d45eb70e4acf716077"
     },
     {
       "path": "static/sw.js",
@@ -1387,14 +2268,19 @@
       "releaseSha256": "ed1d803d9272f12de99222682823dead18309aa4115b7a76ea70f519ceaabbcf"
     },
     {
+      "path": "static/system-prompts/xiaomei-canvas-presets.json",
+      "sourceSha256": "1019f192a0d1532d83b0f4930fe4f361bbb22229c309f2f1c9e1de9b99460a9d",
+      "releaseSha256": "1019f192a0d1532d83b0f4930fe4f361bbb22229c309f2f1c9e1de9b99460a9d"
+    },
+    {
       "path": "static/task-manager.html",
-      "sourceSha256": "234e3636f5457702edff1150717b828e0f4155048841e9e8ea9ddb18208bc4c1",
-      "releaseSha256": "234e3636f5457702edff1150717b828e0f4155048841e9e8ea9ddb18208bc4c1"
+      "sourceSha256": "2f23aaefd8e0615cffc92f6c5805b17e9a0304bab5ab2c2f5a7e55b0dcef7061",
+      "releaseSha256": "2f23aaefd8e0615cffc92f6c5805b17e9a0304bab5ab2c2f5a7e55b0dcef7061"
     },
     {
       "path": "static/update-notes.json",
-      "sourceSha256": "18d145bffd9d184af18f0d7bdc56f74cccb766f0e1f7ba3d53ca3f2e0107bbcc",
-      "releaseSha256": "1a1a3bf638204126f3ebd0e4fc4a862e5b65349e83f5c2547911a5da24ec4f14"
+      "sourceSha256": "1a1a3bf638204126f3ebd0e4fc4a862e5b65349e83f5c2547911a5da24ec4f14",
+      "releaseSha256": "f0e68689e9deb2cdf995f92aaec05e0f86e42372bdae01c563034650e86ef3a9"
     },
     {
       "path": "static/vendor/css/fonts.css",
@@ -1452,9 +2338,24 @@
       "releaseSha256": "76dea8151bc9352aef3528b4262e249b2604f62543828328db978d060d61a495"
     },
     {
+      "path": "static/vendor/x6/LICENSE",
+      "sourceSha256": "d23f100d7fdde91467f13cf7ba97ae25191a2b28584f3961aaeea80f51ed30ab",
+      "releaseSha256": "d23f100d7fdde91467f13cf7ba97ae25191a2b28584f3961aaeea80f51ed30ab"
+    },
+    {
+      "path": "static/vendor/x6/x6.min.js",
+      "sourceSha256": "0cda942c20b32e3e2b3b8ff11560aefda39008a8c00d43c75295e4a5543593b0",
+      "releaseSha256": "0cda942c20b32e3e2b3b8ff11560aefda39008a8c00d43c75295e4a5543593b0"
+    },
+    {
       "path": "static/zimage.html",
-      "sourceSha256": "ac1b15994fe27b163797447da2dd0518da5f8f325107a39883b5723f2fffb718",
-      "releaseSha256": "020fafccf416ccef63303c97a72a5258d229c3e25da70ad590d82d4249d6f15d"
+      "sourceSha256": "0dd526c1781d237aab0530bc6fe6f8bbbb62d67c2dd1aa6b917f76ff4bdbcc20",
+      "releaseSha256": "0dd526c1781d237aab0530bc6fe6f8bbbb62d67c2dd1aa6b917f76ff4bdbcc20"
+    },
+    {
+      "path": "storage_migration.py",
+      "sourceSha256": "a074247be13d2f5aa4a4db1706124cc40b5ded2fe1dcac12807a0583f108779e",
+      "releaseSha256": "a074247be13d2f5aa4a4db1706124cc40b5ded2fe1dcac12807a0583f108779e"
     },
     {
       "path": "svg_media.py",
@@ -1462,34 +2363,49 @@
       "releaseSha256": "1af17ba1b983cf41a9e451a298bee6795c530c4c40a60fe60bdc17930a7bff0f"
     },
     {
+      "path": "tools/chrome-local-asset-importer/README.md",
+      "sourceSha256": "da0d64338edf3cfaabf8812eff5b53b8c8309c09acc7c80d990800a5185d9c6e",
+      "releaseSha256": "da0d64338edf3cfaabf8812eff5b53b8c8309c09acc7c80d990800a5185d9c6e"
+    },
+    {
+      "path": "tools/chrome-local-asset-importer/archive.mjs",
+      "sourceSha256": "4436d87c44e05ecb89ab30dfc17f323cfdeadaba8e4639d21dd646d5ff4b3f53",
+      "releaseSha256": "4436d87c44e05ecb89ab30dfc17f323cfdeadaba8e4639d21dd646d5ff4b3f53"
+    },
+    {
       "path": "tools/chrome-local-asset-importer/background.js",
-      "sourceSha256": "f84ef8419ebc0b47bb6534645d950a14a331a5f75a519c8d82e51d70fab763fc",
-      "releaseSha256": "f84ef8419ebc0b47bb6534645d950a14a331a5f75a519c8d82e51d70fab763fc"
+      "sourceSha256": "ddea6f82f04e3c249e533d9e560ac2eeae766aab06891154acd4a93f846eb9d9",
+      "releaseSha256": "ddea6f82f04e3c249e533d9e560ac2eeae766aab06891154acd4a93f846eb9d9"
+    },
+    {
+      "path": "tools/chrome-local-asset-importer/brand.png",
+      "sourceSha256": "5ced3a6c331a8ff9315fceb48f6690b9c9950c7f40a7e3e2bd1ed3f3c281702f",
+      "releaseSha256": "5ced3a6c331a8ff9315fceb48f6690b9c9950c7f40a7e3e2bd1ed3f3c281702f"
+    },
+    {
+      "path": "tools/chrome-local-asset-importer/collector.mjs",
+      "sourceSha256": "1ca5e7c6ae838158a10399c462bec1041ed5bf12b02bfecd7745b13fb31ec8f2",
+      "releaseSha256": "1ca5e7c6ae838158a10399c462bec1041ed5bf12b02bfecd7745b13fb31ec8f2"
     },
     {
       "path": "tools/chrome-local-asset-importer/manifest.json",
-      "sourceSha256": "744daac3622d427fd4f5de5920a6b77adf4f4ff8d6f7ea39a788a477a65924b6",
-      "releaseSha256": "744daac3622d427fd4f5de5920a6b77adf4f4ff8d6f7ea39a788a477a65924b6"
+      "sourceSha256": "ec2bf552cdd352a4827584299712a696a19b6659782cd014ada16283a667adbb",
+      "releaseSha256": "ec2bf552cdd352a4827584299712a696a19b6659782cd014ada16283a667adbb"
     },
     {
       "path": "tools/chrome-local-asset-importer/popup.css",
-      "sourceSha256": "91c6ae545105d40ffc935d6e4f154167b4b32f1f1a37343b490e435b00a161bf",
-      "releaseSha256": "91c6ae545105d40ffc935d6e4f154167b4b32f1f1a37343b490e435b00a161bf"
+      "sourceSha256": "e745dadeae6fd153931aa78d6259463e79fbb00a811c0da8922c07f94eb1cbd3",
+      "releaseSha256": "e745dadeae6fd153931aa78d6259463e79fbb00a811c0da8922c07f94eb1cbd3"
     },
     {
       "path": "tools/chrome-local-asset-importer/popup.html",
-      "sourceSha256": "ebc45cac2b059dfcad2d86d589f57f99591cbdc871b7f75fe627dcb104ead7e2",
-      "releaseSha256": "ebc45cac2b059dfcad2d86d589f57f99591cbdc871b7f75fe627dcb104ead7e2"
+      "sourceSha256": "5f698c6a42e9ba5e82762159be3e45f0cada58a113f3b2c4c383238d85074480",
+      "releaseSha256": "5f698c6a42e9ba5e82762159be3e45f0cada58a113f3b2c4c383238d85074480"
     },
     {
-      "path": "tools/chrome-local-asset-importer/popup.js",
-      "sourceSha256": "873e3526b7d71d9219360592d96a4a87a310868aaf17653833a5dfe4811cdd98",
-      "releaseSha256": "873e3526b7d71d9219360592d96a4a87a310868aaf17653833a5dfe4811cdd98"
-    },
-    {
-      "path": "tools/chrome-local-asset-importer/sidepanel.html",
-      "sourceSha256": "d4285a60e72f72092f8588e502283365efcddebaf96bdd7873dde0cd822dd26b",
-      "releaseSha256": "d4285a60e72f72092f8588e502283365efcddebaf96bdd7873dde0cd822dd26b"
+      "path": "tools/chrome-local-asset-importer/popup.mjs",
+      "sourceSha256": "e099b70ea400499921fded0902d6c9ecf6150dda53088e0366249e707a1fa022",
+      "releaseSha256": "e099b70ea400499921fded0902d6c9ecf6150dda53088e0366249e707a1fa022"
     },
     {
       "path": "tools/chrome-model-downloader/README.md",
@@ -1572,6 +2488,11 @@
       "releaseSha256": "faa1f6d0c31afc56165d81ec6e32a693988d0e0bdf5f5314efcef1766ca74af6"
     },
     {
+      "path": "tools/commerce-analysis/dabi-taobao.cjs",
+      "sourceSha256": "3bedc778ded2112d884d03596743fff085ba8840fba0d0ec87b409390383d66c",
+      "releaseSha256": "3bedc778ded2112d884d03596743fff085ba8840fba0d0ec87b409390383d66c"
+    },
+    {
       "path": "tools/commerce-analysis/package-lock.json",
       "sourceSha256": "1fb719386ce364fadcf3805ce576a4f4f3c693ed6210b6f2a713b0e29d4dd6ac",
       "releaseSha256": "1fb719386ce364fadcf3805ce576a4f4f3c693ed6210b6f2a713b0e29d4dd6ac"
@@ -1580,6 +2501,16 @@
       "path": "tools/commerce-analysis/package.json",
       "sourceSha256": "731552e720d7ba9ec72885cb8c488ea29d7987656e1ab9fdbfb33081da3048e5",
       "releaseSha256": "731552e720d7ba9ec72885cb8c488ea29d7987656e1ab9fdbfb33081da3048e5"
+    },
+    {
+      "path": "tools/commerce-analysis/product-page-state.cjs",
+      "sourceSha256": "ab2f92a22286e4076d411a6145d730e9d0e403135a9a5122b476093fc8d62648",
+      "releaseSha256": "ab2f92a22286e4076d411a6145d730e9d0e403135a9a5122b476093fc8d62648"
+    },
+    {
+      "path": "tools/commerce-analysis/sku-page-state.cjs",
+      "sourceSha256": "9a69c3475bf6eccfb46f5796be16173de63a095e7e5485abba22caa7e90f4ccf",
+      "releaseSha256": "9a69c3475bf6eccfb46f5796be16173de63a095e7e5485abba22caa7e90f4ccf"
     },
     {
       "path": "tools/fluent-ui/build.mjs",
@@ -1612,69 +2543,84 @@
       "releaseSha256": "dab8ac46c078905022ca0a0ec057433b6075e2fd2d41afb2f24d5eef0a563674"
     },
     {
+      "path": "tools/install_windows_gpu_runtime.py",
+      "sourceSha256": "07a20f49dba3a4a2c44098cd30c2b4c756ef116606f04366e280e411e4aefdcf",
+      "releaseSha256": "07a20f49dba3a4a2c44098cd30c2b4c756ef116606f04366e280e411e4aefdcf"
+    },
+    {
       "path": "tools/migrate_harness_conversations.py",
       "sourceSha256": "15bab2ba43af7909c962e939f00c17eac5f15cd59d76facda59ef9e0fd7c30be",
       "releaseSha256": "15bab2ba43af7909c962e939f00c17eac5f15cd59d76facda59ef9e0fd7c30be"
     },
     {
+      "path": "tools/photoshop-asset-connector/README.md",
+      "sourceSha256": "9334e532293fd720028910326c2069c9159c5915790e75a2428ab219a8c769f2",
+      "releaseSha256": "9334e532293fd720028910326c2069c9159c5915790e75a2428ab219a8c769f2"
+    },
+    {
       "path": "tools/photoshop-asset-connector/index.html",
-      "sourceSha256": "5f50feeb6dff635e840b1446dca27d5b174b83f6e21273272b7d7ae52e4433fb",
-      "releaseSha256": "5f50feeb6dff635e840b1446dca27d5b174b83f6e21273272b7d7ae52e4433fb"
+      "sourceSha256": "0310cdd4689591992c479af263e8625488bc6ae0240dc17bb350dc30f71a955e",
+      "releaseSha256": "0310cdd4689591992c479af263e8625488bc6ae0240dc17bb350dc30f71a955e"
     },
     {
       "path": "tools/photoshop-asset-connector/js/agent.js",
-      "sourceSha256": "660e8dc5efc1202463007e79c402f9547462b601c1ea41a5b5ca218f529f516d",
-      "releaseSha256": "660e8dc5efc1202463007e79c402f9547462b601c1ea41a5b5ca218f529f516d"
+      "sourceSha256": "8cd8c72c620fbb19835633f2b9b1202f2b165cfe91454d274a5d2fb745dc36ba",
+      "releaseSha256": "8cd8c72c620fbb19835633f2b9b1202f2b165cfe91454d274a5d2fb745dc36ba"
     },
     {
       "path": "tools/photoshop-asset-connector/js/app.js",
-      "sourceSha256": "126486bc49d000506d2f647ad35cd16101349998be06f86d06968e250a1b8623",
-      "releaseSha256": "126486bc49d000506d2f647ad35cd16101349998be06f86d06968e250a1b8623"
+      "sourceSha256": "8ced654a92a35c7b6c5a2b610bf6fd40226fda5dd167d6c16889559a8d2e3c87",
+      "releaseSha256": "8ced654a92a35c7b6c5a2b610bf6fd40226fda5dd167d6c16889559a8d2e3c87"
     },
     {
       "path": "tools/photoshop-asset-connector/js/generate.js",
-      "sourceSha256": "b111cfcb6312f74b651b0a6e80e38cd6bc5c3e77ca41cf77e4e34e0e6dc08ff3",
-      "releaseSha256": "b111cfcb6312f74b651b0a6e80e38cd6bc5c3e77ca41cf77e4e34e0e6dc08ff3"
+      "sourceSha256": "1cc271bd51b04598542d9a4d8a52ad8e2f377caff57b635d8252edbad5ebef3e",
+      "releaseSha256": "1cc271bd51b04598542d9a4d8a52ad8e2f377caff57b635d8252edbad5ebef3e"
+    },
+    {
+      "path": "tools/photoshop-asset-connector/js/generation-tasks.js",
+      "sourceSha256": "ab2d115dc76459cfe5b5a052ca7789d944abfbea0278c0db18adc234195209e2",
+      "releaseSha256": "ab2d115dc76459cfe5b5a052ca7789d944abfbea0278c0db18adc234195209e2"
     },
     {
       "path": "tools/photoshop-asset-connector/js/net.js",
-      "sourceSha256": "89c203abc263749ad8b512a3fc4cc1990a4c4b1dc2845d0d1a2876db451f4e95",
-      "releaseSha256": "89c203abc263749ad8b512a3fc4cc1990a4c4b1dc2845d0d1a2876db451f4e95"
+      "sourceSha256": "60ed2dc3c0f79df672d177adb28ca409db439307566dfa9c8fef6cbd766a36f0",
+      "releaseSha256": "60ed2dc3c0f79df672d177adb28ca409db439307566dfa9c8fef6cbd766a36f0"
     },
     {
       "path": "tools/photoshop-asset-connector/js/ps.js",
-      "sourceSha256": "37fd512002722ce2c648ac63f1de1074add61422b10c4979f8e1d184af352c02",
-      "releaseSha256": "37fd512002722ce2c648ac63f1de1074add61422b10c4979f8e1d184af352c02"
+      "sourceSha256": "7086642df1632be0b69884c68106f020fcddfd08756127134d9ea0640fbf7b7a",
+      "releaseSha256": "7086642df1632be0b69884c68106f020fcddfd08756127134d9ea0640fbf7b7a"
     },
     {
       "path": "tools/photoshop-asset-connector/js/socket.js",
-      "sourceSha256": "af90feacd6c85a0e301d64ced72060722d9eee4f600e28114795c55266a6b147",
-      "releaseSha256": "af90feacd6c85a0e301d64ced72060722d9eee4f600e28114795c55266a6b147"
+      "sourceSha256": "f5d3a2ffbec8f1d682ff53c48c7ea4286772f7c9795d42998e60385445cd8302",
+      "releaseSha256": "f5d3a2ffbec8f1d682ff53c48c7ea4286772f7c9795d42998e60385445cd8302"
     },
     {
       "path": "tools/photoshop-asset-connector/js/sources.js",
-      "sourceSha256": "987cc0b2e9be78026350f8ca66c2a4816b9e1c266491cdbe3194c7fa2b6f0357",
-      "releaseSha256": "987cc0b2e9be78026350f8ca66c2a4816b9e1c266491cdbe3194c7fa2b6f0357"
+      "sourceSha256": "ee49bde8b72bbd82af629ab7eafab04bfbb80ea9dd06c0026d6ee548a7834cc1",
+      "releaseSha256": "ee49bde8b72bbd82af629ab7eafab04bfbb80ea9dd06c0026d6ee548a7834cc1"
     },
     {
       "path": "tools/photoshop-asset-connector/js/state.js",
-      "sourceSha256": "8ea8d05b229e7fd7eb37859d9b4121881a653b53c47af337203a9c9d7136e86c",
-      "releaseSha256": "8ea8d05b229e7fd7eb37859d9b4121881a653b53c47af337203a9c9d7136e86c"
+      "sourceSha256": "f55f691fcda4b4e90dbfd6319c9e5ff52870c642d30243bfc3d55c983c442e38",
+      "releaseSha256": "f55f691fcda4b4e90dbfd6319c9e5ff52870c642d30243bfc3d55c983c442e38"
     },
     {
       "path": "tools/photoshop-asset-connector/js/ui.js",
-      "sourceSha256": "b7dcfbb67af16edb2a49c28c94cc7c1d313c6fcfb88336fc127fe136fae5d027",
-      "releaseSha256": "b7dcfbb67af16edb2a49c28c94cc7c1d313c6fcfb88336fc127fe136fae5d027"
+      "sourceSha256": "aca2ad9b1678c6592e6c58d6d926214530dfa181ade37ccea8066e75a4d1f060",
+      "releaseSha256": "aca2ad9b1678c6592e6c58d6d926214530dfa181ade37ccea8066e75a4d1f060"
     },
     {
       "path": "tools/photoshop-asset-connector/manifest.json",
-      "sourceSha256": "6003c28bdd5a559820c5448a57ed253700fc25306779583a4d75c8581a8e7d9a",
-      "releaseSha256": "6003c28bdd5a559820c5448a57ed253700fc25306779583a4d75c8581a8e7d9a"
+      "sourceSha256": "da36495641ac41986f4342ad24b68337532d400716a3a200465ef52a5e45f0e1",
+      "releaseSha256": "da36495641ac41986f4342ad24b68337532d400716a3a200465ef52a5e45f0e1"
     },
     {
       "path": "tools/photoshop-asset-connector/style.css",
-      "sourceSha256": "05f1a3d2940435db173808682ffe93b263bf44dbfd7e37ed0fe7b7e729d2c9b4",
-      "releaseSha256": "05f1a3d2940435db173808682ffe93b263bf44dbfd7e37ed0fe7b7e729d2c9b4"
+      "sourceSha256": "ed8611c1be942dfbbbd6a1085d035a4e478584da8b3ffe28496432c7c75ed07b",
+      "releaseSha256": "ed8611c1be942dfbbbd6a1085d035a4e478584da8b3ffe28496432c7c75ed07b"
     },
     {
       "path": "tools/skill-capabilities/apply.py",
@@ -1682,9 +2628,74 @@
       "releaseSha256": "bd424703b492d27c3c4b06365fdb308f45bfe44d954c9f6ee80d26f32890dbb9"
     },
     {
+      "path": "veo_multipart.py",
+      "sourceSha256": "e34737187fc7c8eb3de4301c0de4ebf537042a84be4852cebd07ffe48bd354f0",
+      "releaseSha256": "e34737187fc7c8eb3de4301c0de4ebf537042a84be4852cebd07ffe48bd354f0"
+    },
+    {
+      "path": "video_tasks.py",
+      "sourceSha256": "83661d16ef1a2d3095a9f23a0038c171a39623390bca277dcf98173738f8101d",
+      "releaseSha256": "83661d16ef1a2d3095a9f23a0038c171a39623390bca277dcf98173738f8101d"
+    },
+    {
+      "path": "volcengine_assets.py",
+      "sourceSha256": "3a61576c353d13240048ee3d11196c6fb88f24ba7bcf248d7e02ec64c3a41be5",
+      "releaseSha256": "3a61576c353d13240048ee3d11196c6fb88f24ba7bcf248d7e02ec64c3a41be5"
+    },
+    {
+      "path": "volcengine_images.py",
+      "sourceSha256": "02b842b87c26532db3606f3496f49925647323ae4a613e47187ab09df553e597",
+      "releaseSha256": "02b842b87c26532db3606f3496f49925647323ae4a613e47187ab09df553e597"
+    },
+    {
+      "path": "volcengine_video.py",
+      "sourceSha256": "d0722c4fab1e21fe25b698766c28d29cdbb9bb9753b6af3d5543aec9b97cc7e2",
+      "releaseSha256": "d0722c4fab1e21fe25b698766c28d29cdbb9bb9753b6af3d5543aec9b97cc7e2"
+    },
+    {
       "path": "windows_api_entry.py",
       "sourceSha256": "85f861226d2d4928edcef8412cce21ca08be3023f5ee5e564e6cb7abb9e171fa",
       "releaseSha256": "85f861226d2d4928edcef8412cce21ca08be3023f5ee5e564e6cb7abb9e171fa"
+    },
+    {
+      "path": "workflows/2511.json",
+      "sourceSha256": "b6195d6988d658d7e1ad16c6d8a526b718d03ae869b6cbcfde708068c0a18c4a",
+      "releaseSha256": "b6195d6988d658d7e1ad16c6d8a526b718d03ae869b6cbcfde708068c0a18c4a"
+    },
+    {
+      "path": "workflows/Flux2-Klein.json",
+      "sourceSha256": "0c8f4d3f200d1d2df36e095b53788827f23df7d19689e0426ff1dc0a8eb8262e",
+      "releaseSha256": "0c8f4d3f200d1d2df36e095b53788827f23df7d19689e0426ff1dc0a8eb8262e"
+    },
+    {
+      "path": "workflows/LTXDirectorv2-API.config.json",
+      "sourceSha256": "ca403037770a4bff9b84943030ba55d2453789ca1c2805bcc9402729cf1eec81",
+      "releaseSha256": "ca403037770a4bff9b84943030ba55d2453789ca1c2805bcc9402729cf1eec81"
+    },
+    {
+      "path": "workflows/LTXDirectorv2-API.json",
+      "sourceSha256": "981aa8c4f5e44430a388358b61b5032321b4661d7dad07a2d1c9c42c2c9882cb",
+      "releaseSha256": "981aa8c4f5e44430a388358b61b5032321b4661d7dad07a2d1c9c42c2c9882cb"
+    },
+    {
+      "path": "workflows/Z-Image-Enhance.json",
+      "sourceSha256": "8e41fb86d4c0f4b860875e5ae99de87e98388215608cb3e4bedbf80d0c8200c4",
+      "releaseSha256": "8e41fb86d4c0f4b860875e5ae99de87e98388215608cb3e4bedbf80d0c8200c4"
+    },
+    {
+      "path": "workflows/Z-Image.json",
+      "sourceSha256": "06fdc7022be1bcd7486e26ba4a9ce549d19b056bb72c5b299cf20e9a1af679ab",
+      "releaseSha256": "06fdc7022be1bcd7486e26ba4a9ce549d19b056bb72c5b299cf20e9a1af679ab"
+    },
+    {
+      "path": "workflows/upscale.json",
+      "sourceSha256": "b5071ace17524fb3486bdaf85efa4c90f7359848b351c6d33fc0107439d4eb95",
+      "releaseSha256": "b5071ace17524fb3486bdaf85efa4c90f7359848b351c6d33fc0107439d4eb95"
+    },
+    {
+      "path": "workspace_events.py",
+      "sourceSha256": "116ce7392b9257361193cfdacf2ae1580ac249b38adcec1fe2e54f8cd8415544",
+      "releaseSha256": "116ce7392b9257361193cfdacf2ae1580ac249b38adcec1fe2e54f8cd8415544"
     }
   ]
 }
