@@ -2,7 +2,7 @@
 
 **小美画布（Xiaomei Canvas）** 是一款面向 AI 图像、视频、提示词整理与工作流编排的无限画布工具。
 
-本项目基于 [Infinite-Canvas](https://github.com/hero8152/Infinite-Canvas) 进行二次开发，在原项目基础上对界面、功能及部分交互进行了修改和扩展。
+小美画布最初基于 [Infinite-Canvas](https://github.com/hero8152/Infinite-Canvas) 进行二次开发，目前正开展独立重构；尚未完成全部第三方代码及许可状态复核。
 
 > 当前项目仍在持续开发中，部分功能可能还会继续调整或完善。
 
@@ -67,7 +67,6 @@
 - GPT 对话
 - 小美画布
 - 商品分析
-- 电商工作台
 - 3D 软装
 - 图片空间
 - 提示词库
@@ -116,51 +115,22 @@ git clone https://github.com/jkjk-8614/xiaomei.git
 
 ## 项目来源与致谢
 
-**小美画布（Xiaomei Canvas）** 是基于 [Infinite-Canvas](https://github.com/hero8152/Infinite-Canvas) 进行二次开发，并参考 [CainFlow](https://github.com/RingoCaviar/CainFlow) 项目设计与实现思路的项目。
+小美画布早期从 [Infinite-Canvas](https://github.com/hero8152/Infinite-Canvas) 二次开发起步，目前正在逐步替换旧实现，建立独立架构。**独立重构正在进行，并不代表现有仓库已经完全移除上游代码或取得其商业授权。**
 
-### 原项目一：Infinite-Canvas
+- **Infinite-Canvas**：原作者 [hero8152](https://github.com/hero8152)，[原项目](https://github.com/hero8152/Infinite-Canvas)。
+- **CainFlow**：原作者 [RingoCaviar](https://github.com/RingoCaviar)，[原项目](https://github.com/RingoCaviar/CainFlow)；本项目参考了其节点工作流设计，具体引用代码及授权范围仍需逐项核对。
 
-- **项目名称：** Infinite-Canvas
-- **原作者：** [hero8152](https://github.com/hero8152)
-- **项目地址：** https://github.com/hero8152/Infinite-Canvas
-
-感谢原作者开发并公开 Infinite-Canvas，为本项目提供了基础框架。
-
-### 参考项目二：CainFlow
-
-- **项目名称：** CainFlow
-- **原作者：** [RingoCaviar](https://github.com/RingoCaviar)
-- **项目地址：** https://github.com/RingoCaviar/CainFlow
-
-感谢原作者开发并开源 CainFlow，为节点式工作流设计与交互实现提供了参考。
-
-### 二次开发说明
-
-小美画布在原项目基础上，对界面、功能及部分交互进行了修改与扩展，并结合其他优秀项目的设计思路持续完善。
-
-本项目为非官方二次开发版本，与上述项目原作者不存在官方从属关系。
-
-原项目代码及相关版权归各自权利人所有，具体使用、修改与分发应遵守相应项目的许可证要求。
+感谢原作者的公开贡献。完整的第三方来源与许可说明请参阅 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
 
 ---
 
-## 开源与使用说明
+## 许可证与使用说明
 
-本项目基于 Infinite-Canvas 进行二次开发，并遵循原项目的许可要求。
+本仓库根目录的 [LICENSE](./LICENSE) 当前仍为 Infinite-Canvas 上游使用的非商业许可文本。**修改项目名称、文档、许可文件或 Git 提交历史，并不能消除已使用的第三方代码所受的版权和许可约束。**
 
-根据原项目 LICENSE：
+在完成来源审计、取得必要授权或完全替换相关受限代码前，不应把小美画布现有版本视为已获得独立商业封装、闭源分发授权。
 
-- 本项目必须保持开源；
-- 必须注明原项目及原作者；
-- 可以用于个人使用和公司内部使用；
-- 禁止将本项目修改、封装后作为商业产品；
-- 商业使用需要获得原作者授权。
-
-原项目许可证地址：
-
-https://github.com/hero8152/Infinite-Canvas/blob/main/LICENSE
-
-本仓库保留相应 LICENSE 文件，请在使用、修改或分发本项目之前仔细阅读许可说明。
+对今后独立创作且权属明确的代码，可在完成清查后单独制定许可；第三方组件依其适用许可证及有效的单独授权处理。有关历史来源、CainFlow 许可及待核对事项，见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
 
 ---
 
