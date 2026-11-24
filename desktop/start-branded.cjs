@@ -10,7 +10,6 @@
  */
 
 const fs = require('fs');
-const path = require('path');
 const { spawn } = require('child_process');
 const { brand, BRANDED_EXE } = require('./brand-electron-exe.cjs');
 
@@ -18,11 +17,11 @@ const DESKTOP_DIR = __dirname;
 
 const result = brand();
 if (!result.ok) {
-  process.stderr.write(`[start] 品牌化未完成（${result.reason}），回退到 electron.exe\n`);
+  process.stderr.write(`[start] 未能更新应用名称与图标（${result.reason}）\n`);
 }
 
-const electronExe = path.join(DESKTOP_DIR, 'node_modules', 'electron', 'dist', 'electron.exe');
-const exePath = fs.existsSync(BRANDED_EXE) ? BRANDED_EXE : electronExe;
+const exePath = process.platform === 'win32' && fs.existsSync(BRANDED_EXE)
+  ? BRANDED_EXE : require('electron');
 
 const child = spawn(exePath, ['.'], {
   cwd: DESKTOP_DIR,

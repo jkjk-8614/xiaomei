@@ -5,6 +5,7 @@ let providerSavedVersion = 0;
 let providerSavePromise = null;
 let providerSaveError = '';
 let providerSaveFocus = null;
+let providerSaveLocks = [];
 const providerList = document.getElementById('providerList');
 const editorTitle = document.getElementById('editorTitle');
 const statusEl = document.getElementById('status');
@@ -248,13 +249,31 @@ window.addEventListener('beforeunload', event => {
     event.returnValue = '';
 });
 function setProviderSaveBusy(busy){
-    if(busy) providerSaveFocus = document.activeElement;
-    for(const element of [settingsContent, recommendContent, document.querySelector('.layout > .sidebar')]){
-        if(element) element.inert = busy;
+    const item = provider();
+    if(busy){
+        providerSaveFocus = document.activeElement;
+        const locked = [recommendContent, document.querySelector('.layout > .sidebar')];
+        const accountPanel = keyInput.closest('.key-panel');
+        if(keyProfiles.supports(item) && !item._idDraft && settingsContent.contains(accountPanel)){
+            // Account drafts live in the form and are submitted separately from provider settings.
+            for(let section = accountPanel; section !== settingsContent; section = section.parentElement){
+                for(const sibling of section.parentElement.children){
+                    if(sibling !== section) locked.push(sibling);
+                }
+            }
+        } else {
+            locked.push(settingsContent);
+        }
+        providerSaveLocks = locked.filter(element => element && !element.inert);
     }
+    for(const element of providerSaveLocks) element.inert = busy;
     settingsContent?.setAttribute('aria-busy', String(busy));
+    if(keyProfiles.supports(item)) keyProfiles.render(item);
     if(!busy && providerSaveFocus?.isConnected && document.activeElement === document.body) providerSaveFocus.focus();
-    if(!busy) providerSaveFocus = null;
+    if(!busy){
+        providerSaveFocus = null;
+        providerSaveLocks = [];
+    }
 }
 function externalBrowserApi(){
     try {
@@ -652,101 +671,6 @@ function syncRecommendView(){
     if(recommendSub) recommendSub.textContent = tr('api.recommendPanelSub');
     document.body.classList.toggle('show-recommend-mode', recommendInlineOpen);
 }
-(function bindWebSearchSettings(){
-    const dialog = document.getElementById('webSearchDialog');
-    const open = document.getElementById('openWebSearch');
-    const close = document.getElementById('closeWebSearch');
-    const form = document.getElementById('webSearchForm');
-    const provider = document.getElementById('webSearchProvider');
-    const activeLabel = document.getElementById('webSearchActiveProvider');
-    const keyLink = document.getElementById('webSearchKeyLink');
-    const input = document.getElementById('webSearchKey');
-    const state = document.getElementById('webSearchState');
-    const notice = document.getElementById('webSearchNotice');
-    const save = document.getElementById('saveWebSearch');
-    const test = document.getElementById('testWebSearch');
-    const clear = document.getElementById('clearWebSearch');
-    let busy = false;
-    let settings = null;
-    const name = value => Array.from(provider.options).find(option => option.value === value)?.textContent;
-
-    function syncControls(){
-        const hasKey = settings?.has_keys[provider.value] === true;
-        const draft = input.value.trim();
-        const canActivate = hasKey && settings.provider !== provider.value;
-        close.disabled = busy;
-        provider.disabled = input.disabled = clear.disabled = busy || !settings;
-        input.placeholder = hasKey ? '••••••••' : '';
-        save.disabled = busy || !settings || (!draft && !canActivate);
-        save.dataset.i18n = canActivate && !draft ? 'api.webSearchActivate' : 'api.save';
-        save.textContent = tr(save.dataset.i18n);
-        test.disabled = busy || !settings || (!hasKey && !draft);
-        clear.hidden = !hasKey;
-        keyLink.href = provider.selectedOptions[0].dataset.keyUrl;
-        activeLabel.textContent = settings ? trf('api.webSearchActiveProvider',{name:name(settings.provider)}) : '';
-        state.dataset.i18n = settings ? (hasKey ? 'api.keyProfileSavedStatus' : 'api.keyProfileMissingStatus') : '';
-        state.textContent = state.dataset.i18n ? tr(state.dataset.i18n) : '';
-    }
-    async function update(method, testing=false){
-        if(busy) return;
-        busy = true;
-        notice.textContent = tr('api.keyProfileWorking');
-        notice.classList.remove('recommendation-error');
-        syncControls();
-        try {
-            const path = '/api/search-settings' + (method === 'GET' ? '' : '/' + provider.value + (testing ? '/test' : ''));
-            const response = await fetch(path, {
-                method,cache:'no-store',
-                ...(method === 'PUT' || testing ? {
-                    headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify({api_key:input.value.trim()})
-                } : {})
-            });
-            const result = await response.json().catch(() => ({}));
-            if(!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : '');
-            if(testing){
-                if(result.ok !== true) throw new Error();
-                notice.textContent = trf('api.webSearchConnected',{name:name(provider.value)});
-            } else {
-                if(!result.has_keys || !name(result.provider)) throw new Error();
-                settings = result;
-                if(method === 'GET') provider.value = settings.provider;
-                input.value = '';
-                notice.textContent = method === 'PUT' ? tr('api.saved') : '';
-            }
-        } catch(error) {
-            notice.classList.add('recommendation-error');
-            notice.textContent = error.message || tr('api.webSearchRequestFailed');
-        } finally {
-            busy = false;
-            syncControls();
-            if(method === 'GET' && dialog.open) (settings ? provider : close).focus();
-        }
-    }
-    open.addEventListener('click', () => {
-        settings = null;
-        dialog.showModal();
-        void update('GET');
-    });
-    dialog.addEventListener('cancel', event => { if(busy) event.preventDefault(); });
-    dialog.addEventListener('close', () => { input.value = ''; });
-    provider.addEventListener('change', () => {
-        input.value = '';
-        notice.textContent = '';
-        syncControls();
-        input.focus();
-    });
-    window.addEventListener('studio-lang-change', () => { if(dialog.open) syncControls(); });
-    input.addEventListener('input', syncControls);
-    form.addEventListener('submit', event => {
-        event.preventDefault();
-        if(!save.disabled) void update('PUT');
-    });
-    test.addEventListener('click', () => { void update('POST',true); });
-    clear.addEventListener('click', () => {
-        if(window.confirm(trf('api.webSearchConfirmRemove',{name:name(provider.value)}))) void update('DELETE');
-    });
-})();
 let recommendFilter = 'all';
 const RECOMMEND_FILTERS = ['all', 'pending', 'ready'];
 // 筛选会把未配置的行整段重画，正在输入的 Key 先记在这里，切回来不会丢。
@@ -1193,7 +1117,6 @@ function renderEditor(){
     if(comfyuiConfigBlock){ comfyuiConfigBlock.hidden = true; comfyuiConfigBlock.style.display = 'none'; }
     const editorSub = document.querySelector('#settingsContent .content-head .editor-sub');
     if(editorSub) editorSub.textContent = tr('api.editorSub');
-    const pendingKeyProfileKey = keyProfiles.editing(item) ? keyInput.value : '';
     editorTitle.textContent = item.name || item.id;
     nameInput.value = item.name || '';
     idInput.value = item.id || '';
@@ -1217,7 +1140,7 @@ function renderEditor(){
         imageEditRouteInput.value = normalizeImageEditRoute(item.image_edit_route);
         imageEditRouteInput.disabled = item.id === 'runninghub' || item.id === 'volcengine' || CLI_PROTOCOLS.has(String(protocolInput?.value || item.protocol || '').toLowerCase());
     }
-    keyInput.value = pendingKeyProfileKey;
+    if(!keyProfiles.editing(item)) keyInput.value = '';
     keyInput.placeholder = item.has_key ? `${tr('api.keepCurrentKey')} ${item.key_preview || ''}` : tr('api.enterKey');
     keyHint.textContent = item.has_key ? `${tr('api.keySaved')}${item.key_env || 'API/.env'}` : tr('api.noKey');
     const isVolcengine = item.id === 'volcengine' || String(protocolInput?.value || item.protocol || '').toLowerCase() === 'volcengine';
@@ -2843,13 +2766,13 @@ function saveProviders(){
     if(keyProfiles.busy()) return keyProfiles.settled().then(saveProviders);
     providerDraftVersion += 1;
     clearTimeout(modelListAutoSaveTimer);
-    setProviderSaveBusy(true);
     providerSaveError = '';
     providerSavePromise = Promise.resolve().then(performProviderSave).finally(() => {
         providerSavePromise = null;
         setProviderSaveBusy(false);
         renderProviderSaveState();
     });
+    setProviderSaveBusy(true);
     renderProviderSaveState();
     return providerSavePromise;
 }

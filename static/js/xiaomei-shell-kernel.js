@@ -148,13 +148,31 @@
         return 'image';
     }
 
+    var MEDIA_TYPE_FOLDERS = { '图片': true, '视频': true, '音频': true };
+
+    function isMediaTypeFolder(node) {
+        if (!node) return false;
+        var id = node.id || node.path || '';
+        if (!id || id === '__root__') return false;
+        var name = node.name || String(node.path || id).split('/').pop();
+        return Boolean(MEDIA_TYPE_FOLDERS[name]);
+    }
+
     function folderRows(tree, items) {
         var rows = [];
         function walk(node) {
             if (!node) return;
             var id = node.id || node.path || '__root__';
             var rootNode = id === '__root__';
-            var pool = rootNode ? (items || []) : (node.items || []);
+            var children = node.children || [];
+            var pool = rootNode ? (items || []) : (node.items || []).slice();
+            if (!rootNode) {
+                children.forEach(function (child) {
+                    if (isMediaTypeFolder(child) && Array.isArray(child.items) && child.items.length) {
+                        pool = pool.concat(child.items);
+                    }
+                });
+            }
             rows.push({
                 id: id,
                 name: node.name || (node.path ? String(node.path).split('/').pop() : '全部上传'),
@@ -163,7 +181,13 @@
                 readonly: true,
                 source: 'local'
             });
-            (node.children || []).forEach(walk);
+            children.forEach(function (child) {
+                if (isMediaTypeFolder(child)) {
+                    (child.children || []).forEach(walk);
+                } else {
+                    walk(child);
+                }
+            });
         }
         walk(tree || { id: '__root__', name: '全部上传', items: items || [], children: [] });
         return rows;

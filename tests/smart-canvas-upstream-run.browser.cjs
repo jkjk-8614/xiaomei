@@ -235,6 +235,77 @@ test('cancel aborts a running Agent request without replacing its previous outpu
     assert.equal(await page.evaluate(() => nodes.find(n => n.id === 'solo').runError), 'Agent 运行已取消');
 });
 
+test('an Agent preserves previous output on an empty reply and preserves edits while a reply is pending', {timeout:40000}, async t => {
+    const {page, setHandler} = await fixture(t);
+    await install(page, [agent('solo', {outputText:'之前的输出'})], []);
+    const output = page.locator('[data-id="solo"] .agent-output-text');
+    setHandler(route => route.fulfill({json:{text:'  '}}));
+    assert.match((await page.evaluate(() => runAgentNode('solo'))).error, /没有返回文本/);
+    assert.equal(await output.inputValue(), '之前的输出');
+
+    const reply = Promise.withResolvers();
+    setHandler(async route => {
+        await reply.promise;
+        return route.fulfill({json:{text:'模型回复'}});
+    });
+    try {
+        const requested = page.waitForRequest('**/api/canvas-llm');
+        const result = page.evaluate(() => runAgentNode('solo'));
+        await requested;
+        await output.fill('运行期间的手工编辑');
+        reply.resolve();
+        assert.match((await result).error, /智能对话输出已修改/);
+        assert.equal(await output.inputValue(), '运行期间的手工编辑');
+    } finally {
+        reply.resolve();
+    }
+});
+
+test('an Agent reply follows a live node clone and a replaced canvas can run the same node immediately', {timeout:40000}, async t => {
+    const {page, calls, setHandler} = await fixture(t);
+    await install(page, [agent('solo', {outputText:'原输出'})], []);
+    let reply = Promise.withResolvers();
+    setHandler(async route => {
+        await reply.promise;
+        await route.fulfill({json:{text:'模型输出'}}).catch(() => {});
+    });
+    try {
+        let requested = page.waitForRequest('**/api/canvas-llm');
+        let result = page.evaluate(() => runAgentNode('solo'));
+        await requested;
+        await page.evaluate(() => {
+            nodes = structuredClone(nodes);
+            render();
+        });
+        reply.resolve();
+        assert.deepEqual(await result, {ok:true, text:'模型输出'});
+        const output = page.locator('[data-id="solo"] .agent-output-text');
+        assert.equal(await output.inputValue(), '模型输出');
+
+        reply = Promise.withResolvers();
+        requested = page.waitForRequest('**/api/canvas-llm');
+        result = page.evaluate(() => runAgentNode('solo'));
+        await requested;
+        await page.evaluate(() => {
+            const replacement = {...nodes[0], userPrompt:'新画布请求', outputText:'已保存的输出'};
+            collabReplaceWithServerCanvas({...canvas, nodes:[replacement], connections:[]});
+        });
+        assert.equal(await output.inputValue(), '已保存的输出');
+        assert.equal(await page.evaluate(() => nodes[0].running), false);
+        assert.match(await page.evaluate(() => nodes[0].runError), /请求已中断/);
+        setHandler(null);
+        const replacementResult = await page.evaluate(() => runAgentNode('solo'));
+        assert.equal(replacementResult.ok, true);
+        assert.equal((await result).ok, false);
+        reply.resolve();
+        assert.equal(await output.inputValue(), replacementResult.text);
+        assert.equal(calls.length, 3);
+        assert.equal(calls[2].message, '新画布请求');
+    } finally {
+        reply.resolve();
+    }
+});
+
 test('shared ancestors run once across branches and simultaneous targets', {timeout:40000}, async t => {
     const {page, calls} = await fixture(t);
     await install(page, [agent('shared'), agent('left'), agent('right'), agent('tail'), agent('other')],
@@ -313,6 +384,7 @@ test('Prompt keeps its instruction separate from editable downstream output', {t
     assert.equal((await page.evaluate(() => runPromptLLMNode('prompt'))).ok, true);
     assert.equal(calls[1].message, '商品信息\n\n生成卖点');
     assert.equal(await prompt.locator('.prompt-node-text').inputValue(), '结果2：商品信息\n\n生成卖点');
+    assert.equal(await prompt.locator('.prompt-node-text').evaluate(field => field === document.activeElement), true);
     await page.evaluate(() => { const node = nodes.find(n => n.id === 'prompt'); node.llmInstruction = ''; node.promptRunAt = Date.now(); canvas.connections = []; });
     const before = calls.length;
     assert.equal((await page.evaluate(() => runPromptLLMNodeDirect('prompt'))).ok, false);
@@ -330,6 +402,82 @@ test('Prompt keeps its instruction separate from editable downstream output', {t
         return {initialized:node.promptInstructionInitialized, instruction:node.llmInstruction};
     });
     assert.deepEqual(fresh, {initialized:true, instruction:''});
+});
+
+test('a pending Prompt reply preserves an output edited after the request starts', {timeout:40000}, async t => {
+    const {page, setHandler} = await fixture(t);
+    await install(page, [{
+        id:'prompt', type:'smart-prompt', llmEnabled:true, llmInstruction:'写一条短提示词',
+        promptInstructionInitialized:true, text:'已有输出', x:450, y:150, images:[]
+    }], []);
+    const reply = Promise.withResolvers();
+    setHandler(async route => {
+        await reply.promise;
+        return route.fulfill({json:{text:'模型迟到的输出'}});
+    });
+    try {
+        const card = page.locator('[data-id="prompt"]');
+        const output = card.locator('.prompt-node-text');
+        await output.focus();
+        const requested = page.waitForRequest('**/api/canvas-llm');
+        const result = page.evaluate(() => runPromptLLMNode('prompt'));
+        await requested;
+        assert.match(await card.locator('.prompt-node-run-status').textContent(), /正在运行/);
+        assert.equal(await card.locator('.prompt-node-run').isDisabled(), true);
+        await output.fill('请求期间手动编辑');
+        reply.resolve();
+        assert.match((await result).error, /输出提示词已修改/);
+        assert.equal(await output.inputValue(), '请求期间手动编辑');
+        assert.match(await card.locator('.prompt-node-run-status').textContent(), /输出提示词已修改/);
+        assert.equal(await card.locator('.prompt-node-run').isDisabled(), false);
+        assert.equal(await output.evaluate(field => field === document.activeElement), true);
+        assert.deepEqual(await page.evaluate(() => {
+            const node = nodes.find(item => item.id === 'prompt');
+            return [node.text, node.running];
+        }), ['请求期间手动编辑', false]);
+    } finally {
+        reply.resolve();
+    }
+});
+
+test('a Prompt reply writes to its live node and cannot write into a replaced canvas', {timeout:40000}, async t => {
+    const {page, setHandler} = await fixture(t);
+    await install(page, [{
+        id:'prompt', type:'smart-prompt', llmEnabled:true, llmInstruction:'写一条短提示词',
+        promptInstructionInitialized:true, text:'已有输出', x:450, y:150, images:[]
+    }], []);
+    let reply = Promise.withResolvers();
+    setHandler(async route => {
+        await reply.promise;
+        return route.fulfill({json:{text:'生成输出'}});
+    });
+    try {
+        let requested = page.waitForRequest('**/api/canvas-llm');
+        let result = page.evaluate(() => runPromptLLMNodeDirect('prompt'));
+        await requested;
+        await page.evaluate(() => {
+            nodes = structuredClone(nodes);
+            render();
+        });
+        reply.resolve();
+        assert.deepEqual(await result, {ok:true, text:'生成输出'});
+        assert.equal(await page.locator('[data-id="prompt"] .prompt-node-text').inputValue(), '生成输出');
+
+        reply = Promise.withResolvers();
+        requested = page.waitForRequest('**/api/canvas-llm');
+        result = page.evaluate(() => runPromptLLMNodeDirect('prompt'));
+        await requested;
+        await page.evaluate(() => {
+            canvas = {...canvas};
+            nodes = nodes.map(node => ({...node, text:'新会话的同名节点', running:false}));
+            render();
+        });
+        reply.resolve();
+        assert.match((await result).error, /画布或节点已切换/);
+        assert.equal(await page.locator('[data-id="prompt"] .prompt-node-text').inputValue(), '新会话的同名节点');
+    } finally {
+        reply.resolve();
+    }
 });
 
 test('Prompt shows system instructions first and uses Skills from the shared library', {timeout:40000}, async t => {
@@ -437,6 +585,59 @@ test('drawing failure belongs to the selected node and keeps the reference image
     assert.match(await page.evaluate(() => nodes.find(n => n.id === 'paint').runError), /模拟生成失败/);
     assert.deepEqual(await page.evaluate(() => nodes.find(n => n.id === 'reference')), before);
     assert.equal(await page.evaluate(() => selectedId), 'paint');
+});
+
+test('background image success and failure keep the active prompt caret', {timeout:40000}, async t => {
+    const {page} = await fixture(t);
+    const runSettings = {engine:'api', provider_id:'fixture', model:'gpt-image-2', count:1, ratio:'1:1', resolution:'1k'};
+    await install(page, [
+        {id:'paint', type:'smart-paint', images:[], x:100, y:100, promptDraftText:'绘制主图', runSettings},
+        {id:'draft', type:'smart-paint', images:[], x:600, y:100, runSettings:{...runSettings, count:3}},
+        {id:'reference', type:'smart-upload', x:900, y:100, images:[{url:'/output/reference.png'}]}
+    ], [edge('reference', 'draft')]);
+    await page.evaluate(() => {
+        window.notices = [];
+        window.electronAPI = {showGenerationNotification: async notice => {
+            window.notices.push(notice.status);
+            return {ok:true};
+        }};
+    });
+    for(const status of ['success', 'failed']){
+        let release;
+        const polling = new Promise(resolve => { release = resolve; });
+        const handler = async route => {
+            await polling;
+            await route.fulfill({json: status === 'success'
+                ? {status:'succeeded', result:{images:['/output/generated.png']}}
+                : {status:'failed', error:'模拟生图失败', upstream_terminal_error:true}});
+        };
+        await page.route('**/api/canvas-image-tasks/image-*', handler);
+        const query = page.waitForRequest('**/api/canvas-image-tasks/image-*');
+        await page.evaluate(() => { selectedId = 'paint'; render(); window.drawingRun = runGeneration(); });
+        await query;
+        await page.evaluate(() => { selectedId = 'draft'; render(); });
+        await page.locator('#promptInput').fill('正在编辑@的草稿');
+        await page.evaluate(() => {
+            getSelection().collapse(promptInput.firstChild, 5);
+            promptInput.dispatchEvent(new KeyboardEvent('keyup', {key:'@'}));
+        });
+        assert.equal(await page.locator('#mentionPicker.open').count(), 1);
+        release();
+        assert.equal((await page.evaluate(() => window.drawingRun)).ok, status === 'success');
+        assert.deepEqual(await page.evaluate(() => ({
+            active: document.activeElement === promptInput,
+            caret: getSelection().anchorOffset,
+            selected: selectedId,
+            draft: promptPlainText(),
+            count: settings.count,
+            pickingReference: mentionPicker.classList.contains('open'),
+            log: canvas.logs[0].status,
+            notice: window.notices.at(-1),
+        })), {active:true, caret:5, selected:'draft', draft:'正在编辑@的草稿', count:3, pickingReference:true, log:status, notice:status});
+        await page.keyboard.insertText('新');
+        assert.equal(await page.evaluate(() => promptPlainText()), '正在编辑@新的草稿');
+        await page.unroute('**/api/canvas-image-tasks/image-*', handler);
+    }
 });
 
 test('retrying a failed drawing reuses an Agent output even when its last run has an error', {timeout:40000}, async t => {
@@ -599,4 +800,48 @@ test('a drawing using only connected text does not duplicate it on rerun', {time
     assert.equal(imageCalls.length, 2);
     assert.equal(imageCalls[0].prompt, imageCalls[1].prompt);
     assert.equal(imageCalls[1].prompt.match(/画一个蓝色杯子/g).length, 1);
+});
+
+test('composer mentions follow formal ancestry and removed images stay out of the request', {timeout:40000}, async t => {
+    const {page, imageCalls} = await fixture(t);
+    const upload = (id, name, x) => ({
+        id, type:'smart-upload', x, y:100, images:[{url:'/output/' + id + '.png', name}]
+    });
+    await install(page, [
+        upload('first', '上游原图', 60),
+        upload('second', '当前输入', 400),
+        upload('history', '历史图片', 750),
+        {
+            id:'paint', type:'smart-paint', images:[], x:1100, y:100,
+            promptDraftHtml:'保留产品', promptDraftText:'保留产品',
+            inputNodeIds:['history'],
+            inputRefOrder:['ref|/output/manual.png', 'ref|/output/second.png'],
+            manualInputRefs:[{url:'/output/manual.png', name:'手动参考'}],
+            runSettings:{engine:'api', provider_id:'fixture', model:'gpt-image-2', count:1, ratio:'1:1', resolution:'1k'}
+        }
+    ], [edge('first', 'second', 'flow'), edge('second', 'paint'), edge('history', 'paint', 'history')]);
+    await page.evaluate(() => { selectedId='paint'; render(); updateComposer(); });
+    const editor = page.locator('#promptInput');
+    await editor.click();
+    await page.keyboard.press('End');
+    await page.keyboard.insertText('@');
+    const options = page.locator('#mentionPicker .mention-option');
+    await options.first().waitFor();
+    assert.deepEqual(await options.locator('span').allTextContents(), ['上游原图', '当前输入', '手动参考']);
+    await options.filter({hasText:'上游原图'}).click();
+    const mentioned = page.locator('#inputThumbsRow .input-thumb[data-url="/output/first.png"]');
+    await mentioned.hover();
+    await mentioned.locator('.input-thumb-remove').click();
+    assert.equal(await mentioned.count(), 0);
+    assert.match(await editor.textContent(), /上游原图/);
+
+    const result = await page.evaluate(() => runGeneration());
+    assert.equal(result.ok, true, result.error);
+    assert.equal(imageCalls.length, 1);
+    const expected = ['/output/manual.png', '/output/second.png'];
+    assert.deepEqual(imageCalls[0].reference_images.map(ref => ref.url || ref), expected);
+    const rerun = await page.evaluate(() => runGeneration('upstream', null, '保留产品'));
+    assert.equal(rerun.ok, true, rerun.error);
+    assert.equal(imageCalls.length, 2);
+    assert.deepEqual(imageCalls[1].reference_images.map(ref => ref.url || ref), expected);
 });

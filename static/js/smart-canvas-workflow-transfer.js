@@ -2,6 +2,7 @@
     'use strict';
 
     const format = 'xiaomei-canvas-workflow';
+    const importTimeoutMs = 60000;
     const idOf = value => value == null ? '' : String(value);
     const coordinate = value => Number.isFinite(Number(value)) ? Number(value) : 0;
     const validNode = node => typeof node?.type === 'string' && node.type.trim();
@@ -215,10 +216,10 @@
             return null;
         }
 
-        async function post(action, body, fallback) {
+        async function post(action, body, fallback, signal) {
             const form = body instanceof FormData;
             const response = await root.fetch('/api/canvas-workflows/' + action, {
-                method: 'POST', body: form ? body : JSON.stringify(body),
+                method: 'POST', body: form ? body : JSON.stringify(body), signal,
                 ...(form ? {} : { headers: { 'Content-Type': 'application/json' } })
             });
             if (!response.ok) throw new Error(await host.responseError(response, fallback));
@@ -305,11 +306,12 @@
             const owner = host.canvas()?.id;
             if (!owner || importing || (!file && !asset?.url) || !host.allowImport()) return false;
             const point = host.point();
+            const signal = AbortSignal.timeout(importTimeoutMs);
             importing = true;
-            refresh();
             try {
+                refresh();
                 if (asset) {
-                    const response = await root.fetch(asset.url);
+                    const response = await root.fetch(asset.url, { signal });
                     if (!response.ok) throw new Error('工作流文件读取失败');
                     const blob = await response.blob();
                     const original = String(asset.name || 'workflow');
@@ -322,7 +324,7 @@
                 if (host.canvas()?.id !== owner || !host.allowImport()) return false;
                 const form = new FormData();
                 form.append('file', file);
-                const response = await post('import', form, importError);
+                const response = await post('import', form, importError, signal);
                 const result = await response.json();
                 if (host.canvas()?.id !== owner || !host.allowImport()) return false;
                 const bundle = prepare(result, point);
@@ -331,7 +333,9 @@
                 host.status(`已添加到画布：${bundle.nodes.length} 个节点`);
                 return true;
             } catch (error) {
-                if (host.canvas()?.id === owner) host.status(error.message || importError);
+                if (host.canvas()?.id === owner) {
+                    host.status(signal.aborted ? '工作流导入超时，请重试' : error.message || importError);
+                }
                 return false;
             } finally {
                 importing = false;

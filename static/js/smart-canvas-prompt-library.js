@@ -14,9 +14,9 @@
     const idPath = (collection, id) => collection + '/' + encodeURIComponent(id);
     const parameters = item => Object.entries(item.params || {}).map(([key, value]) => key + ': ' + value).join('\n');
 
-    function appliedText(item, mode) {
+    function templateText(item, mode) {
         const positive = String(item.positive).trim();
-        if (mode !== 'full' || !item.builtin) return positive;
+        if (mode !== 'full') return positive;
         const negative = String(item.negative || '').trim();
         const params = parameters(item);
         return [positive, negative && 'Negative prompt:\n' + negative, params && 'Params:\n' + params].filter(Boolean).join('\n\n');
@@ -31,6 +31,7 @@
         const nav = get('promptTemplateCats');
         const body = get('promptTemplateBody');
         const composerButton = get('composerTemplateBtn');
+        const toolbarButton = get('smartPromptToggle');
         const label = name => host.label('smart.tpl' + name);
         const common = name => host.label('common.' + name);
         const systemFallback = { id: 'system', name: '系统提示词库', readonly: true, items: [] };
@@ -215,9 +216,12 @@
         }
 
         function paintList(library, groups, items, selected) {
-            const list = box('prompt-template-list', box('prompt-template-list-tools',
-                button('save-current', label('SaveCurrent'), { icon: 'bookmark-plus', disabled: library.readonly }),
-                button('new', label('NewTemplate'), { icon: 'file-plus-2', disabled: library.readonly })));
+            const tools = box('prompt-template-list-tools');
+            if (target.kind !== 'library') {
+                tools.append(button('save-current', label('SaveCurrent'), { icon: 'bookmark-plus', disabled: library.readonly }));
+            }
+            tools.append(button('new', label('NewTemplate'), { icon: 'file-plus-2', disabled: library.readonly }));
+            const list = box('prompt-template-list', tools);
             if (!items.length) list.append(element('div', 'prompt-template-list-empty', label('NoMatches')));
             for (const item of items) {
                 const card = button('id', '', { value: item.id, cls: 'prompt-template-card' });
@@ -281,6 +285,13 @@
             const sections = box('prompt-template-preview-content');
             for (const [key, text] of [['Positive', item.positive], ['Negative', item.negative], ['Params', parameters(item)]]) {
                 if (text || key === 'Positive') sections.append(box('prompt-template-section', element('label', '', label(key)), element('p', '', text)));
+            }
+            if (target.kind === 'library') {
+                const actions = box('prompt-template-actions');
+                const hasExtras = Boolean(String(item.negative || '').trim()) || Object.keys(item.params || {}).length > 0;
+                if (hasExtras) actions.append(button('copy', label('CopyPositive'), { value: 'positive', icon: 'copy' }));
+                actions.append(button('copy', label(hasExtras ? 'CopyFull' : 'Copy'), { value: 'full', cls: 'primary', icon: 'copy' }));
+                return box('prompt-template-detail', head, sections, actions);
             }
             return box('prompt-template-detail', head, sections, box('prompt-template-actions',
                 button('apply', label('ApplyPositive'), { value: 'positive', icon: 'corner-down-left' }),
@@ -495,10 +506,13 @@
             });
         }
 
-        function syncButton() {
-            const active = target?.kind === 'composer';
-            composerButton?.classList.toggle('active', active);
-            composerButton?.setAttribute('aria-pressed', String(active));
+        function syncButtons() {
+            const composerOpen = isOpen('composer');
+            const libraryOpen = isOpen('library');
+            composerButton?.classList.toggle('active', composerOpen);
+            composerButton?.setAttribute('aria-pressed', String(composerOpen));
+            toolbarButton?.classList.toggle('active', libraryOpen);
+            toolbarButton?.setAttribute('aria-expanded', String(libraryOpen));
         }
 
         function show(kind, nodeId = '', itemId = '') {
@@ -514,7 +528,7 @@
             panel.dataset.target = kind;
             panel.dataset.nodeId = nodeId;
             panel.classList.add('open');
-            syncButton();
+            syncButtons();
             render();
             host.opened(target);
             search.focus({ preventScroll: true });
@@ -523,13 +537,15 @@
 
         function close() {
             if (!target) return;
+            const restoreToolbarFocus = isOpen('library') && panel.contains(doc.activeElement);
             ++viewRevision;
             target = null;
             editing = null;
             preferredId = '';
             panel.classList.remove('open');
-            syncButton();
+            syncButtons();
             host.redraw();
+            if (restoreToolbarFocus) toolbarButton?.focus({ preventScroll: true });
         }
 
         function isOpen(kind, nodeId) {
@@ -538,9 +554,16 @@
 
         function apply(mode) {
             const item = itemInView();
-            if (!item || !host.apply(target, item, appliedText(item, mode))) return;
+            if (!item || !host.apply(target, item, templateText(item, item.builtin ? mode : 'positive'))) return;
             close();
             host.save();
+        }
+
+        async function copy(mode) {
+            const item = itemInView();
+            if (!item) return;
+            const copied = await host.copy(templateText(item, mode));
+            host.notice(copied ? host.label('canvas.copied') : label('CopyFailed'));
         }
 
         function resetSelection() {
@@ -551,6 +574,7 @@
 
         const commands = {
             apply,
+            copy,
             'save-current': () => createItem(true),
             new: () => createItem(false),
             id(id) {
@@ -604,6 +628,11 @@
             refresh();
         });
         get('promptTemplateClose')?.addEventListener('click', close);
+        toolbarButton?.addEventListener('click', event => {
+            event.stopPropagation();
+            if (isOpen('library')) close();
+            else show('library');
+        });
         composerButton?.addEventListener('click', event => {
             event.preventDefault();
             event.stopPropagation();

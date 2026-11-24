@@ -15,9 +15,11 @@ files:
   - bridge_api.py
   - agent_skill_store.py
   - VERSION
+  - scripts/backup_bot_workspace_data.py
   - desktop/**
   - static/**
   - tools/**
+  - "!tools/video-workbench/{data,素材,输出}{,/**}"
   - workflows/**
   - packages/**
   - bundled/deepseek-harness/**

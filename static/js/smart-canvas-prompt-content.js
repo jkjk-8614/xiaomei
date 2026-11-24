@@ -222,5 +222,5 @@
         };
     }
 
-    root.XiaomeiSmartPromptContent = { create, originalText };
+    root.XiaomeiSmartPromptContent = { create, originalText, parts };
 })(window);

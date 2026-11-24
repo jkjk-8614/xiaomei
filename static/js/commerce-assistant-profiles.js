@@ -8,6 +8,7 @@
     xiaohongshu: '小红书',
     douyin: '抖音',
     '1688': '1688',
+    jd: '京东',
     amazon: '亚马逊',
     aliexpress: '速卖通',
     shopee: '虾皮 Shopee',
@@ -176,6 +177,14 @@
       if (/^[a-z0-9][a-z0-9-]{0,61}\.1688\.com$/i.test(host) && !['www.1688.com', 's.1688.com', 'detail.1688.com', 'sale.1688.com'].includes(host)) return profile('1688', '1688-shop', 'shop', '1688 店铺');
       if ((host === '1688.com' || host === 'www.1688.com') && path === '/') return profile('1688', '1688-home', 'other', '1688首页');
       return profile('1688', '1688-page', 'other', '1688');
+    }
+    if (hostIs(host, 'jd.com') || hostIs(host, 'jingdong.com') || hostIs(host, 'jd.hk') || hostIs(host, 'joybuy.com') || hostIs(host, 'yiyaojd.com')) {
+      if (/^(?:passport|plogin\.m)\.jd\.com$/i.test(host)) return profile('jd', 'jd-login', 'other', '京东登录');
+      if (/^(?:item|npcitem)\.(?:jd\.com|jd\.hk|yiyaojd\.com)$/i.test(host) || /^\/product\/\d+\.html$/i.test(path)) return profile('jd', 'jd-detail', 'product', '京东商品详情');
+      if (host === 'search.jd.com' || /^\/search(?:\/|$)/i.test(lowerPath)) return profile('jd', 'jd-search', 'search', '京东商品搜索');
+      if (host === 'mall.jd.com' || host === 'shop.jd.com' || /^\/index-\d+\.html$/i.test(path)) return profile('jd', 'jd-shop', 'shop', '京东店铺');
+      if ((host === 'jd.com' || host === 'www.jd.com') && path === '/') return profile('jd', 'jd-home', 'other', '京东首页');
+      return profile('jd', 'jd-page', 'other', '京东');
     }
     for (const [site, hosts] of Object.entries(MARKETPLACE_HOSTS)) {
       if (!hosts.some((suffix) => hostIs(host, suffix))) continue;
@@ -651,7 +660,8 @@
   }
 
   function keepsProductQuickActions(item) {
-    return item?.site === '1688' && item?.id === '1688-detail';
+    return (item?.site === '1688' && item?.id === '1688-detail')
+      || (item?.site === 'jd' && item?.id === 'jd-detail');
   }
 
   // 读取完成后呈现当前页实况资料；不把网页背景内容当成商品结论。

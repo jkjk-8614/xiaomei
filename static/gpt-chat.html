@@ -7,9 +7,9 @@
     <title>DeepSeek 对话</title>
     <script src="/static/vendor/js/tailwindcss-cdn.js?v=1.0.21.1784161005"></script>
     <script src="/static/vendor/js/lucide.js?v=1.0.21.1784161005"></script>
-    <script src="/static/js/xiaomei-shell-kernel.js?v=1.0.21.1794542393"></script>
+    <script src="/static/js/xiaomei-shell-kernel.js?v=1.0.21.1795425156"></script>
     <script src="/static/js/theme.js?v=1.0.21.1794196667"></script>
-    <script src="/static/js/i18n.js?v=1.0.21.1794545156"></script>
+    <script src="/static/js/i18n.js?v=1.0.21.1795443297"></script>
     <link rel="stylesheet" href="/static/css/theme.css?v=1.0.21.1794192428">
     <style>
         @import url('/static/vendor/css/fonts.css?v=1.0.21.1784161005');
@@ -1754,7 +1754,7 @@
     </style>
     <link rel="stylesheet" href="/static/css/workspace-polish.css?v=1.0.21.1789456340">
     <link rel="stylesheet" href="/static/vendor/fluent/tokens.css?v=1.0.21.1790178173">
-    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=1.0.21.1794192428">
+    <link rel="stylesheet" href="/static/css/fluent-ui.css?v=1.0.21.1795417980">
     <link rel="stylesheet" href="/static/css/gpt-chat-reference.css?v=1.0.21.1790643611">
     <script type="module" src="/static/vendor/fluent/fluent.js?v=1.0.21.1790178173"></script>
 </head>
@@ -3560,6 +3560,40 @@
                     grid.appendChild(img);
                 });
                 bubble.appendChild(grid);
+            }
+            for(const recovery of msg.image_recoveries || []){
+                const actions = document.createElement('div');
+                actions.className = 'request-error-actions';
+                const status = document.createElement('span');
+                status.textContent = recovery.error;
+                actions.appendChild(status);
+                if(recovery.id){
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'retry-btn';
+                    button.textContent = '重试取图';
+                    button.addEventListener('click', async () => {
+                        const conversationId = currentConversation?.id;
+                        if(!conversationId || button.disabled) return;
+                        button.disabled = true;
+                        try{
+                            const path = [conversationId, msg.id, recovery.id].map(encodeURIComponent).join('/');
+                            const response = await fetch('/api/chat/image-result-recovery/' + path, {method:'POST', headers:headers()});
+                            const data = await response.json();
+                            if(!response.ok) throw new Error(data.detail || '取图失败');
+                            if(currentConversation?.id === conversationId){
+                                currentConversation = data.conversation;
+                                renderMessages(currentConversation.messages || []);
+                            }
+                        }catch(error){
+                            status.textContent = error.message || '取图失败';
+                        }finally{
+                            button.disabled = false;
+                        }
+                    });
+                    actions.appendChild(button);
+                }
+                bubble.appendChild(actions);
             }
             // Show model badge for assistant messages
             if(msg.role === 'assistant' && msg.model){

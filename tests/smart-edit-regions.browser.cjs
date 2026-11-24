@@ -5,19 +5,19 @@ const {test} = require('node:test');
 const {chromium} = require('../tools/commerce-analysis/node_modules/playwright');
 const root = path.resolve(__dirname, '..');
 
-async function fixture(t){
+async function fixture(t, width=600, height=1000){
     const browser = await chromium.launch({channel:'msedge',headless:true});
     t.after(()=>browser.close());
     const page = await browser.newPage({viewport:{width:1440,height:1000}});
     const errors=[], requests=[];
     page.on('pageerror',error=>errors.push(error.message));
-    const png = await page.evaluate(()=>{
-        const c=document.createElement('canvas');c.width=600;c.height=1000;
+    const png = await page.evaluate(([width,height])=>{
+        const c=document.createElement('canvas');c.width=width;c.height=height;
         const g=c.getContext('2d');g.fillStyle='#d8d8c8';g.fillRect(0,0,600,1000);
         g.fillStyle='#fff';g.beginPath();g.arc(300,200,90,0,Math.PI*2);g.fill();
         g.fillStyle='#666';g.fillRect(270,290,60,250);g.fillStyle='#eee';g.fillRect(60,540,480,300);
         return c.toDataURL().split(',')[1];
-    });
+    }, [width,height]);
     await page.routeWebSocket('**/*',socket=>socket.close());
     await page.route('**/*', async route=>{
         const req=route.request(),url=new URL(req.url()),p=url.pathname;
@@ -54,7 +54,7 @@ async function fixture(t){
         window.openFixture=()=>{openImageEditor(sourceId,1);setImageEditMode('smart-edit',true);};
         openFixture();
     });
-    await page.waitForFunction(()=>document.getElementById('cropImage').naturalWidth===600);
+    await page.waitForFunction(width=>document.getElementById('cropImage').naturalWidth===width, width);
     return {page,errors,requests};
 }
 
@@ -101,6 +101,7 @@ test('two region instructions submit once with the exact selected original, reta
     assert.ok(Math.abs(aligned.x-.32)<.01);
     assert.ok(Math.abs(aligned.w-.36)<.01);
     assert.ok(Math.abs(aligned.ratio-.6)<.005);
+    await page.selectOption('#smartEditResolutionSelect','4k');
     await page.evaluate(()=>{uploadMode='wait';window.sendPromise=applyImageEdit();});
     await page.waitForFunction(()=>typeof releaseUpload==='function');
     await page.evaluate(()=>applyImageEdit());
@@ -114,6 +115,11 @@ test('two region instructions submit once with the exact selected original, reta
     assert.match(requests[0].prompt,/左上 192,100，右下 408,300/);
     assert.match(requests[0].prompt,/不要把框线、编号/);
     assert.equal(requests[0].aspect_ratio,'source');
+    assert.equal(requests[0].resolution,'4k');
+    const [requestWidth,requestHeight]=requests[0].size.split('x').map(Number);
+    assert.equal(requestWidth%16,0,'4K 请求宽必须对齐 16');
+    assert.equal(requestHeight%16,0,'4K 请求高必须对齐 16');
+    assert.ok(Math.abs(requestWidth/requestHeight-.6)<.01,`4K 请求尺寸必须保持 600x1000 原图比例，实际为 ${requests[0].size}`);
     const result=await page.evaluate(async()=>{
         const output=nodes.find(n=>n.smartEditSource);
         const original=nodes.find(n=>n.id===sourceId);
@@ -169,6 +175,50 @@ test('cancel/delete, upload failure, close during upload and plain text editing'
     await page.evaluate(()=>{openFixture();setImageEditMode('crop',true);});
     assert.equal(await page.locator('#imageEditModal').evaluate(el=>el.classList.contains('smart-edit-redesign')),false);
     assert.equal(await page.locator('#smartEditRegionEditor').isVisible(),false);
+    assert.deepEqual(errors,[]);
+});
+
+test('smart edits show the mapped source dimensions and retain exact pixel output on rerun', {timeout:60000},async t=>{
+    const {page,errors,requests}=await fixture(t,1920,800);
+    await page.locator('#smartEditPrompt').fill('去除右边的脚轮');
+    await page.selectOption('#smartEditResolutionSelect','custom');
+    await page.evaluate(()=>applyImageEdit());
+    assert.equal(requests[0]?.output_size,'1920x800');
+    assert.equal(requests[0]?.aspect_ratio,'source');
+
+    const trigger = page.locator('#dynamicParams .generation-settings-trigger');
+    await trigger.click();
+    const panel = page.locator('#generationSettingsPopover');
+    const width = panel.getByRole('spinbutton',{name:'输出宽度（px）'});
+    const height = panel.getByRole('spinbutton',{name:'输出高度（px）'});
+    assert.equal(await width.inputValue(),'1920');
+    assert.equal(await height.inputValue(),'800');
+
+    await panel.locator('[data-smart-param="resolution"][data-smart-value="2k"]').click();
+    assert.match(await panel.locator('[data-mapped-resolution="2k"]').textContent(),/2048 × 848/);
+    await panel.getByRole('button',{name:'自定义',exact:true}).click();
+    await panel.locator('[data-param="customRatioWidth"]').fill('3');
+    await panel.locator('[data-param="customRatioHeight"]').fill('2');
+    assert.match(await panel.locator('[data-mapped-resolution="2k"]').textContent(),/2048 × 1360/);
+
+    await panel.getByRole('button',{name:'自定义尺寸',exact:true}).click();
+    await width.fill('8193');
+    await panel.getByRole('button',{name:'关闭参数面板'}).click();
+    await page.evaluate(()=>runGeneration());
+    assert.equal(requests.length,1,'invalid size cannot submit another task');
+    assert.match(await page.evaluate(()=>messages.at(-1)),/整数宽高/);
+    assert.deepEqual(await page.evaluate(()=>nodes.find(node=>node.smartEditSource).images.map(image=>image.url)),['/output/result.png']);
+
+    await trigger.click();
+    await width.fill('1440');
+    await height.fill('600');
+    await height.press('Escape');
+    assert.equal(await trigger.getAttribute('aria-expanded'),'false');
+    await page.evaluate(()=>runGeneration());
+    assert.equal(requests[1]?.size,'1440x600');
+    assert.equal(requests[1]?.output_size,'1440x600');
+    assert.equal(requests[1]?.aspect_ratio,'12:5');
+    assert.deepEqual(requests[1]?.reference_images.map(r=>r.url),['/output/selected.png']);
     assert.deepEqual(errors,[]);
 });
 

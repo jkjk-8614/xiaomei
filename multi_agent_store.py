@@ -137,6 +137,12 @@ class AgentRunStore:
             run = {"run_id": run_id, "root_task_id": task_id, "project_id": request.project_id,
                    "canvas_id": request.canvas_id, "goal": request.goal, "status": "queued",
                    "limits": request.limits.model_dump(), "policy": request.policy.model_dump(),
+                   "bot_id": getattr(request, "bot_id", "") or "",
+                   "session_id": getattr(request, "session_id", "") or "",
+                   "turn_id": getattr(request, "turn_id", "") or "",
+                   "delegation_id": getattr(request, "delegation_id", "") or "",
+                   "skill_ids": list(getattr(request, "skill_ids", None) or []),
+                   "permission_snapshot": dict(getattr(request, "permission_snapshot", None) or {}),
                    "context": context, "steps": 0, "estimated_cost": 0.0, "generation_count": 0,
                    "token_usage": {"input_tokens": 0, "output_tokens": 0, "estimated_tokens": 0},
                    "created_at": timestamp, "updated_at": timestamp, "signature": signature,
@@ -151,7 +157,9 @@ class AgentRunStore:
     @staticmethod
     def new_task(run, task_id, parent, role, depth, goal, instructions, provider, model, allowed, deps, idem):
         return {"run_id": run["run_id"], "task_id": task_id, "parent_task_id": parent or None,
-                "project_id": run["project_id"], "canvas_id": run["canvas_id"], "agent_role": role,
+                "project_id": run["project_id"], "canvas_id": run["canvas_id"],
+                "bot_id": run.get("bot_id", ""), "is_temporary_subagent": bool(parent),
+                "agent_role": role,
                 "depth": depth, "goal": goal, "instructions": instructions, "provider_id": provider,
                 "model": model, "allowed_tools": allowed, "dependencies": deps,
                 "status": "waiting_dependency" if deps else "queued", "result_refs": [], "summary": "",

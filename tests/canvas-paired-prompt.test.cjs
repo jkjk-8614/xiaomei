@@ -14,6 +14,7 @@ function extract(name) {
 }
 
 const context = vm.createContext({});
+context.window = context;
 vm.runInContext([
     'splitSmartPromptItems',
     'splitSmartLoopPromptLines',
@@ -27,6 +28,8 @@ vm.runInContext([
     'smartLoopAiSplitIsStale',
     'smartLoopDetailPaintNodes',
     'smartLoopPairedState',
+    'smartBatchPurposeChanged',
+    'smartBatchPurposeKey',
     'smartLoopCommerceFields',
     'smartLoopReadyKey',
     'smartLoopNumberedScreenBlocks',
@@ -35,6 +38,10 @@ vm.runInContext([
     'smartLoopSourceScreenCopy',
     'parseSmartLoopAiSplitResult'
 ].map(extract).join('\n'), context);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '../static/js/smart-canvas-loop-editor.js'), 'utf8'), context);
+context.smartLoopEditor = context.XiaomeiSmartLoopEditor.create({
+    paired: context.smartLoopIsPaired, splitLegacy: context.splitSmartPromptItems,
+});
 
 context.downstreamImageTargetsFor = node => (node?.detailTargets || []);
 context.isHistoryGroupNode = () => false;

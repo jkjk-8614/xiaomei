@@ -113,9 +113,16 @@ test('asset requests and provider records keep the current fields', () => {
         ], {});
         assert.deepEqual(Array.from(managed.providers[0].image_models), ['custom-one']);
         assert.deepEqual(Array.from(managed.providers[0].video_models), []);
-        const rows = kernel.folderRows({ id: '__root__', children: [{ id: 'looks', name: '造型', items: [{ id: 'v', kind: 'video' }, { id: 'p', kind: 'image' }] }] }, [{ id: 'root-image', kind: 'image' }]);
-        assert.equal(rows[0].items.length, 1);
-        assert.equal(rows[1].items[0].id, 'p');
+        const rows = kernel.folderRows({ id: '__root__', children: [
+            { id: '图片', path: '图片', name: '图片', items: [{ id: 'root-nested', kind: 'image' }], children: [] },
+            { id: 'looks', path: 'looks', name: '造型', items: [{ id: 'v', kind: 'video' }, { id: 'p', kind: 'image' }], children: [
+                { id: 'looks/图片', path: 'looks/图片', name: '图片', items: [{ id: 'p2', kind: 'image' }], children: [] },
+                { id: 'looks/视频', path: 'looks/视频', name: '视频', items: [{ id: 'v2', kind: 'video' }], children: [] },
+            ] },
+        ] }, [{ id: 'root-image', kind: 'image' }, { id: 'root-nested', kind: 'image' }, { id: 'p', kind: 'image' }, { id: 'p2', kind: 'image' }]);
+        assert.deepEqual(Array.from(rows.map(row => row.id)), ['__root__', 'looks']);
+        assert.equal(rows[0].items.length, 4);
+        assert.deepEqual(Array.from(rows[1].items.map(item => item.id)), ['p', 'p2']);
         assert.equal(kernel.matches({ name: '蓝裙', kind: 'image', width: 100, height: 100, classification: { tags: ['棉'] } }, { query: '蓝裙', tags: '棉', shape: 'square' }), true);
     });
 });

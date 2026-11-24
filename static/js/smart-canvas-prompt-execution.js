@@ -42,11 +42,15 @@
                 if (!host.isAvailable(provider, model)) throw new Error('提示词节点所选平台或模型不可用，请重新选择');
                 const refs = host.references(node);
                 if (refs.some(ref => ref.sourceMissing)) throw new Error('引用已失效，请移除后重新选择');
+                const media = host.media(refs);
+                if (node.promptPreset === 'image-reverse' && !media.images?.length) {
+                    throw new Error('请先连接或选择一张要反推的图片');
+                }
                 const signature = host.signature(node);
                 const body = {
                     message, messages: [], provider, model,
                     system_prompt: host.system(node),
-                    ...host.media(refs),
+                    ...media,
                 };
                 const response = await root.fetch('/api/canvas-llm', {
                     method: 'POST', signal,

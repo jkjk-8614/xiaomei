@@ -447,6 +447,7 @@
         const runSettings=settingsForStorage(smartSettingsForNode(node));
         Object.assign(runSettings,state.smartModel,{engine:'api',apiKind:'image',imageOperation:'generate',count:1,resolution:byId('smartEditResolutionSelect').value || 'auto'});
         delete runSettings.outpaintResolutionLocked;
+        delete runSettings.imageFormat;
         const session=state.smartSession;
         const sourceUrl=smartOriginalMediaUrl(image);
         const width=target.naturalWidth, height=target.naturalHeight;

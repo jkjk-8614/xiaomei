@@ -29,7 +29,6 @@ import json
 import os
 import re
 import shutil
-import sqlite3
 import tempfile
 import time
 from pathlib import Path
@@ -1161,79 +1160,6 @@ def _merge_model_modalities(source_path: Path, target_path: Path) -> int:
     return changed
 
 
-def _merge_inspiration_favorites(source_path: Path, target_path: Path) -> int:
-    """Merge the inspiration catalog and preserve old favorite flags.
-
-    The catalog is a SQLite database.  A new installation may have already
-    synced a fresh catalog, so copying the old database only when the target is
-    missing would lose the user's ``favorite`` flags.  Rows are inserted only
-    when absent (the target catalog wins) and favorites are unioned.
-    """
-    if not source_path.is_file() or source_path.is_symlink():
-        return 0
-    if not target_path.is_file() or target_path.is_symlink():
-        return _copy_file_missing(source_path, target_path)
-    try:
-        if target_path.stat().st_size == 0:
-            _backup_unreadable(target_path)
-            return _copy_file_missing(source_path, target_path)
-    except OSError:
-        pass
-
-    try:
-        connection = sqlite3.connect(str(target_path), timeout=30)
-    except sqlite3.Error:
-        if _backup_unreadable(target_path):
-            return _copy_file_missing(source_path, target_path)
-        return 0
-    attached = False
-    try:
-        connection.execute("PRAGMA busy_timeout=30000")
-        connection.execute("ATTACH DATABASE ? AS legacy", (str(source_path),))
-        attached = True
-        target_columns = [
-            str(row[1])
-            for row in connection.execute("PRAGMA main.table_info(cases)")
-            if row[1]
-        ]
-        source_columns = [
-            str(row[1])
-            for row in connection.execute("PRAGMA legacy.table_info(cases)")
-            if row[1]
-        ]
-        common = [name for name in target_columns if name in source_columns]
-        if "id" not in common or len(common) < 2:
-            return 0
-        columns_sql = ", ".join(f'"{name}"' for name in common)
-        connection.execute("BEGIN IMMEDIATE")
-        inserted = connection.execute(
-            f'INSERT OR IGNORE INTO main.cases ({columns_sql}) '
-            f'SELECT {columns_sql} FROM legacy.cases'
-        ).rowcount
-        updated = 0
-        if "favorite" in common:
-            updated = connection.execute(
-                "UPDATE main.cases SET favorite = 1 "
-                "WHERE favorite = 0 AND id IN "
-                "(SELECT id FROM legacy.cases WHERE favorite = 1)"
-            ).rowcount
-        connection.commit()
-        return max(0, int(inserted or 0)) + max(0, int(updated or 0))
-    except sqlite3.Error:
-        try:
-            connection.rollback()
-        except sqlite3.Error:
-            pass
-        return 0
-    finally:
-        if attached:
-            try:
-                connection.execute("DETACH DATABASE legacy")
-            except sqlite3.Error:
-                pass
-        connection.close()
-
-
 def _merge_design_references(source_path: Path, target_path: Path) -> int:
     """Merge the design-brain reference library and its favorite flags."""
     if not source_path.is_file() or source_path.is_symlink():
@@ -1729,10 +1655,6 @@ def _import_source(
         copied += _merge_model_modalities(
             source_data / "harness_model_modalities.json",
             target_data / "harness_model_modalities.json",
-        )
-        copied += _merge_inspiration_favorites(
-            source_data / "inspiration_library.sqlite3",
-            target_data / "inspiration_library.sqlite3",
         )
         copied += _merge_design_references(
             source_data / "design_brain" / "references" / "reference_items.json",

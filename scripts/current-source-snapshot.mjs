@@ -30,8 +30,13 @@ const criticalPackagedPaths = [
   'static/js/smart-canvas-replica.js', 'static/css/smart-canvas-replica.css',
   'svg_media.py', 'static/js/smart-detail-repair.js', 'static/photocraft/canvas-bridge.js',
   'static/photocraft/index.html', 'static/photocraft/app/parts.txt',
-  'static/inspiration.html', 'static/js/inspiration.js',
-  'inspiration_library.py', 'project_agent_store.py',
+  'project_agent_store.py',
+  'bot_workspace_api.py', 'bot_workspace_runtime.py', 'bot_workspace_store.py', 'bot_workspace_migration.py',
+  'scripts/backup_bot_workspace_data.py',
+  'static/js/bot-workspace-client.js', 'static/js/bot-workspace-ui.js', 'static/css/bot-workspace.css',
+  'video_workbench_service.py', 'tools/video-workbench/server.js',
+  'tools/video-workbench/public/index.html', 'tools/video-workbench/public/app.js',
+  'static/js/smart-detail-slice.js', 'static/js/image-network.js',
   'multi_agent_api.py', 'multi_agent_runtime.py', 'multi_agent_store.py',
   'static/js/canvas-multi-agent.js', 'static/js/smart-canvas-reference-picker.js',
   'ComfyUI/integration/comfy_model_downloads.py', 'ComfyUI/integration/comfy_model_links.py',
@@ -61,8 +66,12 @@ function isProductSource(file, tracked) {
     return ['.json', '.md', '.patch'].includes(extension);
   }
   if (file === 'desktop/launch-hidden.vbs') return true;
+  if (file === 'scripts/backup_bot_workspace_data.py') return true;
   if (/^tools\/(?:chrome-local-asset-importer|photoshop-asset-connector)\//.test(file)) {
     return tracked && ['.md', '.mjs', '.js', '.json', '.html', '.css', '.png', '.svg'].includes(extension);
+  }
+  if (file.startsWith('tools/video-workbench/')) {
+    return /^tools\/video-workbench\/(?:[^/]+\.(?:js|json|md|bat)|public\/(?:index\.html|app\.js|styles\.css|voice-previews\/[a-f0-9]{32}\.mp3))$/.test(file);
   }
   if (file.startsWith('static/')) {
     if (file === 'static/vendor/x6/LICENSE') return true;
@@ -75,7 +84,7 @@ function isProductSource(file, tracked) {
       return !/^static\/_probe(?:[_./]|$)/i.test(file) && !/\.bak-/i.test(file);
     }
     return ['.png', '.jpg', '.jpeg', '.gif', '.ico'].includes(extension)
-      && (tracked || /^static\/images\/(?:file-icons|inspiration)\//.test(file));
+      && (tracked || /^static\/images\/file-icons\//.test(file) || file === 'static/images/desktop-app-jd.png');
   }
   if (/^ComfyUI\/(?:integration|web)\//.test(file)) {
     return ['.py', '.js', '.html', '.css', '.svg'].includes(extension);
@@ -95,7 +104,7 @@ function isProductSource(file, tracked) {
   return false;
 }
 
-const textExtensions = new Set(['.py', '.js', '.cjs', '.mjs', '.json', '.html', '.css', '.svg', '.yaml', '.yml', '.txt', '.md', '.patch']);
+const textExtensions = new Set(['.py', '.js', '.cjs', '.mjs', '.json', '.html', '.css', '.svg', '.yaml', '.yml', '.txt', '.md', '.patch', '.bat']);
 const textNames = new Set(['.env.example', '.htaccess', '_headers', 'LICENSE-APACHE', 'LICENSE-MIT', 'NOTICE']);
 function fileHash(bytes, file) {
   const content = (textExtensions.has(path.extname(file).toLowerCase()) || textNames.has(path.basename(file)))

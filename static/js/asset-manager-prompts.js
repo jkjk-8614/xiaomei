@@ -47,7 +47,7 @@
                 classes: item.favorite ? classes + ' is-fav' : classes,
             });
         }
-        function row(item, { libraryId, category, active, selected, readonly }) {
+        function row(item, { libraryId, category, active, selected, selectable }) {
             const element = node('article', active ? 'prompt-row active' : 'prompt-row');
             element.dataset.promptRow = item.id;
             element.dataset.promptOwner = libraryId;
@@ -55,7 +55,7 @@
             check.type = 'checkbox';
             check.dataset.promptCheck = item.id;
             check.defaultChecked = selected;
-            check.disabled = readonly;
+            check.disabled = !selectable;
             const main = node('div', 'prompt-row-main');
             const title = node('div', 'prompt-row-title');
             title.append(node('strong', '', item.name || '提示词'), node('span', 'prompt-tag', category),
@@ -94,6 +94,8 @@
             }
             const commands = node('div', 'panel-actions');
             commands.append(favoriteButton(item, libraryId, 'asset-icon-btn prompt-detail-fav'),
+                button('prompt-export', '导出', { classes: 'asset-btn', icon: 'download', title: '导出为 TXT',
+                    value: item.id, libraryId }),
                 button('prompt-edit-start', '编辑', { classes: 'asset-btn', icon: 'pencil', title: '展开编辑',
                     value: item.id, libraryId, disabled: readonly }),
                 button('prompt-delete', '', { classes: 'asset-icon-btn danger', icon: 'trash-2', title: '删除',
@@ -114,6 +116,31 @@
                 body.append(list);
             }
             return header.outerHTML + body.outerHTML;
+        }
+
+        function exportText(items, { batch = false } = {}) {
+            if (!items.length) return;
+            try {
+                const entries = items.map(item => {
+                    const sections = [
+                        ['用途说明', description(item.scene, item.positive)],
+                        ['正向提示词', item.positive],
+                        ['负向提示词', item.negative],
+                    ];
+                    if (item.params && typeof item.params === 'object' && Object.keys(item.params).length) {
+                        sections.push(['参数', JSON.stringify(item.params, null, 2)]);
+                    }
+                    const blocks = sections.filter(([, value]) => value).map(([label, value]) => `${label}\n${value}`);
+                    return [item.name || '提示词', ...blocks].join('\n\n');
+                });
+                const name = (items[0].name || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim().slice(0, 100);
+                const filename = batch ? '提示词-批量导出.txt' : name ? `提示词-${name}.txt` : '提示词.txt';
+                const text = entries.join('\n\n────────────────\n\n') + '\n';
+                host.download(new Blob([text], { type: 'text/plain;charset=utf-8' }), filename);
+                host.notice(`已开始下载 ${items.length} 条提示词`);
+            } catch (_) {
+                host.notice('导出提示词失败，请重试');
+            }
         }
 
         function close(focus = true) {
@@ -301,7 +328,7 @@
             host.notice(text);
         }
 
-        return { row, detail, showEditor, close, toggleFavorite, canConfirm, clearConfirmation, remove,
+        return { row, detail, exportText, showEditor, close, toggleFavorite, canConfirm, clearConfirmation, remove,
             creating: () => Boolean(editor?.creating && editor.origin === host.origin()) };
     }
 

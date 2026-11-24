@@ -73,5 +73,30 @@ test('camera connects to painting and LLM and passes reference images and camera
     assert.deepEqual(result.generationRefs, result.refs);
     assert.match(result.missingReference, /缺少参考图/);
     assert.equal(result.stillConnectable, true);
+
+    await t.test('reset zeroes the orientation and restores the default framing', async () => {
+        const id = await page.evaluate(() => createCameraNode(100, 100).id);
+        const edit = page.locator(`[data-id="${id}"] .camera-edit-btn`);
+        await edit.click();
+        const editor = page.locator('.smart-camera-editor');
+        const expected = {pitch:'0', yaw:'0', distance:'6.5', fov:'50', roll:'0'};
+        for(const [field, value] of Object.entries({pitch:'-20', yaw:'60', distance:'9', fov:'70', roll:'15'})){
+            await editor.locator(`[data-camera-number="${field}"]`).fill(value);
+        }
+        await editor.locator('[data-camera-view-mode="thirdPerson"]').click();
+        await editor.locator('.smart-camera-reset').click();
+        const values = attribute => editor.locator(`[${attribute}]`).evaluateAll((inputs, name) =>
+            Object.fromEntries(inputs.map(input => [input.getAttribute(name), input.value])), attribute);
+        assert.deepEqual(await values('data-camera-number'), expected);
+        assert.deepEqual(await values('data-camera-field'), expected);
+        assert.equal(await editor.locator('[data-camera-view-mode="firstPerson"]').getAttribute('aria-pressed'), 'true');
+
+        await editor.locator('.smart-camera-done').click();
+        const prompt = await page.evaluate(nodeId => nodes.find(node => node.id === nodeId).cameraPrompt, id);
+        assert.match(prompt, /yaw 0°.*pitch 0°.*distance 6\.5.*FOV 50°.*roll 0°/);
+        await edit.click();
+        assert.deepEqual(await values('data-camera-number'), expected);
+        await editor.locator('.smart-camera-done').click();
+    });
     assert.deepEqual(errors, []);
 });

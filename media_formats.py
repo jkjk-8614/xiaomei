@@ -151,16 +151,10 @@ def reference_data_url(path, max_size, mime):
     file = Path(path)
     if max_size:
         try:
-            with Image.open(file) as source, BytesIO() as output:
-                source.load()
+            with Image.open(file) as raw, ImageOps.exif_transpose(raw) as source:
                 if max(source.size) > max_size:
                     source.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
-                mode = "RGBA" if has_alpha(source) else "RGB"
-                fmt = "PNG" if mode == "RGBA" else "JPEG"
-                with source.convert(mode) as converted:
-                    options = {"quality": 88} if fmt == "JPEG" else {}
-                    converted.save(output, fmt, **options)
-                return _data_url(output.getvalue(), f"image/{fmt.lower()}")
+                    return _data_url(_png(source), "image/png")
         except Exception:
             pass
     return _data_url(file.read_bytes(), mime)

@@ -2,6 +2,7 @@
     'use strict';
 
     const gap = 8;
+    const standaloneGap = 32;
     const inset = 16;
     const groupHeader = 44;
     const minTile = 28;
@@ -23,19 +24,50 @@
         };
     }
 
-    function standalonePositions(container, layout, items, smart, fit) {
-        const columns = Math.max(1, layout.cols || 1);
-        const square = Math.max(minTile, Math.round(layout.thumb || 96));
-        const width = smart ? Math.max(minTile, Math.round(layout.thumbW || square)) : square;
-        const height = smart ? Math.max(minTile, Math.round(layout.thumbH || square)) : square;
-        const left = Number(container.x) || 0;
-        const top = Number(container.y) || 0;
-        return items.map((item, index) => {
-            const fitted = fit(item, Math.min(width, height));
-            const x = left + inset + (index % columns) * (width + gap) + (width - fitted.width) / 2;
-            const y = top + (smart ? groupHeader : inset)
-                + Math.floor(index / columns) * (height + gap) + (height - fitted.height) / 2;
-            return {x:Math.round(x), y:Math.round(y), w:fitted.width, h:fitted.height};
+    function standalonePositions(container, sizes, options = {}) {
+        const list = Array.isArray(sizes) ? sizes : [];
+        if (!list.length) return [];
+        const requestedColumns = Number(options.columns || 0);
+        const columns = Math.max(1, Math.min(
+            list.length,
+            requestedColumns > 0 ? Math.round(requestedColumns) : Math.min(4, Math.ceil(Math.sqrt(list.length)))
+        ));
+        const rows = Math.ceil(list.length / columns);
+        const gapX = Number.isFinite(Number(options.gapX)) ? Number(options.gapX)
+            : (Number.isFinite(Number(options.gap)) ? Number(options.gap) : standaloneGap);
+        const gapY = Number.isFinite(Number(options.gapY)) ? Number(options.gapY)
+            : (Number.isFinite(Number(options.gap)) ? Number(options.gap) : standaloneGap);
+        const colWidths = Array(columns).fill(0);
+        const rowHeights = Array(rows).fill(0);
+        const normalized = list.map(size => ({
+            width: Math.max(minTile, Math.round(Number(size?.width) || 0)),
+            height: Math.max(minTile, Math.round(Number(size?.height) || 0)),
+        }));
+        normalized.forEach((size, index) => {
+            const col = index % columns;
+            const row = Math.floor(index / columns);
+            colWidths[col] = Math.max(colWidths[col], size.width);
+            rowHeights[row] = Math.max(rowHeights[row], size.height);
+        });
+        const colOffsets = [];
+        let cursorX = Number(container?.x) || 0;
+        for (let col = 0; col < columns; col++) {
+            colOffsets.push(cursorX);
+            cursorX += colWidths[col] + gapX;
+        }
+        const rowOffsets = [];
+        let cursorY = Number(container?.y) || 0;
+        for (let row = 0; row < rows; row++) {
+            rowOffsets.push(cursorY);
+            cursorY += rowHeights[row] + gapY;
+        }
+        return normalized.map((size, index) => {
+            const col = index % columns;
+            const row = Math.floor(index / columns);
+            return {
+                x: Math.round(colOffsets[col] + (colWidths[col] - size.width) / 2),
+                y: Math.round(rowOffsets[row] + (rowHeights[row] - size.height) / 2),
+            };
         });
     }
 

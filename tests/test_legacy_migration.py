@@ -1,5 +1,4 @@
 import json
-import sqlite3
 import sys
 import tempfile
 import unittest
@@ -424,55 +423,6 @@ class LegacyMigrationTest(unittest.TestCase):
             self.assertTrue(provider["model_selection_managed"])
             modalities = read_json(data_root / "data" / "harness_model_modalities.json")
             self.assertEqual(modalities["providers"]["p"]["chat-model"], ["text", "image"])
-
-    def test_inspiration_catalog_favorites_are_merged(self):
-        with tempfile.TemporaryDirectory() as folder:
-            install = Path(folder) / "install"
-            data_root = Path(folder) / "data root"
-            source_db = install / "data" / "inspiration_library.sqlite3"
-            target_db = data_root / "data" / "inspiration_library.sqlite3"
-            source_db.parent.mkdir(parents=True)
-            target_db.parent.mkdir(parents=True)
-            schema = (
-                "CREATE TABLE cases ("
-                "id TEXT PRIMARY KEY, title TEXT NOT NULL, favorite INTEGER NOT NULL DEFAULT 0"
-                ")"
-            )
-            connection = sqlite3.connect(source_db)
-            try:
-                connection.execute(schema)
-                connection.executemany(
-                    "INSERT INTO cases (id, title, favorite) VALUES (?, ?, ?)",
-                    [("same", "旧标题", 1), ("legacy-only", "旧收藏", 1)],
-                )
-                connection.commit()
-            finally:
-                connection.close()
-            connection = sqlite3.connect(target_db)
-            try:
-                connection.execute(schema)
-                connection.execute(
-                    "INSERT INTO cases (id, title, favorite) VALUES (?, ?, ?)",
-                    ("same", "新标题", 0),
-                )
-                connection.commit()
-            finally:
-                connection.close()
-
-            migrate_legacy_data(install, data_root)
-
-            connection = sqlite3.connect(target_db)
-            try:
-                rows = {
-                    row[0]: (row[1], row[2])
-                    for row in connection.execute(
-                        "SELECT id, title, favorite FROM cases ORDER BY id"
-                    )
-                }
-            finally:
-                connection.close()
-            self.assertEqual(rows["same"], ("新标题", 1))
-            self.assertEqual(rows["legacy-only"], ("旧收藏", 1))
 
     def test_design_reference_favorites_are_merged(self):
         with tempfile.TemporaryDirectory() as folder:

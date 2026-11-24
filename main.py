@@ -96,6 +96,7 @@ import chat_errors
 import canvas_agent_inputs
 import canvas_agent_transport
 import chat_streaming
+import network_diagnostics
 from network_diagnostics import log_net_error
 import chat_image_requests
 import jimeng_cli
@@ -201,6 +202,51 @@ except Exception as _bulk_migration_error:
     print(f"无法启动旧版大文件后台迁移：{_bulk_migration_error}")
 
 app = FastAPI()
+from video_workbench_service import VideoWorkbenchManager, register_video_workbench_routes
+
+
+def _load_canvas_video_workbench_settings():
+    providers = load_api_providers()
+    official_key = ""
+    official_name = "火山引擎"
+    low_cost_base_url = ""
+    low_cost_token = ""
+    low_cost_name = "6789API"
+
+    for item in providers:
+        if not isinstance(item, dict):
+            continue
+        if is_volcengine_provider(item):
+            key = str(volcengine_provider_api_key(item) or "").strip()
+            if key or not official_key:
+                if key:
+                    official_key = key
+                official_name = str(item.get("name") or official_name).strip() or official_name
+        elif is_6789_provider(item):
+            token = str(provider_env_key_value(item) or "").strip()
+            base_url = str(item.get("base_url") or "").strip()
+            if token or not low_cost_token:
+                if token:
+                    low_cost_token = token
+                if base_url:
+                    low_cost_base_url = base_url
+                low_cost_name = str(item.get("name") or low_cost_name).strip() or low_cost_name
+
+    return {
+        "apiBaseUrl": low_cost_base_url or "https://www.6789api.top",
+        "apiToken": low_cost_token,
+        "officialApiKey": official_key,
+        "officialProviderName": official_name,
+        "lowCostProviderName": low_cost_name,
+    }
+
+
+VIDEO_WORKBENCH = VideoWorkbenchManager(
+    PROJECT_ROOT,
+    RUNTIME_ROOT,
+    canvas_settings_loader=_load_canvas_video_workbench_settings,
+)
+register_video_workbench_routes(app, VIDEO_WORKBENCH)
 from bridge_api import router as local_bridge_router
 app.include_router(local_bridge_router)
 from mcp_settings import router as mcp_settings_router
@@ -219,6 +265,7 @@ from design_brain_bots import install_design_brain_bots
 DESIGN_BOTS = install_design_brain_bots(app, sys.modules[__name__])
 # 设计大脑 · Bot 团队（可配置成员 + 群 + 会话 + 能力包）。数据层独立于
 # 上面的五 BOT 编排：老管线继续按任务跑，团队是新的交互与协作入口。
+from bot_workspace_config import is_bot_workspace_enabled, should_seed_legacy_design_team
 from design_brain_team_api import router as design_brain_team_router
 from design_brain_team import TEAM as DESIGN_TEAM
 from design_brain_team_api import configure_engine as configure_design_team_engine
@@ -270,7 +317,7 @@ from gpt_image_cli import (
     gpt_image_2_skill_prompt_arg, gpt_image_2_skill_size_arg, parse_gpt_image_2_skill_output,
 )
 from gpt_image_dimensions import (
-    GPT_IMAGE2_MAX_EDGE, GPT_IMAGE2_MAX_PIXELS, GPT_IMAGE2_MIN_PIXELS,
+    GPT_IMAGE2_AUTO_RATIO_SIZES, GPT_IMAGE2_MAX_EDGE, GPT_IMAGE2_MAX_PIXELS, GPT_IMAGE2_MIN_PIXELS,
     chat_prompt_size_override, gpt_image_2_auto_size_for_ratio, gpt_image_2_safe_dimensions,
     normalize_gpt_image_2_size, parse_size_pair,
 )
@@ -601,9 +648,11 @@ async def startup_event():
     global GLOBAL_LOOP
     GLOBAL_LOOP = asyncio.get_running_loop()
     sync_static_html_versions()
-    # 首次启动写入默认 Bot 团队（幂等：bots.json 已存在时完全不动）
+    # 仅在旧模式回退时允许自动种入旧版 5 个默认设计大脑 Bot；
+    # 新 Bot 工作区模式下首次启动只初始化唯一总管理 Bot（bot_manager）。
     try:
-        await asyncio.to_thread(DESIGN_TEAM.ensure_seeded)
+        if should_seed_legacy_design_team(DATA_DIR):
+            await asyncio.to_thread(DESIGN_TEAM.ensure_seeded)
     except Exception as exc:
         print(f"初始化 Bot 团队失败: {exc}")
     try:
@@ -646,6 +695,10 @@ async def shutdown_event():
         print(f"停止 Bot 团队回合失败: {exc}")
     await asyncio.to_thread(_browser_agent_stop)
     await asyncio.to_thread(stop_canvas_share_services)
+    try:
+        await VIDEO_WORKBENCH.aclose()
+    except Exception as exc:
+        print(f"停止视频工作台服务失败: {exc}")
 
 @app.websocket("/ws/stats")
 async def websocket_endpoint(websocket: WebSocket, client_id: str = None, canvas_id: str = ""):
@@ -887,9 +940,6 @@ PROMPT_CASES_PATH = os.path.join(DATA_DIR, "prompt_cases.json")
 # 生成素材/本地素材等按文件动态列举的资源没有固定条目，收藏状态按稳定 key 登记在这里。
 ASSET_FAVORITES_PATH = os.path.join(DATA_DIR, "asset_favorites.json")
 PROMPT_CASE_MEDIA_DIR = os.path.join(ASSETS_DIR, "prompt_cases")
-PRODUCT_3D_ASSETS_PATH = os.path.join(DATA_DIR, "product_3d_assets.json")
-SOFT_FURNISHING_SCENES_PATH = os.path.join(DATA_DIR, "soft_furnishing_scenes.json")
-PRODUCT_3D_STORE_LOCK = Lock()
 API_PROVIDERS_FILE = os.path.join(DATA_DIR, "api_providers.json")
 RECOMMENDED_APIS_FILE = os.path.join(DATA_DIR, "recommended_apis.json")
 RECOMMENDED_APIS_LOCK = threading.RLock()
@@ -2847,6 +2897,7 @@ def canvas_agent_runtime_config():
         "server_timeout_ms": server_timeout_ms,
         "harness_enabled": _canvas_harness_enabled(),
         "harness_available": bool(_canvas_harness_command()),
+        "bot_workspace_enabled": is_bot_workspace_enabled(DATA_DIR),
     }
 
 @app.get("/api/check-update")
@@ -5071,6 +5122,13 @@ def save_to_history(record):
             # Register after source normalization so asset metadata and the
             # persisted history row agree on the ComfyUI channel.
             asset_registry_register_history_record(record)
+            if record.get("recovered_without_generation") and params.get("recovery_id"):
+                history = [
+                    row for row in history if not (
+                        isinstance(row, dict) and row.get("recovered_without_generation") and
+                        (row.get("params") or {}).get("recovery_id") == params["recovery_id"]
+                    )
+                ]
         history.insert(0, record)
         _write_history_file_locked(history[:5000])
 
@@ -9849,13 +9907,34 @@ async def fetch_image_task_payload(client, task_id, provider=None):
     )
     headers = api_headers(provider=provider)
 
-    async def get(address):
-        return await httpx_request_with_transient_retries(client, "GET", address, attempts=3, headers=headers)
+    address = next(iter(addresses), "")
 
-    return await image_task_queries.fetch(task_id, addresses, get)
+    async def get(target):
+        nonlocal address
+        address = target
+        return await httpx_request_with_transient_retries(client, "GET", target, attempts=3, headers=headers)
+
+    started = time.monotonic()
+    provider_id = (provider or {}).get("id")
+    IMAGE_QUERY_OBSERVED.set(True)
+    try:
+        result = await image_task_queries.fetch(task_id, addresses, get)
+    except (httpx.HTTPError, HTTPException) as exc:
+        network_diagnostics.record_image_check(
+            provider_id, "query", "error", network_diagnostics.error_code(exc), url=address, started=started,
+            proxy_route=network_diagnostics.request_proxy(client, address),
+        )
+        raise
+    valid = bool(image_task_queries.image_task_status(result)) or image_task_queries.inspect(result).state in {"succeeded", "failed"}
+    network_diagnostics.record_image_check(
+        provider_id, "query", "ok" if valid else "unknown", "ok" if valid else "unknown_task",
+        url=address, started=started, proxy_route=network_diagnostics.request_proxy(client, address),
+    )
+    return result
 
 
 IMAGE_TASK_UPSTREAM_CALLBACK = contextvars.ContextVar("image_task_upstream_callback", default=None)
+IMAGE_QUERY_OBSERVED = contextvars.ContextVar("image_query_observed", default=False)
 # SoonStudio requires the client task ID used at submission to be echoed in
 # ``x-studio-task-id`` while polling.  Keep it in request-local context so
 # concurrent canvas tasks never leak one another's binding.
@@ -11253,20 +11332,72 @@ def _asset_registry_local_metadata(url: str) -> Dict[str, Any]:
     return {"size": int(stat.st_size), "mime": mime or ""}
 
 
+def _asset_registry_equivalent_local_urls(path: str) -> List[str]:
+    """Return all canonical/legacy media URLs that can resolve to ``path``."""
+    abs_path = os.path.abspath(path)
+    real_path = os.path.realpath(abs_path)
+    target_key = storage_migration.path_key(abs_path)
+    candidates: List[str] = []
+    seen = set()
+
+    def _add(url: str):
+        key = registry_url_key(url)
+        if key and key not in seen:
+            seen.add(key)
+            candidates.append(url)
+
+    def _rel_under(root: str) -> str:
+        if not root:
+            return ""
+        root_key = storage_migration.path_key(root)
+        if not root_key:
+            return ""
+        prefix = root_key if root_key.endswith(os.sep) else root_key + os.sep
+        if not target_key.startswith(prefix):
+            return ""
+        try:
+            real_rel = os.path.relpath(real_path, os.path.realpath(os.path.abspath(root))).replace("\\", "/").strip("/")
+            if real_rel and not real_rel.startswith(".."):
+                return real_rel
+        except ValueError:
+            pass
+        return target_key[len(prefix):].replace("\\", "/").strip("/")
+
+    def _strip_media_type_folder(rel: str) -> str:
+        parts = [part for part in rel.split("/") if part]
+        if len(parts) >= 2 and parts[-2] in media_paths.MEDIA_TYPE_FOLDER_NAMES:
+            return "/".join(parts[:-2] + [parts[-1]])
+        return ""
+
+    rel = _rel_under(ASSETS_DIR)
+    if rel:
+        _add(f"/assets/{urllib.parse.quote(rel, safe='/')}")
+    for root in (OUTPUT_OUTPUT_DIR, OUTPUT_DIR):
+        rel = _rel_under(root)
+        if rel:
+            _add(f"/output/{urllib.parse.quote(rel, safe='/')}")
+    for bucket in ("upload", "generated", "local"):
+        for root in storage_kind_roots(bucket):
+            rel = _rel_under(root)
+            if not rel:
+                continue
+            _add(_managed_storage_url(bucket, rel))
+            flat_rel = _strip_media_type_folder(rel)
+            if flat_rel:
+                _add(_managed_storage_url(bucket, flat_rel))
+    return candidates
+
+
 def _asset_registry_same_local_record(url: str, local_index=None) -> Optional[Dict[str, Any]]:
     """Find the ID already assigned to another URL for the same local file."""
     path = output_file_from_url(url)
     if not path or not os.path.isfile(path):
         return None
-    target = storage_migration.path_key(path)
     if local_index is not None:
-        return local_index.get(target)
-    for record in ASSET_REGISTRY.records():
-        candidate_url = str(record.get("canonical_url") or "")
-        candidate_path = output_file_from_url(candidate_url)
-        if not candidate_path:
-            continue
-        if storage_migration.path_key(candidate_path) == target:
+        return local_index.get(storage_migration.path_key(path))
+    for candidate_url in _asset_registry_equivalent_local_urls(path):
+        record = ASSET_REGISTRY.find_by_url(candidate_url)
+        if record:
             return record
     return None
 
@@ -13095,165 +13226,7 @@ async def _read_one_public_link(client: httpx.AsyncClient, url: str, include_raw
             }
 
 
-class ReplicaProductSearchRequest(BaseModel):
-    query: str = Field(min_length=1, max_length=200)
-    model_number: str = Field(default="", max_length=60)
-
-
-WEB_SEARCH_KEYS = {"tavily": "TAVILY_API_KEY", "brave": "BRAVE_SEARCH_API_KEY"}
-WEB_SEARCH_PROVIDER_ENV = "XIAOMEI_WEB_SEARCH_PROVIDER"
-WEB_SEARCH_KEY_MISSING = "请在「API 设置 → 联网搜索」保存当前服务的密钥，再重试"
-
-
-def configured_search_key(provider):
-    env_key = WEB_SEARCH_KEYS.get(provider)
-    if not env_key:
-        raise HTTPException(status_code=404, detail="未找到该搜索服务")
-    return (os.getenv(env_key) or read_api_env_value(env_key)).strip()
-
-
-def active_web_search_provider():
-    provider = (os.getenv(WEB_SEARCH_PROVIDER_ENV) or read_api_env_value(WEB_SEARCH_PROVIDER_ENV)).strip()
-    if provider in WEB_SEARCH_KEYS:
-        return provider
-    return "brave" if configured_search_key("brave") else "tavily"
-
-
-def validate_web_search_key(value):
-    if not isinstance(value, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,256}", value.strip()):
-        raise HTTPException(status_code=422, detail="请输入有效的搜索服务 API Key")
-    return value.strip()
-
-
-async def product_web_search(provider, query, key, count=8):
-    chinese = bool(re.search(r"[\u3400-\u9fff]", query))
-    try:
-        async with httpx.AsyncClient(timeout=12) as client:
-            if provider == "tavily":
-                payload = {"query": query, "search_depth": "basic", "max_results": count, "auto_parameters": False}
-                if chinese:
-                    payload["language"] = "zh-cn"
-                response = await client.post("https://api.tavily.com/search", json=payload, headers={"Authorization": f"Bearer {key}"})
-            else:
-                params = {"q": query, "count": count, "result_filter": "web", "text_decorations": "false", "spellcheck": "false"}
-                if chinese:
-                    params["search_lang"] = "zh-hans"
-                response = await client.get(
-                    "https://api.search.brave.com/res/v1/web/search",
-                    params=params,
-                    headers={"X-Subscription-Token": key, "Accept": "application/json"},
-                )
-            response.raise_for_status()
-            data = response.json()
-            results = data.get("results") if provider == "tavily" else (data.get("web") or {}).get("results", [])
-            if not isinstance(results, list):
-                raise ValueError("Invalid web results")
-    except httpx.HTTPStatusError as exc:
-        status = exc.response.status_code
-        detail = {
-            401: "搜索密钥无效，请到「API 设置 → 联网搜索」检查密钥后重试",
-            403: "商品搜索服务拒绝访问，请检查账号权限后重试",
-            432: "商品搜索额度已用完，请检查账号用量或等待额度刷新",
-            429: "商品搜索服务达到限额，请检查订阅用量或稍后重试",
-        }.get(status, "商品搜索服务暂时不可用，请稍后重试")
-        raise HTTPException(status_code=502, detail=detail) from exc
-    except (httpx.RequestError, ValueError, AttributeError) as exc:
-        raise HTTPException(status_code=502, detail="商品搜索失败，请检查网络或系统代理后重试") from exc
-    return results
-
-
-def web_search_settings():
-    return {
-        "provider": active_web_search_provider(),
-        "has_keys": {provider: bool(configured_search_key(provider)) for provider in WEB_SEARCH_KEYS},
-    }
-
-
-@app.get("/api/search-settings")
-async def get_web_search_settings():
-    return web_search_settings()
-
-
-def persist_web_search_settings(updates):
-    try:
-        update_env_values(updates)
-    except OSError as exc:
-        raise HTTPException(status_code=500, detail="无法保存搜索密钥，请检查运行数据目录的写入权限后重试") from exc
-    return web_search_settings()
-
-
-@app.put("/api/search-settings/{provider}")
-async def save_web_search_settings(provider: str, payload: dict):
-    current = configured_search_key(provider)
-    draft = payload.get("api_key", "")
-    updates = {WEB_SEARCH_PROVIDER_ENV: provider}
-    if draft != "":
-        updates[WEB_SEARCH_KEYS[provider]] = validate_web_search_key(draft)
-    elif not current:
-        raise HTTPException(status_code=422, detail="请先填写搜索密钥")
-    return persist_web_search_settings(updates)
-
-
-@app.delete("/api/search-settings/{provider}")
-async def clear_web_search_settings(provider: str):
-    configured_search_key(provider)
-    return persist_web_search_settings({
-        WEB_SEARCH_KEYS[provider]: "", WEB_SEARCH_PROVIDER_ENV: active_web_search_provider(),
-    })
-
-
-@app.post("/api/search-settings/{provider}/test")
-async def test_web_search_settings(provider: str, payload: dict):
-    draft = payload.get("api_key", "")
-    current = configured_search_key(provider)
-    key = current if draft == "" else validate_web_search_key(draft)
-    if not key:
-        raise HTTPException(status_code=503, detail=WEB_SEARCH_KEY_MISSING)
-    await product_web_search(provider, "web search", key, count=1)
-    return {"ok": True}
-
-
-@app.post("/api/canvas-replica/product-search")
-async def replica_product_search(payload: ReplicaProductSearchRequest):
-    query = payload.query.strip()
-    if not query:
-        raise HTTPException(status_code=422, detail="请填写用于搜索的商品名称")
-    provider = active_web_search_provider()
-    key = configured_search_key(provider)
-    if not key:
-        raise HTTPException(status_code=503, detail=WEB_SEARCH_KEY_MISSING)
-    model_number = payload.model_number.strip()
-    if model_number:
-        query = f'{query} "{model_number}"'
-    results = await product_web_search(provider, query, key)
-    excerpt_key = "content" if provider == "tavily" else "description"
-    sources = []
-    if model_number:
-        same_model = re.compile(
-            r"(?<![\w-])" + re.escape(model_number)
-            + r"(?![\w-]|\s*(?:\+|(?:pro|max|ultra|plus|mini|lite|se|air)\b|升级版|增强版|[二三四2-4]代))",
-            re.I | re.ASCII,
-        )
-        for item in results:
-            if not isinstance(item, dict):
-                continue
-            title = _clean_link_text(item.get("title"), 240)
-            excerpt = _clean_link_text(item.get(excerpt_key), 480)
-            url = str(item.get("url") or "")
-            try:
-                parsed = urllib.parse.urlsplit(url)
-            except ValueError:
-                continue
-            if (same_model.search(title) and excerpt and len(url) <= 2048 and parsed.scheme == "https"
-                    and parsed.hostname and not parsed.username and not parsed.password
-                    and all(source["url"] != url for source in sources)):
-                sources.append({"title": title, "excerpt": excerpt, "url": url})
-            if len(sources) == 4:
-                break
-    return {"sources": sources}
-
-
-COMMERCE_ANALYSIS_MARKETPLACE_SUFFIXES = ("taobao.com", "tmall.com", "tb.cn", "1688.com")
+COMMERCE_ANALYSIS_MARKETPLACE_SUFFIXES = ("taobao.com", "tmall.com", "tb.cn", "1688.com", "jd.com", "jingdong.com", "jd.hk", "yiyaojd.com", "3.cn")
 
 
 def _commerce_analysis_is_marketplace_url(url: str) -> bool:
@@ -13277,7 +13250,7 @@ def _commerce_analysis_require_marketplace_url(url: str):
     ):
         raise ValueError("商品链接不能包含账号、密码或认证参数")
     if not _commerce_analysis_is_marketplace_url(url):
-        raise ValueError("商品分析台目前只支持淘宝、天猫、1688 和 e.tb.cn 商品链接")
+        raise ValueError("商品分析台目前只支持淘宝、天猫、1688、京东和 e.tb.cn 商品链接")
 
 
 def _commerce_analysis_text(item: Dict[str, Any]) -> str:
@@ -14584,6 +14557,9 @@ def _commerce_analysis_product_id(value: Any = None, url: str = "") -> str:
         path_match = re.search(r"/(?:item|offer|product)[/_-]?([A-Za-z0-9][A-Za-z0-9_-]{2,119})(?:\.[a-z0-9]+)?(?:/|$)", parsed.path, re.IGNORECASE)
         if path_match:
             return path_match.group(1)[:120]
+        jd_path_match = re.match(r"^/([0-9]{5,24})\.html$", parsed.path or "", re.IGNORECASE)
+        if jd_path_match and any((parsed.hostname or "").lower().endswith(suffix) for suffix in ("jd.com", "jd.hk", "yiyaojd.com")):
+            return jd_path_match.group(1)[:120]
     except Exception:
         pass
     return ""
@@ -18594,6 +18570,7 @@ _ASSISTANT_VISIBLE_PAGE_SITES = {
     "xiaohongshu": ("小红书", ("xiaohongshu.com", "rednote.com")),
     "douyin": ("抖音", ("douyin.com",)),
     "1688": ("1688", ("1688.com",)),
+    "jd": ("京东", ("jd.com", "jingdong.com", "jd.hk", "joybuy.com", "yiyaojd.com")),
     "amazon": ("亚马逊", ("amazon.com", "amazon.cn", "amazon.co.uk", "amazon.de", "amazon.fr", "amazon.it", "amazon.es", "amazon.ca", "amazon.com.au", "amazon.co.jp", "amazon.in", "amazon.com.mx", "amazon.com.br", "amazon.nl", "amazon.pl", "amazon.se", "amazon.sg", "amazon.ae", "amazon.sa", "amazon.tr", "amazon.eg")),
     "aliexpress": ("速卖通", ("aliexpress.com", "aliexpress.ru", "aliexpress.us")),
     "shopee": ("虾皮 Shopee", ("shopee.com", "shopee.co.id", "shopee.sg", "shopee.co.th", "shopee.co.my", "shopee.vn", "shopee.ph", "shopee.tw", "shopee.com.br", "shopee.cl", "shopee.pl")),
@@ -22435,7 +22412,8 @@ async def upload_local_video_to_cloud(ref_url: str, service: str = "auto") -> Di
 ImageResultDownloadError = media_results.ImageResultDownloadError
 
 
-async def save_ai_image_to_output(image_data, prefix="online_", category="output", seen_hashes=None, *, require_local=False):
+async def save_ai_image_to_output(image_data, prefix="online_", category="output", seen_hashes=None, *,
+                                  require_local=False, provider_id=""):
     try:
         attempts = max(1, min(6, int(os.getenv("AI_IMAGE_DOWNLOAD_RETRIES") or "5")))
     except ValueError:
@@ -22443,10 +22421,75 @@ async def save_ai_image_to_output(image_data, prefix="online_", category="output
     save = functools.partial(
         save_generated_image_bytes, prefix=prefix, category=category, require_decodable=require_local,
     )
-    return await media_results.save_image(
-        image_data, save, output_file_from_url, rewrite_runninghub_file_url, seen_hashes,
-        require_local=require_local, attempts=attempts,
-    )
+    started = time.monotonic()
+    address = image_data["value"] if image_data.get("type") == "url" else ""
+    proxy_route = ""
+
+    def observe(url, route):
+        nonlocal address, proxy_route
+        address = url
+        proxy_route = route
+
+    try:
+        url = await media_results.save_image(
+            image_data, save, output_file_from_url, rewrite_runninghub_file_url, seen_hashes,
+            require_local=require_local, attempts=attempts, observe=observe,
+        )
+    except ImageResultDownloadError as exc:
+        exc.proxy_route = proxy_route
+        if exc.stage == "save" and exc.code != "local_file_missing":
+            network_diagnostics.record_image_check(
+                provider_id, "download", "ok", "ok", url=exc.observed_url or address, proxy_route=proxy_route,
+            )
+        raise
+    if url and media_paths.parse_address(url):
+        network_diagnostics.record_image_check(provider_id, "download", "ok", "ok", url=address, started=started, proxy_route=proxy_route)
+        network_diagnostics.record_image_check(provider_id, "save", "ok", "ok", sample_url=url)
+    return url
+
+
+def retain_failed_image_results(provider_id, model, task_id, failed):
+    candidates = [
+        {"url": item["value"]} if item.get("type") == "url" else
+        {"b64_json": item["value"], "mime_type": item.get("mime_type")}
+        for _, item, _ in failed
+    ]
+    try:
+        recovery_id = save_unparsed_image_response(
+            provider_id, model, {"data": candidates, "recovery_slots": [slot for slot, _, _ in failed]}, task_id,
+        )
+    except OSError:
+        recovery_id = ""
+    for _, item, exc in failed:
+        address = exc.observed_url or (item["value"] if item.get("type") == "url" else "")
+        network_diagnostics.record_image_check(
+            provider_id, exc.stage, "error", exc.code, url=address, recovery_id=recovery_id,
+            proxy_route=exc.proxy_route if exc.stage == "download" else "",
+        )
+    return recovery_id
+
+
+def image_delivery_failure(recovery_id, received=0, expected=1):
+    message = f"已收到 {received}/{expected} 张。平台已返回结果，部分图片尚未下载或保存。"
+    if recovery_id:
+        message += f"恢复编号：{recovery_id}。可重试取图。"
+    error = HTTPException(status_code=502, detail=message)
+    error.recovery_id = recovery_id
+    error.missing_count = expected - received
+    return error
+
+
+async def save_chat_delivery(provider, model, image, raw):
+    provider_id = provider["id"]
+    task_id = extract_task_id(raw) if isinstance(raw, dict) else ""
+    network_diagnostics.record_image_check(provider_id, "provider", "ok", "generation_ok", url=provider.get("base_url"))
+    if not task_id and not IMAGE_QUERY_OBSERVED.get():
+        network_diagnostics.record_image_check(provider_id, "query", "skipped", "sync_result")
+    try:
+        return await save_ai_image_to_output(image, prefix="chat_", require_local=True, provider_id=provider_id), None
+    except ImageResultDownloadError as exc:
+        recovery_id = retain_failed_image_results(provider_id, model, task_id, [(1, image, exc)])
+        return "", {"id": recovery_id, "error": image_delivery_failure(recovery_id).detail}
 
 
 def image_output_meta(url, source_item=None):
@@ -24130,6 +24173,75 @@ COMFLY_GEMINI_STANDARD_SIZES = {
 # 所以 comfly 上的超宽请求统一降级为最接近的可达比例 16:9。
 COMFLY_GEMINI_RATIO_ALIAS = {"21:9": "16:9"}
 
+CUSTOM_RATIO_LONG_SIDE = {"1k": 1536, "2k": 2048, "4k": 3840}
+CUSTOM_RATIO_PIXEL_LIMIT = {"1k": 1572864, "2k": 4194304, "4k": 8294400}
+
+
+def parse_ratio_or_size_dimensions(value):
+    raw = str(value or "").strip().lower()
+    if not raw or raw in {"auto", "source", "adaptive", "keep_ratio"}:
+        return 0, 0
+    w, h = parse_size_pair(raw)
+    if w > 0 and h > 0:
+        return w, h
+    m = re.fullmatch(r"(\d+)\s*[:/／比]\s*(\d+)", raw)
+    if m:
+        try:
+            w, h = int(m.group(1)), int(m.group(2))
+            if w > 0 and h > 0:
+                return w, h
+        except ValueError:
+            pass
+    return 0, 0
+
+
+def custom_ratio_image_size(ratio_or_size, resolution="1k"):
+    """为自定义比例计算像素尺寸，镜像 static/js/smart-canvas.js 中的 apiImageSize 逻辑。"""
+    w, h = parse_ratio_or_size_dimensions(ratio_or_size)
+    if w <= 0 or h <= 0:
+        return "1024x1024"
+    res_key = str(resolution or "").strip().lower()
+    long_side = CUSTOM_RATIO_LONG_SIDE.get(res_key, 1536)
+    pixel_limit = CUSTOM_RATIO_PIXEL_LIMIT.get(res_key, 1572864)
+    ratio = float(w) / float(h)
+    if ratio >= 1.0:
+        raw_w = float(long_side)
+        raw_h = float(long_side) / ratio
+    else:
+        raw_w = float(long_side) * ratio
+        raw_h = float(long_side)
+    pixels = raw_w * raw_h
+    if pixels > pixel_limit and pixels > 0:
+        scale = math.sqrt(pixel_limit / pixels)
+        raw_w *= scale
+        raw_h *= scale
+    width = max(64, int(math.floor(raw_w / 16.0)) * 16)
+    height = max(64, int(math.floor(raw_h / 16.0)) * 16)
+    return f"{width}x{height}"
+
+
+def is_standard_image_ratio(value):
+    """判断比例或尺寸是否属于标准比例（GCD 约分后在标准比例枚举集合中）。"""
+    raw = str(value or "").strip().lower().replace(" ", "")
+    if not raw or raw in {"auto", "source", "adaptive", "keep_ratio"}:
+        return False
+    standard_labels = (
+        set(COMFLY_GEMINI_STANDARD_SIZES.keys())
+        | set(COMFLY_GEMINI_RATIO_ALIAS.keys())
+        | set(GPT_IMAGE2_AUTO_RATIO_SIZES.keys())
+        | {item[2] for item in GEMINI_ASPECT_RATIO_CHOICES}
+    )
+    if raw in standard_labels:
+        return True
+    w, h = parse_ratio_or_size_dimensions(raw)
+    if w <= 0 or h <= 0:
+        return False
+    if f"{w}:{h}" in standard_labels:
+        return True
+    g = math.gcd(w, h)
+    reduced = f"{w // g}:{h // g}"
+    return reduced in standard_labels or reduced == "7:3"
+
 
 def resolve_image_generation_params(size="1024x1024", resolution="", aspect_ratio="", model=""):
     """将画布画质选项解析为当前图像适配器的参数，不修改提示词。"""
@@ -24139,6 +24251,29 @@ def resolve_image_generation_params(size="1024x1024", resolution="", aspect_rati
     if resolution not in {"1k", "2k", "4k"}:
         raise HTTPException(status_code=422, detail="图片画质请选择 1K、2K 或 4K")
     adaptive = str(aspect_ratio or "").strip().lower() in {"source", "adaptive", "keep_ratio"}
+
+    aspect_w, aspect_h = parse_ratio_or_size_dimensions(aspect_ratio) if not adaptive else (0, 0)
+    size_w, size_h = parse_ratio_or_size_dimensions(size)
+
+    is_custom = False
+    prefer_aspect_wh = False
+
+    if aspect_w > 0 and aspect_h > 0:
+        if not is_standard_image_ratio(aspect_ratio):
+            is_custom = True
+            prefer_aspect_wh = bool(re.search(r"\d+\s*[:/／比]\s*\d+", str(aspect_ratio or "")))
+    elif size_w > 0 and size_h > 0:
+        if not is_standard_image_ratio(size):
+            is_custom = True
+
+    if is_custom:
+        spec = aspect_ratio if (prefer_aspect_wh and aspect_ratio) else size
+        resolved = custom_ratio_image_size(spec, resolution)
+        if is_gpt_image_2_model(model):
+            resolved = normalize_gpt_image_2_size(resolved)
+        return {"size": resolved, "resolution": resolution,
+                "aspect_ratio": aspect_ratio}
+
     ratio = normalize_gemini_aspect_ratio(size if adaptive or not aspect_ratio else aspect_ratio)
     sizes = COMFLY_GEMINI_STANDARD_SIZES.get(ratio, COMFLY_GEMINI_STANDARD_SIZES["1:1"])
     resolved = sizes[resolution]
@@ -24757,7 +24892,7 @@ def _commerce_analysis_link_images_from_record(item):
         return []
     page_context_source = str(item.get("link_page_context_source") or "").strip()
     legacy_visible_page_context = bool(re.search(
-        r"【(?:千牛工作台|生意参谋|达摩盘|小红书|抖音|1688)当前页面即时分析上下文】",
+        r"【(?:千牛工作台|生意参谋|达摩盘|小红书|抖音|1688|京东)当前页面即时分析上下文】",
         str(item.get("link_context") or ""),
     ))
     link_resource_ids = {
@@ -26023,7 +26158,8 @@ async def upload_ai_reference(
             "upload_project_id": project_id,
             "upload_canvas_id": canvas_id,
         }
-        record = asset_registry_register_media(
+        record = await asyncio.to_thread(
+            asset_registry_register_media,
             result["url"],
             name=result["name"],
             kind=kind,
@@ -26040,255 +26176,6 @@ class Base64UploadRequest(BaseModel):
     name: str = ""
     content_type: str = ""
 
-
-# --- 3D 商品与软装场景实验室 ---
-# 这两份索引只保存产品/场景的引用与参数；原始模型、产品图和编排图继续
-# 通过既有 /api/ai/upload 落在 assets/input，避免为新功能复制一套素材仓库。
-PRODUCT_3D_MODEL_EXTENSIONS = {".glb", ".gltf", ".obj"}
-PRODUCT_3D_CATEGORIES = {"sofa", "chair", "table", "rug", "bed", "cabinet", "other"}
-PRODUCT_3D_PUBLIC_URL_PREFIXES = ("/assets/", "/output/", "/api/storage-files/", "https://", "http://")
-
-
-class Product3DAssetCreateRequest(BaseModel):
-    name: str = Field(default="", max_length=120)
-    category: str = Field(default="other", max_length=32)
-    model_url: str = Field(default="", max_length=4096)
-    model_name: str = Field(default="", max_length=255)
-    image_url: str = Field(default="", max_length=4096)
-    image_name: str = Field(default="", max_length=255)
-    dimensions: Dict[str, Any] = Field(default_factory=dict)
-    studio: Dict[str, Any] = Field(default_factory=dict)
-
-
-class Product3DAssetUpdateRequest(BaseModel):
-    name: Optional[str] = Field(default=None, max_length=120)
-    category: Optional[str] = Field(default=None, max_length=32)
-    model_url: Optional[str] = Field(default=None, max_length=4096)
-    model_name: Optional[str] = Field(default=None, max_length=255)
-    image_url: Optional[str] = Field(default=None, max_length=4096)
-    image_name: Optional[str] = Field(default=None, max_length=255)
-    dimensions: Optional[Dict[str, Any]] = None
-    studio: Optional[Dict[str, Any]] = None
-
-
-class SoftFurnishingSceneCreateRequest(BaseModel):
-    name: str = Field(default="", max_length=120)
-    background_url: str = Field(default="", max_length=4096)
-    background_name: str = Field(default="", max_length=255)
-    objects: List[Dict[str, Any]] = Field(default_factory=list)
-    settings: Dict[str, Any] = Field(default_factory=dict)
-    composition_prompt: str = Field(default="", max_length=4000)
-    control_image_url: str = Field(default="", max_length=4096)
-
-
-class SoftFurnishingSceneUpdateRequest(BaseModel):
-    name: Optional[str] = Field(default=None, max_length=120)
-    background_url: Optional[str] = Field(default=None, max_length=4096)
-    background_name: Optional[str] = Field(default=None, max_length=255)
-    objects: Optional[List[Dict[str, Any]]] = None
-    settings: Optional[Dict[str, Any]] = None
-    composition_prompt: Optional[str] = Field(default=None, max_length=4000)
-    control_image_url: Optional[str] = Field(default=None, max_length=4096)
-
-
-def _product_3d_store_timestamp(value: Any = 0) -> int:
-    try:
-        return max(0, int(float(value or 0)))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _product_3d_public_url(value: Any, field_name: str = "素材地址", strict: bool = True) -> str:
-    text = str(value or "").strip()
-    if not text:
-        return ""
-    if len(text) > 4096:
-        if strict:
-            raise HTTPException(status_code=400, detail=f"{field_name}过长")
-        return ""
-    if text.startswith(PRODUCT_3D_PUBLIC_URL_PREFIXES):
-        return text
-    if strict:
-        raise HTTPException(status_code=400, detail=f"{field_name}只支持已上传素材或 http(s) 地址")
-    return ""
-
-
-def _product_3d_model_url(value: Any, strict: bool = True) -> str:
-    text = _product_3d_public_url(value, "3D 模型地址", strict=strict)
-    if not text:
-        return ""
-    extension = os.path.splitext(text.split("?", 1)[0])[1].lower()
-    if extension in PRODUCT_3D_MODEL_EXTENSIONS:
-        return text
-    if strict:
-        raise HTTPException(status_code=400, detail="3D 模型仅支持 GLB、GLTF 或 OBJ")
-    return ""
-
-
-def _product_3d_clean_text(value: Any, fallback: str, limit: int = 120) -> str:
-    text = re.sub(r"[\x00-\x1f\x7f]", "", str(value or ""))
-    text = re.sub(r"\s+", " ", text).strip()[:limit]
-    return text or fallback
-
-
-def _product_3d_number(value: Any, fallback: float, minimum: float, maximum: float) -> float:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        number = fallback
-    if not math.isfinite(number):
-        number = fallback
-    return max(minimum, min(maximum, number))
-
-
-def _product_3d_dimensions(value: Any) -> Dict[str, float]:
-    source = value if isinstance(value, dict) else {}
-    return {
-        "width_mm": round(_product_3d_number(source.get("width_mm", source.get("width", 800)), 800, 1, 100000), 3),
-        "depth_mm": round(_product_3d_number(source.get("depth_mm", source.get("depth", 800)), 800, 1, 100000), 3),
-        "height_mm": round(_product_3d_number(source.get("height_mm", source.get("height", 800)), 800, 1, 100000), 3),
-    }
-
-
-def _product_3d_json_dict(value: Any, limit: int = 100000) -> Dict[str, Any]:
-    if not isinstance(value, dict):
-        return {}
-    try:
-        encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-        if len(encoded) > limit:
-            raise ValueError("too large")
-        decoded = json.loads(encoded)
-        return decoded if isinstance(decoded, dict) else {}
-    except Exception:
-        return {}
-
-
-def _normalize_product_3d_asset(value: Any, strict_urls: bool = False) -> Dict[str, Any]:
-    source = value if isinstance(value, dict) else {}
-    category = str(source.get("category") or "other").strip().lower()
-    if category not in PRODUCT_3D_CATEGORIES:
-        category = "other"
-    asset_id = re.sub(r"[^A-Za-z0-9_-]", "", str(source.get("id") or ""))[:80]
-    if not asset_id:
-        asset_id = f"product3d_{uuid.uuid4().hex[:12]}"
-    created_at = _product_3d_store_timestamp(source.get("created_at")) or now_ms()
-    return {
-        "id": asset_id,
-        "name": _product_3d_clean_text(source.get("name"), "未命名商品模型"),
-        "category": category,
-        "model_url": _product_3d_model_url(source.get("model_url"), strict=strict_urls),
-        "model_name": _product_3d_clean_text(source.get("model_name"), "", 255),
-        "image_url": _product_3d_public_url(source.get("image_url"), "产品图地址", strict=strict_urls),
-        "image_name": _product_3d_clean_text(source.get("image_name"), "", 255),
-        "dimensions": _product_3d_dimensions(source.get("dimensions")),
-        "studio": _product_3d_json_dict(source.get("studio")),
-        "created_at": created_at,
-        "updated_at": _product_3d_store_timestamp(source.get("updated_at")) or created_at,
-    }
-
-
-def _normalize_soft_furnishing_object(value: Any, index: int = 0) -> Dict[str, Any]:
-    source = value if isinstance(value, dict) else {}
-    object_id = re.sub(r"[^A-Za-z0-9_-]", "", str(source.get("id") or ""))[:80]
-    if not object_id:
-        object_id = f"sceneobj_{uuid.uuid4().hex[:12]}"
-    role = str(source.get("role") or "other").strip().lower()
-    if role not in PRODUCT_3D_CATEGORIES:
-        role = "other"
-    asset_id = re.sub(r"[^A-Za-z0-9_-]", "", str(source.get("asset_id") or ""))[:80]
-    color = str(source.get("color") or "").strip()
-    if not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
-        color = "#7c5cff"
-    return {
-        "id": object_id,
-        "name": _product_3d_clean_text(source.get("name"), f"{role} 占位", 120),
-        "role": role,
-        "asset_id": asset_id,
-        "x": round(_product_3d_number(source.get("x"), 0, -30, 30), 4),
-        "y": round(_product_3d_number(source.get("y"), -1.35, -10, 10), 4),
-        "z": round(_product_3d_number(source.get("z"), 0, -30, 30), 4),
-        "rotation": round(_product_3d_number(source.get("rotation"), 0, -360, 360), 3),
-        "scale": round(_product_3d_number(source.get("scale"), 1, 0.05, 20), 4),
-        "color": color,
-        "created_at": _product_3d_store_timestamp(source.get("created_at")) or now_ms(),
-    }
-
-
-def _normalize_soft_furnishing_scene(value: Any, strict_urls: bool = False) -> Dict[str, Any]:
-    source = value if isinstance(value, dict) else {}
-    scene_id = re.sub(r"[^A-Za-z0-9_-]", "", str(source.get("id") or ""))[:80]
-    if not scene_id:
-        scene_id = f"softscene_{uuid.uuid4().hex[:12]}"
-    raw_objects = source.get("objects") if isinstance(source.get("objects"), list) else []
-    objects = [_normalize_soft_furnishing_object(item, index) for index, item in enumerate(raw_objects[:80])]
-    created_at = _product_3d_store_timestamp(source.get("created_at")) or now_ms()
-    return {
-        "id": scene_id,
-        "name": _product_3d_clean_text(source.get("name"), "未命名软装场景"),
-        "background_url": _product_3d_public_url(source.get("background_url"), "场景图地址", strict=strict_urls),
-        "background_name": _product_3d_clean_text(source.get("background_name"), "", 255),
-        "objects": objects,
-        "settings": _product_3d_json_dict(source.get("settings")),
-        "composition_prompt": str(source.get("composition_prompt") or "").strip()[:4000],
-        "control_image_url": _product_3d_public_url(source.get("control_image_url"), "编排图地址", strict=strict_urls),
-        "created_at": created_at,
-        "updated_at": _product_3d_store_timestamp(source.get("updated_at")) or created_at,
-    }
-
-
-def _product_3d_default_asset_store() -> Dict[str, Any]:
-    return {"version": 1, "assets": [], "updated_at": now_ms()}
-
-
-def _soft_furnishing_default_scene_store() -> Dict[str, Any]:
-    return {"version": 1, "scenes": [], "updated_at": now_ms()}
-
-
-def _product_3d_read_store(path: str, key: str, normalizer, default_factory) -> Dict[str, Any]:
-    raw = default_factory()
-    if os.path.isfile(path):
-        try:
-            with open(path, "r", encoding="utf-8-sig") as file:
-                loaded = json.load(file)
-            if isinstance(loaded, dict):
-                raw = loaded
-        except Exception as exc:
-            print(f"加载 3D 软装数据失败: {exc}")
-    entries = raw.get(key) if isinstance(raw.get(key), list) else []
-    return {
-        "version": 1,
-        key: [normalizer(item, strict_urls=False) for item in entries[:500] if isinstance(item, dict)],
-        "updated_at": _product_3d_store_timestamp(raw.get("updated_at")) or now_ms(),
-    }
-
-
-def _product_3d_write_store(path: str, value: Dict[str, Any]) -> Dict[str, Any]:
-    os.makedirs(DATA_DIR, exist_ok=True)
-    value["updated_at"] = now_ms()
-    temp_path = f"{path}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
-    try:
-        with open(temp_path, "w", encoding="utf-8") as file:
-            json.dump(value, file, ensure_ascii=False, indent=2)
-        os.replace(temp_path, path)
-    finally:
-        try:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-        except OSError:
-            pass
-    return value
-
-
-def load_product_3d_asset_store() -> Dict[str, Any]:
-    return _product_3d_read_store(
-        PRODUCT_3D_ASSETS_PATH, "assets", _normalize_product_3d_asset, _product_3d_default_asset_store
-    )
-
-
-def load_soft_furnishing_scene_store() -> Dict[str, Any]:
-    return _product_3d_read_store(
-        SOFT_FURNISHING_SCENES_PATH, "scenes", _normalize_soft_furnishing_scene, _soft_furnishing_default_scene_store
-    )
 
 @app.post("/api/ai/upload-base64")
 async def upload_ai_base64(payload: Base64UploadRequest):
@@ -26335,124 +26222,6 @@ async def upload_ai_base64(payload: Base64UploadRequest):
         result["auto_compressed"] = _auto_compressed_reference_upload_meta(auto_compressed, payload.name)
     return {"files": [result]}
 
-
-@app.get("/api/product-3d/assets")
-async def get_product_3d_assets():
-    with PRODUCT_3D_STORE_LOCK:
-        store = load_product_3d_asset_store()
-    return {"assets": store.get("assets") or [], "updated_at": store.get("updated_at") or now_ms()}
-
-
-@app.post("/api/product-3d/assets")
-async def create_product_3d_asset(payload: Product3DAssetCreateRequest, request: Request):
-    ensure_same_origin_request(request)
-    source = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
-    source["id"] = f"product3d_{uuid.uuid4().hex[:12]}"
-    source["created_at"] = now_ms()
-    source["updated_at"] = source["created_at"]
-    asset = _normalize_product_3d_asset(source, strict_urls=True)
-    if not asset.get("model_url") and not asset.get("image_url"):
-        raise HTTPException(status_code=400, detail="请至少上传一张产品图或一个 3D 模型")
-    with PRODUCT_3D_STORE_LOCK:
-        store = load_product_3d_asset_store()
-        store.setdefault("assets", []).insert(0, asset)
-        store = _product_3d_write_store(PRODUCT_3D_ASSETS_PATH, store)
-    return {"asset": asset, "assets": store.get("assets") or [], "updated_at": store.get("updated_at")}
-
-
-@app.patch("/api/product-3d/assets/{asset_id}")
-async def update_product_3d_asset(asset_id: str, payload: Product3DAssetUpdateRequest, request: Request):
-    ensure_same_origin_request(request)
-    safe_asset_id = re.sub(r"[^A-Za-z0-9_-]", "", str(asset_id or ""))[:80]
-    if not safe_asset_id:
-        raise HTTPException(status_code=400, detail="无效的商品模型 ID")
-    patch = payload.model_dump(exclude_unset=True) if hasattr(payload, "model_dump") else payload.dict(exclude_unset=True)
-    with PRODUCT_3D_STORE_LOCK:
-        store = load_product_3d_asset_store()
-        current = next((item for item in store.get("assets") or [] if item.get("id") == safe_asset_id), None)
-        if not current:
-            raise HTTPException(status_code=404, detail="商品模型不存在")
-        merged = {**current, **patch, "id": safe_asset_id, "created_at": current.get("created_at") or now_ms(), "updated_at": now_ms()}
-        asset = _normalize_product_3d_asset(merged, strict_urls=True)
-        if not asset.get("model_url") and not asset.get("image_url"):
-            raise HTTPException(status_code=400, detail="商品模型至少需要保留产品图或 3D 模型")
-        store["assets"] = [asset if item.get("id") == safe_asset_id else item for item in store.get("assets") or []]
-        store = _product_3d_write_store(PRODUCT_3D_ASSETS_PATH, store)
-    return {"asset": asset, "assets": store.get("assets") or [], "updated_at": store.get("updated_at")}
-
-
-@app.delete("/api/product-3d/assets/{asset_id}")
-async def delete_product_3d_asset(asset_id: str, request: Request):
-    ensure_same_origin_request(request)
-    safe_asset_id = re.sub(r"[^A-Za-z0-9_-]", "", str(asset_id or ""))[:80]
-    with PRODUCT_3D_STORE_LOCK:
-        store = load_product_3d_asset_store()
-        target = next((item for item in store.get("assets") or [] if item.get("id") == safe_asset_id), None)
-        if not target:
-            raise HTTPException(status_code=404, detail="商品模型不存在")
-        scene_store = load_soft_furnishing_scene_store()
-        references = [scene.get("name") or "未命名场景" for scene in scene_store.get("scenes") or [] if any(obj.get("asset_id") == safe_asset_id for obj in scene.get("objects") or [])]
-        if references:
-            raise HTTPException(status_code=409, detail=f"该模型仍被场景使用：{'、'.join(references[:3])}")
-        store["assets"] = [item for item in store.get("assets") or [] if item.get("id") != safe_asset_id]
-        store = _product_3d_write_store(PRODUCT_3D_ASSETS_PATH, store)
-    # 仅移除索引，绝不删除用户已经上传的模型或产品图文件。
-    return {"ok": True, "deleted": safe_asset_id, "assets": store.get("assets") or [], "updated_at": store.get("updated_at")}
-
-
-@app.get("/api/soft-furnishing/scenes")
-async def get_soft_furnishing_scenes():
-    with PRODUCT_3D_STORE_LOCK:
-        store = load_soft_furnishing_scene_store()
-    return {"scenes": store.get("scenes") or [], "updated_at": store.get("updated_at") or now_ms()}
-
-
-@app.post("/api/soft-furnishing/scenes")
-async def create_soft_furnishing_scene(payload: SoftFurnishingSceneCreateRequest, request: Request):
-    ensure_same_origin_request(request)
-    source = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
-    source["id"] = f"softscene_{uuid.uuid4().hex[:12]}"
-    source["created_at"] = now_ms()
-    source["updated_at"] = source["created_at"]
-    scene = _normalize_soft_furnishing_scene(source, strict_urls=True)
-    with PRODUCT_3D_STORE_LOCK:
-        store = load_soft_furnishing_scene_store()
-        store.setdefault("scenes", []).insert(0, scene)
-        store = _product_3d_write_store(SOFT_FURNISHING_SCENES_PATH, store)
-    return {"scene": scene, "scenes": store.get("scenes") or [], "updated_at": store.get("updated_at")}
-
-
-@app.patch("/api/soft-furnishing/scenes/{scene_id}")
-async def update_soft_furnishing_scene(scene_id: str, payload: SoftFurnishingSceneUpdateRequest, request: Request):
-    ensure_same_origin_request(request)
-    safe_scene_id = re.sub(r"[^A-Za-z0-9_-]", "", str(scene_id or ""))[:80]
-    if not safe_scene_id:
-        raise HTTPException(status_code=400, detail="无效的软装场景 ID")
-    patch = payload.model_dump(exclude_unset=True) if hasattr(payload, "model_dump") else payload.dict(exclude_unset=True)
-    with PRODUCT_3D_STORE_LOCK:
-        store = load_soft_furnishing_scene_store()
-        current = next((item for item in store.get("scenes") or [] if item.get("id") == safe_scene_id), None)
-        if not current:
-            raise HTTPException(status_code=404, detail="软装场景不存在")
-        merged = {**current, **patch, "id": safe_scene_id, "created_at": current.get("created_at") or now_ms(), "updated_at": now_ms()}
-        scene = _normalize_soft_furnishing_scene(merged, strict_urls=True)
-        store["scenes"] = [scene if item.get("id") == safe_scene_id else item for item in store.get("scenes") or []]
-        store = _product_3d_write_store(SOFT_FURNISHING_SCENES_PATH, store)
-    return {"scene": scene, "scenes": store.get("scenes") or [], "updated_at": store.get("updated_at")}
-
-
-@app.delete("/api/soft-furnishing/scenes/{scene_id}")
-async def delete_soft_furnishing_scene(scene_id: str, request: Request):
-    ensure_same_origin_request(request)
-    safe_scene_id = re.sub(r"[^A-Za-z0-9_-]", "", str(scene_id or ""))[:80]
-    with PRODUCT_3D_STORE_LOCK:
-        store = load_soft_furnishing_scene_store()
-        if not any(item.get("id") == safe_scene_id for item in store.get("scenes") or []):
-            raise HTTPException(status_code=404, detail="软装场景不存在")
-        store["scenes"] = [item for item in store.get("scenes") or [] if item.get("id") != safe_scene_id]
-        store = _product_3d_write_store(SOFT_FURNISHING_SCENES_PATH, store)
-    # 编排图仍保留在已有素材目录，用户可在其它功能继续使用。
-    return {"ok": True, "deleted": safe_scene_id, "scenes": store.get("scenes") or [], "updated_at": store.get("updated_at")}
 
 @app.post("/api/comfyui/upload-base64")
 async def upload_comfyui_base64(payload: Base64UploadRequest):
@@ -27058,7 +26827,10 @@ async def import_local_ai_reference(payload: LocalImageImportRequest, request: R
     requested = [p for p in requested if str(p or "").strip()]
     if not requested:
         raise HTTPException(status_code=400, detail="没有可导入的本地图片")
-    return {"files": [import_local_image_file(normalize_local_image_path(path)) for path in requested]}
+    imported = await asyncio.to_thread(
+        lambda: [import_local_image_file(normalize_local_image_path(path)) for path in requested]
+    )
+    return {"files": imported}
 
 async def fetch_runninghub_app_info(provider, app_id, *, use_wallet=False):
     timeout = httpx.Timeout(connect=20, read=120, write=30, pool=20)
@@ -28448,6 +28220,68 @@ async def test_provider_connection(payload: TestConnectionPayload):
     )
 
 
+@app.get("/api/image-network/{provider_id}")
+async def read_image_network(provider_id: str):
+    provider = get_api_provider_exact(provider_id)
+    return network_diagnostics.image_status(provider["id"])
+
+
+@app.post("/api/image-network/{provider_id}/check")
+async def check_image_network(provider_id: str):
+    provider = get_api_provider_exact(provider_id)
+    protocol = provider_protocol(provider)
+    base = str(provider.get("base_url") or "").strip()
+    url = base
+    started = time.monotonic()
+    status, code = "ok", "models_ok"
+    proxy_route = ""
+    try:
+        if protocol in {"codex", "gemini-cli", "jimeng", "runninghub"}:
+            status, code = "unknown", "awaiting_task"
+        else:
+            base = provider_discovery.validate_base(base)
+            url = provider_discovery.models_url(base, protocol)
+            key = api_key_from_payload(TestConnectionPayload(provider_id=provider["id"]), protocol)
+            if not key:
+                status, code = "error", "missing_key"
+            else:
+                async with httpx.AsyncClient(timeout=7) as client:
+                    proxy_route = network_diagnostics.request_proxy(client, url)
+                    response = await asyncio.wait_for(client.get(url, headers=provider_discovery.request_headers(key, protocol)), 9)
+                if response.status_code in {404, 405}:
+                    status, code = "unknown", "models_unavailable"
+                else:
+                    response.raise_for_status()
+                    models = response.json()
+                    if not isinstance(models, list) and not (
+                        isinstance(models, dict) and any(isinstance(models.get(k), list) for k in ("data", "models", "items"))
+                    ):
+                        status, code = "error", "invalid_response"
+    except (httpx.HTTPError, OSError, asyncio.TimeoutError, HTTPException) as exc:
+        status, code = "error", network_diagnostics.error_code(exc)
+    except ValueError:
+        status, code = "error", "invalid_response"
+    if status != "unknown" or "provider" not in network_diagnostics.image_status(provider["id"])["checks"]:
+        network_diagnostics.record_image_check(provider["id"], "provider", status, code, url=url, started=started, proxy_route=proxy_route, probe=True)
+    return network_diagnostics.image_status(provider["id"])
+
+
+@app.post("/api/image-network/{provider_id}/compare")
+async def compare_image_network(provider_id: str, target: Literal["provider", "download"] = "provider"):
+    provider = get_api_provider_exact(provider_id)
+    if target == "download":
+        row = network_diagnostics.image_status(provider["id"])["checks"].get("download", {})
+        address = row.get("origin", "")
+        if not address:
+            raise HTTPException(400, "此平台还没有可对照的图片域名。")
+    else:
+        address = provider.get("base_url") or ""
+    origin = network_diagnostics.http_origin(address)
+    if not origin:
+        raise HTTPException(400, "此平台没有可对照的 HTTP 地址。")
+    return await network_diagnostics.compare_proxy_routes(origin)
+
+
 @app.post("/api/providers/probe-async")
 async def probe_async_endpoint(payload: TestConnectionPayload):
     protocol = protocol_from_payload(payload)
@@ -29047,7 +28881,10 @@ async def build_online_image_result(payload: OnlineImageRequest, history_source=
         binding_id = str(payload.client_request_id or "").strip() or f"xiaomei-{uuid.uuid4().hex}"
         binding_token = IMAGE_TASK_BINDING_ID.set(binding_id)
         callback_token = IMAGE_TASK_UPSTREAM_CALLBACK.set(task_update_callback)
+        query_token = IMAGE_QUERY_OBSERVED.set(False)
+        started = time.monotonic()
         try:
+            size_is_resolved = (gpt_retouch or retouch_ratio) if payload.product_retouch else bool(all(parse_size_pair(request_size)))
             if operation == "upscale":
                 image_data, raw_item = await generate_jimeng_upscale_image(image_refs, payload.resolution_type)
             else:
@@ -29061,11 +28898,15 @@ async def build_online_image_result(payload: OnlineImageRequest, history_source=
                     'source' if fidelity_context and fidelity_context['config']['mode'] == 'strict' and not fidelity_context['config']['dimensions']['enabled'] else request_aspect_ratio,
                     request_background,
                     **({"resolution": payload.resolution} if payload.resolution and not gif_output else {}),
-                    **({"size_is_resolved": True} if gpt_retouch or retouch_ratio else {}),
+                    **({"size_is_resolved": True} if size_is_resolved else {}),
                     **({"prefer_native_gemini": True} if retouch_ratio and is_comfly_gemini_image_model(provider, model) else {}),
                     **({"output_format": payload.output_format} if payload.output_format else {}),
                 )
             upstream_task_id = extract_task_id(raw_item) if isinstance(raw_item, dict) else None
+            network_diagnostics.record_image_check(provider["id"], "provider", "ok", "generation_ok",
+                                                   url=provider.get("base_url"), started=started)
+            if not upstream_task_id and not IMAGE_QUERY_OBSERVED.get():
+                network_diagnostics.record_image_check(provider["id"], "query", "skipped", "sync_result")
             if upstream_task_id and callable(task_update_callback):
                 task_update_callback(upstream_task_id)
             try:
@@ -29074,28 +28915,18 @@ async def build_online_image_result(payload: OnlineImageRequest, history_source=
                 image_items = [image_data]
             local_urls = []
             local_items = []
-            for item in image_items:
+            missing = []
+            for slot, item in enumerate(image_items, 1):
                 try:
-                    local_url = await save_ai_image_to_output(item, prefix="online_", seen_hashes=seen_hashes, require_local=True)
+                    local_url = await save_ai_image_to_output(item, prefix="online_", seen_hashes=seen_hashes,
+                                                             require_local=True, provider_id=provider["id"])
                 except ValueError as exc:
                     if svg_output:
                         raise HTTPException(status_code=502, detail=str(exc)) from exc
                     raise
                 except ImageResultDownloadError as exc:
-                    # Keep the exact image candidates even when an adapter's raw
-                    # response uses a different shape from its extracted result.
-                    recovery_data = [
-                        {"url": image["value"]} if image["type"] == "url" else
-                        {"b64_json": image["value"], "mime_type": image.get("mime_type")}
-                        for image in image_items
-                    ]
-                    recovery_id = save_unparsed_image_response(provider["id"], model, {"data": recovery_data}, upstream_task_id)
-                    error = HTTPException(
-                        status_code=502,
-                        detail=f"平台已返回图片，但下载或保存失败。恢复编号：{recovery_id}。请重试取图，避免重复生成。",
-                    )
-                    error.recovery_id = recovery_id
-                    raise error from exc
+                    missing.append((slot, item, exc))
+                    continue
                 if local_url:
                     local_item = await asyncio.to_thread(image_output_meta, local_url, item)
                     if gif_output and not local_item.get("animated"):
@@ -29113,14 +28944,24 @@ async def build_online_image_result(payload: OnlineImageRequest, history_source=
                     if payload.outpaint_mode and await asyncio.to_thread(_outpaint_original_redrawn, local_url, outpaint_preserve):
                         local_item["outpaint_original_redrawn"] = True
                     local_items.append(local_item)
+            delivery_error = None
+            if missing:
+                recovery_id = retain_failed_image_results(provider["id"], model, upstream_task_id, missing)
+                delivery_error = image_delivery_failure(recovery_id, len(local_urls), len(image_items))
+                delivery_error.upstream_task_id = upstream_task_id
+                if not local_urls:
+                    raise delivery_error from missing[0][2]
             if not local_urls:
                 raise HTTPException(status_code=502, detail="上游任务已完成，但没有取得可保存的图片数据")
             if fidelity_context:
                 protected = [await asyncio.to_thread(finish_product_fidelity, fidelity_context, url) for url in local_urls]
                 local_urls = [item[0] for item in protected]
                 local_items = [item[1] for item in protected]
-            return local_urls, local_items, raw_item
+            return local_urls, local_items, raw_item, delivery_error
         except Exception as exc:
+            if isinstance(exc, httpx.HTTPError) and not IMAGE_QUERY_OBSERVED.get():
+                network_diagnostics.record_image_check(provider["id"], "provider", "error",
+                                                       network_diagnostics.error_code(exc), url=provider.get("base_url"), started=started)
             # 上游已成功创建任务后，即使下载/落盘失败，也要把任务 ID 交给前端继续查询，
             # 不能让某一张结果静默消失。
             upstream_task_id = upstream_task_id or getattr(exc, "upstream_task_id", "") or extract_task_id_from_text(str(exc))
@@ -29130,6 +28971,7 @@ async def build_online_image_result(payload: OnlineImageRequest, history_source=
                 setattr(exc, "upstream_task_id", upstream_task_id)
             raise
         finally:
+            IMAGE_QUERY_OBSERVED.reset(query_token)
             IMAGE_TASK_UPSTREAM_CALLBACK.reset(callback_token)
             IMAGE_TASK_BINDING_ID.reset(binding_token)
     generated = await asyncio.gather(*(generate_one() for _ in range(count)), return_exceptions=True)
@@ -29150,8 +28992,9 @@ async def build_online_image_result(payload: OnlineImageRequest, history_source=
             raise HTTPException(status_code=502, detail=detail) from exc
         raise exc
 
-    local_urls = [url for urls, _items, _raw in generated for url in (urls or []) if url]
-    local_items = [item for _urls, items, _raw in generated for item in (items or []) if item.get("url")]
+    failures.extend(item[3] for item in generated if item[3] is not None)
+    local_urls = [url for urls, _items, _raw, _failure in generated for url in (urls or []) if url]
+    local_items = [item for _urls, items, _raw, _failure in generated for item in (items or []) if item.get("url")]
     raw = generated[0][2] if generated else {}
     if not local_urls:
         provider_name = provider.get("name") or provider["id"]
@@ -29212,6 +29055,10 @@ async def build_online_image_result(payload: OnlineImageRequest, history_source=
             {
                 "error": str(getattr(item, "detail", None) or item)[:500],
                 "upstream_task_id": getattr(item, "upstream_task_id", "") or extract_task_id_from_text(str(item)),
+                **({
+                    "recovery_id": item.recovery_id,
+                    "missing_count": getattr(item, "missing_count", 1),
+                } if getattr(item, "recovery_id", "") else {}),
             }
             for item in failures
         ]
@@ -29297,21 +29144,30 @@ async def query_image_task(payload: ImageTaskQueryRequest):
     if image_items:
         local_urls = []
         local_items = []
-        try:
-            for item in image_items:
-                local_url = await save_ai_image_to_output(item, prefix="online_", require_local=True)
+        missing = []
+        for slot, item in enumerate(image_items, 1):
+            try:
+                local_url = await save_ai_image_to_output(item, prefix="online_", require_local=True, provider_id=provider["id"])
                 if local_url:
                     local_urls.append(local_url)
                     local_items.append(await asyncio.to_thread(image_output_meta, local_url, item))
-        except ImageResultDownloadError:
-            local_urls = []
+            except ImageResultDownloadError as exc:
+                missing.append((slot, item, exc))
+        problems = []
+        if missing:
+            recovery_id = retain_failed_image_results(provider["id"], "", task_id, missing)
+            problems.append({
+                "error": image_delivery_failure(recovery_id, len(local_urls), len(image_items)).detail,
+                "recovery_id": recovery_id, "upstream_task_id": task_id, "missing_count": len(missing),
+            })
         if not local_urls:
             return {
                 "status": "failed",
                 "task_id": task_id,
                 "provider_id": provider["id"],
                 "provider_name": provider.get("name") or provider["id"],
-                "error": "平台已返回图片，但下载或保存失败。请稍后重新查询此任务，避免重复生成。",
+                "error": problems[0]["error"] if problems else "平台已返回结果，但没有取得可保存的图片。",
+                "recovery_id": problems[0]["recovery_id"] if problems else "",
                 "raw": raw,
             }
         result = {
@@ -29334,6 +29190,8 @@ async def query_image_task(payload: ImageTaskQueryRequest):
             },
             "raw": raw,
         }
+        if problems:
+            result["partial_failures"] = problems
         result = await protect_recovered_product_result(result)
         save_to_history(result)
         if GLOBAL_LOOP:
@@ -29348,6 +29206,9 @@ async def query_image_task(payload: ImageTaskQueryRequest):
         "raw": raw,
     }
 
+IMAGE_RECOVERY_LOCKS = tuple(asyncio.Lock() for _ in range(16))
+
+
 @app.post("/api/image-result-recovery/{recovery_id}")
 async def recover_unparsed_image_result(
     recovery_id: str,
@@ -29355,6 +29216,41 @@ async def recover_unparsed_image_result(
     project_id: str = "",
 ):
     """从已保存的上游响应恢复图片，不再次请求生图模型。"""
+    async with IMAGE_RECOVERY_LOCKS[hash(recovery_id) % len(IMAGE_RECOVERY_LOCKS)]:
+        return await recover_image_result(recovery_id, history_source, project_id)
+
+
+def read_image_recovery_progress(recovery_id):
+    if not os.path.isfile(HISTORY_FILE):
+        return {}
+    with HISTORY_LOCK:
+        for row in _load_history_for_update_locked():
+            if (
+                isinstance(row, dict) and row.get("recovered_without_generation")
+                and (row.get("params") or {}).get("recovery_id") == recovery_id
+            ):
+                return row
+    return {}
+
+
+async def refresh_recovery_image_addresses(provider_id, task_id):
+    try:
+        provider = get_api_provider_exact(provider_id)
+        if is_runninghub_provider(provider) or is_jimeng_provider(provider):
+            return []
+        binding_id = await asyncio.to_thread(_find_canvas_task_by_upstream_task_id, task_id, provider_id) if is_soonstudio_provider(provider) else ""
+        token = IMAGE_TASK_BINDING_ID.set(binding_id)
+        try:
+            async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
+                payload = await asyncio.wait_for(fetch_image_task_payload(client, task_id, provider), 10)
+            return image_task_queries.inspect(payload).images
+        finally:
+            IMAGE_TASK_BINDING_ID.reset(token)
+    except (httpx.HTTPError, HTTPException, asyncio.TimeoutError):
+        return []
+
+
+async def recover_image_result(recovery_id, history_source, project_id):
     record = await asyncio.to_thread(load_unparsed_image_response, recovery_id)
     if not record:
         raise HTTPException(status_code=404, detail="没有找到该恢复记录")
@@ -29379,23 +29275,53 @@ async def recover_unparsed_image_result(
             status_code=502,
             detail="恢复记录仍无法识别，请保留恢复编号并更新解析器；系统不会重新调用模型扣费。",
         )
-    local_urls = []
-    local_items = []
-    for item in image_items:
-        try:
-            local_url = await save_ai_image_to_output(item, prefix="recovered_", require_local=True)
-        except ImageResultDownloadError as exc:
-            raise HTTPException(status_code=502, detail="图片仍无法下载或保存。请检查网络后再次恢复。") from exc
-        if not local_url:
+    provider_id = record.get("provider_id") or ""
+    task_id = record.get("task_id") or ""
+    slots = raw.get("recovery_slots") if isinstance(raw, dict) else None
+    if not isinstance(slots, list) or len(slots) != len(image_items):
+        slots = list(range(1, len(image_items) + 1))
+    progress = await asyncio.to_thread(read_image_recovery_progress, recovery_id)
+    saved = {
+        item["recovery_slot"]: item for item in progress.get("image_items", [])
+        if item.get("recovery_slot") in slots and output_file_from_url(item.get("url"))
+    }
+    if progress and len(saved) == len(slots):
+        return progress
+    refreshed = None
+    missing = []
+    for slot, item in zip(slots, image_items):
+        if slot in saved:
             continue
-        local_urls.append(local_url)
-        local_items.append(await asyncio.to_thread(image_output_meta, local_url, item))
-    if not local_urls:
-        raise HTTPException(status_code=502, detail="已识别上游图片，但下载或保存失败；系统没有重新调用模型。")
+        try:
+            local_url = await save_ai_image_to_output(item, prefix="recovered_", require_local=True, provider_id=provider_id)
+        except ImageResultDownloadError as exc:
+            local_url = ""
+            failure = exc
+            if task_id and exc.stage == "download" and exc.status in {401, 403, 404, 410}:
+                if refreshed is None:
+                    refreshed = await refresh_recovery_image_addresses(provider_id, task_id)
+                if len(refreshed) >= slot and refreshed[slot - 1]["value"] != item["value"]:
+                    item = refreshed[slot - 1]
+                    try:
+                        local_url = await save_ai_image_to_output(item, prefix="recovered_", require_local=True, provider_id=provider_id)
+                    except ImageResultDownloadError as refresh_error:
+                        failure = refresh_error
+            if not local_url:
+                missing.append(slot)
+                network_diagnostics.record_image_check(
+                    provider_id, failure.stage, "error", failure.code,
+                    url=failure.observed_url or (item["value"] if item["type"] == "url" else ""),
+                    recovery_id=recovery_id, proxy_route=failure.proxy_route if failure.stage == "download" else "",
+                )
+        if local_url:
+            saved[slot] = {**await asyncio.to_thread(image_output_meta, local_url, item), "recovery_slot": slot}
+    if not saved:
+        raise image_delivery_failure(recovery_id, 0, len(slots))
+    local_items = [saved[slot] for slot in sorted(saved)]
     result = {
         "status": "succeeded",
         "prompt": "",
-        "images": local_urls,
+        "images": [item["url"] for item in local_items],
         "image_items": local_items,
         "timestamp": time.time(),
         "type": "online",
@@ -29413,8 +29339,18 @@ async def recover_unparsed_image_result(
         },
         "recovered_without_generation": True,
     }
-    result = await protect_recovered_product_result(result, recovery_id)
+    if missing:
+        result["partial_failures"] = [{
+            "error": image_delivery_failure(recovery_id, len(saved), len(slots)).detail,
+            "recovery_id": recovery_id, "missing_count": len(missing),
+        }]
+    else:
+        result = await protect_recovered_product_result(result, recovery_id)
+        for item, slot in zip(result["image_items"], sorted(saved)):
+            item["recovery_slot"] = slot
     save_to_history(result)
+    if not missing:
+        network_diagnostics.clear_image_incident(provider_id, recovery_id)
     if GLOBAL_LOOP:
         asyncio.run_coroutine_threadsafe(workspace_events.broadcast_new_image(result), GLOBAL_LOOP)
     return result
@@ -34034,7 +33970,7 @@ async def commerce_analysis_capture_merchant_report(payload: CommerceMerchantRep
     url = str(payload.url or "").strip()
     if url:
         host = (urllib.parse.urlsplit(url).hostname or "").lower().rstrip(".")
-        allowed_hosts = ("taobao.com", "1688.com", "tmall.com")
+        allowed_hosts = ("taobao.com", "1688.com", "tmall.com", "jd.com", "jingdong.com", "jd.hk", "yiyaojd.com")
         if not any(host == suffix or host.endswith(f".{suffix}") for suffix in allowed_hosts):
             raise HTTPException(status_code=400, detail="报表页面域名不在白名单内")
     payload_data = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
@@ -34090,7 +34026,7 @@ async def commerce_analysis_capture_operations(payload: CommerceOperationsCaptur
     url = str(payload.url or "").strip()
     if url:
         host = (urllib.parse.urlsplit(url).hostname or "").lower().rstrip(".")
-        allowed_hosts = ("taobao.com", "1688.com", "tmall.com")
+        allowed_hosts = ("taobao.com", "1688.com", "tmall.com", "jd.com", "jingdong.com", "jd.hk", "yiyaojd.com")
         if not any(host == suffix or host.endswith(f".{suffix}") for suffix in allowed_hosts):
             raise HTTPException(status_code=400, detail="运营数据页面域名不在白名单内")
     payload_data = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
@@ -38522,7 +38458,7 @@ async def chat(payload: ChatRequest, request: Request, x_user_id: str = Header(d
         image_size = chat_prompt_size_override(payload.message, payload.size) or payload.size
         try:
             image_data, raw = await generate_ai_image(payload.message, image_size, payload.quality, model, image_refs, provider["id"], "", payload.background)
-            local_url = await save_ai_image_to_output(image_data, prefix="chat_")
+            local_url, recovery = await save_chat_delivery(provider, model, image_data, raw)
         except httpx.HTTPStatusError as exc:
             text = exc.response.text or ""
             detail = friendly_image_error_detail(text, image_size, model) or f"上游生图接口错误：{text[:300]}"
@@ -38543,23 +38479,33 @@ async def chat(payload: ChatRequest, request: Request, x_user_id: str = Header(d
             "background": payload.background,
             "raw_usage": raw.get("usage") if isinstance(raw, dict) else None,
         }
-        history_record = chat_image_history_record(
-            payload.message,
-            [local_url],
-            model,
-            provider,
-            image_size,
-            payload.quality,
-            image_refs,
-            "generate_image",
-            raw,
-            payload.background,
-        )
+        if recovery:
+            assistant_message["image_recoveries"] = [recovery]
+        if local_url:
+            history_record = chat_image_history_record(
+                payload.message, [local_url], model, provider, image_size, payload.quality,
+                image_refs, "generate_image", raw, payload.background,
+            )
     else:
         assistant_message = await build_chat_text_reply(payload, conversation, allow_retry=False)
 
     conversation = _complete_chat_reply(user_id, conversation, user_message, assistant_message, history_record)
     return {"conversation": conversation, "message": assistant_message}
+
+@app.post("/api/chat/image-result-recovery/{conversation_id}/{message_id}/{recovery_id}")
+async def recover_chat_image(conversation_id: str, message_id: str, recovery_id: str,
+                             request: Request, x_user_id: str = Header(default="")):
+    user_id = safe_user_id(x_user_id, request)
+    conversation = load_conversation(user_id, conversation_id)
+    message = next((row for row in conversation["messages"] if isinstance(row, dict) and row.get("id") == message_id), {})
+    if not any(entry.get("id") == recovery_id for entry in message.get("image_recoveries", [])):
+        raise HTTPException(404, "该对话中没有这张待恢复的图片。")
+    result = await recover_unparsed_image_result(recovery_id, history_source="chat", project_id="")
+    conversation = await asyncio.to_thread(
+        CHAT_CONVERSATIONS.apply_image_recovery, user_id, conversation_id, message_id, recovery_id,
+        result["images"], not result.get("partial_failures"),
+    )
+    return {"conversation": conversation}
 
 @app.post("/api/chat/agent")
 async def chat_agent(payload: ChatRequest, request: Request, x_user_id: str = Header(default="")):
@@ -38710,10 +38656,15 @@ async def _run_chat_agent_turn(payload, user_id, conversation, link_context, con
             prompts = chat_image_requests.batch_prompts(prompt, requested_count)
             local_urls = []
             raw_items = []
+            recoveries = []
             try:
                 for item_prompt in prompts:
                     image_data, raw = await generate_ai_image(item_prompt, image_size, payload.quality, model, tool_refs, image_provider["id"], "", payload.background)
-                    local_urls.append(await save_ai_image_to_output(image_data, prefix="chat_"))
+                    local_url, recovery = await save_chat_delivery(image_provider, model, image_data, raw)
+                    if local_url:
+                        local_urls.append(local_url)
+                    if recovery:
+                        recoveries.append(recovery)
                     raw_items.append(raw)
             except httpx.HTTPStatusError as exc:
                 text = exc.response.text or ""
@@ -38744,18 +38695,13 @@ async def _run_chat_agent_turn(payload, user_id, conversation, link_context, con
                 "generation_draft_id": str(confirmed_draft.get("id") or ""),
                 "raw_usage": raw_items[0].get("usage") if raw_items and isinstance(raw_items[0], dict) else None,
             }
-            history_record = chat_image_history_record(
-                prompt,
-                local_urls,
-                model,
-                image_provider,
-                image_size,
-                payload.quality,
-                tool_refs,
-                action,
-                raw_items,
-                payload.background,
-            )
+            if recoveries:
+                assistant_message["image_recoveries"] = recoveries
+            if local_urls:
+                history_record = chat_image_history_record(
+                    prompt, local_urls, model, image_provider, image_size, payload.quality,
+                    tool_refs, action, raw_items, payload.background,
+                )
     else:
         assistant_message = await build_chat_text_reply(payload, conversation)
         assistant_message["agent_action"] = "chat"
@@ -40187,11 +40133,11 @@ install_canvas_video_timeline(app, sys.modules[__name__])
 from image_vectorizer import install_image_vectorizer
 install_image_vectorizer(app, sys.modules[__name__])
 
-from inspiration_library import install_inspiration_library
-install_inspiration_library(app, sys.modules[__name__])
-
 from multi_agent_api import install_multi_agent
 MULTI_AGENT = install_multi_agent(app, sys.modules[__name__])
+
+from bot_workspace_api import install_bot_workspace
+BOT_WORKSPACE = install_bot_workspace(app, sys.modules[__name__], multi_agent_adapter=MULTI_AGENT)
 
 if __name__ == "__main__":
     import uvicorn

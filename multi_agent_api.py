@@ -546,6 +546,56 @@ class CanvasAgentAdapter:
                 except HTTPException:
                     pass
 
+    def create_run_internal(self, payload: RunRequest):
+        """供路由与持久 Bot 工作区复用的统一画布 Run 创建入口（完整走模型、权限与跨项目校验）。"""
+        if set(payload.allowed_tools) - ALL_TOOLS:
+            raise AgentError("invalid_permissions", "工具权限包含未登记的项目", 422)
+        if "agent.finish_task" not in payload.allowed_tools:
+            raise AgentError("invalid_permissions", "主代理必须保留提交任务结果的权限", 422)
+        self.validate_model(payload.provider_id, payload.model)
+        canvas = self.canvas(payload.model_dump())
+        context = self.context(payload, canvas)
+        run, created = self.store.create(payload, context)
+        if not run["recovery_required"]:
+            self.runtime.start(run["run_id"])
+        return run, created
+
+    def approve_action_internal(self, run_id: str, action_id: str, project_id: str, canvas_id: str, approved: bool):
+        """供路由与持久 Bot 工作区复用的统一动作审批入口。"""
+        with self.store.transaction() as db:
+            run = self.store.scoped(db, run_id, project_id, canvas_id)
+            action = self.store.get(db, "actions", action_id)
+            if action["run_id"] != run_id or action["status"] != "awaiting_approval" or run["cancel_requested"]:
+                raise AgentError("approval_stale", "此操作已变更或结束，请刷新任务状态")
+            if approved:
+                details = self.validate_command(run, action["operation"])
+                action.update(status="registered", approved=True, expected_digest=details["canvas_digest"], expected_node_digest=details["node_digest"], error="")
+            else:
+                action.update(status="failed", approved=False, error="用户拒绝了此操作")
+            self.store.put(db, "actions", action)
+            self.store.event(db, run_id, action["task_id"], "approval", action_id=action_id, approved=approved)
+        self.runtime.start(run_id)
+        return action
+
+    async def resume_run_internal(self, run_id: str, project_id: str, canvas_id: str):
+        """先对账原已提交任务再恢复 Run，绝不重复提交已提交的付费生成。"""
+        with self.store.transaction() as db:
+            run = self.store.scoped(db, run_id, project_id, canvas_id)
+        if run["cancel_requested"] or run["status"] in TERMINAL:
+            raise AgentError("terminal_run", "任务已结束，请新建任务或重试失败项")
+        await self.reconcile(run_id)
+        with self.store.transaction() as db:
+            fresh = self.store.get(db, "runs", run_id)
+            fresh.update(recovery_required=False, error="", status="queued")
+            self.store.put(db, "runs", fresh)
+            for task in self.store.rows(db, "tasks", run_id):
+                if task.get("interrupted_model") and task["status"] not in TERMINAL:
+                    task.update(status="queued", interrupted_model=False, error="")
+                    self.store.put(db, "tasks", task)
+            self.store.event(db, run_id, run["root_task_id"], "resumed", message="已核对已有生成记录，继续未提交的工作")
+        self.runtime.start(run_id)
+        return self.store.snapshot(run_id, project_id)
+
 
 def install_multi_agent(app, host):
     adapter = CanvasAgentAdapter(host, AgentRunStore(Path(host.DATA_DIR) / "multi_agent" / "runs.sqlite3"))

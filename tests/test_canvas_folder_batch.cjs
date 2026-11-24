@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict');
 const {test,before,after}=require('node:test');
-const {readFileSync}=require('node:fs');
+const {existsSync,readFileSync}=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 const {chromium}=require('../tools/commerce-analysis/node_modules/playwright');
@@ -202,13 +202,13 @@ test('Agent bridge resolves explicit ratios with the existing parser and dimensi
     assert.equal(result.generation.aspect_ratio,'4:5');assert.equal(result.generation.size,'2k:custom:4:5');assert.equal(result.generation.model,'dynamic-image');assert.equal(result.skillId,'chosen-skill');
 });
 test('bound folder send precedes edited messages and node scope, with no ordinary action fallback',async()=>{
-    const start=agent.indexOf('    async function send(){');
+    const start=agent.indexOf('    async function sendCurrentMessage(){');
     const end=agent.indexOf('    function renderHistory(',start);
     assert.ok(start>=0&&end>start,'Agent send function boundaries exist');
     const sendSource=agent.slice(start,end);
     const calls=[];
-    const ctx=vm.createContext({sharedCanvasMode:false,folderBatch:{hasActive:()=>true,send:async(text,context)=>{calls.push({text,context});return true;}},input:{value:'改成浅色背景'},busy:false,folderBatchContext:()=>({canvasId:'canvas-a',conversationId:'chat-a'}),store:{activeId:'chat-a'},canvas:{id:'canvas-a'},resizeComposerInput:()=>{},editingUserMessageIndex:7,sendEditedUserMessage:()=>{throw Error('ordinary edit called');},currentTaskScope:()=>{throw Error('node scope called');}});
-    vm.runInContext(sendSource,ctx);await vm.runInContext('send()',ctx);
+    const ctx=vm.createContext({window:{},sharedCanvasMode:false,folderBatch:{hasActive:()=>true,send:async(text,context)=>{calls.push({text,context});return true;}},input:{value:'改成浅色背景'},busy:false,folderBatchContext:()=>({canvasId:'canvas-a',conversationId:'chat-a'}),store:{activeId:'chat-a'},canvas:{id:'canvas-a'},resizeComposerInput:()=>{},editingUserMessageIndex:7,sendEditedUserMessage:()=>{throw Error('ordinary edit called');},currentTaskScope:()=>{throw Error('node scope called');}});
+    vm.runInContext(sendSource,ctx);await vm.runInContext('sendCurrentMessage()',ctx);
     assert.equal(calls.length,1);assert.equal(ctx.input.value,'');
 });
 
@@ -224,9 +224,13 @@ test('full canvas page opens folder plans with working composer and bounded layo
     await page.route('**/*',async route=>{
         const request=route.request(),url=new URL(request.url()),pathname=url.pathname;
         if(pathname.startsWith('/static/')){
-            const file=path.resolve(root,'.'+decodeURIComponent(pathname));
-            assert.ok(file.startsWith(root+path.sep));
-            try{return route.fulfill({path:file});}catch(_){return route.fulfill({status:404,body:''});}
+            const relative=decodeURIComponent(pathname.slice('/static/'.length));
+            for(const directory of ['ComfyUI/web','static']){
+                const base=path.join(root,directory);
+                const file=path.resolve(base,relative);
+                if(file.startsWith(base+path.sep)&&existsSync(file)) return route.fulfill({path:file});
+            }
+            return route.fulfill({status:404,body:''});
         }
         requests.push({path:pathname,method:request.method(),body:request.postDataJSON()});
         if(pathname==='/api/config')return route.fulfill({json:{api_providers:[{id:'fixture',name:'测试平台',protocol:'openai',enabled:true,image_models:['fixture-image'],chat_models:['fixture-chat'],video_models:[]}],chat_models:['fixture-chat'],image_models:['fixture-image'],comfy_instances:[]}});

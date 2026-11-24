@@ -10,7 +10,11 @@ from unittest.mock import AsyncMock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+import provider_discovery
 from scnet_api import SEEDANCE_DOC_URL, VIDEO_DOC_URLS
+
+if __name__ != '__main__':
+    import main
 
 DOC = '<code>{<span>"model"</span>: <span>"Seedance2.0"</span>}</code>'
 VIDEO_MODELS = ['HappyHorse-1.0-T2V','MiniMax-H3','Seedance2.0','Seedance2.5','Wan2.7-T2V']
@@ -61,7 +65,7 @@ class ScnetTests(unittest.TestCase):
         self.assertFalse(main.is_scnet_provider({'base_url': 'https://api.scnet.cn.example/v1'}))
         self.assertFalse(main.is_scnet_provider({'base_url': 'https://www.scnet.cn/ui/console'}))
         for url in ['https://api.scnet.cn', 'https://api.scnet.cn/v1', PROVIDER['base_url']]:
-            self.assertEqual(main.upstream_models_url(url, 'openai'), PROVIDER['base_url'] + '/models')
+            self.assertEqual(provider_discovery.models_url(url, 'openai'), PROVIDER['base_url'] + '/models')
             self.assertEqual(main.video_api_root({**PROVIDER, 'base_url': url}), PROVIDER['base_url'])
         self.assertEqual(main.video_task_url_candidates(PROVIDER, PROVIDER['base_url'], 'a/b'),
                          [PROVIDER['base_url'] + '/tasks/a%2Fb'])
@@ -79,8 +83,7 @@ class ScnetTests(unittest.TestCase):
                     if operation == 'fetch':
                         return await main.fetch_models_from_upstream(PROVIDER['base_url'], 'private-test-key')
                     if operation == 'probe':
-                        _, result = await main.probe_openai_models_endpoint(client, PROVIDER['base_url'], 'private-test-key')
-                        return result
+                        return await main.probe_async_endpoint(main.TestConnectionPayload(base_url=PROVIDER['base_url']))
                     return await main.test_provider_connection(main.TestConnectionPayload(base_url=PROVIDER['base_url']))
             result = asyncio.run(run())
             self.assertEqual(result['video_models'], VIDEO_MODELS, operation)
@@ -154,8 +157,7 @@ class ScnetTests(unittest.TestCase):
     def test_local_media_goes_directly_to_provider_as_base64(self):
         path = Path(os.environ['XIAOMEI_CANVAS_DATA_ROOT']) / 'ref.mp4'
         path.write_bytes(b'video-bytes')
-        with patch.object(main, 'local_media_path_for_cloud_upload', return_value=str(path)), \
-                patch.object(main, 'content_type_for_path', return_value='video/mp4'):
+        with patch.object(main, 'ASSETS_DIR', str(path.parent)):
             result = asyncio.run(main.scnet_video_reference_url('/assets/ref.mp4', 'video'))
         self.assertEqual(result, 'data:video/mp4;base64,dmlkZW8tYnl0ZXM=')
 
@@ -196,7 +198,7 @@ class ScnetTests(unittest.TestCase):
 
     def test_all_marketplace_models_submit_and_poll(self):
         for model in VIDEO_MODELS:
-            self.assertEqual(main.classify_upstream_model(model),'video')
+            self.assertEqual(provider_discovery.classify_model(model),'video')
             payload = self.payload()
             payload.model = model
             payload.resolution = '768p' if model == 'MiniMax-H3' else '720p'

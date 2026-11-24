@@ -14,6 +14,10 @@ Windows 桌面版的画布、Skill、模型与 API 配置、历史和素材保�
 
 更新桌面代码后，需要完全退出并重新启动小美画布。
 
+## 隐藏到托盘
+
+在桌面端侧栏选择「隐藏到托盘」，小美画布会继续在后台运行。点击系统托盘中的小美画布图标可恢复窗口。
+
 ## ComfyUI 页面来源
 
 ComfyUI 页面、CSS 和 JavaScript 统一存放在 `ComfyUI/web/`，这是项目的唯一物理来源。界面仍使用 `/static/comfyui.html`、`/static/comfyui-settings.html` 等兼容 URL，这是后端映射出来的访问地址，不是第二套源码。不要在 `static/` 下重新建立 ComfyUI 页面副本。

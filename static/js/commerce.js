@@ -382,10 +382,12 @@
             else if(task.status==='failed'||task.status==='cancelled') media=`<div><div class="failed-mark"><i data-lucide="circle-x"></i></div><div class="progress-label">${task.status==='cancelled'?'已取消':'生成失败'}</div></div>`;
             else {const status=taskStatusDisplay(task,elapsed); media=`<div><div class="progress-ring ${status.phase}"><span>${status.value}</span></div><div class="progress-label">${status.label}</div></div>`;}
             const refs=(task.refs||[]).map((ref,refIndex)=>`<span class="task-ref" title="图${refIndex+1}：${attr(ref.name||'引用图')}"><img src="${attr(ref.url)}" alt="引用图 ${refIndex+1}" loading="lazy"><b>${refIndex+1}</b></span>`).join('');
-            const menu=`<details class="task-menu"><summary title="当前屏操作"><i data-lucide="grip-vertical"></i></summary><div><button type="button" data-edit-task-prompt="${index}"><i data-lucide="pencil"></i>修改提示词</button>${task.status==='running'||task.status==='pending'?`<button type="button" data-cancel-task="${index}" ${task.cancelRequested?'disabled':''}><i data-lucide="square"></i>取消当前生图</button>`:''}<button type="button" data-retry-task="${index}" ${state.running?'disabled':''}><i data-lucide="refresh-cw"></i>单屏重新生图</button>${task.url?`<a href="${attr(task.url)}" download><i data-lucide="download"></i>下载当前屏</a>`:''}<button type="button" data-copy-prompt="${index}"><i data-lucide="copy"></i>复制提示词</button></div></details>`;
+            const retryLabel = task.recoveryId ? '重试取图' : '重新生图';
+            const retryDisabled = state.running || task.recovering ? 'disabled' : '';
+            const menu=`<details class="task-menu"><summary title="当前屏操作"><i data-lucide="grip-vertical"></i></summary><div><button type="button" data-edit-task-prompt="${index}"><i data-lucide="pencil"></i>修改提示词</button>${task.status==='running'||task.status==='pending'?`<button type="button" data-cancel-task="${index}" ${task.cancelRequested?'disabled':''}><i data-lucide="square"></i>取消当前生图</button>`:''}<button type="button" data-retry-task="${index}" ${retryDisabled}><i data-lucide="refresh-cw"></i>${retryLabel}</button>${task.url?`<a href="${attr(task.url)}" download><i data-lucide="download"></i>下载当前屏</a>`:''}<button type="button" data-copy-prompt="${index}"><i data-lucide="copy"></i>复制提示词</button></div></details>`;
             const zoom=task.url?`<a class="task-zoom" href="${attr(task.url)}" target="_blank" rel="noopener" title="查看大图"><i data-lucide="zoom-in"></i></a>`:'';
-            const failedRetry=['failed','cancelled'].includes(task.status)?`<button class="failed-retry" type="button" data-retry-task="${index}" ${state.running?'disabled':''}><i data-lucide="refresh-cw"></i>重新生图</button>`:'';
-            return `<article class="task-card ${task.selected!==false?'task-selected':'task-unselected'}"><div class="task-card-head"><span>${String(index+1).padStart(2,'0')}</span><div class="task-head-actions"><button class="task-quick-retry" type="button" data-retry-task="${index}" ${state.running?'disabled':''} title="仅重新生成这一屏"><i data-lucide="refresh-cw"></i></button>${menu}</div></div><div class="task-media"><button class="task-select ${task.selected!==false?'selected':''}" type="button" data-toggle-task="${index}" aria-pressed="${task.selected!==false}" title="选择此图片">${task.selected!==false?'✓':''}</button>${zoom}${media}${failedRetry}</div><div class="task-prompt-wrap"><button class="task-prompt-line" type="button" data-edit-task-prompt="${index}" title="点击修改，悬停查看完整提示词">${esc(task.prompt||'暂无提示词')}</button><div class="task-prompt-popover"><strong>${esc(task.label||`第 ${index+1} 屏`)}</strong><p>${esc(task.prompt||'暂无提示词')}</p><span>点击下方提示词可修改</span></div></div>${refs?`<div class="task-refs">${refs}</div>`:''}${task.error?`<div class="task-error compact">${esc(task.error)}</div>`:''}</article>`;
+            const failedRetry=(task.recoveryId||['failed','cancelled'].includes(task.status))?`<button class="failed-retry" type="button" data-retry-task="${index}" ${retryDisabled}><i data-lucide="refresh-cw"></i>${retryLabel}</button>`:'';
+            return `<article class="task-card ${task.selected!==false?'task-selected':'task-unselected'}"><div class="task-card-head"><span>${String(index+1).padStart(2,'0')}</span><div class="task-head-actions"><button class="task-quick-retry" type="button" data-retry-task="${index}" ${retryDisabled} title="${retryLabel}"><i data-lucide="refresh-cw"></i></button>${menu}</div></div><div class="task-media"><button class="task-select ${task.selected!==false?'selected':''}" type="button" data-toggle-task="${index}" aria-pressed="${task.selected!==false}" title="选择此图片">${task.selected!==false?'✓':''}</button>${zoom}${media}${failedRetry}</div><div class="task-prompt-wrap"><button class="task-prompt-line" type="button" data-edit-task-prompt="${index}" title="点击修改，悬停查看完整提示词">${esc(task.prompt||'暂无提示词')}</button><div class="task-prompt-popover"><strong>${esc(task.label||`第 ${index+1} 屏`)}</strong><p>${esc(task.prompt||'暂无提示词')}</p><span>点击下方提示词可修改</span></div></div>${refs?`<div class="task-refs">${refs}</div>`:''}${task.error?`<div class="task-error compact">${esc(task.error)}</div>`:''}</article>`;
         }).join(''); refreshIcons();
     }
     function render(){renderTabs();renderForm();renderTasks();}
@@ -748,6 +750,7 @@
                 fallbackMessage:'生成失败',
                 timeoutMessage:'生成任务超时',
                 onTaskUpdate(remoteTask){
+                    if(remoteTask?.recovery_id) task.recoveryId = remoteTask.recovery_id;
                     const status=String(remoteTask?.status||remoteTask?.task_status||'').trim().toLowerCase();
                     const message=String(remoteTask?.message||'').trim();
                     if(status&&task.upstreamStatus!==status){task.upstreamStatus=status;renderTasks();}
@@ -759,7 +762,14 @@
                 },
             });
             const data=result?.result||result;task.url=XiaomeiImageTaskClient.extractMediaUrls(data)[0] || '';if(!task.url)throw new Error('接口没有返回可用图片');task.status='success';task.upstreamStatus='succeeded';
-         }catch(error){if(task.status!=='cancelled')task.status='failed';task.upstreamStatus=task.status;task.error=String(error.message||error).slice(0,500);}finally{
+            const partial = data?.partial_failures?.find(item => item.recovery_id);
+            if(partial){ task.recoveryId = partial.recovery_id; task.error = partial.error; }
+         }catch(error){
+             if(task.status!=='cancelled')task.status='failed';
+             task.upstreamStatus=task.status;
+             task.error=String(error.message||error).slice(0,500);
+             task.recoveryId ||= task.error.match(/恢复编号\s*[：:]\s*(img-[A-Za-z0-9-]+)/i)?.[1] || '';
+         }finally{
              window.XiaomeiGenerationNotifications?.notify?.({
                  id:`commerce-${task.id}`,
                  status:task.status==='success'?'success':task.status==='cancelled'?'cancelled':'failed',
@@ -821,6 +831,27 @@
     }
     async function retryTask(index){
         const task=state.tasks[Number(index)];if(!task||state.running)return toast(state.running?'请等待当前队列结束后再重试':'任务不存在','error');
+        if(task.recoveryId){
+            if(task.recovering) return;
+            task.recovering = true;
+            renderTasks();
+            try{
+                const result = await XiaomeiImageTaskClient.requestJson(`/api/image-result-recovery/${encodeURIComponent(task.recoveryId)}?history_source=commerce`, {method:'POST'});
+                const recovered = XiaomeiImageTaskClient.extractMediaUrls(result)[0];
+                if(!recovered) throw new Error('恢复记录中没有可显示的图片');
+                task.url ||= recovered;
+                task.status = 'success';
+                task.upstreamStatus = 'succeeded';
+                task.error = result.partial_failures?.[0]?.error || '';
+                if(!task.error) task.recoveryId = '';
+            }catch(error){
+                task.error = error.message || '取图失败';
+            }finally{
+                task.recovering = false;
+                renderTasks();
+            }
+            return;
+        }
         const provider=currentProvider();if(!provider?.has_key||!state.common.model)return toast('请先确认生图 API 和模型可用','error');
         state.running=true;task.status='pending';task.upstreamStatus='';task.upstreamMessage='';task.url='';task.error='';task.model=state.common.model;renderForm();renderTasks();
         await runTask(task);state.running=false;renderForm();renderTasks();toast(task.status==='success'?`“${task.label}”重新生成成功`:`“${task.label}”重新生成仍失败` ,task.status==='success'?'':'error');

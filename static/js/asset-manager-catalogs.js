@@ -230,7 +230,7 @@
                 hook: type + '-' + verb, glyph, label, disabled,
                 classes: 'asset-btn' + (danger ? ' danger' : '') + (armed ? ' detail-confirm' : ''),
             }));
-            add('select-all', 'check-square', '全选', !model.itemCount || readonly);
+            add('select-all', 'check-square', '全选', !model.itemCount || (readonly && type !== 'prompt'));
             add('clear-selection', 'square', '清空', !selectionCount);
             const empty = !selectionCount;
             if (type === 'asset') {
@@ -255,6 +255,7 @@
                 add('delete-selected', 'trash-2', '移入回收站', empty, true);
                 body.append(element('span', '', `已选择 ${selectionCount} 个工作流。`), controls);
             } else {
+                add('export-selected', 'download', '导出所选', empty);
                 add('delete-selected', 'trash-2', model.confirmDelete ? '确认删除' : '删除所选', readonly || empty, true, model.confirmDelete);
                 body.append(element('span', '', `已选择 ${selectionCount} 条提示词，支持拖拽框选或逐个勾选。`), controls);
             }

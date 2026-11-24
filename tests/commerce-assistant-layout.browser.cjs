@@ -49,7 +49,7 @@ const result = {status:'ready', productId:'123456789012', normalizedUrl:fixtureU
     assert.ok(layout.titleSize >= 26, 'workspace title must lead the hierarchy');
     assert.ok(layout.left <= 28 && layout.right <= 28, JSON.stringify(layout));
     assert.equal(layout.overflow, false);
-    assert.equal(layout.cards, 18);
+    assert.equal(layout.cards, 19);
     assert.equal(layout.imagesLoaded, true);
     assert.equal(layout.readable, true, `platform labels need room at ${width}px`);
     await page.screenshot({path:path.join(output,`${label}-directory-${width}.png`),fullPage:true});

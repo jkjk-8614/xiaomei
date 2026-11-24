@@ -16,6 +16,8 @@ test('canvas resolution swaps, failed loads and panning paint remain stable', {t
         : await browser.newPage({viewport:{width:1600,height:1000}, deviceScaleFactor:1.5});
     page.setDefaultTimeout(8000);
     const errors = [], requests = [], held = [];
+    const localFixtures = ['alternate-preview', 'original-fallback', 'oversize'].map(name =>
+        '/api/storage-files/local/' + encodeURIComponent('水晶相框') + '/' + name + '.jpg');
     let holdOriginals = true, failOriginals = false;
     page.on('pageerror', error => errors.push(error.message));
     const images = await page.evaluate(() => Object.fromEntries([512,1024,1280,2048].map(edge => {
@@ -38,7 +40,18 @@ test('canvas resolution swaps, failed loads and panning paint remain stable', {t
         }
         if(pathname === '/api/media-preview'){
             requests.push(url.pathname + url.search);
+            const source = url.searchParams.get('url');
+            const width = Number(url.searchParams.get('w'));
+            const fixtureIndex = localFixtures.indexOf(source);
+            if(fixtureIndex !== -1){
+                if(fixtureIndex === 0 && width === 256) return fulfillImage(route, 512);
+                return route.fulfill({status:415, body:''});
+            }
             return fulfillImage(route, Number(url.searchParams.get('w')));
+        }
+        if(localFixtures.includes(pathname)){
+            requests.push(pathname);
+            return fulfillImage(route, 1280);
         }
         if(pathname.startsWith('/output/')){
             requests.push(pathname);
@@ -117,6 +130,30 @@ test('canvas resolution swaps, failed loads and panning paint remain stable', {t
     await page.waitForTimeout(400);
     assert.equal(requests.includes('/output/huge.png'),false,'huge originals must never be decoded in the world');
     assert.ok(requests.some(url => url.includes('w=2048') && url.includes('huge.png')));
+
+    await page.evaluate(urls => {
+        nodes = []; canvas.nodes = nodes;
+        viewport = {x:0,y:0,scale:1};
+        window.localFixtureImages = urls.map((url, index) => {
+            const node = createNode(40 + index * 200,80,[{
+                url, kind:'image', natural_w:index === 2 ? 20000 : 720, natural_h:index === 2 ? 35000 : 1280
+            }],{select:false});
+            node.manualSize = true; node.w = 130; node.h = 230;
+            return node.id;
+        });
+        render(); applyViewport();
+        window.localFixtureImages = localFixtureImages.map(id => world.querySelector(`[data-id="${id}"] .node-body img`));
+    },localFixtures);
+    await page.waitForFunction(() => localFixtureImages[0].naturalHeight === 512
+        && localFixtureImages[1].naturalHeight === 1280, null, {timeout:3000});
+    assert.match(await page.evaluate(() => localFixtureImages[0].getAttribute('src')), /w=256/);
+    assert.equal(await page.evaluate(() => localFixtureImages[1].getAttribute('src')),localFixtures[1]);
+    assert.equal(requests.includes(localFixtures[2]),false,'failed previews cannot trigger a huge original');
+
+    await page.evaluate(() => { viewport.x = -600; applyViewport(); });
+    await page.waitForTimeout(500);
+    assert.deepEqual(await page.evaluate(() => localFixtureImages.map(img => img.naturalHeight)),[512,1280,0],
+        'offscreen downgrade keeps the usable image when the 512px preview fails');
 
     await page.evaluate(() => {
         nodes = []; canvas.nodes = nodes;

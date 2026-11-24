@@ -44,7 +44,7 @@ function collectCommerceSkuState() {
   const number = (value) => { const match = String(value ?? '').replace(/,/g, '').match(/-?\d+(?:\.\d+)?/); return match ? Number(match[0]) : null; };
   const money = (value) => { const n = number(value); if (n === null) return ''; const raw = String(value ?? '').trim(); return n >= 1000 && /^\d+$/.test(raw) ? (n / 100).toFixed(2) : n.toFixed(2); };
   const roots = [];
-  for (const key of ['__ICE_APP_CONTEXT__', '__INITIAL_STATE__', '__NEXT_DATA__', '__NUXT__', 'g_config', 'TShop', 'iDetail']) {
+  for (const key of ['__ICE_APP_CONTEXT__', '__INITIAL_STATE__', '__NEXT_DATA__', '__NUXT__', 'g_config', 'TShop', 'iDetail', 'pageConfig']) {
     try { if (object(globalThis[key])) roots.push(globalThis[key]); } catch {}
   }
   const items = [];
@@ -222,8 +222,29 @@ function collectCommerceSkuState() {
   for (const node of document.querySelectorAll('[data-sku-id],[data-skuid],[data-sku],[data-prop-path],[data-property-path]')) {
     const data = node.dataset || {};
     const propPath = data.propPath || data.propertyPath;
-    if (propPath) addItem({ skuId: data.skuId || data.skuid || data.sku, propPath, specs: tidy(node.innerText || node.textContent || '', 500), price: data.price, stock: data.stock || data.quantity });
+    const skuId = data.skuId || data.skuid || data.sku || '';
+    if (propPath) {
+      addItem({ skuId, propPath, specs: tidy(node.innerText || node.textContent || '', 500), price: data.price, stock: data.stock || data.quantity });
+    } else if (skuId && /^\d{5,24}$/.test(String(skuId).trim())) {
+      const valueText = tidy(node.getAttribute?.('data-value') || node.getAttribute?.('title') || node.innerText || node.textContent || '', 300);
+      const img = node.querySelector?.('img');
+      const imgUrl = absolute(img?.currentSrc || img?.src || img?.dataset?.src || img?.getAttribute?.('data-lazyload') || '');
+      if (valueText) addItem({ skuId, specs: valueText, skuName: valueText, image: imgUrl });
+    }
   }
+  try {
+    const jdColorSize = globalThis.pageConfig?.product?.colorSize;
+    if (Array.isArray(jdColorSize) && jdColorSize.length) {
+      declaredCounts.push(jdColorSize.length);
+      for (const row of jdColorSize.slice(0, 500)) {
+        if (!object(row) || !row.skuId) continue;
+        const rowSpecs = Object.entries(row)
+          .filter(([k, v]) => k !== 'skuId' && v !== null && v !== undefined && String(v).trim() !== '')
+          .map(([k, v]) => ({ name: tidy(k, 80), value: tidy(v, 180) }));
+        if (rowSpecs.length) addItem({ skuId: String(row.skuId), specs: rowSpecs, skuName: rowSpecs.map((s) => s.value).join(' / ') });
+      }
+    }
+  } catch {}
 
   const visible = (node) => {
     try {
@@ -256,7 +277,7 @@ function collectCommerceSkuState() {
     };
   };
   if (typeof document !== 'undefined') {
-    const labels = [...document.querySelectorAll('body *')].filter(visible).filter((node) => /^(?:颜色分类|颜色|尺码|尺寸|款式|套餐|版本|规格|容量|型号|风格|组合)$/.test(tidy(node.innerText || node.textContent || '', 80))).slice(0, 120);
+    const labels = [...document.querySelectorAll('body *')].filter(visible).filter((node) => /^(?:颜色分类|颜色|尺码|尺寸|款式|套餐|版本|规格|容量|型号|风格|组合|系列品|系列|产品|香型|口味|净含量|包装|套装)$/.test(tidy(node.innerText || node.textContent || '', 80))).slice(0, 120);
     for (const label of labels) {
       let ancestor = label.parentElement;
       let best = null;

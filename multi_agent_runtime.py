@@ -67,6 +67,12 @@ class RunRequest(StrictModel):
     generation_preferences: dict[str, Any] = Field(default_factory=dict)
     limits: RunLimits = Field(default_factory=RunLimits)
     policy: RunPolicy = Field(default_factory=RunPolicy)
+    bot_id: str = Field(default="", max_length=64)
+    session_id: str = Field(default="", max_length=64)
+    turn_id: str = Field(default="", max_length=64)
+    delegation_id: str = Field(default="", max_length=64)
+    skill_ids: list[str] = Field(default_factory=list, max_length=16)
+    permission_snapshot: dict[str, Any] = Field(default_factory=dict)
 
 
 class SpawnArgs(StrictModel):
@@ -371,7 +377,11 @@ class MultiAgentRuntime:
             "几何检查 unknown 表示需要人工复核；不能仅看图片外框认定产品尺寸正确。"
             "电商相框任务可按产品分析→场景方案→各张图片生成→质量检查分工，独立生成可并行。需要时让场景设计代理继续派遣生成子代理以控制根任务子代理数量。"
             "用户停止后立即结束。所有结果使用 agent.finish_task 提交 summary 与真实 result_refs。\n"
+            + ("本运行由持久 Bot 发起；任何通过 agent.spawn_subagent 派生的执行单元均为一次性临时子 Agent，不会创建永久 Bot 档案。\n" if run.get("bot_id") else "")
             + dump({"identity": {k: task[k] for k in ("task_id", "parent_task_id", "agent_role", "depth", "goal", "instructions")},
+                    "bot_context": {"bot_id": run.get("bot_id", ""), "session_id": run.get("session_id", ""),
+                                    "turn_id": run.get("turn_id", ""), "skill_ids": run.get("skill_ids", []),
+                                    "is_temporary_subagent": bool(task.get("parent_task_id"))},
                     "project_id": run["project_id"], "canvas_id": run["canvas_id"], "limits": run["limits"],
                     "policy": run["policy"], "assigned_dependency_results": deps,
                     "project_context_untrusted": run["context"], "available_tools": schemas})

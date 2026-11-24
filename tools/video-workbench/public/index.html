@@ -1,0 +1,749 @@
+<!doctype html>
+<html lang="zh-CN" data-studio-skin="minimal">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>视频工作台</title>
+    <script src="/static/js/xiaomei-shell-kernel.js"></script>
+    <script src="/static/js/theme.js"></script>
+    <link rel="stylesheet" href="/static/css/theme.css" />
+    <link rel="stylesheet" href="/static/vendor/fluent/tokens.css" />
+    <link rel="stylesheet" href="./styles.css?v=20261123-5" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <main class="main-content">
+        <header class="topbar">
+          <div class="topbar-title">
+            <div class="topbar-heading-row">
+              <h1>视频工作台</h1>
+              <div class="topbar-metrics" aria-label="实时状态概览">
+                <span class="metric-chip">素材组 <strong id="countGroups">0</strong></span>
+                <span class="metric-chip" id="metricSelectedChip">已选 <strong id="countSelected">0</strong></span>
+                <span class="metric-chip info" id="metricRunningChip" hidden>生成中 <strong id="countRunning">0</strong></span>
+                <span class="metric-chip success" id="metricDoneChip" hidden>已完成 <strong id="countDone">0</strong></span>
+              </div>
+            </div>
+            <p class="page-subtitle">批量管理商品素材组、编排提示词并在线预览成片</p>
+          </div>
+          <div class="top-actions">
+            <button class="connection-card" id="openSettingsButton" type="button" title="查看连接状态并打开设置">
+              <span id="connectionCard" class="connection-inner">
+                <span class="connection-line">
+                  <span class="status-dot" aria-hidden="true"></span>
+                  <span id="connectionLabel">检查连接状态…</span>
+                </span>
+                <span class="connection-hint" id="connectionHint">正在读取配置</span>
+                <svg class="ui-icon sm connection-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+              </span>
+            </button>
+            <button class="button secondary" id="refreshButton" type="button">
+              <svg class="ui-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+                <polyline points="21 3 21 9 15 9"></polyline>
+              </svg>
+              <span>刷新素材</span>
+            </button>
+          </div>
+        </header>
+
+        <section class="panel material-panel">
+          <div class="section-heading">
+            <div class="title-line">
+              <h2>素材库</h2>
+              <span class="count-pill" id="groupCount">0</span>
+            </div>
+            <div class="section-actions">
+              <div class="material-filters" id="materialFilters" hidden>
+                <div class="search-box">
+                  <svg class="ui-icon xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input id="groupSearchInput" type="search" placeholder="搜索素材组…" aria-label="搜索素材组" />
+                </div>
+                <button class="filter-toggle" id="filterUnusedButton" type="button" aria-pressed="false">仅看未使用</button>
+              </div>
+              <button class="button accent compact-button" id="newGroupButton" type="button">
+                <svg class="ui-icon xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                <span>新建素材组</span>
+              </button>
+              <button class="text-button" id="selectAllButton" type="button" disabled>全选</button>
+              <button class="text-button muted" id="clearSelectionButton" type="button" disabled>清除选择</button>
+            </div>
+          </div>
+
+          <div class="group-grid" id="groupGrid"></div>
+
+          <div class="empty-state compact empty-dropzone" id="groupsEmpty" tabindex="0" role="region" aria-label="拖拽图片快速新建素材组" hidden>
+            <div class="empty-heading">
+              <svg class="ui-icon md empty-inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="2.5"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <path d="m21 15-5-5L5 21"></path>
+              </svg>
+              <h3>还没有素材组</h3>
+            </div>
+            <p class="empty-desc">直接把商品参考图拖到这里，或点击下方按钮新建第一个素材组</p>
+            <div class="empty-actions">
+              <button class="button accent" id="emptyNewGroupButton" type="button">
+                <svg class="ui-icon xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                <span>新建素材组</span>
+              </button>
+              <button class="button secondary" id="openMaterialDirFromEmpty" type="button">打开本地素材目录</button>
+            </div>
+          </div>
+
+          <div class="empty-state compact" id="groupsFilterEmpty" hidden>
+            <h3>没有匹配的素材组</h3>
+            <p class="empty-desc">尝试修改搜索关键词，或取消「仅看未使用」筛选</p>
+            <button class="button secondary compact-button" id="resetGroupFiltersButton" type="button">重置筛选</button>
+          </div>
+
+          <div class="pagination" id="groupPagination" hidden>
+            <span class="pagination-info" id="groupPageInfo"></span>
+            <div class="pagination-actions">
+              <button class="page-button" id="groupPrevButton" type="button" aria-label="上一页素材组" title="上一页">
+                <svg class="ui-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              </button>
+              <span class="page-position" id="groupPagePosition"></span>
+              <button class="page-button" id="groupNextButton" type="button" aria-label="下一页素材组" title="下一页">
+                <svg class="ui-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel composer-panel">
+          <div class="section-heading">
+            <h2>生成设置</h2>
+            <div class="prompt-templates" role="group" aria-label="快捷提示词模板">
+              <span class="templates-label">快捷模板：</span>
+              <button class="template-chip" type="button" data-prompt-template="multi_shot">多镜头实拍</button>
+              <button class="template-chip" type="button" data-prompt-template="detail_closeup">细节特写种草</button>
+              <button class="template-chip" type="button" data-prompt-template="scene_tour">空间场景漫游</button>
+            </div>
+          </div>
+
+          <div class="composer-grid">
+            <label class="field prompt-field">
+              <span>视频提示词</span>
+              <textarea id="promptInput" rows="4" placeholder="描述希望生成的镜头节奏、拍摄风格和核心卖点，例如：参考这些商品图制作多镜头真实实拍视频，展示整体外观、关键细节与使用场景，自然光影、画面稳定清晰。">参考这些图片做一个真实商品实拍展示视频，6-8个流畅镜头切换，保持商品外观、材质与场景一致，先展示整体效果，再切近景呈现关键细节，自然光影、真实买家秀质感。</textarea>
+            </label>
+
+            <div class="composer-side">
+              <div class="field model-field">
+                <span id="modelPickerLabel">视频模型</span>
+                <div class="model-picker" id="modelPicker">
+                  <input id="modelInput" type="hidden" value="seedance2.5（满血版）" />
+                  <button class="model-picker-button" id="modelPickerButton" type="button" aria-expanded="false" aria-controls="modelPickerMenu" aria-labelledby="modelPickerLabel modelPickerValue">
+                    <span class="model-picker-selected">
+                      <span id="modelPickerValue">seedance2.5（满血版）</span>
+                      <span class="model-picker-meta" id="modelPickerMeta">最多 30 图 · 10–30s · 720P</span>
+                    </span>
+                    <svg class="ui-icon xs model-picker-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </button>
+                  <div class="model-picker-menu" id="modelPickerMenu" hidden>
+                    <details class="model-category">
+                      <summary>官方渠道（火山引擎）</summary>
+                      <div class="model-option-list">
+                        <button class="model-option" type="button" data-model="doubao-seedance-2-5-260628" data-meta="最多 30 图 · 4–30s · 最高 1080P" aria-pressed="false">
+                          <strong>doubao-seedance-2-5-260628</strong>
+                          <span>最多 30 图 · 4–30s · 支持 480P / 720P / 1080P</span>
+                        </button>
+                      </div>
+                    </details>
+                    <details class="model-category" open>
+                      <summary>低价渠道（6789API）</summary>
+                      <div class="model-option-list">
+                        <button class="model-option selected" type="button" data-model="seedance2.5（满血版）" data-meta="最多 30 图 · 10–30s · 720P" aria-pressed="true">
+                          <strong>seedance2.5（满血版）</strong>
+                          <span>最多 30 图 · 10–30s · 720P · 按次计费</span>
+                        </button>
+                        <button class="model-option" type="button" data-model="seedance2.5（满血版）线路1" data-meta="最多 30 图 · 固定 30s · 720P" aria-pressed="false">
+                          <strong>seedance2.5（满血版）线路1</strong>
+                          <span>最多 30 图 · 固定 30 秒 · 720P</span>
+                        </button>
+                        <button class="model-option" type="button" data-model="seedance2.5（满血版）线路3" data-meta="最多 30 图 · 固定 30s · 支持自适应比例" aria-pressed="false">
+                          <strong>seedance2.5（满血版）线路3</strong>
+                          <span>最多 30 图 · 固定 30 秒 · 支持自适应比例</span>
+                        </button>
+                        <button class="model-option" type="button" data-model="seedance2.5（满血版）线路4" data-meta="最多 30 图 · 固定 30s · 720P" aria-pressed="false">
+                          <strong>seedance2.5（满血版）线路4</strong>
+                          <span>最多 30 图 · 固定 30 秒 · 720P</span>
+                        </button>
+                        <button class="model-option" type="button" data-model="seedance-2.0（按秒）" data-meta="最多 9 图 · 5/10/15s · 按秒计费" aria-pressed="false">
+                          <strong>Seedance 2.0（按秒）</strong>
+                          <span>最多 9 图 · 5 / 10 / 15 秒 · 按秒计费</span>
+                        </button>
+                        <button class="model-option" type="button" data-model="seedance-2.0-fast（按秒）" data-meta="最多 9 图 · 5/10/15s · 快速生成" aria-pressed="false">
+                          <strong>Seedance 2.0 Fast（按秒）</strong>
+                          <span>最多 9 图 · 5 / 10 / 15 秒 · 更快出片</span>
+                        </button>
+                        <button class="model-option" type="button" data-model="seedance-2.5（按秒）" data-meta="最多 9 图 · 4–30s · 按秒计费" aria-pressed="false">
+                          <strong>Seedance 2.5（按秒）</strong>
+                          <span>最多 9 图 · 4–30 秒 · 按秒计费</span>
+                        </button>
+                      </div>
+                    </details>
+                  </div>
+                </div>
+              </div>
+
+              <div class="field-row params-row">
+                <div class="field duration-field">
+                  <span>时长</span>
+                  <div class="duration-control">
+                    <div class="segmented-control duration-presets" id="durationPresets" role="group" aria-label="快捷时长"></div>
+                    <select id="durationInput" class="duration-select" aria-label="自定义秒数">
+                      <option value="10" selected>10 秒</option>
+                    </select>
+                  </div>
+                </div>
+                <label class="field">
+                  <span>比例</span>
+                  <select id="ratioInput">
+                    <option value="9:16" selected>9:16 竖屏</option>
+                    <option value="16:9">16:9 横屏</option>
+                    <option value="1:1">1:1 方形</option>
+                    <option value="3:4">3:4</option>
+                    <option value="4:3">4:3</option>
+                    <option value="21:9">21:9</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>分辨率</span>
+                  <select id="resolutionInput">
+                    <option value="720p" selected>720P</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="creative-controls">
+            <label class="field category-field">
+              <span>商品分类</span>
+              <select id="categoryInput">
+                <option value="general" selected>通用商品</option>
+                <option value="home">家居百货</option>
+                <option value="apparel">服饰鞋包</option>
+                <option value="beauty">美妆个护</option>
+                <option value="digital">数码家电</option>
+                <option value="food">食品饮料</option>
+                <option value="__custom__">自定义品类…</option>
+              </select>
+            </label>
+            <label class="field custom-category-field" id="customCategoryField" hidden>
+              <span>自定义品类</span>
+              <input id="customCategoryInput" type="text" maxlength="40" placeholder="例如：宠物用品、户外露营" />
+            </label>
+            <div class="toggle-group" role="group" aria-label="创作增强选项">
+              <label class="option-toggle"><input id="copywritingInput" type="checkbox" /><span>文案专家</span></label>
+              <label class="option-toggle"><input id="modelEnabledInput" type="checkbox" /><span>添加模特</span></label>
+              <label class="option-toggle"><input id="voiceoverInput" type="checkbox" /><span>人声口播</span></label>
+              <label class="option-toggle"><input id="subtitlesInput" type="checkbox" /><span>画面字幕</span></label>
+            </div>
+          </div>
+
+          <div class="inline-callout" id="fishModeBanner" hidden>
+            <svg class="ui-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            <span>已启用 Fish Audio 独立配音：系统将自动使用「文案专家」生成口播脚本，并关闭视频原生字幕以避免重影与音画冲突。</span>
+          </div>
+
+          <div class="model-reference-fields" id="modelReferenceFields" hidden>
+            <label class="button secondary model-upload-control">
+              <svg class="ui-icon xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              <span>上传模特参考图（可选）</span>
+              <input id="modelReferencesInput" class="file-input" type="file" accept="image/png,image/jpeg,image/webp" multiple />
+            </label>
+            <div class="model-reference-list" id="modelReferenceList"></div>
+            <span class="generation-status" id="modelReferenceStatus" role="status"></span>
+          </div>
+
+          <div class="creative-details" id="copywritingFields" hidden>
+            <label class="field">
+              <span>创作方向</span>
+              <select id="directionInput">
+                <option value="ecommerce">电商营销宣传</option>
+                <option value="douyin">抖音营销宣传</option>
+                <option value="xiaohongshu">小红书营销宣传</option>
+                <option value="real_shoot" selected>真实实拍展示</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>文本模型</span>
+              <select id="textModelInput">
+                <option value="deepseek-flash">deepseek-flash</option>
+                <option value="gpt-5.6-sol">gpt-5.6-sol</option>
+                <option value="gpt-6-sol">gpt-6-sol</option>
+                <option value="gpt-6.1-sol">gpt-6.1-sol</option>
+                <option value="gemini-3.8-flash">gemini-3.8-flash</option>
+              </select>
+            </label>
+            <label class="field product-facts-field">
+              <span>已确认商品信息（可选）</span>
+              <input id="productFactsInput" type="text" maxlength="1500" placeholder="仅填写确定卖点或规格，防止 AI 臆造" />
+            </label>
+            <div class="copywriting-extra-row">
+              <label class="option-toggle compact-toggle" id="reviewPromptField">
+                <input id="reviewPromptInput" type="checkbox" />
+                <span>生成前先逐组审核 AI 提示词</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="creative-details speech-details" id="speechFields" hidden>
+            <label class="field" id="voiceGenderField" hidden>
+              <span>人声</span>
+              <select id="voiceGenderInput">
+                <option value="female">女声</option>
+                <option value="male">男声</option>
+              </select>
+            </label>
+            <label class="field manual-speech-field" id="manualSpeechField">
+              <span>口播 / 字幕文案（可选）</span>
+              <input id="manualSpeechInput" type="text" maxlength="500" placeholder="留空由视频模型根据画面自动生成" />
+            </label>
+          </div>
+
+          <div class="fish-source" id="fishSourceField" hidden>
+            <span>配音来源</span>
+            <div class="segmented-control" role="group" aria-label="配音来源">
+              <button type="button" class="active" data-voice-source="video" aria-pressed="true">视频模型原生配音</button>
+              <button type="button" data-voice-source="fish" aria-pressed="false">Fish Audio Drama 3</button>
+            </div>
+          </div>
+
+          <section class="fish-panel" id="fishPanel" hidden aria-label="Fish Audio 配音">
+            <div class="segmented-control fish-voice-categories" id="fishVoiceCategories" role="group" aria-label="音色分类">
+              <button type="button" class="active" data-voice-category="营销宣传" aria-pressed="true">营销宣传 <span id="fishMarketingCount"></span></button>
+              <button type="button" data-voice-category="旁白朗诵" aria-pressed="false">旁白朗诵 <span id="fishNarrationCount"></span></button>
+            </div>
+            <div role="radiogroup" aria-label="Fish Audio 音色">
+              <div class="fish-voice-list" id="fishVoiceList"></div>
+              <label class="fish-custom-option"><input class="fish-voice-radio" type="radio" name="fishVoicePreset" value="custom" /><span>自定义音色 ID</span></label>
+            </div>
+            <label class="field fish-custom-voice" id="fishCustomVoiceField" hidden>
+              <span>音色 ID</span>
+              <input id="fishVoiceIdInput" type="text" maxlength="120" placeholder="输入 Fish Audio 音色 ID" autocomplete="off" />
+            </label>
+            <span class="generation-status" id="fishPreviewStatus" role="status"></span>
+          </section>
+
+          <section class="prompt-review" id="promptReview" hidden aria-labelledby="promptReviewTitle">
+            <div class="prompt-review-heading">
+              <h3 id="promptReviewTitle">审核视频提示词</h3>
+              <span id="promptReviewCount"></span>
+            </div>
+            <div id="promptReviewList"></div>
+            <div class="prompt-review-actions">
+              <button class="button secondary" id="cancelReviewButton" type="button">取消</button>
+              <button class="button accent" id="confirmReviewButton" type="button">确认并生成视频</button>
+            </div>
+          </section>
+
+          <div class="control-footer">
+            <div class="control-copy">
+              <span class="generation-status" id="generationStatus" role="status" aria-live="polite"></span>
+              <div class="control-settings-line">
+                <label class="auto-retry-inline" title="开启后会同步保存到工作台运行配置，失败任务将自动重新提交">
+                  <input id="autoRetryComposerInput" type="checkbox" />
+                  <span>全局失败自动重试</span>
+                </label>
+                <span id="outputPathInline" hidden></span>
+              </div>
+            </div>
+            <button class="button accent generate-cta" id="generateButton" type="button">
+              <span id="generateIcon" class="btn-icon" aria-hidden="true">
+                <svg class="ui-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+              </span>
+              <span id="generateLabel">生成所选素材组</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="panel jobs-panel">
+          <div class="queue-heading">
+            <div class="title-line">
+              <h2>生成队列</h2>
+              <span class="count-pill" id="jobCount">0</span>
+            </div>
+            <div class="queue-actions">
+              <button class="button ghost compact-button" id="clearJobsButton" type="button">清理已结束任务</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th class="job-name-col">素材组 / 成片</th>
+                  <th class="ref-col">参考图</th>
+                  <th class="param-col">参数</th>
+                  <th class="submitted-col">提交日期</th>
+                  <th class="status-col">状态</th>
+                  <th class="action-col">操作</th>
+                </tr>
+              </thead>
+              <tbody id="jobsBody"></tbody>
+            </table>
+            <div class="empty-state compact" id="jobsEmpty">
+              <div class="empty-heading">
+                <svg class="ui-icon md empty-inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="2" y="4" width="20" height="16" rx="2.5"></rect>
+                  <polygon points="10 9 15 12 10 15 10 9"></polygon>
+                </svg>
+                <h3>暂无视频任务</h3>
+              </div>
+              <p class="empty-desc">选中上方素材组并点击「生成所选素材组」，任务进度与成片预览会显示在这里</p>
+            </div>
+          </div>
+          <div class="pagination" id="jobPagination" hidden>
+            <span class="pagination-info" id="jobPageInfo"></span>
+            <div class="pagination-actions">
+              <button class="page-button" id="jobPrevButton" type="button" aria-label="上一页任务" title="上一页">
+                <svg class="ui-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              </button>
+              <span class="page-position" id="jobPagePosition"></span>
+              <button class="page-button" id="jobNextButton" type="button" aria-label="下一页任务" title="下一页">
+                <svg class="ui-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <footer class="workbench-foot" aria-label="本地目录信息">
+          <div class="storage-note">
+            <span>素材目录：</span>
+            <b id="materialPath">加载中…</b>
+            <button class="text-button foot-dir-btn" type="button" data-open-dir="material">打开目录</button>
+          </div>
+          <div class="storage-note">
+            <span>输出目录：</span>
+            <b id="outputPath">加载中…</b>
+            <button class="text-button foot-dir-btn" type="button" data-open-dir="output">打开目录</button>
+          </div>
+        </footer>
+      </main>
+    </div>
+
+    <!-- 连接与运行设置弹窗（3 分区 Tab） -->
+    <div class="modal-backdrop" id="settingsModal" hidden>
+      <section class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+        <div class="modal-header">
+          <h2 id="settingsTitle">连接与运行设置</h2>
+          <button class="icon-button" id="closeSettingsButton" type="button" aria-label="关闭设置">
+            <svg class="ui-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="settings-tabs" role="tablist" aria-label="设置分组">
+          <button class="settings-tab active" type="button" role="tab" id="tabBtnKeys" data-settings-tab="keys" aria-selected="true" aria-controls="tabPanelKeys">模型与密钥</button>
+          <button class="settings-tab" type="button" role="tab" id="tabBtnStorage" data-settings-tab="storage" aria-selected="false" aria-controls="tabPanelStorage">素材图床与上传</button>
+          <button class="settings-tab" type="button" role="tab" id="tabBtnRuntime" data-settings-tab="runtime" aria-selected="false" aria-controls="tabPanelRuntime">配音与运行</button>
+        </div>
+        <div class="modal-body">
+          <div class="settings-missing-alert" id="settingsMissingAlert" role="alert" hidden></div>
+
+          <div class="settings-tab-panel" id="tabPanelKeys" role="tabpanel" aria-labelledby="tabBtnKeys" data-tab-panel="keys">
+            <div class="canvas-sync-card" id="canvasSyncBanner">
+              <div class="canvas-sync-copy">
+                <strong>小美画布 API 自动联动</strong>
+                <span id="canvasSyncSummary">正在读取画布 API 设置…</span>
+              </div>
+              <button class="button secondary compact-button" id="openCanvasApiSettingsButton" type="button">前往画布 API 设置</button>
+            </div>
+            <label class="field">
+              <span>低价接口地址</span>
+              <input id="apiBaseUrlInput" type="url" placeholder="https://www.6789api.top" />
+              <small>默认自动跟随画布中的 6789API 地址，也可在此单独覆盖。</small>
+            </label>
+            <label class="field">
+              <span>低价密钥（可选覆盖）</span>
+              <input id="apiTokenInput" type="password" autocomplete="new-password" placeholder="留空自动使用画布 6789API 密钥" />
+              <small id="apiTokenHint">默认自动联动小美画布「6789API」密钥；仅在需要单独覆盖时填写。</small>
+            </label>
+            <label class="field">
+              <span>官方密钥（可选覆盖）</span>
+              <input id="officialApiKeyInput" type="password" autocomplete="new-password" placeholder="留空自动使用画布火山引擎密钥" />
+              <small id="officialApiKeyHint">默认自动联动小美画布「火山引擎」密钥；仅在需要单独覆盖时填写。</small>
+            </label>
+          </div>
+
+          <div class="settings-tab-panel" id="tabPanelStorage" role="tabpanel" aria-labelledby="tabBtnStorage" data-tab-panel="storage" hidden>
+            <div class="notice">
+              <svg class="ui-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+              </svg>
+              <p>第三方视频接口无法直接读取本机硬盘文件，需要先配置公网 HTTPS 图片前缀；若使用自建服务器，可开启下方 SFTP 在生成前自动同步图片。</p>
+            </div>
+            <label class="field">
+              <span>素材公网地址前缀</span>
+              <input id="materialPublicBaseUrlInput" type="url" placeholder="https://你的域名/素材" />
+              <small>必填。对应服务器上存放素材组的公开 HTTPS 访问地址。</small>
+            </label>
+            <label class="field sftp-toggle">
+              <span><input id="sftpEnabledInput" type="checkbox" /> 生成前自动通过 SFTP 上传素材</span>
+              <small>点击生成时，自动把本次选中的素材组和模特图同步到远程服务器。</small>
+            </label>
+            <details class="settings-collapse" id="sftpAdvancedCollapse">
+              <summary>SFTP 服务器连接详情（主机、账号与 SSH 私钥）</summary>
+              <div class="settings-collapse-body">
+                <div class="field-row">
+                  <label class="field"><span>SFTP 主机</span><input id="sftpHostInput" type="text" placeholder="服务器 IP 或域名" /></label>
+                  <label class="field"><span>SSH 端口</span><input id="sftpPortInput" type="number" min="1" max="65535" placeholder="22" /></label>
+                </div>
+                <label class="field"><span>SFTP 用户</span><input id="sftpUsernameInput" type="text" placeholder="SSH 用户名" /></label>
+                <label class="field">
+                  <span>SSH 私钥</span>
+                  <textarea id="sftpPrivateKeyInput" rows="4" spellcheck="false" autocomplete="off" placeholder="粘贴完整 SSH 私钥"></textarea>
+                  <small id="sftpPrivateKeyHint">粘贴完整私钥；保存后不再显示，留空表示不修改。</small>
+                </label>
+                <label class="field">
+                  <span>远程素材目录</span>
+                  <input id="sftpRemoteDirInput" type="text" placeholder="服务器上的素材目录" />
+                  <small>该目录需要对应到上方的公网地址前缀。</small>
+                </label>
+              </div>
+            </details>
+          </div>
+
+          <div class="settings-tab-panel" id="tabPanelRuntime" role="tabpanel" aria-labelledby="tabBtnRuntime" data-tab-panel="runtime" hidden>
+            <label class="field">
+              <span>Fish Audio API Key</span>
+              <input id="fishApiKeyInput" type="password" autocomplete="new-password" placeholder="Fish Audio API Key" />
+              <small>仅用于 Fish Audio Drama 3 独立配音；留空表示不修改。</small>
+            </label>
+            <label class="field">
+              <span>Fish 代理地址（可选）</span>
+              <input id="fishProxyUrlInput" type="url" placeholder="http://127.0.0.1:7890" />
+              <small>直连不通时填写，仅配音使用；留空表示直连。</small>
+            </label>
+            <div class="field-row">
+              <label class="field"><span>并发任务数</span><input id="concurrencyInput" type="number" min="1" max="8" value="2" /></label>
+              <label class="field">
+                <span>轮询间隔</span>
+                <select id="pollIntervalInput">
+                  <option value="3000">3 秒</option>
+                  <option value="4000" selected>4 秒</option>
+                  <option value="6000">6 秒</option>
+                  <option value="10000">10 秒</option>
+                </select>
+              </label>
+            </div>
+            <label class="field"><span>本地输出目录</span><input id="outputDirInput" type="text" placeholder="本机视频输出目录" /></label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <span class="save-state" id="saveState"></span>
+          <button class="button secondary" id="cancelSettingsButton" type="button">取消</button>
+          <button class="button accent" id="saveSettingsButton" type="button">保存设置</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- 新建 / 追加素材弹窗 -->
+    <div class="modal-backdrop" id="materialModal" hidden>
+      <section class="modal material-modal" role="dialog" aria-modal="true" aria-labelledby="materialModalTitle">
+        <div class="modal-header">
+          <h2 id="materialModalTitle">新建素材组</h2>
+          <button class="icon-button" id="closeMaterialButton" type="button" aria-label="关闭素材上传">
+            <svg class="ui-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <label class="field" id="materialGroupNameField">
+            <span>素材组名称</span>
+            <input id="materialGroupNameInput" type="text" placeholder="例如：春季新品连衣裙-01" maxlength="80" />
+            <small>会在本地素材目录中创建同名文件夹，方便按商品归档管理。</small>
+          </label>
+          <div class="upload-target" id="materialTargetName" hidden></div>
+          <div class="upload-dropzone" id="uploadDropzone" tabindex="0" role="button" aria-label="拖动或选择商品图片上传">
+            <input id="materialFilesInput" class="file-input" type="file" accept="image/png,image/jpeg,image/webp" multiple />
+            <div class="drop-icon" aria-hidden="true">
+              <svg class="ui-icon md" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+            </div>
+            <strong>拖动图片到这里</strong>
+            <span>支持 PNG、JPG、JPEG、WebP，可一次多选</span>
+            <button class="button secondary compact-button" id="chooseMaterialFiles" type="button">选择图片</button>
+          </div>
+          <div class="pending-files" id="pendingFiles"><span>尚未选择图片</span></div>
+          <div class="notice">
+            <svg class="ui-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            <p>图片直接保存在本机素材目录；提交生成时再按所选素材组自动上传。</p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <span class="save-state" id="materialSaveState"></span>
+          <button class="button secondary" id="cancelMaterialButton" type="button">取消</button>
+          <button class="button accent" id="saveMaterialButton" type="button">创建并上传</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- 素材组精细管理弹窗（查看/删单图/重命名/删组） -->
+    <div class="modal-backdrop" id="groupManageModal" hidden>
+      <section class="modal group-manage-modal" role="dialog" aria-modal="true" aria-labelledby="groupManageTitle">
+        <div class="modal-header">
+          <h2 id="groupManageTitle">管理素材组</h2>
+          <button class="icon-button" id="closeGroupManageButton" type="button" aria-label="关闭素材组管理">
+            <svg class="ui-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="manage-rename-row" id="manageRenameRow">
+            <label class="field manage-name-field">
+              <span>素材组名称</span>
+              <input id="manageGroupNameInput" type="text" maxlength="80" placeholder="输入新的素材组名称" />
+            </label>
+            <button class="button secondary" id="saveGroupRenameButton" type="button">保存名称</button>
+          </div>
+          <div class="manage-toolbar">
+            <span class="manage-count-text" id="manageGroupCount">0 张图片</span>
+            <button class="button secondary compact-button" id="manageAddFilesButton" type="button">
+              <svg class="ui-icon xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              <span>追加图片</span>
+            </button>
+          </div>
+          <div class="manage-image-grid" id="manageImageGrid"></div>
+          <div class="manage-danger-zone" id="manageDangerZone">
+            <div>
+              <strong>删除此素材组</strong>
+              <p>将永久删除本地素材目录中的该文件夹及其内全部参考图，不可恢复。</p>
+            </div>
+            <button class="button danger compact-button" id="deleteGroupButton" type="button">删除素材组</button>
+          </div>
+          <div class="manage-confirm-bar" id="deleteGroupConfirmBar" hidden>
+            <span>确认永久删除该素材组及其内全部图片？</span>
+            <div class="confirm-bar-actions">
+              <button class="button secondary compact-button" id="cancelDeleteGroupButton" type="button">取消</button>
+              <button class="button danger compact-button" id="confirmDeleteGroupButton" type="button">确认删除</button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="button accent" id="doneGroupManageButton" type="button">完成</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- 成片视频预览弹窗 -->
+    <div class="modal-backdrop" id="videoPreviewModal" hidden>
+      <section class="modal video-preview-modal" role="dialog" aria-modal="true" aria-labelledby="videoPreviewTitle">
+        <div class="modal-header">
+          <h2 id="videoPreviewTitle">成片预览</h2>
+          <button class="icon-button" id="closeVideoPreviewButton" type="button" aria-label="关闭视频预览">
+            <svg class="ui-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="video-stage">
+            <video id="videoPreviewPlayer" controls playsinline preload="metadata"></video>
+          </div>
+          <div class="video-preview-meta" id="videoPreviewMeta"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="button secondary" id="videoPreviewScriptButton" type="button">查看脚本</button>
+          <button class="button secondary" id="videoPreviewOpenDirButton" type="button">打开所在目录</button>
+          <button class="button accent" id="doneVideoPreviewButton" type="button">关闭</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- 清理队列二次确认弹窗 -->
+    <div class="modal-backdrop" id="clearJobsModal" hidden>
+      <section class="modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="clearJobsTitle">
+        <div class="modal-header">
+          <h2 id="clearJobsTitle">清理已结束任务</h2>
+          <button class="icon-button" id="closeClearJobsButton" type="button" aria-label="关闭确认">
+            <svg class="ui-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <p class="confirm-summary" id="clearJobsSummary">即将从队列列表移除已保存完成的任务记录（不会删除本地已下载的视频文件）。</p>
+          <label class="clear-failed-option" id="clearFailedOptionWrap">
+            <input id="clearIncludeFailedInput" type="checkbox" />
+            <span>同时清理失败与已停止跟踪的任务（<strong id="clearFailedCount">0</strong> 条，含可「取回视频」的记录）</span>
+          </label>
+        </div>
+        <div class="modal-footer">
+          <button class="button secondary" id="cancelClearJobsButton" type="button">取消</button>
+          <button class="button accent" id="confirmClearJobsButton" type="button">确认清理</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- 完整错误详情弹窗 -->
+    <div class="modal-backdrop" id="errorDetailModal" hidden>
+      <section class="modal error-detail-modal" role="dialog" aria-modal="true" aria-labelledby="errorDetailTitle">
+        <div class="modal-header">
+          <h2 id="errorDetailTitle">任务失败详情</h2>
+          <button class="icon-button" id="closeErrorDetailButton" type="button" aria-label="关闭失败详情">
+            <svg class="ui-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <pre class="error-detail-text" id="errorDetailText"></pre>
+        </div>
+        <div class="modal-footer">
+          <button class="button secondary" id="copyErrorDetailButton" type="button">复制报错信息</button>
+          <button class="button accent" id="doneErrorDetailButton" type="button">知道了</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- 任务脚本弹窗 -->
+    <div class="modal-backdrop" id="scriptModal" hidden>
+      <section class="modal script-modal" role="dialog" aria-modal="true" aria-labelledby="scriptModalTitle">
+        <div class="modal-header">
+          <h2 id="scriptModalTitle">任务脚本</h2>
+          <button class="icon-button" id="closeScriptButton" type="button" aria-label="关闭脚本">
+            <svg class="ui-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="script-section" id="visualFactsSection"><strong>图片观察</strong><ul id="visualFactsList"></ul></div>
+          <div class="script-section" id="copyPlanSection"><strong>文案策划</strong><p id="copyPlanTitle"></p><p id="copyPlanSpeech"></p></div>
+          <div class="script-section"><strong>视频提示词</strong><pre id="finalPromptText"></pre></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite">
+      <span id="toastMessage"></span>
+      <button class="toast-close" id="toastCloseButton" type="button" aria-label="关闭提示" hidden>
+        <svg class="ui-icon xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <script id="fishVoicesData" type="application/json">__FISH_VOICES__</script>
+    <script src="./app.js?v=20261123-5" type="module"></script>
+  </body>
+</html>

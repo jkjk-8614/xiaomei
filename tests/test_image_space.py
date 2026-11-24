@@ -1,12 +1,13 @@
 import json
 import tempfile
 import unittest
+from pathlib import Path
 from fastapi.testclient import TestClient
 try:
     from tests.image_space_support import build_app
 except ImportError:
     from image_space_support import build_app
-from image_space import replace_ai
+from asset_annotations import replace_ai, save_file_classification
 
 
 class ImageSpaceTests(unittest.TestCase):
@@ -29,6 +30,31 @@ class ImageSpaceTests(unittest.TestCase):
         self.assertEqual(self.client.get('/api/storage-files',params={'filters':'bad'}).status_code,422)
         self.assertEqual(self.client.get('/api/storage-files',params={'filters':'{"min_edge":-1}'}).status_code,422)
 
+    def test_storage_listing_registers_only_the_returned_page(self):
+        registrations = []
+        self.ns['asset_registry_register_media'] = lambda url, **_kwargs: registrations.append(url)
+        self.ns['registry_is_asset_id'] = lambda value: value.startswith('asset_')
+        response = self.client.get('/api/storage-files', params={'limit':20})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['total'], 25)
+        self.assertEqual(registrations, [item['url'] for item in response.json()['items']])
+        registrations.clear()
+        self.assertEqual(self.client.get('/api/storage-files', params={'view':'picker'}).status_code, 200)
+        self.assertEqual(registrations, [])
+
+    def test_svg_dimensions_are_available_to_shape_and_size_filters(self):
+        (Path(self.directory.name) / "portrait.svg").write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 840"></svg>',
+            encoding="utf-8",
+        )
+        response = self.client.get('/api/storage-files', params={
+            'filters': json.dumps({'shape': 'portrait', 'min_edge': 400}),
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['total'], 1)
+        item = response.json()['items'][0]
+        self.assertEqual((item['name'], item['width'], item['height']), ('portrait.svg', 420, 840))
+
     def test_collections_persist_update_delete_without_touching_assets(self):
         payload={'name':'金色主图','source':'assets','library_id':'default','filters':{'color':'金色'}}
         response=self.client.post('/api/image-space/collections',json=payload)
@@ -49,7 +75,7 @@ class ImageSpaceTests(unittest.TestCase):
         response=self.client.patch('/api/image-space/classification',json=payload)
         self.assertEqual(response.status_code,200)
         old=response.json()['classification']
-        new=replace_ai(old,{'summary':'新的 AI 说明','tags':['AI 标签'],'categories':{'color':['黑色'],'materials':['塑料'],'subject':['相框']}},self.ns['_normalize_asset_classification_fields'])
+        new=replace_ai(old,{'summary':'新的 AI 说明','tags':['AI 标签'],'categories':{'color':['黑色'],'materials':['塑料'],'subject':['相框']}})
         self.assertEqual(new['tags'],['精选'])
         self.assertEqual(new['categories']['color'],['金色'])
         self.assertNotIn('materials',new['categories'])
@@ -82,7 +108,9 @@ class ImageSpaceTests(unittest.TestCase):
         for source,ident in [('local','相框00.png'),('generated','generated:相框00.png')]:
             response=self.client.patch('/api/image-space/classification',json={'source':source,'id':ident,'manual':{'tags':['人工标签']}})
             self.assertEqual(response.status_code,200)
-        self.ns['_write_local_upload_classification']('相框00.png',{'tags':['重新分析']})
+        sidecar = self.ns['_local_upload_classification_path']('相框00.png')
+        save_file_classification(sidecar, lambda previous: replace_ai(previous, {'tags':['重新分析']}),
+                                 self.ns['_atomic_write_json_locked'])
         self.assertEqual(self.ns['_read_local_upload_classification']('相框00.png')['tags'],['人工标签'])
         data=self.client.get('/api/storage-files',params={'filters':json.dumps({'tags':'人工标签'})}).json()
         self.assertEqual(data['total'],1)

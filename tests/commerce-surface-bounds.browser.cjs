@@ -20,7 +20,7 @@ const { chromium } = require(path.join(root, 'tools/commerce-analysis/node_modul
   await page.goto('http://commerce-bounds.test/host');
   const frame=page.frames().find(f=>f.url().includes('/static/commerce-analysis.html'));
   await frame.waitForFunction(()=>typeof window.xiaomeiCommerceSurfaceBounds==='function');
-  assert.equal(await frame.locator('[data-desktop-app]').count(),18);
+  assert.equal(await frame.locator('[data-desktop-app]').count(),19);
   await page.screenshot({path:path.join(require('os').tmpdir(),'xiaomei-workspace-compact.png')});
   for(const scale of [0.85,0.95,1,1.15]) {
    await frame.evaluate(scale=>window.postMessage({type:'studio-ui-scale',mode:'auto',scale},'*'),scale);

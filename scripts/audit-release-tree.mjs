@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 
 const root = path.resolve(process.argv[2] || '.');
 const forbidden = [
+  /^tools\/video-workbench\/(?:data|素材|输出)(?:\/|$)/i,
   /^(?:data|assets|output|user_data|logs|\.xiaomei-data|\.ui-patch-backup)(?:\/|$)/i,
   /(?:^|\/)(?:\.env(?:\.[^/]+)?|global_config\.json|history\.json|asset_library\.json|projects\.json|prompt_cases\.json|prompt_libraries\.json)$/i,
   /(?:^|\/)(?:\.cache|__pycache__|\.pytest_cache|\.venv)(?:\/|$)/i,

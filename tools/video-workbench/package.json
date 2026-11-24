@@ -1,0 +1,18 @@
+{
+  "name": "xiaohongshu-batch-video",
+  "version": "1.0.0",
+  "private": true,
+  "description": "本地批量生成小红书视频的工作台",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "sharp": "^0.35.5",
+    "undici": "7.30.2"
+  }
+}

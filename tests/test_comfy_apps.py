@@ -30,6 +30,28 @@ GRAPH = {
 
 
 class AppTests(unittest.TestCase):
+    def test_original_profile_persists_restored_workflow_parameters(self):
+        with tempfile.TemporaryDirectory() as root:
+            host = SimpleNamespace(BASE_DIR=root, CANVAS_TASKS={}, CANVAS_TASK_LOCK=threading.RLock(),
+                workflow_path_from_name=lambda name: Path(root) / name,
+                workflow_config_path=lambda name: Path(root) / (name + ".config.json"))
+            app = FastAPI()
+            service = install_comfy_apps(app, host)
+            identity = "c" * 32
+            graph = copy.deepcopy(GRAPH)
+            graph["3"]["inputs"]["resolution"] = 1024
+            original = copy.deepcopy(graph)
+            original["3"]["inputs"]["resolution"] = 1536
+            service.save({"id": identity, "title": "SeeThrough", "workflow": "app.json",
+                          "api": graph, "original_api": original})
+            with patch.object(service, "backend", return_value=("fixture", INFO)), TestClient(app) as client:
+                result = client.post(f"/api/comfy-apps/{identity}/profile", json={"profile": "original"})
+            self.assertEqual(result.status_code, 200, result.text)
+            self.assertEqual(service.read(identity)["api"]["3"]["inputs"]["resolution"], 1536)
+            self.assertEqual(json.loads((Path(root) / "app.json").read_text(encoding="utf-8")), original)
+            config = json.loads((Path(root) / "app.json.config.json").read_text(encoding="utf-8"))
+            self.assertEqual(config["title"], "SeeThrough")
+
     def test_grouped_dlss5_settings_become_an_executable_preset(self):
         source = {'nodes': [
             {'id': 30, 'type': 'DLSS5Settings', 'pos': [10, 10],

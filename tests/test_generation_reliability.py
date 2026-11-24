@@ -1,5 +1,7 @@
 import asyncio
+import base64
 import copy
+from io import BytesIO
 import json
 import tempfile
 import time
@@ -7,15 +9,163 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import httpx
+from PIL import Image
+
 import main
 
 
 class GenerationReliabilityTests(unittest.TestCase):
+    def test_gpt_replica_sends_aligned_size_and_saves_exact_output_pixels(self):
+        async def scenario(root):
+            provider = {"id": "api-6789", "name": "6789API", "base_url": "https://fixture.invalid",
+                        "protocol": "openai", "image_request_mode": "openai"}
+            reference = Path(root, "ref.png")
+            Image.new("RGB", (1464, 600), "red").save(reference)
+            buffer = BytesIO()
+            Image.new("RGB", (120, 120), "blue").save(buffer, format="PNG")
+            requests = []
+
+            def respond(request):
+                requests.append(request)
+                return httpx.Response(200, json={"data": [{"b64_json": base64.b64encode(buffer.getvalue()).decode("ascii")}]})
+
+            client_type = httpx.AsyncClient
+            with mock.patch.multiple(
+                main, get_api_provider=mock.Mock(return_value=provider), api_headers=mock.Mock(return_value={}),
+                OUTPUT_OUTPUT_DIR=root, CANVAS_TASKS_FILE=str(Path(root, "tasks.json")), CANVAS_TASKS={},
+                CANVAS_IMAGE_BACKGROUND_TASKS={}, save_to_history=mock.Mock(), GLOBAL_LOOP=None,
+            ), mock.patch.object(main.httpx, "AsyncClient", side_effect=lambda **options: client_type(
+                transport=httpx.MockTransport(respond), **options,
+            )):
+                async with client_type(transport=httpx.ASGITransport(app=main.app), base_url="http://127.0.0.1") as client:
+                    response = await client.post("/api/canvas-image-tasks", json={
+                        "prompt": "复刻版式", "provider_id": "api-6789", "model": "gpt-image-2-high",
+                        "size": "1464x600", "output_size": "1464x600", "aspect_ratio": "61:25",
+                        "reference_images": [{"url": "/output/ref.png"}], "history_source": "canvas",
+                    })
+                    self.assertEqual(response.status_code, 200, response.text)
+                    task_id = response.json()["task_id"]
+                    await main.CANVAS_IMAGE_BACKGROUND_TASKS[task_id]
+                    task = (await client.get(f"/api/canvas-image-tasks/{task_id}")).json()
+                    self.assertEqual(task["status"], "succeeded", task.get("error"))
+                    result = task["result"]
+                    item = result["image_items"][0]
+                    self.assertEqual((item["natural_w"], item["natural_h"]), (1464, 600))
+                    with Image.open(main.output_file_from_url(item["url"])) as saved:
+                        self.assertEqual(saved.size, (1464, 600))
+                    self.assertEqual(result["params"]["output_size"], "1464x600")
+                    self.assertEqual(main.save_to_history.call_args.args[0]["params"]["output_size"], "1464x600")
+
+            self.assertEqual(len(requests), 1)
+            self.assertEqual(requests[0].url.path, "/v1/images/edits")
+            self.assertIn(b'name="size"\r\n\r\n1472x608\r\n', requests[0].content)
+            self.assertNotIn(b'name="output_size"', requests[0].content)
+
+        with tempfile.TemporaryDirectory() as root:
+            asyncio.run(scenario(root))
+
+    def test_soonstudio_image_requests_use_the_resolved_resolution(self):
+        async def scenario():
+            provider = {"id": "soon-fixture", "name": "SoonStudio", "base_url": "https://api.soonstudio.ai",
+                        "protocol": "openai", "image_request_mode": "openai"}
+            bodies = []
+
+            def respond(request):
+                bodies.append(json.loads(request.content))
+                return httpx.Response(200, json={"data": [{"url": "https://fixture.invalid/result.png"}]})
+
+            client_type = httpx.AsyncClient
+            with mock.patch.object(main, "get_api_provider", return_value=provider), \
+                 mock.patch.object(main, "api_headers", return_value={}), \
+                 mock.patch.object(main.httpx, "AsyncClient", side_effect=lambda **kwargs: client_type(
+                     transport=httpx.MockTransport(respond), **kwargs
+                 )):
+                await main.generate_ai_image("产品图", "2560x1440", "auto", "gpt-image-2")
+                await main.generate_ai_image("产品图", "2560x1440", "auto", "nano-banana", resolution="4K", size_is_resolved=True)
+                with self.assertRaises(main.HTTPException) as error:
+                    await main.generate_ai_image("产品图", "2560x1440", "auto", "gpt-image-2-1k")
+                self.assertEqual(error.exception.status_code, 400)
+            self.assertEqual([body["image_size"] for body in bodies], ["2K", "4K"])
+
+        asyncio.run(scenario())
+
+    def test_svg_author_retry_requires_an_explicit_rejection_before_task_creation(self):
+        error = {"code": "ERR-FIXTURE", "message": "Bad request to openai: SVG generation requires '***.model'."}
+        for status, payload, expected in (
+            (400, {"error": error}, True),
+            (422, {"error": {"code": "missing_required_parameter", "param": "svg.model"}}, True),
+            (400, {"error": error, "task_id": "accepted-job"}, False),
+            (500, {"error": error}, False),
+            (400, {"error": {"message": "Bad request to openai: Invalid svg.model."}}, False),
+        ):
+            with self.subTest(status=status, payload=payload):
+                self.assertEqual(main.svg_author_model_required(httpx.Response(status, json=payload)), expected)
+
+    def test_svg_reference_routes_retry_explicit_rejection_and_stop_on_raster_result(self):
+        async def scenario(root):
+            model = "gpt-image-2.6-sunburst"
+            provider = {"id": "fixture", "name": "Fixture", "base_url": "https://images.test",
+                        "protocol": "openai", "image_request_mode": "openai", "image_models": [model]}
+            reference = Path(root, "ref.png")
+            Image.new("RGB", (24, 16), "red").save(reference)
+            raster = reference.read_bytes()
+            svg = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 16"><path d="M0 0H24V16Z"/></svg>'
+            requests = []
+
+            def respond(request):
+                requests.append(request)
+                if len(requests) == 1:
+                    return httpx.Response(400, json={"error": {
+                        "code": "ERR-FIXTURE", "message": "Bad request to openai: SVG generation requires '***.model'.",
+                    }})
+                content = svg if len(requests) == 2 else raster
+                return httpx.Response(200, json={"data": [{"b64_json": base64.b64encode(content).decode("ascii")}]})
+
+            payload = main.OnlineImageRequest(provider_id="fixture", model=model, output_format="svg",
+                                              reference_images=[{"url": "/output/ref.png"}]).model_dump()
+            client_type = httpx.AsyncClient
+            with mock.patch.multiple(
+                main,
+                get_api_provider=mock.Mock(return_value=provider), api_headers=mock.Mock(return_value={}),
+                OUTPUT_OUTPUT_DIR=root, CANVAS_TASKS_FILE=str(Path(root, "tasks.json")), CANVAS_TASKS={},
+                save_to_history=mock.Mock(), GLOBAL_LOOP=None,
+            ), mock.patch.object(main.httpx, "AsyncClient", side_effect=lambda **options: client_type(
+                transport=httpx.MockTransport(respond), **options,
+            )):
+                async with client_type(transport=httpx.ASGITransport(app=main.app), base_url="http://127.0.0.1") as client:
+                    response = await client.post("/api/online-image", json={**payload, "history_source": "commerce"})
+                    self.assertEqual(response.status_code, 200, response.text)
+                    image = response.json()["image_items"][0]
+                    self.assertEqual(image["format"], "svg")
+                    self.assertEqual(Path(main.output_file_from_url(image["url"])).read_bytes(), svg)
+
+                    response = await client.post("/api/canvas-image-tasks", json=payload)
+                    self.assertEqual(response.status_code, 200, response.text)
+                    task_id = response.json()["task_id"]
+                    await main.CANVAS_IMAGE_BACKGROUND_TASKS[task_id]
+                    task = (await client.get(f"/api/canvas-image-tasks/{task_id}")).json()
+                    self.assertEqual(task["status"], "failed")
+                    self.assertTrue(task["upstream_terminal_error"])
+                    self.assertIn("Fixture 的参考图编辑接口未返回 SVG", task["error"])
+                    main.save_to_history.assert_called_once()
+
+            self.assertEqual(len(requests), 3)
+            for request in requests:
+                self.assertEqual(request.url.path, "/v1/images/edits")
+                self.assertIn(b'name="output_format"\r\n\r\nsvg\r\n', request.content)
+                self.assertIn(raster, request.content)
+            self.assertNotIn(b'name="svg[model]"', requests[0].content)
+            self.assertIn(b'name="svg[model]"\r\n\r\ngpt-6-astra\r\n', requests[1].content)
+
+        with tempfile.TemporaryDirectory(prefix="svg-reference-generation-") as root:
+            asyncio.run(scenario(root))
+
     def test_partial_batch_keeps_successes_and_records_failure(self):
         async def scenario():
             calls = 0
 
-            async def generate(*args):
+            async def generate(*args, **kwargs):
                 nonlocal calls
                 calls += 1
                 number = calls
@@ -46,7 +196,7 @@ class GenerationReliabilityTests(unittest.TestCase):
 
     def test_outpaint_keeps_the_saved_model_image_and_marks_detected_redraw(self):
         async def scenario():
-            async def generate(*args):
+            async def generate(*args, **kwargs):
                 self.assertEqual(len(args[4]), 1)
                 self.assertEqual(args[4][0]['url'], '/base.png')
                 self.assertTrue(args[4][0]['outpaint_canvas'])

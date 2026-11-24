@@ -12,13 +12,14 @@ const project = path.resolve(__dirname, '..');
 const harness = path.join(project, 'vendor', 'deepseek-harness');
 const runtimeRequire = createRequire(path.join(harness, 'apps', 'cli', 'package.json'));
 const source = fs.readFileSync(path.join(project, 'desktop', 'main.cjs'), 'utf8');
-const functions = ['collectDeepSeekSkillRoots', 'fingerprintDeepSeekSkills', 'ensureDeepSeekHarnessProfile', 'yamlScalar'];
+const functions = ['collectDeepSeekSkillRoots', 'fingerprintDeepSeekSkills', 'ensureDeepSeekHarnessProfile', 'mcpClientProfileRows', 'yamlScalar'];
 
 function generateProfile(projectRoot, runtimeRoot) {
   const context = vm.createContext({
     fs, path, crypto, process,
     PROJECT_ROOT: projectRoot, TEST_RUNTIME_DATA_ROOT: runtimeRoot, DEEPSEEK_HARNESS_ROOT: harness,
     readXiaomeiHarnessModelConfig: () => ({ routes: [], env: {} }),
+    readXiaomeiMcpServers: () => [],
     syncXiaomeiHarnessWorkspace: () => {},
   });
   vm.runInContext(functions.map(name => source.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'))[0]).join('\n'), context);

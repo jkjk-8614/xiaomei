@@ -301,6 +301,7 @@ html body textarea::placeholder {
 .smart-log-toggle,
 .smart-shortcut-toggle,
 .smart-workflow-toggle,
+.smart-prompt-toggle,
 .canvas-agent-toggle {
     border: 1px solid var(--apple-border) !important;
     border-radius: 11px !important;
@@ -320,6 +321,7 @@ html body textarea::placeholder {
 .smart-log-toggle:hover,
 .smart-shortcut-toggle:hover,
 .smart-workflow-toggle:hover,
+.smart-prompt-toggle:hover,
 .canvas-agent-toggle:hover {
     border-color: color-mix(in srgb, var(--studio-skin-accent, #0071e3) 3800%, transparent) !important;
     background: var(--apple-accent-soft) !important;
@@ -533,6 +535,7 @@ html.studio-theme-dark body .smart-back,
 html.studio-theme-dark body .smart-log-toggle,
 html.studio-theme-dark body .smart-shortcut-toggle,
 html.studio-theme-dark body .smart-workflow-toggle,
+html.studio-theme-dark body .smart-prompt-toggle,
 html.studio-theme-dark body .canvas-agent-toggle,
 html.studio-theme-dark body input,
 html.studio-theme-dark body textarea,
@@ -2508,6 +2511,7 @@ html body .smart-back:hover,
 html body .smart-log-toggle:hover,
 html body .smart-shortcut-toggle:hover,
 html body .smart-workflow-toggle:hover,
+html body .smart-prompt-toggle:hover,
 html body .canvas-agent-toggle:hover {
     border-color: var(--ui-accent-border) !important;
 }
@@ -2677,12 +2681,12 @@ html[data-studio-skin] body .shell .composer.comfy-run-only > .composer-card > .
     }
     .canvas-agent-panel { --canvas-agent-font-size: .875rem; --canvas-agent-caption-size: .8125rem; }
     .comfy-node-field-label { flex-wrap: wrap; }
-    .smart-workflow-toggle, .smart-shortcut-toggle, .smart-log-toggle, .asset-toggle, .canvas-agent-toggle {
+    .smart-prompt-toggle, .smart-workflow-toggle, .smart-shortcut-toggle, .smart-log-toggle, .asset-toggle, .canvas-agent-toggle {
         font-size: .8125rem !important;
         padding-inline: 4px !important;
         gap: 5px !important;
     }
-    :is(.smart-workflow-toggle, .smart-shortcut-toggle, .smart-log-toggle, .asset-toggle, .canvas-agent-toggle) > svg {
+    :is(.smart-prompt-toggle, .smart-workflow-toggle, .smart-shortcut-toggle, .smart-log-toggle, .asset-toggle, .canvas-agent-toggle) > svg {
         flex: 0 0 16px !important;
     }
     :root.studio-theme-dark { color-scheme: dark; }
@@ -2852,7 +2856,7 @@ html[data-studio-skin] body .shell .composer.comfy-run-only > .composer-card > .
     .canvas-agent-input, .canvas-agent-composer, .composer-wrap { background: var(--colorNeutralBackground1) !important; box-shadow: none !important; }
     .canvas-agent-composer-model-control .canvas-agent-generation-model-trigger,
     .smart-pill:not(.active), .tool-btn:not(.active), .smart-back,
-    .smart-workflow-toggle:not(.active), .smart-shortcut-toggle:not(.active), .smart-log-toggle:not(.active), .asset-toggle:not(.active),
+    .smart-prompt-toggle:not(.active), .smart-workflow-toggle:not(.active), .smart-shortcut-toggle:not(.active), .smart-log-toggle:not(.active), .asset-toggle:not(.active),
     .ws-icon-btn:not(.active), .ws-side-add, .ws-join-btn, .ws-paste-btn, .ws-mini-btn:not(.primary) {
         background: var(--colorNeutralBackground1) !important;
         border-color: var(--colorNeutralStroke1) !important;

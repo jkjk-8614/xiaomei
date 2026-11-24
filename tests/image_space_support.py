@@ -7,6 +7,7 @@ import pathlib
 import re
 import tempfile
 import time
+from threading import RLock
 import uuid
 import sys
 from typing import Any, Dict, Optional, Literal, List
@@ -17,8 +18,9 @@ from PIL import Image
 from pydantic import BaseModel, Field
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+import asset_annotations
 import asset_kernel
-from image_space import merge_classification, replace_ai, matches_filters
+from image_space import matches_filters
 
 
 def build_app(directory):
@@ -30,8 +32,6 @@ def build_app(directory):
         'image_space_dimensions', 'image_space_read_generated_classification', 'image_space_collections',
         'get_image_space_collections', 'create_image_space_collection', 'update_image_space_collection',
         'delete_image_space_collection', 'edit_image_space_classification', 'list_storage_files',
-        '_normalize_asset_classification_fields', 'normalize_asset_classification',
-        '_read_local_upload_classification', '_write_local_upload_classification',
         '_atomic_write_json_locked',
         'AssetLibraryClassifyRequest', 'classify_asset_library_items',
     }
@@ -39,8 +39,9 @@ def build_app(directory):
     selected = [node for node in tree.body if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in names]
     assert len(selected) == len(names)
     ns = dict(globals(), app=app, DATA_DIR=str(root), asset_kernel=asset_kernel, now_ms=lambda: int(time.time()*1000),
-              _IMAGE_SPACE_DIMENSIONS={}, ASSET_CLASSIFICATION_DIMENSION_NAMES={'color':'色彩','materials':'材质','subject':'主体','style':'风格','use_case':'用途'},
-              STORAGE_MEDIA_EXTS={'.png'}, STORAGE_VIDEO_EXTS={'.mp4'}, STORAGE_AUDIO_EXTS={'.mp3'}, Request=Any)
+              _IMAGE_SPACE_DIMENSIONS={}, ASSET_LIBRARY_IO_LOCK=RLock(),
+              STORAGE_MEDIA_EXTS={'.png', '.svg'}, STORAGE_VIDEO_EXTS={'.mp4'}, STORAGE_AUDIO_EXTS={'.mp3'}, Request=Any)
+    ns['asset_registry_register_media'] = lambda *args, **kwargs: None
     library = {'libraries':[{'id':'default','name':'默认资产库','categories':[{'id':'frames','name':'相框','type':'image','items':[]}]}]}
     ns['load_asset_library'] = lambda: copy.deepcopy(library)
     def save_library(value):
@@ -55,13 +56,23 @@ def build_app(directory):
             raise HTTPException(400, '路径无效')
         return str(target)
     ns['_local_upload_safe_path'] = lambda name: (name, safe_path(name))
-    ns['_local_upload_classification_path'] = lambda name: str(pathlib.Path(safe_path(name)).with_suffix('.classification.json'))
+    ns['_local_upload_classification_path'] = lambda name: safe_path(name) + '.classification.json'
+    ns['_read_local_upload_classification'] = lambda name: asset_annotations.read_classification(
+        ns['_local_upload_classification_path'](name)
+    )
+    ns['_atomic_write_json_file'] = lambda path, payload: pathlib.Path(path).write_text(
+        json.dumps(payload, ensure_ascii=False), encoding='utf-8'
+    )
     ns['storage_kind_roots'] = lambda kind: [str(root)]
     ns['storage_file_path'] = lambda kind, rel: safe_path(rel)
     ns['_storage_folder_orders'] = lambda kind: {}
     ns['_storage_folder_sort_key'] = lambda path, orders: path.casefold()
     ns['output_file_from_url'] = lambda url: safe_path(url.removeprefix('/fixtures/'))
-    def storage_item(kind, source_root, path, include_dimensions=False):
+    ns['upload_registry_records'] = lambda: {}
+    ns['upload_media_key'] = lambda url: url
+    ns['upload_canvas_index'] = lambda: {}
+    ns['prepare_upload_scopes'] = lambda items, index: {}
+    def storage_item(kind, source_root, path, include_dimensions=False, register_asset=True):
         rel = pathlib.Path(path).relative_to(root).as_posix()
         return {'id':f'{kind}:{rel}', 'name':pathlib.Path(path).name,'kind':kind,'rel':rel,'folder':str(pathlib.Path(rel).parent).replace('.',''),'url':f'/fixtures/{rel}','created_at':os.stat(path).st_mtime,'size':os.stat(path).st_size}
     ns['storage_file_item'] = storage_item
@@ -70,7 +81,7 @@ def build_app(directory):
         name = f'相框{index:02d}.png'
         Image.new('RGB', (300, 600) if index == 24 else (600, 300), '#dfd1bf').save(root/name)
         os.utime(root/name, (index+1,index+1))
-        classification = ns['normalize_asset_classification']({'categories':{'color':['金色' if index == 24 else '白色'],'materials':['金属']},'tags':['参考图'],'summary':'相框产品图'})
+        classification = asset_annotations.normalize({'categories':{'color':['金色' if index == 24 else '白色'],'materials':['金属']},'tags':['参考图'],'summary':'相框产品图'})
         ns['_atomic_write_json_locked'](str(root/name)+'.classification.json',classification)
         if index < 3 or index == 24:
             library['libraries'][0]['categories'][0]['items'].append({'id':f'asset_{index}','name':name,'url':f'/fixtures/{name}','kind':'image','width':300 if index==24 else 600,'height':600 if index==24 else 300,'classification':classification,'created_at':1000})

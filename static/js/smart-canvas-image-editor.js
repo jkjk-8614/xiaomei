@@ -14,6 +14,7 @@
         const box = get('cropBox');
         const expansion = get('outpaintFrame');
         const applyButton = get('imageEditApplyBtn');
+        const cropStatus = get('imageCropStatus');
         const fields = ['imageResizeScaleRange', 'imageResizeScaleInput'].map(get);
         const ratioButtons = frame.closest('#imageEditModal').querySelectorAll('[data-crop-ratio]');
         const geometry = root.XiaomeiImageEditGeometry;
@@ -295,6 +296,7 @@
             delete source.dataset.proxyFallbackTried;
             for (const key of ['width', 'height', 'maxWidth', 'maxHeight', 'position', 'left', 'top']) source.style[key] = '';
             applyButton.disabled = false;
+            cropStatus.textContent = '';
         }
 
         function stillOpen(state) {
@@ -309,12 +311,18 @@
             const current = () => load === job && stillOpen(state) && host.owner() === job.owner && host.current().image?.url === job.uri;
 
             function tryUrl(index) {
-                if (!current() || !urls[index]) return;
+                if (!current()) return;
+                if (!urls[index]) {
+                    job.failed = true;
+                    if (host.mode() === 'crop') cropStatus.textContent = host.label('smart.cropSourceFailed');
+                    return;
+                }
                 const url = urls[index];
                 source.onload = () => {
                     if (!current() || source.getAttribute('src') !== url || !source.naturalWidth) return;
                     source.onload = source.onerror = null;
                     job.ready = true;
+                    cropStatus.textContent = '';
                     refit(true);
                     host.loaded(index === 0, source.naturalWidth, source.naturalHeight);
                 };
@@ -334,10 +342,15 @@
             const state = host.state();
             if (!state || submitting.has(state)) return;
             const current = host.current();
-            if (mode === 'crop') {
-                if (!current.node) return host.error('裁剪失败：原图节点已不在画布上，请关闭编辑器后重试');
-                if (!current.image) return host.error('裁剪失败：原图已被更新，请关闭编辑器后重新打开');
-                if (!ready()) return host.error('裁剪失败：当前图片尚未加载，请稍后重试');
+            const cropping = mode === 'crop';
+            if (cropping) {
+                if (!current.node || !current.image || !ready()) {
+                    const key = !current.node ? 'smart.cropNodeMissing'
+                        : !current.image ? 'smart.cropSourceChanged'
+                        : load?.failed ? 'smart.cropSourceFailed' : 'smart.cropSourceLoading';
+                    cropStatus.textContent = host.label(key);
+                    return;
+                }
             } else if (!current.node || !current.image || !ready()) return;
 
             const edit = { ...current, localRepair: state.localRepair, region: rectangle(state), resizeBy,
@@ -354,25 +367,37 @@
 
             submitting.add(state);
             applyButton.disabled = true;
+            if (cropping) cropStatus.textContent = host.label('smart.cropExporting');
             let phase = 'export';
+            let signal;
             try {
-                const output = mode === 'crop' ? geometry.crop(source, edit.region) : geometry.resize(source, resizeSize());
+                const output = cropping ? geometry.crop(source, edit.region) : geometry.resize(source, resizeSize());
                 const blob = await geometry.png(output.canvas);
                 if (!owns()) return;
                 phase = 'upload';
-                const file = await host.upload(blob, host.filename(edit, mode));
+                if (cropping) cropStatus.textContent = host.label('smart.cropSaving');
+                if (cropping) signal = AbortSignal.timeout(60000);
+                const file = await host.upload(blob, host.filename(edit, mode), signal);
                 if (owns()) host.commit(edit, mode, output, file);
             } catch (error) {
                 if (!owns()) return;
-                if (mode === 'resize' && phase === 'export') {
+                if (cropping) {
+                    cropStatus.textContent = phase === 'export' ? host.label('smart.cropExportFailed')
+                        : signal?.aborted ? host.label('smart.cropSaveTimedOut')
+                        : host.label('smart.cropSaveFailed').replace('{reason}', () => error.message || host.label('smart.cropUnknownError'));
+                } else if (phase === 'export') {
                     host.error('缩放失败：当前图片无法写入画布，请换成本地图片或重新上传后再试');
                 } else {
-                    const action = mode === 'crop' ? '裁剪保存失败' : '缩放失败';
-                    host.error(action + '：' + (error.message || '请重试'));
+                    host.error('缩放失败：' + (error.message || '请重试'));
                 }
             } finally {
                 submitting.delete(state);
-                if (stillOpen(state)) applyButton.disabled = false;
+                if (stillOpen(state)) {
+                    applyButton.disabled = false;
+                    if (cropping && !owns()) {
+                        cropStatus.textContent = host.mode() === 'crop' ? host.label('smart.cropSelectionChanged') : '';
+                    }
+                }
             }
         }
 

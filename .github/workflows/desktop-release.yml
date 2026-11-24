@@ -56,6 +56,8 @@ jobs:
           $env:PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = '1'
           npm ci --prefix tools/commerce-analysis --omit=dev --no-audit --no-fund --ignore-scripts
           if ($LASTEXITCODE -ne 0) { throw 'Cannot install browser automation runtime' }
+      - name: Install video workbench runtime
+        run: npm ci --prefix tools/video-workbench --omit=dev --no-audit --no-fund --ignore-scripts
       - name: Build DeepSeek Harness runtime
         shell: pwsh
         run: |
@@ -90,6 +92,8 @@ jobs:
           $env:XIAOMEI_HARNESS_CHECK_ROOT = Join-Path $appRoot 'bundled/deepseek-harness'
           & (Join-Path $appRoot 'bundled/node/node.exe') --test (Join-Path $appRoot 'desktop/harness-model-check.cjs')
           if ($LASTEXITCODE -ne 0) { throw 'Packaged Harness model capabilities failed validation' }
+          & (Join-Path $appRoot 'bundled/node/node.exe') scripts/verify-video-workbench.mjs $appRoot
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged video workbench runtime failed validation' }
           if (-not (Test-Path -LiteralPath (Join-Path $appRoot 'bundled/win-api/python313.zip') -PathType Leaf)) { throw 'Packaged Python standard library is missing' }
           $signature = Get-AuthenticodeSignature -LiteralPath $runtime
           if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Python Software Foundation') { throw 'Packaged Python signature is invalid' }
@@ -97,7 +101,7 @@ jobs:
           $dataRoot = Join-Path $env:RUNNER_TEMP "xiaomei-api-smoke-$env:GITHUB_RUN_ID"
           New-Item -ItemType Directory -Force -Path $dataRoot | Out-Null
           $previous = @{}
-          foreach ($name in 'XIAOMEI_CANVAS_PROJECT_ROOT','XIAOMEI_CANVAS_DATA_ROOT','XIAOMEI_CANVAS_SESSION_ID','XIAOMEI_CANVAS_PORT','TEMP','TMP') {
+          foreach ($name in 'XIAOMEI_CANVAS_PROJECT_ROOT','XIAOMEI_CANVAS_DATA_ROOT','XIAOMEI_CANVAS_SESSION_ID','XIAOMEI_CANVAS_PORT','XIAOMEI_NODE','TEMP','TMP') {
             $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
           }
           $session = [guid]::NewGuid().ToString()
@@ -105,6 +109,7 @@ jobs:
           [Environment]::SetEnvironmentVariable('XIAOMEI_CANVAS_DATA_ROOT', $dataRoot, 'Process')
           [Environment]::SetEnvironmentVariable('XIAOMEI_CANVAS_SESSION_ID', $session, 'Process')
           [Environment]::SetEnvironmentVariable('XIAOMEI_CANVAS_PORT', '39417', 'Process')
+          [Environment]::SetEnvironmentVariable('XIAOMEI_NODE', (Join-Path $appRoot 'bundled/node/node.exe'), 'Process')
           [Environment]::SetEnvironmentVariable('TEMP', $dataRoot, 'Process')
           [Environment]::SetEnvironmentVariable('TMP', $dataRoot, 'Process')
           $stdout = Join-Path $dataRoot 'api-smoke.stdout.log'
@@ -124,6 +129,8 @@ jobs:
               }
             }
             if (-not $ready) { throw 'Packaged Windows API did not answer its health endpoint within 60 seconds' }
+            $voices = Invoke-RestMethod -Uri 'http://127.0.0.1:39417/video-workbench/api/fish-voices' -TimeoutSec 25
+            if (-not $voices.voices.Count) { throw 'Packaged video workbench did not return voice presets' }
           } finally {
             if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
             foreach ($name in $previous.Keys) { [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process') }
@@ -184,6 +191,8 @@ jobs:
           mkdir -p bundled/playwright-browsers
           PLAYWRIGHT_BROWSERS_PATH="$PWD/bundled/playwright-browsers" ./tools/commerce-analysis/node_modules/.bin/playwright install chromium
           tar -czf bundled/playwright-browsers.tar.gz -C bundled playwright-browsers
+      - name: Install video workbench runtime
+        run: npm ci --prefix tools/video-workbench --omit=dev --no-audit --no-fund --ignore-scripts
       - name: Build DeepSeek Harness runtime
         run: |
           npm install --global pnpm@11.7.0
@@ -214,6 +223,7 @@ jobs:
           RUNTIME="${NODE%/bundled/node/bin/node}/bundled/deepseek-harness"
           node scripts/smoke-harness-runtime.mjs "$RUNTIME" "$NODE"
           XIAOMEI_HARNESS_CHECK_ROOT="$RUNTIME" "$NODE" --test "$APP_ROOT/desktop/harness-model-check.cjs"
+          "$NODE" scripts/verify-video-workbench.mjs "$APP_ROOT"
       - name: Rename macOS packages for users
         run: |
           VERSION=$(node -p "const pkg=require('./package.json'); pkg.displayVersion || pkg.version")

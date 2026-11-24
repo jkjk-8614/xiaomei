@@ -354,7 +354,14 @@
             on(input, 'change', () => { if(input.value === '') updateEditorForm(session); });
         });
         session.dom.modes.forEach(button => on(button, 'click', () => setEditorState(session, {cameraViewMode:button.dataset.cameraViewMode})));
-        on(session.dom.reset, 'click', () => setEditorState(session, {...DEFAULT_STATE, previewSnapshot:session.state.previewSnapshot}));
+        on(session.dom.reset, 'click', () => setEditorState(session, {
+            pitch:0,
+            yaw:0,
+            distance:DEFAULT_STATE.distance,
+            fov:DEFAULT_STATE.fov,
+            roll:0,
+            cameraViewMode:DEFAULT_STATE.cameraViewMode
+        }));
         on(session.dom.close, 'click', () => closeEditor(session));
         on(session.dom.done, 'click', () => closeEditor(session));
         on(session.dom.backdrop, 'click', event => { if(event.target === session.dom.backdrop) closeEditor(session); });

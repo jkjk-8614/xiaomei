@@ -1,5 +1,8 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const {chromium} = require('../tools/commerce-analysis/node_modules/playwright');
+const staticRoot = path.resolve(__dirname, '../static');
 
 const providers = [
     {id:'codex', name:'GPT CLI', protocol:'codex', enabled:true, image_models:[], chat_models:[], video_models:[]},
@@ -11,6 +14,12 @@ const providers = [
     const browser = await chromium.launch({channel:'msedge', headless:true});
     try {
         const page = await browser.newPage({viewport:{width:1500, height:1000}});
+        await page.route('http://127.0.0.1:3000/static/**', route => {
+            const pathname = new URL(route.request().url()).pathname;
+            const file = path.resolve(staticRoot, decodeURIComponent(pathname.slice('/static/'.length)));
+            return file.startsWith(staticRoot + path.sep) && fs.existsSync(file)
+                ? route.fulfill({path:file}) : route.fulfill({status:404, body:''});
+        });
         const errors = [];
         page.on('pageerror', error => errors.push(error.message));
 
@@ -19,6 +28,7 @@ const providers = [
             'gemini-cli': {ok:true, installed:false, current_version:'', latest_version:'2.0.0', update_available:null, message:'未找到 CLI'},
             jimeng: {ok:true, installed:true, current_version:'1.4.2', latest_version:'1.4.2', update_available:false, message:'已是最新版本'},
         };
+        const jimengAccount = {total_credit:0, user_id:'123000999'};
         const installStatus = {codex:'idle', jimeng:'idle', 'gemini-cli':'idle'};
         const installPosts = {codex:0, jimeng:0, 'gemini-cli':0};
         let errorMode = false;
@@ -44,7 +54,9 @@ const providers = [
             } else if(path === '/api/gemini-cli/status'){
                 data = {installed:false, version:'', path:''};
             } else if(path === '/api/jimeng/status'){
-                data = {installed:true, logged_in:true, version_ok:true, raw:{total_credit:0, user_id:'1026301996304889'}};
+                data = {installed:true, logged_in:true, version_ok:true, raw:jimengAccount};
+            } else if(path === '/api/jimeng/credit'){
+                data = {success:true, raw:jimengAccount};
             } else {
                 const installMatch = path.match(/^\/api\/(codex|gemini-cli|jimeng)\/install$/);
                 if(installMatch){
@@ -102,8 +114,9 @@ const providers = [
         await page.evaluate(() => selectProvider('jimeng'));
         await page.waitForFunction(() => document.querySelector('#jimengCliAction').textContent.trim() === '最新版本');
         await page.waitForFunction(() => document.querySelector('#jimengCliStatus').textContent.trim() === '已登录');
+        await page.getByRole('button', {name:'查询积分'}).click();
         await page.waitForFunction(() => document.querySelector('#jimengCredit').textContent.includes('当前积分：0'));
-        assert.match(await page.locator('#jimengCredit').textContent, /即梦账号：1026301996304889/);
+        assert.match(await page.locator('#jimengCredit').textContent(), /即梦账号：123000999/);
 
         errorMode = true;
         await page.evaluate(() => {

@@ -9,6 +9,12 @@
     const thumbnailFormat = /\.(png|jpe?g|webp|gif|bmp|avif|tiff?|mp4|webm|mov|m4v|avi|mkv)(?:[?#]|$)/i;
     const thumbnailPath = /^\/(?:output|assets|api\/storage-files)\//;
 
+    function localPreviewUrl(source, size) {
+        if (!thumbnailPath.test(source) || !thumbnailFormat.test(source)) return '';
+        const width = Math.max(64, Math.min(2048, Math.round(Number(size) || 512)));
+        return `/api/media-preview?w=${width}&url=${encodeURIComponent(source)}`;
+    }
+
     function create(host) {
         const { original, display, escape } = host;
         const bound = new WeakSet();
@@ -17,11 +23,7 @@
             const source = original(item);
             const imported = host.imported(source);
             if (imported !== undefined) return imported;
-            if (thumbnailPath.test(source) && thumbnailFormat.test(source)) {
-                const width = Math.max(64, Math.min(2048, Math.round(Number(size) || 512)));
-                return `/api/media-preview?w=${width}&url=${encodeURIComponent(source)}`;
-            }
-            return display(item);
+            return localPreviewUrl(source, size) || display(item);
         }
 
         function thumbnail(item, size, attributes, video) {
@@ -62,15 +64,29 @@
             for (const image of container.querySelectorAll(thumbnailSelector)) {
                 if (bound.has(image)) continue;
                 bound.add(image);
+                let failedSources;
                 image.addEventListener('error', () => {
                     const { originalSrc, previewKind } = image.dataset;
+                    const failedSource = image.getAttribute('src');
+                    if (!failedSource) return;
                     if (previewKind === 'video') {
                         replaceWithVideo(image, originalSrc || '', false);
                     } else if (host.managed(originalSrc)) {
-                        // A failed thumbnail must avoid loading a full-resolution local asset.
-                        image.dataset.previewFailed = '1';
+                        if (image.closest('.image-node .node-body')) {
+                            failedSources ??= new Set();
+                            failedSources.add(failedSource);
+                            const smaller = localPreviewUrl(originalSrc, 256);
+                            if (smaller && !failedSources.has(smaller)) {
+                                image.src = smaller;
+                                return;
+                            }
+                            if (!failedSources.has(originalSrc) && host.canLoadOriginal(image, originalSrc)) {
+                                image.src = originalSrc;
+                                return;
+                            }
+                        }
                         image.removeAttribute('src');
-                    } else if (originalSrc && image.getAttribute('src') !== originalSrc) {
+                    } else if (originalSrc && failedSource !== originalSrc) {
                         image.src = originalSrc;
                     }
                 });

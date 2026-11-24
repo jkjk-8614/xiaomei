@@ -117,10 +117,11 @@
             const changing = editing(provider);
             const creating = changing && draft.mode === 'new';
             const busy = pending.has(provider?.id);
+            const writeLocked = busy || (supported && options.saving());
 
             closeMenu();
             menu.replaceChildren(...profiles.map((profile, index) => option(profile, index, profile === active)));
-            trigger.disabled = !active || changing || busy;
+            trigger.disabled = !active || changing || writeLocked;
             nodes.triggerName.textContent = supported ? activeName || tr('noKeyProfiles') : '';
             nodes.triggerMeta.textContent = statusText(active, true);
             hint.textContent = !supported ? '' : busy ? tr('keyProfileWorking')
@@ -129,11 +130,12 @@
             add.disabled = changing || busy;
             nodes.selectRow.hidden = !supported || changing;
             edit.hidden = remove.hidden = !active || changing || busy;
+            remove.disabled = writeLocked;
             nodes.editPanel.hidden = nodes.nameRow.hidden = cancel.hidden = !changing;
             nodes.keyEditor.hidden = supported && !changing;
             nodes.keyLabel.hidden = !changing;
             clear.hidden = supported;
-            save.disabled = busy || (supported && !changing);
+            save.disabled = writeLocked || (supported && !changing);
             nameInput.disabled = keyInput.disabled = cancel.disabled = busy;
             if (!changing) {
                 save.title = tr('saveKeyTitle');
@@ -151,7 +153,7 @@
         }
 
         function startDraft(provider, mode, keepKey = false) {
-            if (!supports(provider) || pending.has(provider.id) || options.saving()) return;
+            if (!supports(provider) || pending.has(provider.id)) return;
             const profiles = records(provider);
             const profile = mode === 'edit' ? activeProfile(provider, profiles) : null;
             if (mode === 'edit' && !profile) return;

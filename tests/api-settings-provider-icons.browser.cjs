@@ -20,7 +20,7 @@ const providers = [
      enabled: true, image_models: [], chat_models: [], video_models: []},
 ];
 
-async function open(t, migrateOnSave = false) {
+async function open(t, migrateOnSave = false, records = providers) {
     const browser = await chromium.launch({channel: 'msedge', headless: true});
     t.after(() => browser.close());
     const page = await browser.newPage();
@@ -44,8 +44,8 @@ async function open(t, migrateOnSave = false) {
                 }
             }
             const result = migrateOnSave && request.method() === 'PUT'
-                ? providers.map(item => item.id === 'no-icon' ? {...item, id:'scnet', legacy_ids:['no-icon']} : item)
-                : providers;
+                ? records.map(item => item.id === 'no-icon' ? {...item, id:'scnet', legacy_ids:['no-icon']} : item)
+                : records;
             return route.fulfill({json: {providers:result}});
         }
         if (url.pathname === '/api/provider-icon') {
@@ -165,5 +165,111 @@ test('平台列表自动使用站点图标，取不到时保留默认图标', as
 
     assert.ok(state.iconRequests.some(url => url.includes('icon.example')), '应按 base_url 请求站点图标');
     assert.ok(state.iconRequests.some(url => url.includes('missing.example')));
+    assert.deepEqual(state.errors, []);
+});
+
+test('深色侧栏保留当前入口、键盘焦点、列表滚动和拖拽排序', async t => {
+    const {page, state} = await open(t);
+    await page.evaluate(() => StudioScale.set('100'));
+    await page.setViewportSize({width: 960, height: 640});
+    await page.evaluate(() => {
+        StudioAppearance.set({skin: 'dark'});
+        for (let index = 0; index < 12; index++) {
+            providers.push({
+                id: 'extra-' + index, name: '测试平台 ' + index, base_url: '',
+                protocol: 'openai', enabled: true, image_models: [], chat_models: [], video_models: [],
+            });
+        }
+        renderProviderList();
+    });
+
+    const list = page.locator('#providerList');
+    const selected = list.locator('[data-provider-id="with-icon"]');
+    const another = list.locator('[data-provider-id="no-icon"]');
+    const recommend = page.locator('.api-link-btn');
+    const background = locator => locator.evaluate(button => getComputedStyle(button).backgroundColor);
+    const recommended = await background(recommend);
+    const currentInRecommendations = await background(selected);
+    await selected.focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => !document.body.classList.contains('show-recommend-mode'));
+    assert.notEqual(await background(selected), currentInRecommendations);
+    assert.notEqual(await background(recommend), recommended);
+    assert.equal(await selected.evaluate(button => document.activeElement === button), true);
+    assert.equal(await selected.evaluate(button => getComputedStyle(button).borderRadius), '13px');
+
+    const dragEvents = await page.evaluateHandle(() => {
+        const events = [];
+        for (const type of ['dragstart', 'dragover', 'drop', 'dragend']) {
+            document.getElementById('providerList').addEventListener(type, event => {
+                events.push([event.type, event.target.closest('.provider-card')?.dataset.providerId]);
+            }, true);
+        }
+        return events;
+    });
+    await another.locator('.provider-drag-handle').dragTo(selected.locator('.provider-drag-handle'));
+    await page.waitForFunction(() => providerSavePromise === null);
+    const events = await dragEvents.jsonValue();
+    assert.ok(events.some(([type, id]) => type === 'drop' && id === 'with-icon'), JSON.stringify(events));
+    assert.equal(await list.locator('.provider-card').first().getAttribute('data-provider-id'), 'no-icon');
+    assert.equal(state.saves.at(-1)[0].id, 'no-icon');
+
+    const afterRender = await list.evaluate(node => {
+        node.scrollTop = 135;
+        const before = node.scrollTop;
+        renderProviderList();
+        return {before, after: node.scrollTop};
+    });
+    assert.ok(afterRender.before > 0);
+    assert.equal(afterRender.after, afterRender.before);
+
+    assert.equal(await page.locator('#openWebSearch, #webSearchDialog').count(), 0);
+    assert.equal(await page.getByRole('button', {name: '联网搜索', exact: true}).count(), 0);
+    assert.deepEqual(state.errors, []);
+});
+
+test('保存其他平台时不重传 RunningHub 目录或凭证', async t => {
+    const seed = '18446744073709551615';
+    const catalog = {
+        id: 'runninghub', name: 'RunningHub', protocol: 'runninghub',
+        base_url: 'https://www.runninghub.cn', has_key: true, has_wallet_key: true,
+        rh_apps: [{
+            id: 'app-a', appId: 'app-a', title: '旧应用', enabled: true,
+            fields: [{
+                id: '1::sampler', nodeId: '1', fieldName: 'sampler', fieldValue: 'euler',
+                fieldType: 'TEXT', enabled: true, options: [], sourceFromUpstream: true,
+            }],
+        }],
+        rh_workflows: [{
+            id: 'wf-a', workflowId: 'wf-a', title: '旧工作流', optionalImageMode: 'prune-workflow',
+            fields: [{
+                nodeId: '2', fieldName: 'seed', fieldType: 'SLIDER', fieldValue: seed,
+                enabled: true, min: 0, max: seed, step: 1, random_enabled: true,
+            }],
+            workflowJson: {'2': {inputs: {seed, image: ['7', 0]}}},
+        }, {
+            id: 'wf-hidden', workflowId: 'wf-hidden', title: '旧隐藏工作流', hidden: true,
+            enabled: false, updatedAt: 1700000000000,
+        }],
+    };
+    const {page, state} = await open(t, false, [...providers, catalog]);
+    assert.equal(await page.locator('[data-provider-id="runninghub"]').count(), 0);
+    await page.locator('[data-provider-id="with-icon"]').click();
+    await page.locator('#nameInput').fill('普通平台改名');
+    const response = page.waitForResponse(result =>
+        new URL(result.url()).pathname === '/api/providers' && result.request().method() === 'PUT'
+    );
+    await page.locator('.api-page-save-btn').click();
+    assert.equal((await response).ok(), true);
+    await page.waitForFunction(() => !providerSavePromise);
+    const saved = state.saves.at(-1);
+    assert.equal(saved.find(item => item.id === 'with-icon').name, '普通平台改名');
+    const runninghub = saved.find(item => item.id === catalog.id);
+    assert.equal(Object.hasOwn(runninghub, 'rh_apps'), false);
+    assert.equal(Object.hasOwn(runninghub, 'rh_workflows'), false);
+    assert.equal(runninghub.clear_key, false);
+    assert.equal(runninghub.clear_wallet_key, false);
+    assert.equal(Object.hasOwn(runninghub, 'api_key'), false);
+    assert.equal(Object.hasOwn(runninghub, 'wallet_api_key'), false);
     assert.deepEqual(state.errors, []);
 });

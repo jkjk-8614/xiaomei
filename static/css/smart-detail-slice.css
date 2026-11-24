@@ -1,0 +1,718 @@
+/* 详情页长图切片工作台 */
+.smart-slice-dialog {
+    width: min(1180px, calc(100vw - 32px));
+    height: min(860px, calc(100vh - 32px));
+    max-width: none;
+    max-height: none;
+    margin: auto;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--card);
+    color: var(--text);
+    box-shadow: 0 22px 64px var(--shadow);
+    font-size: var(--fs-base);
+    overflow: hidden;
+}
+
+.smart-slice-dialog[open] {
+    display: flex;
+    flex-direction: column;
+}
+
+.smart-slice-dialog::backdrop {
+    background: rgba(15, 23, 42, 0.48);
+    backdrop-filter: blur(4px);
+}
+
+.smart-slice-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--line);
+    background: var(--card);
+    flex-shrink: 0;
+}
+
+.smart-slice-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    min-width: 0;
+}
+
+.smart-slice-title-wrap strong {
+    font-size: var(--fs-lg);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.smart-slice-meta {
+    color: var(--muted);
+    font-size: var(--fs-md);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.smart-slice-close {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: var(--soft);
+    color: var(--text);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.smart-slice-close:hover {
+    border-color: var(--line);
+    background: var(--card);
+}
+
+.smart-slice-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* 左侧长图预览区 */
+.smart-slice-stage-col {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    background: var(--soft);
+    border-right: 1px solid var(--line);
+}
+
+.smart-slice-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
+    background: var(--card);
+    flex-wrap: wrap;
+    flex-shrink: 0;
+}
+
+.smart-slice-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.smart-slice-tool-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 11px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--card);
+    color: var(--text);
+    font-size: var(--fs-md);
+    cursor: pointer;
+    transition: border-color .15s, background-color .15s, color .15s;
+}
+
+.smart-slice-tool-btn:hover:not(:disabled) {
+    border-color: var(--strong);
+}
+
+.smart-slice-tool-btn.active {
+    border-color: var(--strong);
+    background: var(--strong);
+    color: var(--card);
+}
+
+.smart-slice-tool-btn:disabled {
+    opacity: .42;
+    cursor: not-allowed;
+}
+
+.smart-slice-tool-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+.smart-slice-zoom-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: var(--fs-md);
+}
+
+.smart-slice-zoom-wrap input[type="range"] {
+    width: 96px;
+    accent-color: var(--strong);
+}
+
+.smart-slice-zoom-val {
+    min-width: 40px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+}
+
+.smart-slice-viewport {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 24px 36px 40px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    background-image:
+        radial-gradient(circle at 1px 1px, var(--line) 1px, transparent 0);
+    background-size: 18px 18px;
+}
+
+.smart-slice-loading {
+    margin: auto;
+    padding: 18px 24px;
+    border-radius: 12px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    color: var(--muted);
+}
+
+.smart-slice-canvas-wrap {
+    position: relative;
+    display: inline-block;
+    line-height: 0;
+    background: #fff;
+    box-shadow: 0 10px 34px rgba(15, 23, 42, 0.16);
+    border-radius: 4px;
+    user-select: none;
+}
+
+.smart-slice-canvas-wrap.add-mode {
+    cursor: crosshair;
+}
+
+.smart-slice-img {
+    display: block;
+    width: 100%;
+    height: auto;
+    pointer-events: none;
+    user-select: none;
+}
+
+.smart-slice-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+/* 每个切片区间 */
+.smart-slice-segment {
+    position: absolute;
+    left: 0;
+    right: 0;
+    border-bottom: 1px solid transparent;
+    transition: background-color .16s ease;
+    pointer-events: none;
+}
+
+.smart-slice-segment.is-excluded {
+    background: repeating-linear-gradient(
+        -45deg,
+        rgba(15, 23, 42, 0.36),
+        rgba(15, 23, 42, 0.36) 8px,
+        rgba(15, 23, 42, 0.2) 8px,
+        rgba(15, 23, 42, 0.2) 16px
+    );
+}
+
+.smart-slice-segment.is-highlight {
+    background: rgba(14, 165, 233, 0.16);
+    box-shadow: inset 0 0 0 2px rgba(14, 165, 233, 0.82);
+}
+
+.smart-slice-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.78);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1.3;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+    backdrop-filter: blur(4px);
+}
+
+.smart-slice-segment.is-excluded .smart-slice-badge {
+    background: rgba(100, 116, 139, 0.85);
+    text-decoration: line-through;
+}
+
+/* 可拖拽水平分割线 */
+.smart-slice-guide {
+    position: absolute;
+    left: -14px;
+    right: -14px;
+    height: 18px;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    cursor: ns-resize;
+    pointer-events: auto;
+    z-index: 4;
+}
+
+.smart-slice-guide::before {
+    content: "";
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    top: 50%;
+    height: 2px;
+    transform: translateY(-50%);
+    background: repeating-linear-gradient(
+        90deg,
+        #0ea5e9 0 8px,
+        #ffffff 8px 13px
+    );
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.55);
+}
+
+.smart-slice-guide:hover::before,
+.smart-slice-guide.is-dragging::before {
+    height: 3px;
+    background: #0284c7;
+    box-shadow: 0 0 0 1px #fff, 0 0 10px rgba(2, 132, 199, 0.55);
+}
+
+.smart-slice-guide-pill {
+    position: absolute;
+    right: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 6px 2px 8px;
+    border-radius: 999px;
+    background: #0284c7;
+    color: #fff;
+    font-size: 11px;
+    line-height: 1.25;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 2px 8px rgba(2, 132, 199, 0.35);
+    white-space: nowrap;
+}
+
+.smart-slice-guide-del {
+    display: inline-grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.22);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.smart-slice-guide-del:hover {
+    background: #ef4444;
+}
+
+/* 添加模式悬浮预视线 */
+.smart-slice-hover-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: rgba(14, 165, 233, 0.8);
+    pointer-events: none;
+    z-index: 5;
+}
+
+.smart-slice-hover-line span {
+    position: absolute;
+    left: 10px;
+    top: -22px;
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: rgba(14, 165, 233, 0.92);
+    color: #fff;
+    font-size: 11px;
+    line-height: 1.3;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.smart-slice-stage-tip {
+    padding: 7px 16px;
+    border-top: 1px solid var(--line);
+    background: var(--card);
+    color: var(--muted);
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+/* 右侧控制栏 */
+.smart-slice-sidebar {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--card);
+    overflow: hidden;
+}
+
+.smart-slice-controls-scroll {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.smart-slice-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 4px;
+    padding: 4px;
+    border-radius: 10px;
+    background: var(--soft);
+}
+
+.smart-slice-tab {
+    height: 32px;
+    padding: 0 8px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--muted);
+    font-size: var(--fs-md);
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.smart-slice-tab.active {
+    background: var(--card);
+    border-color: var(--line);
+    color: var(--text);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.smart-slice-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.smart-slice-panel[hidden] {
+    display: none;
+}
+
+.smart-slice-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.smart-slice-field-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.smart-slice-field label,
+.smart-slice-field-label {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.smart-slice-input,
+.smart-slice-select {
+    height: 34px;
+    padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--soft);
+    color: var(--text);
+    font-size: var(--fs-md);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.smart-slice-input-inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.smart-slice-input-inline .smart-slice-input {
+    flex: 1;
+}
+
+.smart-slice-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.smart-slice-chip {
+    height: 28px;
+    padding: 0 9px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: var(--soft);
+    color: var(--text);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.smart-slice-chip:hover {
+    border-color: var(--strong);
+}
+
+.smart-slice-chip.active {
+    background: var(--strong);
+    border-color: var(--strong);
+    color: var(--card);
+}
+
+.smart-slice-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    color: var(--text);
+    cursor: pointer;
+}
+
+.smart-slice-manual-hint {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--soft);
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.smart-slice-manual-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.smart-slice-manual-actions .smart-slice-tool-btn {
+    flex: 1;
+    justify-content: center;
+}
+
+.smart-slice-export-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--line);
+}
+
+/* 切片清单 */
+.smart-slice-list-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px 6px;
+    font-size: 12px;
+    color: var(--muted);
+    flex-shrink: 0;
+}
+
+.smart-slice-list-actions {
+    display: inline-flex;
+    gap: 8px;
+}
+
+.smart-slice-link-btn {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.smart-slice-link-btn:hover {
+    color: var(--text);
+    text-decoration: underline;
+}
+
+.smart-slice-list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 4px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.smart-slice-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--soft);
+    cursor: pointer;
+    transition: border-color .15s, background-color .15s;
+}
+
+.smart-slice-item:hover {
+    border-color: var(--strong);
+}
+
+.smart-slice-item.is-excluded {
+    opacity: .55;
+}
+
+.smart-slice-item-idx {
+    font-weight: 600;
+    font-size: 12px;
+    min-width: 28px;
+    font-variant-numeric: tabular-nums;
+}
+
+.smart-slice-item-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.smart-slice-item-size {
+    font-size: 12px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+}
+
+.smart-slice-item-range {
+    font-size: 11px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.smart-slice-item-dl {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.smart-slice-item-dl:hover {
+    border-color: var(--line);
+    background: var(--card);
+    color: var(--text);
+}
+
+/* 底部操作栏 */
+.smart-slice-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 20px;
+    border-top: 1px solid var(--line);
+    background: var(--card);
+    flex-shrink: 0;
+}
+
+.smart-slice-status {
+    color: var(--muted);
+    font-size: var(--fs-md);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.smart-slice-status.has-error {
+    color: var(--colorStatusDangerForeground1, #c4314b);
+}
+
+.smart-slice-footer-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.smart-slice-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 16px;
+    border-radius: 9px;
+    border: 1px solid var(--line);
+    background: var(--soft);
+    color: var(--text);
+    font-size: var(--fs-base);
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.smart-slice-btn:hover:not(:disabled) {
+    border-color: var(--strong);
+}
+
+.smart-slice-btn.primary {
+    background: var(--strong);
+    border-color: var(--strong);
+    color: var(--card);
+}
+
+.smart-slice-btn:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+}
+
+@media (max-width: 860px) {
+    .smart-slice-body {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(260px, 1fr) 340px;
+    }
+    .smart-slice-stage-col {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+    }
+}

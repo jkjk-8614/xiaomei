@@ -100,8 +100,19 @@
         let hovered;
         let timer = 0;
 
+        function stripMediaTypeFolder(path) {
+            const parts = String(path || '').replace(/\\/g, '/').split('/').filter(Boolean);
+            if (parts.length && (parts[parts.length - 1] === '图片' || parts[parts.length - 1] === '视频' || parts[parts.length - 1] === '音频')) {
+                parts.pop();
+            }
+            return parts.join('/');
+        }
+
         function folder(folders = folderRows(listing.tree, listing.items)) {
-            return folders.find(item => item.id === folderId) || folders[0];
+            const normalized = folderId === rootFolder ? rootFolder : (stripMediaTypeFolder(folderId) || rootFolder);
+            return folders.find(item => item.id === folderId)
+                || folders.find(item => item.id === normalized)
+                || folders[0];
         }
 
         function readSort() {
@@ -235,7 +246,8 @@
                 const reply = await request('/items', '重命名失败', 'PATCH', { path, name });
                 applyListing(reply);
                 if (reply.old_path && reply.item?.url) host.relocated(item, reply.item, reply.old_path);
-                render(folderPath() === directory ? reply.item?.folder || undefined : undefined);
+                const nextFolder = stripMediaTypeFolder(reply.item?.folder);
+                render(folderPath() === directory ? (directory ? nextFolder || directory : undefined) : undefined);
                 host.notify('已重命名本地素材，反推提示词和分类索引已同步');
             });
         }

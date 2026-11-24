@@ -124,11 +124,20 @@
 .replica-panel label {display:grid;gap:4px;min-width:0}
 .replica-panel :is(select,input,textarea) {width:100%;min-width:0}
 .replica-panel textarea {resize:vertical;min-height:52px}
-.replica-facts-head {display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px}
 .replica-panel .replica-switch-control {display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer}
 .replica-panel .replica-switch-control .video-audio-switch {display:block;width:40px;min-height:22px;height:22px;padding:3px;border:0;border-radius:12px;background:var(--line)}
 .replica-panel .replica-switch-control .video-audio-switch[aria-checked="true"] {background:var(--strong)}
 .replica-inputs {display:grid;gap:8px;flex:none}
+.replica-input-hint {color:var(--muted);font-size:11px;line-height:16px}
+.replica-output {display:flex;flex-direction:column;box-sizing:border-box;background:var(--card-solid,var(--card));color:var(--text)}
+.replica-output-grid {display:grid;flex:1;min-height:0;gap:8px;padding:8px;overflow:auto;grid-auto-rows:minmax(160px,1fr)}
+.replica-output-slot {display:flex;position:relative;align-items:center;justify-content:center;min-width:0;min-height:160px;border:1px solid var(--line);border-radius:8px;background:var(--soft)}
+.replica-output-number {position:absolute;top:8px;left:8px;color:var(--muted);font-size:12px}
+.replica-output .generation-progress-label {max-width:100%;text-align:center}
+.replica-output-message {display:grid;gap:8px;max-width:100%;padding:28px 12px;text-align:center;overflow-wrap:anywhere}
+.replica-output-message span {font-size:12px;color:var(--muted)}
+.replica-output-message small {font-size:12px;font-variant-numeric:tabular-nums}
+.replica-output-summary {flex:none;height:32px;padding:6px 10px;border-top:1px solid var(--line);color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
 .replica-input {
     display:grid;
     min-width:0;
@@ -173,11 +182,23 @@
 .replica-thumb:is(:hover,:focus-within) .replica-thumb-actions {opacity:1;pointer-events:auto}
 .replica-thumb-actions button {flex:1;min-height:17px;padding:0;border-radius:4px}
 .replica-thumb-actions button svg {width:11px;height:11px}
+.replica-input[data-replica-slot="secondary"] .replica-thumbs {grid-template-columns:repeat(var(--replica-thumb-columns),50px);grid-auto-rows:74px}
+.replica-input[data-replica-slot="secondary"] .replica-thumb > button {margin-inline:auto}
+.replica-input[data-replica-slot="secondary"] .replica-thumb-actions {bottom:32px}
+.replica-panel [data-replica-product-role] {
+    display:block;
+    width:50px;
+    height:26px;
+    min-height:26px;
+    margin-top:6px;
+    padding:2px;
+    font-size:12px;
+}
 .replica-modes {display:grid;gap:4px;min-width:0;flex:none}
 .replica-modes-label {color:var(--muted);font-size:12px}
 .replica-segments {
     display:grid;
-    grid-template-columns:repeat(3,minmax(0,1fr));
+    grid-template-columns:repeat(2,minmax(0,1fr));
     gap:2px;
     padding:3px;
     border:1px solid var(--line);
@@ -261,6 +282,8 @@
 }
 .replica-generation-fields select:not(:disabled) {cursor:pointer}
 .replica-generation-fields select:hover:not(:disabled) {border-color:var(--muted)}
+.replica-size-fields label {color:var(--muted);font-size:12px}
+.replica-size-fields input {height:36px;color:var(--text);font-size:13px}
 .replica-copy-tools {
     flex:none;
     display:grid;

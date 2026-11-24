@@ -19,6 +19,7 @@ try:
     from design_brain_bots import DesignBotOrchestrator, parse_model_json
     from design_brain_store import (
         AgentTaskStore,
+        DesignBrainError,
         DesignProfileStore,
         DesignRunStore,
         ExperienceStore,
@@ -27,6 +28,19 @@ try:
     from fastapi import HTTPException
 except ImportError as exc:  # pragma: no cover - 系统 Python 无 fastapi 时跳过
     raise unittest.SkipTest(f"design_brain_bots 依赖不可用：{exc}") from exc
+
+
+class AgentTaskStoreTests(unittest.TestCase):
+    def test_invalid_task_store_shape_reports_unavailable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = AgentTaskStore(directory)
+            store.root.mkdir()
+            store.file.write_text('{"tasks": {}}', encoding="utf-8")
+
+            with self.assertRaises(DesignBrainError) as failure:
+                store.list()
+            self.assertEqual(failure.exception.code, "state_unavailable")
+            self.assertEqual(failure.exception.status, 503)
 
 
 class FakePayload:

@@ -17,7 +17,7 @@ DeepSeek 自带的 Models/Account 编辑入口已关闭。保存 API 设置后�
 
 接收方进入“小美画布”页面，点击画布列表顶栏的“加入协同”，粘贴分享者复制的完整邀请链接（包含 `token`）。桌面端会打开独立的协同窗口，实时连接分享者电脑上的画布服务器；分享者需要保持小美画布运行。该入口不会把共享画布复制到接收方的本地项目，协同窗口内的“返回画布列表”会关闭窗口。
 
-生图成功或失败时，桌面版通过 Electron 原生 Windows 通知发送结果；普通浏览器使用网页通知回退。修改桌面通知相关代码（`desktop/main.cjs`、`desktop/preload.cjs`）后，需要完全退出并重新打开“小美画布”，仅刷新页面不会重新加载桌面桥接。
+生图成功或失败时，桌面版通过 Electron 原生 Windows 通知发送结果；普通浏览器使用网页通知回退。应用已经退出时点击通知，Windows 会以 COM 激活方式重新运行运行时（命令行里没有 app 路径）；`desktop/brand-electron-exe.cjs` 会在 `desktop/node_modules/electron/dist/resources/app` 写入一个极小的引导应用，让这种启动直接打开小美画布本体，不再弹出 Electron 默认欢迎页。修改桌面通知相关代码（`desktop/main.cjs`、`desktop/preload.cjs`）后，需要完全退出并重新打开“小美画布”，仅刷新页面不会重新加载桌面桥接。
 
 桌面版中间区域使用持久会话显示淘宝、天猫、1688、千牛、生意参谋、达摩盘、小红书和抖音页面：淘宝/天猫/1688 共用历史电商会话 `persist:xiaomei-commerce`，千牛/生意参谋使用独立的 `persist:xiaomei-qianniu`；这样 1688 的 Cookie、Local Storage、IndexedDB 和登录跳转状态能在首页、商品链接和新标签之间保持一致。旧版本留下的 `persist:xiaomei-1688` 仅作为兼容数据保留，不作为新标签会话。工作应用还可打开亚马逊、TikTok Shop、Temu、虾皮 Shopee、Ozon、eBay、速卖通和 SHEIN 的官方页面作跨境选品浏览；这些平台会先请求自己的中文页面并检查实际可见结果，原生中文成功时不调用翻译插件，只有未生效时才自动使用本机翻译插件，无法检查或翻译时在顶部明确说明。其中 Ozon 使用 `persist:xiaomei-ozon-direct` 独立直连会话，不继承 Windows 系统代理，其他平台仍遵从系统网络设置；商品页右侧显示只读商品档案，详情图片和评价须点击后读取，不启用淘宝商品任务或网页智能体。淘宝商品卡片打开的详情页会被拦截为小美画布内部的新标签，保留淘宝首页标签；详情标签默认隐藏右侧“问问小美”面板，右上角按钮可以恢复。用户必须在可见官方页面手动登录；壳不读取密码、Cookie、Authorization，不绕过验证码。
 
@@ -35,4 +35,4 @@ DeepSeek 自带的 Models/Account 编辑入口已关闭。保存 API 设置后�
 
 若 npm 只安装了 Electron 包但没有下载二进制，可在 Windows PowerShell 执行 `$env:ELECTRON_MIRROR='https://npmmirror.com/mirrors/electron/'; npm.cmd rebuild electron` 后再运行桌面版。
 
-应用显示名固定为“小美画布”，Windows 应用图标使用 `static\images\app-icon-source.jpg` 生成的 `static\images\app-icon.ico`。如果重新安装 Electron 运行时，需要重新生成/写入 `node_modules\electron\dist\小美画布.exe` 后，启动器才会继续显示中文进程名；找不到该文件时会安全回退到 Electron 开发运行时。
+应用显示名固定为“小美画布”，Windows 应用图标使用 `static\images\app-icon-source.jpg` 生成的 `static\images\app-icon.ico`。双击启动和 `npm start --prefix desktop` / `npm run dev --prefix desktop` 都优先运行 `node_modules\electron\dist\小美画布.exe`；首次运行、重装 Electron 或图标更新后，启动器会自动重新写入名称与图标。找不到该文件时会安全回退到 Electron 开发运行时。修改桌面启动代码后需完全退出并重新打开应用。

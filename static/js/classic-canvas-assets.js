@@ -39,19 +39,15 @@
         }
 
         function localLibrary() {
-            const rootFolder = local.tree || { id: '__root__', name: label('assetAllUploads') };
-            const categories = [];
-            const stack = [rootFolder];
-            while (stack.length) {
-                const folder = stack.pop();
-                const id = folder.id || folder.path || '__root__';
-                const items = (id === '__root__' ? local.items : folder.items) || [];
-                categories.push({
-                    id, type: 'image', name: folder.name || folder.path?.split('/').at(-1) || label('assetAllUploads'),
-                    items: items.filter(item => kind(item) === 'image'), readonly: true, source: 'local',
-                });
-                stack.push(...(folder.children || []).slice().reverse());
-            }
+            const fallbackTree = { id: '__root__', name: label('assetAllUploads'), items: local.items || [], children: [] };
+            const rows = root.XiaomeiShellKernel?.folderRows
+                ? root.XiaomeiShellKernel.folderRows(local.tree || fallbackTree, local.items || [])
+                : [];
+            const categories = rows.map(row => ({
+                ...row,
+                name: row.id === '__root__' ? (local.tree?.name || label('assetAllUploads')) : row.name,
+                items: (row.items || []).filter(item => kind(item) === 'image'),
+            }));
             return { id: localId, name: label('assetLocalLibrary'), categories, readonly: true, source: 'local' };
         }
 

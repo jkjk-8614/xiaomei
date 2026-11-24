@@ -1,8 +1,12 @@
 import asyncio
 import importlib.util
+import io
 import sys
+import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
@@ -10,7 +14,6 @@ sys.path.insert(0, str(REPO_ROOT))
 import skill_capabilities as capabilities
 from agent_skill_store import frontmatter_value
 
-PACKAGES_DIR = REPO_ROOT / "data" / "agent_skills" / "packages"
 GENERATOR = REPO_ROOT / "tools" / "skill-capabilities" / "apply.py"
 
 
@@ -88,62 +91,85 @@ class CapabilityEvaluationTests(unittest.TestCase):
 
 
 class SkillPackageDeclarationTests(unittest.TestCase):
-    def setUp(self):
-        self.skill_dirs = sorted(
-            item for item in PACKAGES_DIR.iterdir()
-            if item.is_dir() and not item.name.startswith(".")
-        )
+    body = "\n# Skill fixture\n\nSample instructions.\n"
 
-    def test_bundled_skill_packages_exist(self):
-        self.assertTrue(self.skill_dirs)
+    @classmethod
+    def setUpClass(cls):
+        directory = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(directory.cleanup)
+        cls.root = Path(directory.name)
+        cls.generator = load_generator()
+        cls.packages = {
+            skill_id: cls.root / "packages" / skill_id / "SKILL.md"
+            for skill_id in cls.generator.SKILL_CAPABILITIES
+        }
+        cls.legacy = {
+            skill_id: cls.root / f"{skill_id}.md"
+            for skill_id in cls.generator.LEGACY_SKILL_CAPABILITIES
+        }
+        for skill_id, path in [*cls.packages.items(), *cls.legacy.items()]:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"---\nname: {skill_id}\n---{cls.body}", encoding="utf-8")
+        argv = [str(GENERATOR), "--apply", "--packages-dir", str(cls.root / "packages"),
+                "--backup-dir", str(cls.root / "backup")]
+        with patch.object(sys, "argv", argv), redirect_stdout(io.StringIO()) as output:
+            result = cls.generator.main()
+        if result:
+            raise AssertionError(output.getvalue())
 
-    def test_every_bundled_skill_declares_known_capabilities(self):
-        mapping = load_generator().SKILL_CAPABILITIES
-        for skill_dir in self.skill_dirs:
-            skill_file = skill_dir / "SKILL.md"
-            self.assertTrue(skill_file.is_file(), skill_dir.name)
+    def test_generator_accepts_the_result_in_check_mode(self):
+        argv = [str(GENERATOR), "--check", "--packages-dir", str(self.root / "packages")]
+        with patch.object(sys, "argv", argv), redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(self.generator.main(), 0, output.getvalue())
+
+    def test_generated_packages_declare_known_capabilities(self):
+        for skill_id, skill_file in self.packages.items():
             text = skill_file.read_text(encoding="utf-8-sig")
-            self.assertTrue(text.startswith("---"), skill_dir.name)
-            meta = text.split("---", 2)[1]
+            meta, _, _ = self.generator.split_document(text)
             declared = capabilities.parse_capability_ids(meta)
-            self.assertTrue(declared, f"{skill_dir.name} 缺少 capabilities 声明")
-            self.assertEqual(capabilities.unknown_capability_ids(declared), [], skill_dir.name)
-            self.assertEqual(declared, mapping[skill_dir.name], skill_dir.name)
+            self.assertEqual(capabilities.unknown_capability_ids(declared), [], skill_id)
+            self.assertEqual(declared, self.generator.SKILL_CAPABILITIES[skill_id], skill_id)
 
     def test_generator_mapping_only_uses_registered_identifiers(self):
-        generator = load_generator()
+        generator = self.generator
         for skill_id, ids in list(generator.SKILL_CAPABILITIES.items()) + list(generator.LEGACY_SKILL_CAPABILITIES.items()):
             self.assertEqual(capabilities.unknown_capability_ids(ids), [], skill_id)
             self.assertTrue(ids, skill_id)
 
     def test_legacy_single_file_skills_declare_known_capabilities(self):
-        generator = load_generator()
-        legacy_files = sorted(PACKAGES_DIR.parent.glob("*.md"))
-        self.assertTrue(legacy_files)
-        for legacy_file in legacy_files:
+        for skill_id, legacy_file in self.legacy.items():
             text = legacy_file.read_text(encoding="utf-8-sig")
-            self.assertTrue(text.startswith("---"), legacy_file.name)
-            meta = text.split("---", 2)[1]
+            meta, _, _ = self.generator.split_document(text)
             declared = capabilities.parse_capability_ids(meta)
-            self.assertTrue(declared, f"{legacy_file.name} 缺少 capabilities 声明")
-            self.assertEqual(capabilities.unknown_capability_ids(declared), [], legacy_file.name)
-            skill_id = str(frontmatter_value(meta, "name") or "").strip()
-            self.assertIn(skill_id, generator.LEGACY_SKILL_CAPABILITIES, legacy_file.name)
-            self.assertEqual(declared, generator.LEGACY_SKILL_CAPABILITIES[skill_id], legacy_file.name)
+            self.assertEqual(frontmatter_value(meta, "name"), skill_id)
+            self.assertEqual(declared, self.generator.LEGACY_SKILL_CAPABILITIES[skill_id], skill_id)
 
     def test_declared_identifiers_keep_the_original_document_intact(self):
-        for skill_dir in self.skill_dirs:
-            text = (skill_dir / "SKILL.md").read_text(encoding="utf-8-sig")
-            self.assertIn("#", text, skill_dir.name)
-            meta = text.split("---", 2)[1]
-            top_level = [
-                line for line in meta.splitlines()
-                if line.startswith("capabilities")
-            ]
-            self.assertEqual(len(top_level), 1, skill_dir.name)
+        for skill_id, path in [*self.packages.items(), *self.legacy.items()]:
+            meta, body, _ = self.generator.split_document(path.read_text(encoding="utf-8-sig"))
+            self.assertEqual(body, self.body, skill_id)
+            self.assertEqual(sum(line.startswith("capabilities:") for line in meta.splitlines()), 1, skill_id)
 
 
 class AgentSkillCapabilityApiTests(unittest.TestCase):
+    def setUp(self):
+        import main
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        paths = patch.multiple(
+            main,
+            AGENT_SKILLS_DIR=str(root),
+            AGENT_SKILL_PACKAGES_DIR=str(root / "packages"),
+            AGENT_SKILL_PACKAGE_INDEX_FILE=str(root / "package-index.json"),
+        )
+        paths.start()
+        self.addCleanup(paths.stop)
+        (root / "minimal-skill.md").write_text(
+            "---\nname: minimal-skill\ncapabilities: [model.image]\n---\nSample instructions.\n",
+            encoding="utf-8",
+        )
+
     def test_main_parser_reports_unknown_identifiers(self):
         import main
 

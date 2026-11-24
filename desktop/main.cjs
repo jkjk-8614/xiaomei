@@ -29,6 +29,7 @@ const {
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const APP_NAME = '小美画布';
+const APP_USER_MODEL_ID = 'com.xiaomei.canvas.desktop';
 let APP_DISPLAY_VERSION = '1.0';
 let APP_BUILD_REVISION = 0;
 try {
@@ -173,7 +174,7 @@ const START_PAGE = ['online', 'gpt-chat', 'canvas', 'commerce', 'commerce-analys
 const ALLOWED_HOSTS = [
   '127.0.0.1', 'localhost', 'taobao.com', 'tmall.com', 'alicdn.com',
   'taobaocdn.com', 'myseller.taobao.com', 'qianniu.taobao.com', 'sycm.taobao.com',
-  'dmp.taobao.com', '1688.com', 'tb.cn', 'xiaohongshu.com', 'rednote.com', 'douyin.com',
+  'dmp.taobao.com', '1688.com', 'jd.com', 'jingdong.com', 'jd.hk', 'joybuy.com', 'yiyaojd.com', '360buy.com', '360buyimg.com', 'jdpay.com', '3.cn', 'tb.cn', 'xiaohongshu.com', 'rednote.com', 'douyin.com',
 ];
 // 跨境平台会按地区把首页跳到不同国家/地区域名。白名单必须覆盖这些
 // 官方域名，否则“打开了页面但地址栏/标签仍停在旧平台”的状态会再次出现。
@@ -240,7 +241,7 @@ const COMMERCE_REQUEST_HEADER_URL_PATTERNS = Object.freeze([
 ]);
 const COMMERCE_REQUEST_HEADER_SESSIONS = new WeakSet();
 const SELLER_HOSTS = ['myseller.taobao.com', 'qianniu.taobao.com', 'sycm.taobao.com', '1688.com'];
-const ASSISTANT_CONTEXT_HOSTS = ['myseller.taobao.com', 'qianniu.taobao.com', 'sycm.taobao.com', 'dmp.taobao.com', '1688.com', 'xiaohongshu.com', 'rednote.com', 'douyin.com', ...MARKETPLACE_NAVIGATION_HOSTS];
+const ASSISTANT_CONTEXT_HOSTS = ['myseller.taobao.com', 'qianniu.taobao.com', 'sycm.taobao.com', 'dmp.taobao.com', '1688.com', 'jd.com', 'jingdong.com', 'jd.hk', 'joybuy.com', 'yiyaojd.com', 'xiaohongshu.com', 'rednote.com', 'douyin.com', ...MARKETPLACE_NAVIGATION_HOSTS];
 // 淘宝和 1688 继续复用历史的电商 Chromium 会话。1688 的登录链除了
 // Cookie 还会使用 Local Storage、IndexedDB 和页面缓存；拆到新 partition
 // 只能搬 Cookie，旧版本登录后打开新链接就会再次落到登录页。沿用旧会话
@@ -1775,7 +1776,20 @@ const ELECTRON_ASSISTANT_CONTEXT_SCRIPT = String.raw`(() => {
 })()`;
 
 if (process.platform === 'win32') {
-  app.setAppUserModelId(app.isPackaged ? 'com.xiaomei.canvas.desktop' : 'com.xiaomei.canvas.desktop.brand');
+  app.setAppUserModelId(APP_USER_MODEL_ID);
+  app.on('browser-window-created', (_event, window) => {
+    try {
+      window.setAppDetails({
+        appId: APP_USER_MODEL_ID,
+        appIconPath: APP_ICON_PATH,
+        appIconIndex: 0,
+        relaunchCommand: `"${process.execPath}"${app.isPackaged ? '' : ` "${__dirname}"`}`,
+        relaunchDisplayName: APP_NAME,
+      });
+    } catch (error) {
+      console.warn('无法设置小美画布任务栏标识：', error?.message || error);
+    }
+  });
 }
 try {
   app.setPath('userData', TEST_USER_DATA_ROOT);
@@ -2324,6 +2338,7 @@ const NAVIGATION_HOST_FAMILIES = Object.freeze({
   dmp: ['dmp.taobao.com'],
   taobao: ['taobao.com', 'tmall.com', 'tb.cn'],
   '1688': ['1688.com'],
+  jd: ['jd.com', 'jingdong.com', 'jd.hk', 'joybuy.com', 'yiyaojd.com', '360buy.com', '360buyimg.com', 'jdpay.com', '3.cn'],
   xiaohongshu: ['xiaohongshu.com', 'rednote.com'],
   douyin: ['douyin.com'],
   ...MARKETPLACE_HOST_FAMILIES,
@@ -2494,11 +2509,15 @@ function isDouyinUrl(value) {
   }
 }
 
+function isJdUrl(value) {
+  return navigationHostFamily(value) === 'jd';
+}
+
 // Electron 的默认 UA 会携带 Electron/<version>。淘系统一登录页会将该内嵌
 // 运行时标识与 Client Hints 一起判断。淘系页使用当前 Electron Chromium 的真实
 // 版本组织成一致的 Chrome UA；其它已适配站点仍只移除 Electron 标记。
 function requiresBrowserLikeUserAgent(value) {
-  if (isDouyinUrl(value) || isAmazonUrl(value)) return true;
+  if (isDouyinUrl(value) || isAmazonUrl(value) || isJdUrl(value)) return true;
   return isTaobaoChromeCompatibleUrl(value);
 }
 
@@ -2528,6 +2547,7 @@ function safeSite(value) {
     if (host.includes('tmall')) return '天猫';
     if (host.includes('taobao')) return '淘宝';
     if (host.includes('1688')) return '1688';
+    if (navigationHostFamily(value) === 'jd') return '京东';
     if (host === 'xiaohongshu.com' || host.endsWith('.xiaohongshu.com') || host === 'rednote.com' || host.endsWith('.rednote.com')) return '小红书';
     if (host === 'douyin.com' || host.endsWith('.douyin.com')) return '抖音';
     const marketplaceFamily = navigationHostFamily(value);
@@ -2701,6 +2721,7 @@ function isLoginUrl(value) {
     const parsed = new URL(String(value || ''));
     const host = parsed.hostname.toLowerCase();
     return /^(?:login|passport|havanalogin|pass)\.(?:taobao|tmall|1688)\.com$/i.test(host)
+      || /^(?:passport|plogin\.m)\.jd\.com$/i.test(host)
       || isCommerceLoginRedirectUrl(parsed.toString());
   } catch {
     return false;
@@ -2752,7 +2773,8 @@ function isDetailUrl(value) {
     const path = parsed.pathname.toLowerCase();
     return (host === 'item.taobao.com' || host.endsWith('.item.taobao.com')) && /\/item\.htm/.test(path)
       || (host === 'detail.tmall.com' || host.endsWith('.detail.tmall.com')) && /\/item\.htm/.test(path)
-      || host === 'detail.1688.com' || host.endsWith('.detail.1688.com');
+      || host === 'detail.1688.com' || host.endsWith('.detail.1688.com')
+      || ((host === 'item.jd.com' || host.endsWith('.item.jd.com') || host === 'item.yiyaojd.com' || host === 'npcitem.jd.hk') && /^\/(?:product\/)?\d+\.html$/i.test(path));
   } catch { return false; }
 }
 
@@ -5486,8 +5508,19 @@ function attachProductView(entry) {
     }
     if (!navigationHostAllowed(url)) {
       event.preventDefault();
+      let blockedProtocol = '';
+      let blockedHost = '';
+      try {
+        const parsedBlocked = new URL(String(url || ''));
+        blockedProtocol = parsedBlocked.protocol;
+        blockedHost = parsedBlocked.hostname;
+      } catch {}
+      if (blockedProtocol && !/^https?:$/.test(blockedProtocol) && (entry.pageLoaded || entry.domReady)) {
+        return;
+      }
       if (!entry.navigationTarget && !entry.pendingNavigation) {
-        rejectProductNavigation(entry, url, '目标平台跳转到了不在白名单内的地址，已阻止加载');
+        const detail = blockedHost ? `（${blockedHost}）` : blockedProtocol ? `（${blockedProtocol}）` : '';
+        rejectProductNavigation(entry, url, `目标平台跳转到了不在白名单内的地址${detail}，已阻止加载`);
       }
       return;
     }
@@ -5510,8 +5543,19 @@ function attachProductView(entry) {
     }
     if (!navigationHostAllowed(url)) {
       event.preventDefault();
+      let blockedProtocol = '';
+      let blockedHost = '';
+      try {
+        const parsedBlocked = new URL(String(url || ''));
+        blockedProtocol = parsedBlocked.protocol;
+        blockedHost = parsedBlocked.hostname;
+      } catch {}
+      if (blockedProtocol && !/^https?:$/.test(blockedProtocol) && (entry.pageLoaded || entry.domReady)) {
+        return;
+      }
       if (!entry.navigationTarget && !entry.pendingNavigation) {
-        rejectProductNavigation(entry, url, '目标平台跳转到了不在白名单内的地址，已阻止加载');
+        const detail = blockedHost ? `（${blockedHost}）` : blockedProtocol ? `（${blockedProtocol}）` : '';
+        rejectProductNavigation(entry, url, `目标平台跳转到了不在白名单内的地址${detail}，已阻止加载`);
       }
       return;
     }
@@ -6083,6 +6127,7 @@ async function loadSeller(site, tabId = 'commerce-default') {
 
 function commerceLoginUrl(site, tabId = '', requestedReturnUrl = '') {
   const siteKey = String(site || '').trim().toLowerCase();
+  if (siteKey === 'jd') return 'https://passport.jd.com/new/login.aspx';
   if (siteKey !== '1688') return 'https://login.taobao.com/';
   const entry = productEntryForTab(tabId);
   // 登录标签是新建的，不能只从它自己的 URL 推导 Done；否则登录成功后
@@ -6515,7 +6560,7 @@ async function captureProduct(options = {}) {
       const reviews = [];
       const questions = [];
      const detailText = tidy([...document.querySelectorAll('[class*="detail"],[class*="description"],[id*="detail"],[id*="description"]')].filter(visible).map((node) => node.innerText).join(' '), 30000);
-     const productId = new URL(location.href).searchParams.get('id') || new URL(location.href).searchParams.get('itemId') || new URL(location.href).searchParams.get('item_id') || new URL(location.href).searchParams.get('offerId') || '';
+     const productId = new URL(location.href).searchParams.get('id') || new URL(location.href).searchParams.get('itemId') || new URL(location.href).searchParams.get('item_id') || new URL(location.href).searchParams.get('offerId') || (location.pathname.match(/^\/(?:product\/)?(\d{5,24})\.html$/i) || [])[1] || '';
      const firstVisibleText = (selectors, limit = 160) => [...document.querySelectorAll(selectors)].filter(visible).map((node) => tidy(node.innerText, limit)).find((value) => value && value.length <= limit) || '';
      const store = firstVisibleText('[class*="shop-name"],[class*="shopName"],[class*="seller-name"],[class*="sellerName"],[class*="store-name"],[class*="storeName"]', 120);
      const category = firstVisibleText('[class*="breadcrumb"],[class*="bread-crumb"],[class*="crumb"]', 240);
@@ -7139,7 +7184,7 @@ function createWindow() {
     mainWindow = null;
   });
   try {
-    try { if (fs.existsSync(APP_ICON_PATH)) { mainWindow.setIcon(APP_ICON_PATH); if (process.platform === 'win32') mainWindow.setAppDetails({ appId: app.isPackaged ? 'com.xiaomei.canvas.desktop' : 'com.xiaomei.canvas.desktop.brand', appIconPath: APP_ICON_PATH, appIconIndex: 0 }); } } catch {}
+    try { if (fs.existsSync(APP_ICON_PATH)) mainWindow.setIcon(APP_ICON_PATH); } catch {}
     desktopTray = installDesktopTray(mainWindow, lifecycle, APP_ICON_PATH, APP_NAME);
   } catch (error) {
     console.warn('无法创建小美画布托盘：', error?.message || error);
@@ -7148,8 +7193,12 @@ function createWindow() {
   const revealMainWindow = () => {
     if (lifecycle.isClosing() || desktopTray?.isHidden()) return;
     if (mainWindow && !mainWindow.isDestroyed()) {
-      try { if (mainWindow.isMinimized()) mainWindow.restore(); } catch {}
-      if (!mainWindowPresented) {
+      if (mainWindowPresented) {
+        try {
+          if (mainWindow.isMinimized() || mainWindow.isVisible()) return;
+        } catch {}
+      } else {
+        try { if (mainWindow.isMinimized()) mainWindow.restore(); } catch {}
         try {
           mainWindow.maximize();
           mainWindowPresented = true;

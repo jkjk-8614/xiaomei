@@ -40,9 +40,17 @@ from design_brain_team import (
     MESSAGE_TEXT_MAX,
     TEAM,
 )
+from bot_workspace_config import should_seed_legacy_design_team
 from design_brain_turns import TurnEngine
 
 router = APIRouter(prefix="/api/design-brain", dependencies=[Depends(_local_only_dependency)])
+
+
+def _maybe_seed_legacy_team() -> None:
+    """仅在未启用新 Bot 工作区（回退旧模式）时允许自动种入旧版 5 个默认 Bot。"""
+    data_dir = TEAM.root.parent.parent if hasattr(TEAM, "root") else DATA_ROOT
+    if should_seed_legacy_design_team(data_dir):
+        TEAM.ensure_seeded()
 
 MEMORY = MemoryStore(DATA_ROOT)
 USAGE = UsageStore(DATA_ROOT)
@@ -167,7 +175,7 @@ def _external_capabilities() -> Dict[str, Any]:
 @router.get("/team")
 async def team_overview(request: Request):
     _local_only_dependency(request)
-    TEAM.ensure_seeded()
+    _maybe_seed_legacy_team()
     snapshot = TEAM.snapshot()
     snapshot["external"] = _external_capabilities()
     return snapshot
@@ -201,7 +209,7 @@ async def stop_member_work(payload: StopWorkRequest, request: Request):
 @router.get("/bots")
 async def list_bots(request: Request, include_archived: bool = False):
     _local_only_dependency(request)
-    TEAM.ensure_seeded()
+    _maybe_seed_legacy_team()
     return {"bots": TEAM.list_bots(include_archived=include_archived)}
 
 
@@ -250,7 +258,7 @@ async def open_bot_chat(bot_id: str, request: Request):
 @router.get("/groups")
 async def list_groups(request: Request, include_archived: bool = False):
     _local_only_dependency(request)
-    TEAM.ensure_seeded()
+    _maybe_seed_legacy_team()
     return {"groups": TEAM.list_groups(include_archived=include_archived)}
 
 
@@ -289,7 +297,7 @@ async def archive_group(group_id: str, request: Request):
 @router.get("/chats")
 async def list_chats(request: Request):
     _local_only_dependency(request)
-    TEAM.ensure_seeded()
+    _maybe_seed_legacy_team()
     return {"chats": TEAM.list_chats()}
 
 

@@ -6,7 +6,7 @@ const { chromium } = require('../tools/commerce-analysis/node_modules/playwright
 const root = path.resolve(__dirname, '..');
 const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7v8AAAAASUVORK5CYII=', 'base64');
 
-async function fixture(t, { blockTheme = false } = {}) {
+async function fixture(t, { blockTheme = false, api } = {}) {
     const browser = await chromium.launch({ channel: 'msedge', headless: true });
     t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
@@ -23,6 +23,10 @@ async function fixture(t, { blockTheme = false } = {}) {
             assert.ok(file.startsWith(root + path.sep));
             return fs.existsSync(file) ? route.fulfill({ path: file }) : route.fulfill({ status: 404, body: '' });
         }
+        if (url.pathname.startsWith('/api/') && api) {
+            const response = api(url.pathname, route.request().method());
+            if (response) return route.fulfill(response);
+        }
         if (url.pathname.endsWith('.png') || url.pathname.includes('media-preview')) return route.fulfill({ contentType: 'image/png', body: pixel });
         if (url.pathname === '/api/projects') return route.fulfill({ json: { projects: [{ id: 'default', name: '默认项目' }] } });
         if (url.pathname === '/api/config') return route.fulfill({ json: { api_providers: [], comfy_instances: [] } });
@@ -31,6 +35,45 @@ async function fixture(t, { blockTheme = false } = {}) {
     });
     return page;
 }
+
+test('workspace backs up damaged canvases and lets users retry project cleanup', async t => {
+    const backup = 'damaged.json.corrupt-fixture';
+    let canvasRemoved = false;
+    let projectAttempts = 0;
+    const page = await fixture(t, { api(pathname, method) {
+        if (pathname === '/api/canvases') return { json: { canvases: canvasRemoved ? [] : [
+            { id: 'damaged', title: '损坏的画布', project: 'default', kind: 'classic', corrupt: true },
+        ] } };
+        if (pathname === '/api/canvases/damaged' && method === 'DELETE') {
+            canvasRemoved = true;
+            return { json: { ok: true, purged: true, backup_file: backup } };
+        }
+        if (pathname === '/api/projects/trash') return { json: { projects: projectAttempts > 1 ? [] : [
+            { id: 'removed', name: '待清理项目', deleted_at: Date.now() },
+        ] } };
+        if (pathname === '/api/projects/removed/purge' && method === 'DELETE') {
+            return { status: ++projectAttempts === 1 ? 503 : 200, json: {} };
+        }
+    } });
+    await page.goto('http://regression.test/static/canvas-list.html');
+    const canvas = page.locator('.ws-card[data-canvas-id="damaged"]');
+    await canvas.locator('.ws-card-menu').click();
+    await page.locator('.ws-card-pop [data-act="delete"]').click();
+    assert.match(await canvas.locator('.ws-card-delete-title').textContent(), /保留备份/);
+    await canvas.locator('.ws-card-delete-yes').click();
+    await page.waitForFunction(file => document.querySelector('#boardStatus').textContent.includes(file), backup);
+    await canvas.waitFor({ state: 'detached' });
+
+    await page.locator('#trashEntry').click();
+    const project = page.locator('.ws-trash-card[data-project-id="removed"]');
+    await project.locator('.ws-trash-act.purge').click();
+    await project.locator('.ws-trash-confirm-yes').click();
+    await page.waitForFunction(() => document.querySelector('#boardStatus').textContent.includes('请重试'));
+    await project.locator('.ws-trash-act.purge').click();
+    await project.locator('.ws-trash-confirm-yes').click();
+    await project.waitFor({ state: 'detached' });
+    assert.equal(projectAttempts, 2);
+});
 
 test('business buttons retain native keyboard and disabled behavior when theme module fails', async t => {
     const page = await fixture(t, { blockTheme: true });

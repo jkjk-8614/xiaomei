@@ -1,14 +1,14 @@
 const root = document.getElementById('assetManagerRoot');
 const catalogView = XiaomeiAssetManagerCatalogs.createView(root);
 const catalogWriter = XiaomeiAssetManagerCatalogs.createWriter(apiJson);
-const promptTemplates = XiaomeiAssetManagerPrompts.create({
-    root, request:apiJson, notice:setStatus, redraw:render, icons:refreshIcons,
-    origin:promptPageScope, saved:applyPromptSave, removed:applyPromptRemoval, favored:applyPromptFavorite,
-});
 const statusEl = document.getElementById('assetStatus');
 const refreshBtn = document.getElementById('refreshBtn');
 const storageSettingsBtn = document.getElementById('storageSettingsBtn');
 const assetMedia = XiaomeiAssetManagerMedia.create({notice:setStatus, icons:refreshIcons});
+const promptTemplates = XiaomeiAssetManagerPrompts.create({
+    root, request:apiJson, notice:setStatus, redraw:render, icons:refreshIcons, download:assetMedia.saveBlob,
+    origin:promptPageScope, saved:applyPromptSave, removed:applyPromptRemoval, favored:applyPromptFavorite,
+});
 const avatarReviews = XiaomeiAssetManagerAvatar.create({
     request:apiJson, providers:() => apiProviders, find:findAssetDetailRecord,
     visible:isAssetDetailVisible, redraw:render, notice:setStatus, copyText:assetMedia.copyText,
@@ -208,6 +208,7 @@ function escapeAttr(value=''){ return escapeHtml(value); }
 async function apiJson(url, options={}){
     const res = await fetch(url, options);
     const data = await res.json().catch(() => ({}));
+    options.signal?.throwIfAborted();
     if(!res.ok){
         const error = new Error(data.detail || data.message || '操作失败');
         error.status = res.status;
@@ -1023,20 +1024,13 @@ function renderStartupError(error){
 async function loadAll(){
     setStatus('加载中...');
     renderStartupState();
-    const collectionsRequest = apiJson('/api/image-space/collections').then(data => { imageSpaceState.collections = data.collections || []; }).catch(err => setStatus(err.message || '合集加载失败'));
-    const assetRequest = apiJson('/api/asset-library');
-    const promptRevision = promptLibraryRevision;
-    const promptRequest = apiJson('/api/prompt-libraries');
-    const providerRequest = apiJson('/api/providers', {cache:'no-store'}).catch(() => ({providers:[]}));
-    const canvasAssetRequest = loadCanvasAssets().catch(() => false);
-    const localAssetsRequest = localFiles.load();
-    const uploadAssetsRequest = loadUploadAssets({background:true}).catch(() => {});
-    const promptCasesRequest = loadPromptCases();
-    const fileFavoritesRequest = loadFileFavorites();
+    root.dataset.started = '1';
+    if(window.parent !== window) window.parent.postMessage({type:'asset-manager-started'}, location.origin);
     let assetData;
     try {
-        assetData = await assetRequest;
+        assetData = await apiJson('/api/asset-library', {signal:AbortSignal.timeout(15000)});
     } catch(err) {
+        if(err.name === 'TimeoutError') err = new Error('素材库响应超时，请重新加载。');
         renderStartupError(err);
         throw err;
     }
@@ -1056,15 +1050,16 @@ async function loadAll(){
     selectedCanvasAssetIds.clear();
     render();
     setStatus('资产管理已显示，正在准备其它内容...');
+    const promptRevision = promptLibraryRevision;
     const [promptData, providerData] = await Promise.all([
-        promptRequest,
-        providerRequest,
-        canvasAssetRequest,
-        localAssetsRequest,
-        uploadAssetsRequest,
-        collectionsRequest,
-        promptCasesRequest,
-        fileFavoritesRequest
+        apiJson('/api/prompt-libraries'),
+        apiJson('/api/providers', {cache:'no-store'}).catch(() => ({providers:[]})),
+        loadCanvasAssets().catch(() => false),
+        localFiles.load(),
+        loadUploadAssets({background:true}).catch(() => {}),
+        apiJson('/api/image-space/collections').then(data => { imageSpaceState.collections = data.collections || []; }).catch(err => setStatus(err.message || '合集加载失败')),
+        loadPromptCases(),
+        loadFileFavorites()
     ]);
     if(promptRevision === promptLibraryRevision) promptLibrary = promptData.library || {libraries:[]};
     apiProviders = Array.isArray(providerData.providers) ? providerData.providers : [];
@@ -1561,7 +1556,7 @@ function renderPromptHubManager(){
                     </div>
                 </div>
                 <div class="content-scroll">
-                    ${items.length ? `<div class="prompt-list">${items.map(item => renderPromptRow(item, item.__readonly)).join('')}</div>` : `<div class="empty-state">${escapeHtml(emptyText)}</div>`}
+                    ${items.length ? `<div class="prompt-list">${items.map(renderPromptRow).join('')}</div>` : `<div class="empty-state">${escapeHtml(emptyText)}</div>`}
                 </div>
             </section>`;
         detailHtml = `<aside class="asset-panel asset-detail">${renderPromptDetail(detail, readonly || detail?.__readonly)}</aside>`;
@@ -1658,7 +1653,7 @@ function renderHubFavoritesPanel(favPrompts, favCases){
             <div class="content-scroll">
                 ${favPrompts.length ? `
                     <div class="hub-section-head"><strong>提示词</strong><span>${favPrompts.length} 条</span></div>
-                    <div class="prompt-list" style="margin-bottom:18px;">${favPrompts.map(item => renderPromptRow(item, item.__readonly)).join('')}</div>` : ''}
+                    <div class="prompt-list" style="margin-bottom:18px;">${favPrompts.map(renderPromptRow).join('')}</div>` : ''}
                 ${favCases.length ? `
                     <div class="hub-section-head"><strong>生成案例</strong><span>${favCases.length} 个</span></div>
                     <div class="case-grid">${favCases.map(item => renderHubCaseCard(item)).join('')}</div>` : ''}
@@ -1967,7 +1962,7 @@ function renderPromptManager(){
         focus:promptTreeFocus, edit:promptTreeEdit, pending:catalogWriter.pending(promptTreeEdit), confirmation:pendingTreeDelete,
         title:library?.name || '提示词模板库', subtitle:'共 ' + items.length + ' 条提示词', query:promptQuery,
         managing:promptManageMode, selectionCount:selectedPromptIds.size, readonly, confirmDelete:promptTemplates.canConfirm(library?.id, selectedPromptIds),
-        itemCount:items.length, cards:items.map(item => renderPromptRow(item, readonly)).join(''),
+        itemCount:items.length, cards:items.map(renderPromptRow).join(''),
         empty:library?.items?.length ? '当前条件下没有提示词。可以切换分类或清空搜索条件。'
             : (library?.name || '当前提示词模板库') + ' 暂无提示词，点击「新增」添加。',
         detail:renderPromptDetail(selectedPrompt(), readonly),
@@ -1980,11 +1975,11 @@ function promptCategoryFor(item, libraryId){
         || promptCategoriesFor(null).find(entry => entry.id === category)?.name
         || (category === 'mine' ? '我的' : category);
 }
-function renderPromptRow(item, readonly){
+function renderPromptRow(item){
     const libraryId = item.__libId || activePromptLibrary()?.id;
     const inHub = activeTab === 'prompt-hub';
     return promptTemplates.row(item, {
-        libraryId, category:promptCategoryFor(item, libraryId), readonly,
+        libraryId, category:promptCategoryFor(item, libraryId), selectable:!inHub,
         active:item.id === selectedPromptId && (!inHub || !selectedPromptLibraryId || selectedPromptLibraryId === libraryId),
         selected:!inHub && selectedPromptIds.has(item.id),
     });
@@ -3253,6 +3248,10 @@ const assetPageActions = XiaomeiAssetManagerInteractions.create([{
         const {library, item} = promptControlTarget(id, control);
         if(item) promptTemplates.showEditor(library, item);
     },
+    'prompt-export'(id, control){
+        const {item} = promptControlTarget(id, control);
+        if(item) promptTemplates.exportText([item]);
+    },
     'prompt-manage'(){
         promptManageMode = !promptManageMode;
         promptTemplates.clearConfirmation();
@@ -3267,6 +3266,10 @@ const assetPageActions = XiaomeiAssetManagerInteractions.create([{
     'prompt-clear-selection'(){
         promptTemplates.clearConfirmation();
         clearAssetItems(selectedPromptIds);
+    },
+    'prompt-export-selected'(){
+        const items = activePromptLibrary()?.items || [];
+        promptTemplates.exportText(items.filter(item => selectedPromptIds.has(item.id)), {batch:true});
     },
     'prompt-delete'(id, control){
         const {library, item} = promptControlTarget(id, control);
@@ -3354,7 +3357,6 @@ function marqueeScope(){
     if(activeTab === 'assets' && uploadAssetsState.view === 'library' && assetManageMode){
         view = ['asset-card', 'asset-check', selectedAssetIds];
     } else if(activeTab === 'prompts' && promptManageMode){
-        if(activePromptLibrary()?.readonly) return null;
         view = ['prompt-row', 'prompt-check', selectedPromptIds];
     } else if(activeTab === 'local' && localUploadManageMode){
         view = ['localup-card', 'localup-check', selectedLocalUploadIds];

@@ -4,7 +4,7 @@
     const cellSize = 160;
     const radius = 16;
     const markClass = 'conn-erasing-mark';
-    const excluded = '.image-node,.composer,.smart-back,.asset-panel,.asset-toggle,.smart-log-toggle,.smart-shortcut-toggle,.smart-workflow-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.prompt-optimize-modal,.create-menu,.smart-minimap,.canvas-nav-panel';
+    const excluded = '.image-node,.composer,.smart-back,.asset-panel,.asset-toggle,.smart-log-toggle,.smart-shortcut-toggle,.smart-prompt-toggle,.smart-workflow-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.prompt-optimize-modal,.create-menu,.smart-minimap,.canvas-nav-panel';
     const svgNamespace = 'http://www.w3.org/2000/svg';
 
     function indices(spec, limit) {

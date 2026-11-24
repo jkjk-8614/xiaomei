@@ -128,5 +128,36 @@ test('deleting an expanded batch editor preserves pending tasks, completed resul
     await page.waitForFunction(() => !smartCascadeIsLoopRunning('batch') && document.querySelector('.batch-screen')?.dataset.state === 'done');
     assert.equal(submissions.length, 6, 'stopping a batch cannot resubmit or discard its accepted tasks');
     assert.equal(await page.evaluate(id => nodes.find(n => n.id === id).images[0].url, firstId), '/fixture/task-5.svg');
+
+    // A disconnected status request keeps the accepted task across a reload.
+    await page.route('**/api/canvas-image-tasks/task-7', route => route.abort());
+    await page.evaluate(() => {
+        const poll = XiaomeiImageTaskClient.pollImageTask;
+        XiaomeiImageTaskClient.pollImageTask = (id, options) => poll(id, {...options, maxNetworkFailures:0});
+    });
+    await click('[data-batch-screen-run="0"]');
+    await page.waitForFunction(() => document.querySelector('[data-batch-screen-run="0"]')?.textContent.includes('查询原任务'));
+    await page.evaluate(() => saveCanvas());
+    assert.equal(stored.nodes.find(n => n.id === firstId).batchImageTasksToResume[0].taskId, 'task-7');
+    await page.unroute('**/api/canvas-image-tasks/task-7');
+    tasks.set('task-7', 'succeeded');
+    await page.reload();
+    await ready();
+    await click('[data-batch-screen-run="0"]');
+    await page.waitForFunction(id => nodes.find(n => n.id === id)?.images?.[0]?.url === '/fixture/task-7.svg', firstId);
+    assert.equal(submissions.length, 7, 'recovering the accepted task only polls the old ID');
+
+    // Older canvases can still recover a task ID saved in the error itself.
+    const legacyTask = 'canvas_img_aabbcc';
+    tasks.set(legacyTask, 'succeeded');
+    await page.evaluate(({id, legacyTask}) => {
+        const node = nodes.find(n => n.id === id);
+        node.images = [];
+        node.runError = `无法连接本地生图服务（/api/canvas-image-tasks/${legacyTask}）。请确认小美画布后端仍在运行`;
+        render();
+    }, {id:firstId, legacyTask});
+    await click('[data-batch-screen-run="0"]');
+    await page.waitForFunction(({id, legacyTask}) => nodes.find(n => n.id === id)?.images?.[0]?.url === `/fixture/${legacyTask}.svg`, {id:firstId, legacyTask});
+    assert.equal(submissions.length, 7, 'the legacy task ID also uses a read-only query');
     assert.deepEqual(errors, []);
 });

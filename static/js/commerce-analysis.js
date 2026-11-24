@@ -720,6 +720,7 @@
   // 只有平台没有生效时才自动调用本机翻译插件。
   const desktopPlatformDefinitions = Object.freeze({
     '1688': { id: '1688', label: '1688', url: 'https://www.1688.com/', glyph: '源', className: 'source-dot', hostSuffixes: ['1688.com'] },
+    jd: { id: 'jd', label: '京东', url: 'https://www.jd.com/', glyph: '京', className: 'jd-dot', hostSuffixes: ['jd.com', 'jingdong.com', 'jd.hk', 'joybuy.com', 'yiyaojd.com', '360buy.com', '360buyimg.com', 'jdpay.com', '3.cn'] },
     dmp: { id: 'dmp', label: '达摩盘', url: 'https://dmp.taobao.com/', glyph: '摩', className: 'dmp-dot', hostSuffixes: ['dmp.taobao.com'] },
     xiaohongshu: { id: 'xiaohongshu', label: '小红书', url: 'https://www.xiaohongshu.com/', glyph: '红', className: 'xiaohongshu-dot', hostSuffixes: ['xiaohongshu.com', 'rednote.com'] },
     douyin: { id: 'douyin', label: '抖音', url: 'https://www.douyin.com/', glyph: '抖', className: 'douyin-dot', hostSuffixes: ['douyin.com'] },
@@ -744,7 +745,7 @@
     return platformForUrl(value)
       || (isTaobaoHomeUrl(value) || tab?.platform === 'taobao' || tab?.site === 'taobao' ? taobaoHomePlatform : null);
   }
-  const commerceHostSuffixes = ['dmp.taobao.com', 'taobao.com', 'tmall.com', '1688.com', 'tb.cn', 'xiaohongshu.com', 'rednote.com', 'douyin.com'];
+  const commerceHostSuffixes = ['dmp.taobao.com', 'taobao.com', 'tmall.com', '1688.com', 'jd.com', 'jingdong.com', 'jd.hk', 'joybuy.com', 'yiyaojd.com', '360buy.com', '360buyimg.com', 'jdpay.com', '3.cn', 'tb.cn', 'xiaohongshu.com', 'rednote.com', 'douyin.com'];
   const desktopNavigationHostSuffixes = Object.freeze([...new Set([
     ...commerceHostSuffixes,
     ...Object.values(desktopPlatformDefinitions).flatMap((platform) => platform.hostSuffixes || []),
@@ -770,7 +771,7 @@
   }
   function isCommerceHost(hostname) { return hostMatchesSuffix(hostname, commerceHostSuffixes); }
   function isDesktopNavigationHost(hostname) { return hostMatchesSuffix(hostname, desktopNavigationHostSuffixes); }
-  function isDetailCommerceUrl(value) { try { const parsed = new URL(String(value || '')); const host = parsed.hostname.toLowerCase(); const path = parsed.pathname.toLowerCase(); return ((host === 'item.taobao.com' || host.endsWith('.item.taobao.com')) && /\/item\.htm/.test(path)) || ((host === 'detail.tmall.com' || host.endsWith('.detail.tmall.com')) && /\/item\.htm/.test(path)) || host === 'detail.1688.com' || host.endsWith('.detail.1688.com'); } catch { return false; } }
+  function isDetailCommerceUrl(value) { try { const parsed = new URL(String(value || '')); const host = parsed.hostname.toLowerCase(); const path = parsed.pathname.toLowerCase(); return ((host === 'item.taobao.com' || host.endsWith('.item.taobao.com')) && /\/item\.htm/.test(path)) || ((host === 'detail.tmall.com' || host.endsWith('.detail.tmall.com')) && /\/item\.htm/.test(path)) || host === 'detail.1688.com' || host.endsWith('.detail.1688.com') || ((host === 'item.jd.com' || host.endsWith('.item.jd.com') || host === 'item.yiyaojd.com' || host === 'npcitem.jd.hk') && /^\/(?:product\/)?\d+\.html$/i.test(path)); } catch { return false; } }
   function isSearchCommerceUrl(value) { try { const parsed = new URL(String(value || '')); const host = parsed.hostname.toLowerCase(); const path = parsed.pathname.toLowerCase(); return isCommerceHost(host) && (/\/search(?:\.htm)?(?:\/|$)/.test(path) || host === 's.taobao.com' || host === 's.tmall.com'); } catch { return false; } }
   function commerceSearchKey(value) {
     if (!isSearchCommerceUrl(value)) return '';
@@ -1775,7 +1776,7 @@
     const siteProfile = assistantProfileForTab();
     const siteView = activeSiteAssistantView();
     if (siteProfile) {
-      const retainProductQuickActions = assistantProfileApi()?.keepsProductQuickActions?.(siteProfile) || siteProfile.id === '1688-detail';
+      const retainProductQuickActions = assistantProfileApi()?.keepsProductQuickActions?.(siteProfile) || siteProfile.id === '1688-detail' || siteProfile.id === 'jd-detail';
       if (grid) { grid.hidden = !retainProductQuickActions; grid.setAttribute('aria-hidden', String(!retainProductQuickActions)); }
       if (retainProductQuickActions) {
         q('.quick-grid:not(.site-quick-grid) [data-module]').forEach((button) => { button.hidden = false; });
@@ -3637,7 +3638,7 @@
     const url = $('productUrl').value.trim();
     if (!url) { toast('请先填写淘宝、天猫或 1688 商品链接'); return null; }
     const platform = platformForUrl(url);
-    if (platform && !isDetailCommerceUrl(url)) { toast(`当前是${platform.label}官方页面，商品分析请切换到淘宝、天猫或 1688 商品详情页`); return null; }
+    if (platform && !isDetailCommerceUrl(url)) { toast(`当前是${platform.label}官方页面，商品分析请切换到淘宝、天猫、1688 或京东商品详情页`); return null; }
     const requestedKey = productContextKey(url); const loadedKey = productContextKey(activeProductUrl());
     if (loadedKey && requestedKey && loadedKey !== requestedKey && shellApi()?.captureProduct) {
       openProduct(url); toast('链接与当前内嵌页面不是同一件商品，已切换页面；页面加载完成后请再点击开始分析'); return null;

@@ -11,8 +11,6 @@ function escapeAttr(str){ return escapeHtml(str); }
 function L(zh, en){ return langIsEn() ? en : zh; }
 function compactLabel(fullZh, compactZh, en){ return window.innerWidth <= 760 ? L(compactZh, en) : L(fullZh, en); }
 const CANVAS_LIST_PROJECT_KEY = 'canvasListCurrentProjectId';
-const SOFT_FURNISHING_INBOX_KEY = 'soft_furnishing_canvas_inbox_v1';
-const SOFT_FURNISHING_INBOX_TTL = 10 * 60 * 1000;
 const COMFY_WORKFLOW_INBOX_KEY = 'comfy_canvas_workflow_inbox_v1';
 const COMFY_WORKFLOW_INBOX_TTL = 10 * 60 * 1000;
 
@@ -85,7 +83,6 @@ let workspaceHasLoaded = false;
 let workspaceLoadState = 'loading';
 let workspaceLoadController = null;
 let workspaceLoadSequence = 0;
-let softFurnishingInboxOpening = false;
 let comfyWorkflowInboxOpening = false;
 const WORKSPACE_LOAD_TIMEOUT_MS = 8000;
 
@@ -545,23 +542,6 @@ function openCanvas(c){
         : `/static/canvas.html?id=${enc}&project=${project}&v=2026.09.10.1`;
 }
 
-function readSoftFurnishingInbox(){
-    try {
-        const payload = JSON.parse(localStorage.getItem(SOFT_FURNISHING_INBOX_KEY) || 'null');
-        const url = String(payload?.image?.url || '').trim();
-        const queuedAt = Number(payload?.queued_at || 0);
-        const isLocalAsset = /^\/(?:assets|output|api\/storage-files)\//.test(url);
-        if(!url || !isLocalAsset || !queuedAt || Date.now() - queuedAt > SOFT_FURNISHING_INBOX_TTL){
-            localStorage.removeItem(SOFT_FURNISHING_INBOX_KEY);
-            return null;
-        }
-        return payload;
-    } catch(e){
-        try { localStorage.removeItem(SOFT_FURNISHING_INBOX_KEY); } catch(_) {}
-        return null;
-    }
-}
-
 function readComfyWorkflowInbox(){
     try {
         const payload = JSON.parse(localStorage.getItem(COMFY_WORKFLOW_INBOX_KEY) || 'null');
@@ -575,40 +555,6 @@ function readComfyWorkflowInbox(){
     } catch(e){
         try { localStorage.removeItem(COMFY_WORKFLOW_INBOX_KEY); } catch(_) {}
         return null;
-    }
-}
-
-async function openSoftFurnishingInbox(){
-    const payload = readSoftFurnishingInbox();
-    if(!payload || softFurnishingInboxOpening) return false;
-    softFurnishingInboxOpening = true;
-    let created = false;
-    try {
-        const sceneName = String(payload.scene_name || '软装场景').trim() || '软装场景';
-        setStatus(L('正在创建软装智能画布…', 'Creating furnishing canvas…'));
-        const res = await fetch('/api/canvases', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                title: `${sceneName} · 软装编排`,
-                icon: 'box',
-                kind: 'smart',
-                project: currentProjectId || 'default'
-            })
-        });
-        const data = await res.json().catch(() => ({}));
-        if(!res.ok || !data?.canvas?.id) throw new Error(data?.detail || 'create canvas failed');
-        const projectId = data.canvas.project || currentProjectId || 'default';
-        rememberProjectId(projectId);
-        created = true;
-        window.location.href = `/static/smart-canvas.html?id=${encodeURIComponent(data.canvas.id)}&project=${encodeURIComponent(projectId)}&v=2026.10.16.project-agent.2`;
-        return true;
-    } catch(e){
-        console.error('open soft furnishing inbox failed', e);
-        setStatus(L('无法创建软装画布，请重试', 'Unable to create furnishing canvas. Please try again.'));
-        return false;
-    } finally {
-        if(!created) softFurnishingInboxOpening = false;
     }
 }
 
@@ -1616,10 +1562,6 @@ document.addEventListener('keydown', e => {
 // canvas-focus: parent switches to canvas tab => reload data to stay fresh
 window.addEventListener('message', event => {
     if(event.origin && event.origin !== location.origin) return;
-    if(event.data?.type === 'soft-furnishing-inbox'){
-        openSoftFurnishingInbox();
-        return;
-    }
     if(event.data?.type === 'comfy-workflow-inbox'){
         openComfyWorkflowInbox();
         return;
@@ -1642,6 +1584,5 @@ window.addEventListener('message', event => {
 window.StudioI18n?.apply?.();
 applyViewport();
 loadAll();
-window.setTimeout(() => { openSoftFurnishingInbox(); }, 80);
 window.setTimeout(() => { openComfyWorkflowInbox(); }, 100);
 refreshIcons();

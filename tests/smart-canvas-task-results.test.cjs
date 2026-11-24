@@ -31,7 +31,7 @@ function setup(count=4) {
         MEDIA_NODE_DEFAULT_SCALE:1, MEDIA_GROUP_PREVIOUS_DEFAULT_SCALE:1,
         MEDIA_GROUP_DEFAULT_SCALE:0.5, mediaNodeDefaultScale:() => 0.5,
     });
-    for(const name of ['liveSmartNode', 'smartPendingTasks', 'copyMediaSizeFields', 'resultMediaUrls', 'finalizeSmartPendingTask', 'resumeSmartPendingNode']) vm.runInContext(extract(name), ctx);
+    for(const name of ['liveSmartNode', 'smartPendingTasks', 'copyMediaSizeFields', 'resultMediaUrls', 'extractImageRecoveryId', 'finalizeSmartPendingTask', 'resumeSmartPendingNode']) vm.runInContext(extract(name), ctx);
     return {ctx, node, pending};
 }
 test('four results reach the current node after replacement while polling', async () => {

@@ -112,6 +112,7 @@ class APIOCRTests(unittest.IsolatedAsyncioTestCase):
             is_image_reference_value=lambda value: value.startswith("data:image/"),
             get_api_provider=lambda provider_id: self.provider,
             selected_model=lambda model, default: model or default,
+            CODEX_DEFAULT_CHAT_MODELS=["fixture-vision"], GEMINI_CLI_DEFAULT_CHAT_MODELS=["fixture-vision"],
             codex_chat_text=runner("codex"), gemini_cli_chat_text=runner("gemini-cli"),
             canvas_skill_response_fields=lambda skill: {}, resolve_chat_provider=no_api,
         )

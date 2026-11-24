@@ -58,6 +58,8 @@ const BOOTSTRAP_MAIN = `'use strict';
 // 时等），避免出现 Electron 默认欢迎页。
 
 const path = require('node:path');
+// Electron 会把改名后的开发运行时视作安装包，须保留源码运行的数据目录。
+Object.defineProperty(require('electron').app, 'isPackaged', { value: false });
 
 const DESKTOP_DIR = path.resolve(__dirname, '..', '..', '..', '..', '..');
 const requested = process.argv.slice(1).find((arg) => arg && !arg.startsWith('-'));
@@ -107,10 +109,11 @@ function pickRcedit() {
   return '';
 }
 
-function isUpToDate(sourceFingerprint) {
+function isUpToDate(sourceFingerprint, iconFingerprint, scriptFingerprint) {
   if (!fs.existsSync(BRANDED_EXE)) return false;
   const state = readState();
   if (!state || state.source !== sourceFingerprint || state.appName !== APP_NAME) return false;
+  if (state.icon !== iconFingerprint || state.script !== scriptFingerprint) return false;
   // 目标 exe 必须比生成记录更新或一致，防止被外部工具覆盖回原版
   return fileFingerprint(BRANDED_EXE) === state.branded;
 }
@@ -157,7 +160,9 @@ function brand({ force = false } = {}) {
   if (!fs.existsSync(ICON_PATH)) return { ok: false, reason: 'app-icon-missing' };
 
   const sourceFingerprint = fileFingerprint(SOURCE_EXE);
-  if (!force && isUpToDate(sourceFingerprint)) return { ok: true, skipped: 'up-to-date' };
+  const iconFingerprint = fileFingerprint(ICON_PATH);
+  const scriptFingerprint = fileFingerprint(__filename);
+  if (!force && isUpToDate(sourceFingerprint, iconFingerprint, scriptFingerprint)) return { ok: true, skipped: 'up-to-date' };
 
   const rceditPath = pickRcedit();
   if (!rceditPath) return { ok: false, reason: 'rcedit-missing' };
@@ -171,6 +176,8 @@ function brand({ force = false } = {}) {
     const state = {
       appName: APP_NAME,
       source: sourceFingerprint,
+      icon: iconFingerprint,
+      script: scriptFingerprint,
       branded: fileFingerprint(BRANDED_EXE),
       generatedAt: new Date().toISOString(),
     };

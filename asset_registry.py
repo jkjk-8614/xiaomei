@@ -201,7 +201,7 @@ class AssetRegistry:
         fd, temporary = tempfile.mkstemp(prefix=".asset_registry_", suffix=".tmp", dir=os.path.dirname(self.path))
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(data, handle, ensure_ascii=False, indent=2)
+                json.dump(data, handle, ensure_ascii=False, separators=(",", ":"))
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(temporary, self.path)

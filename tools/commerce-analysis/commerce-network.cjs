@@ -5,11 +5,11 @@
 // 将平台返回的可读字段整理成分析台使用的最小数据结构。
 
 const ENDPOINT_PATTERNS = Object.freeze({
-  reviews: /(?:^|[/?])mtop\.taobao\.rate\.detaillist\.get(?:[/?]|$)/i,
+  reviews: /(?:^|[/?])mtop\.taobao\.rate\.detaillist\.get(?:[/?]|$)|club\.jd\.com\/comment\/productPageComments|api\.m\.jd\.com\/.*(?:productPageComments|getCommentListWithCard|pc_club_productPageComments)/i,
   // Taobao has used several WDJ/WDK/Wenda aliases for the same 问大家
   // module.  Keep the match limited to the question namespace so other mtop
   // calls are not treated as Q&A responses.
-  questions: /(?:^|[/?])mtop\.taobao\.(?=[^/?#]*(?:wdj|wdk|wenda|question|questions|ask|answer|qna|qa))[^/?#]+(?:[/?#]|$)/i,
+  questions: /(?:^|[/?])mtop\.taobao\.(?=[^/?#]*(?:wdj|wdk|wenda|question|questions|ask|answer|qna|qa))[^/?#]+(?:[/?#]|$)|api\.m\.jd\.com\/.*(?:getQuestionAnswerList|questionAnswer|pc_club_question)/i,
   detail: /(?:^|[/?])mtop\.taobao\.detail\.getdesc(?:[/?]|$)/i,
 });
 
@@ -36,14 +36,14 @@ function parseCommerceResponse(raw) {
 
 function findCommercePayload(value, kind = '') {
   const matches = {
-    reviews: (node) => Array.isArray(node?.rateList),
+    reviews: (node) => Array.isArray(node?.rateList) || Array.isArray(node?.comments),
     questions: (node) => [
       'questionList', 'qaList', 'qnaList', 'askList', 'questionItems', 'questions',
     ].some((key) => Array.isArray(node?.[key])),
     detail: (node) => Boolean(node?.components && typeof node.components === 'object'),
   };
   const accepts = matches[kind] || ((node) => Boolean(
-    node?.rateList || node?.questionList || node?.qaList || node?.qnaList || node?.askList || node?.components,
+    node?.rateList || node?.comments || node?.questionList || node?.qaList || node?.qnaList || node?.askList || node?.components,
   ));
   const queue = [value];
   const seen = new Set();
@@ -161,27 +161,30 @@ function parseCommerceNetworkRecords(records = {}, options = {}) {
 
   for (const record of listFor('reviews')) {
     const payload = findCommercePayload(record?.data, 'reviews');
-    const list = Array.isArray(payload.rateList) ? payload.rateList : [];
-    reviewTotal ||= tidy(firstPresent(payload, ['totalCount', 'rateCount', 'total', 'count', 'totalNum']), 80);
+    const list = Array.isArray(payload.rateList) ? payload.rateList : (Array.isArray(payload.comments) ? payload.comments : []);
+    reviewTotal ||= tidy(firstPresent(payload, ['totalCount', 'rateCount', 'commentCountStr', 'commentCount', 'total', 'count', 'totalNum']), 80);
     const next = asBoolean(payload.hasNext);
     if (next !== null) reviewHasNext = next;
     for (const item of list) {
       if (!item || typeof item !== 'object' || reviews.length >= reviewLimit) break;
       const content = tidy(firstPresent(item, ['feedback', 'rateContent', 'content', 'text']), 1800);
-      const id = tidy(firstPresent(item, ['id', 'rateId']) || `${content}:${firstPresent(item, ['feedbackDate', 'gmtCreate'])}`, 160);
+      const id = tidy(firstPresent(item, ['id', 'rateId', 'guid']) || `${content}:${firstPresent(item, ['feedbackDate', 'gmtCreate', 'creationTime'])}`, 160);
       if (!content || !id || reviewIds.has(id)) continue;
       reviewIds.add(id);
-      const images = Array.isArray(item.feedPicPathList) ? item.feedPicPathList : [];
+      const images = Array.isArray(item.feedPicPathList)
+        ? item.feedPicPathList
+        : (Array.isArray(item.images) ? item.images.map((img) => (typeof img === 'string' ? img : (img?.imgUrl || img?.url || ''))).filter(Boolean) : []);
       const rawVideos = [
         ...(Array.isArray(item.feedVideoPathList) ? item.feedVideoPathList : []),
+        ...(Array.isArray(item.videos) ? item.videos.map((vid) => (typeof vid === 'string' ? vid : (vid?.remark || vid?.mainUrl || vid?.url || ''))).filter(Boolean) : []),
         ...(Array.isArray(item.video?.cloudVideoUrl) ? item.video.cloudVideoUrl : item.video?.cloudVideoUrl ? [item.video.cloudVideoUrl] : []),
       ];
       reviews.push({
         id,
         content,
         text: content,
-        author: tidy(firstPresent(item, ['userNick', 'author', 'user']), 120),
-        date: tidy(firstPresent(item, ['feedbackDate', 'date', 'gmtCreate']), 80),
+        author: tidy(firstPresent(item, ['userNick', 'nickname', 'author', 'user']), 120),
+        date: tidy(firstPresent(item, ['feedbackDate', 'creationTime', 'date', 'gmtCreate']), 80),
         rating: tidy(firstPresent(item, ['score', 'rating', 'rate']), 40),
         images: [...new Set(images.map((value) => toAbsoluteUrl(value, baseUrl)).filter(Boolean))].slice(0, 12),
         videos: [...new Set(rawVideos.map((value) => toAbsoluteUrl(value, baseUrl)).filter(Boolean))].slice(0, 4),

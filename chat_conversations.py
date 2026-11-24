@@ -192,6 +192,24 @@ class ConversationStore:
             self._write(path, record)
         return record
 
+    def apply_image_recovery(self, user, conversation_id, message_id, recovery_id, urls, complete):
+        with self._lock:
+            path = self._path(user, conversation_id)
+            record = self._read(path)
+            message = next((row for row in record["messages"] if isinstance(row, dict) and row.get("id") == message_id), None)
+            if message is None:
+                raise HTTPException(404, "原消息已被清理，恢复图片可在历史记录查看。")
+            existing = message.get("image_urls") or ([message["image_url"]] if message.get("image_url") else [])
+            images = list(dict.fromkeys([*existing, *urls]))
+            message.update(image_url=images[0], image_urls=images, image_count=len(images))
+            if complete:
+                message["image_recoveries"] = [
+                    entry for entry in message.get("image_recoveries", []) if entry.get("id") != recovery_id
+                ]
+            record["updated_at"] = max(_number(record.get("updated_at")), _clock())
+            self._write(path, record)
+        return record
+
     @contextmanager
     def confirm_draft(self, user, conversation_id, draft_id):
         if not draft_id:
