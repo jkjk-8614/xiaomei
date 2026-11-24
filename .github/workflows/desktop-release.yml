@@ -192,7 +192,11 @@ jobs:
           PLAYWRIGHT_BROWSERS_PATH="$PWD/bundled/playwright-browsers" ./tools/commerce-analysis/node_modules/.bin/playwright install chromium
           tar -czf bundled/playwright-browsers.tar.gz -C bundled playwright-browsers
       - name: Install video workbench runtime
-        run: npm ci --prefix tools/video-workbench --omit=dev --no-audit --no-fund --ignore-scripts
+        run: |
+          npm ci --prefix tools/video-workbench --omit=dev --no-audit --no-fund --ignore-scripts
+          chmod +x tools/video-workbench/node_modules/@ffmpeg-installer/darwin-arm64/ffmpeg \
+            tools/video-workbench/node_modules/@ffprobe-installer/darwin-arm64/ffprobe
+          node scripts/verify-video-workbench.mjs
       - name: Build DeepSeek Harness runtime
         run: |
           npm install --global pnpm@11.7.0
