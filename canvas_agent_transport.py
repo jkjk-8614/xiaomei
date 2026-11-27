@@ -10,6 +10,7 @@ import httpx
 import chat_errors
 import chat_replies
 from network_diagnostics import log_net_error
+import provider_discovery
 
 
 _COMPLETION_TOKEN_MODELS = re.compile(r"^(?:o\d|gpt-[56])", re.IGNORECASE)
@@ -23,7 +24,8 @@ def model_candidates(provider, selected, limit):
     ordered = list(dict.fromkeys(name for name in names if name))
     if not ordered:
         return []
-    alternatives = sorted(ordered[1:], key=lambda name: (not _FAST_MODELS.search(name), bool(_SLOW_MODELS.search(name))))
+    alternatives = [name for name in ordered[1:] if not provider_discovery.is_non_chat_model(name)]
+    alternatives.sort(key=lambda name: (not _FAST_MODELS.search(name), bool(_SLOW_MODELS.search(name))))
     return [ordered[0], *alternatives[:limit]]
 
 

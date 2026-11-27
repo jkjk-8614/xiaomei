@@ -25,6 +25,11 @@ _IMAGE_MARKERS = (
     "banana", "image", "dalle", "dall-e", "imagen", "flux", "stable", "sdxl",
     "midjourney", "ideogram", "fal-ai", "klein", "seedream",
 )
+_NON_CHAT_MODEL_RE = re.compile(
+    r"(?:^|[-_/.])(?:tts|embed(?:ding)?s?|rerank(?:er)?|whisper|transcribe|moderation|aqa|lyria)(?:$|[-_/.])"
+    r"|text-to-speech|native-audio",
+    re.IGNORECASE,
+)
 _UNAVAILABLE = {
     "archived", "decommissioned", "deleted", "disabled", "discontinued", "inactive",
     "not_found", "not-found", "offline", "removed", "retired", "suspended", "unavailable",
@@ -41,6 +46,10 @@ def models_url(base, protocol):
     base = base.rstrip("/")
     if is_scnet_provider({"base_url": base}):
         return f"{scnet_api_base(base)}/models"
+    if protocol == "gemini" and base.endswith("/v1beta/openai"):
+        base = base[: -len("/openai")]
+    elif protocol == "openai" and base.endswith("/v1beta/openai"):
+        return f"{base}/models"
     return _versioned(base, _MODEL_ROOTS.get(protocol, "/v1")) + "/models"
 
 
@@ -68,12 +77,21 @@ def validate_base(value):
     return base
 
 
+def is_non_chat_model(value):
+    model = str(value or "").strip().lower()
+    if not model:
+        return False
+    return bool(_NON_CHAT_MODEL_RE.search(model))
+
+
 def classify_model(value):
     model = str(value or "").lower()
     if any(marker in model for marker in _VIDEO_MARKERS):
         return "video"
     if any(marker in model for marker in _IMAGE_MARKERS):
         return "image"
+    if is_non_chat_model(model):
+        return None
     return "chat"
 
 
@@ -124,8 +142,23 @@ def _model_id(record):
 def _group(ids):
     grouped = {kind: [] for kind in _MODEL_TYPES}
     for model in ids:
-        grouped[classify_model(model)].append(model)
+        kind = classify_model(model)
+        if kind in grouped:
+            grouped[kind].append(model)
     return grouped
+
+
+def _supports_catalog_entry(record, model, protocol):
+    kind = classify_model(model)
+    if kind is None:
+        return False
+    if protocol == "gemini" and kind == "chat" and isinstance(record, dict):
+        methods = record.get("supportedGenerationMethods")
+        if isinstance(methods, list) and methods:
+            supported = {str(item or "").strip().lower() for item in methods if str(item or "").strip()}
+            if supported and "generatecontent" not in supported:
+                return False
+    return True
 
 
 def _available_ids(records, protocol):
@@ -135,7 +168,7 @@ def _available_ids(records, protocol):
             model = _model_id(record)
             if protocol == "gemini":
                 model = model.removeprefix("models/")
-            if model:
+            if model and _supports_catalog_entry(record, model, protocol):
                 ids.add(model)
     return sorted(ids)
 
@@ -228,7 +261,7 @@ async def supplement_newapi_group_models(base_url, grouped, ids):
         if name in known:
             continue
         category = classify_model(name)
-        if category == "chat":
+        if category not in ("image", "video"):
             continue
         if name not in merged.setdefault(category, []):
             merged[category].append(name)

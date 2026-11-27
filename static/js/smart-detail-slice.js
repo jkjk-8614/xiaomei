@@ -376,8 +376,8 @@
                             <div class="smart-slice-field" style="grid-column: 1 / -1;">
                                 <label for="smartSliceCanvasLayout">输出到画布方式</label>
                                 <select id="smartSliceCanvasLayout" class="smart-slice-select" data-slice-layout>
-                                    <option value="separate">拆分为独立图片节点（方便逐屏编辑）</option>
-                                    <option value="grouped">合并为单个多图节点</option>
+                                    <option value="separate">每张切片单独创建上传节点</option>
+                                    <option value="grouped">合并到一个上传节点</option>
                                 </select>
                             </div>
                         </div>
@@ -975,13 +975,13 @@
                 const createdIds = [];
                 if (opts.layout === 'grouped') {
                     const outNode = global.createNode?.(startX, startY, sliceImages, {
+                        nodeType: SMART_UPLOAD_NODE_TYPE,
                         skipUndo: true,
                         select: true,
                         title: `${base} · 切片 (${sliceImages.length})`
                     });
                     if (outNode?.id) createdIds.push(outNode.id);
                 } else {
-                    // 拆分为独立图片节点：每行 4 列整齐排布，保持清晰美观
                     const cols = Math.min(4, sliceImages.length);
                     const gapX = 28;
                     const gapY = 36;
@@ -992,6 +992,7 @@
                     for (let i = 0; i < sliceImages.length; i++) {
                         const imgObj = sliceImages[i];
                         const created = global.createNode?.(cursorX, cursorY, [imgObj], {
+                            nodeType: SMART_UPLOAD_NODE_TYPE,
                             skipUndo: true,
                             select: false,
                             title: `${base}_${String(i + 1).padStart(digits, '0')}`
@@ -1026,8 +1027,8 @@
                 dialog.close();
             } catch (err) {
                 state.busy = false;
-                setStatus(err.message || '输出到画布失败', true);
                 renderAll();
+                setStatus(err.message || '输出到画布失败', true);
             }
         });
 

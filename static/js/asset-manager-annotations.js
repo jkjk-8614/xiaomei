@@ -59,7 +59,8 @@
                 item?.id && item.enabled !== false && Array.isArray(item.chat_models) && item.chat_models.some(Boolean));
             const provider = available.find(item => item.id === settings.provider) || available[0];
             const models = (provider?.chat_models || []).filter(Boolean);
-            const model = models.includes(settings.model) ? settings.model : models[0];
+            const preferred = models.find(item => !/(?:^|[-_/.])(tts|embed(?:ding)?s?|rerank(?:er)?|whisper|transcribe|moderation|aqa|lyria)(?:$|[-_/.])|text-to-speech|native-audio/i.test(String(item || ''))) || models[0];
+            const model = models.includes(settings.model) ? settings.model : preferred;
             return { available, provider: provider?.id || '', models, model: model || '' };
         }
         function change(control) {

@@ -1512,8 +1512,9 @@ video:fullscreen, video:-webkit-full-screen { width:100vw !important; height:100
 .thumb-item:hover { z-index:1; }
 .thumb-item.image-selected { z-index:2; }
 .thumb-item img { width:auto; height:auto; max-width:100%; max-height:100%; object-fit:contain; object-position:center; border-radius:0; background:var(--soft); display:block; }
-.result-image-grid { gap:8px; padding:0; border-radius:18px; overflow:hidden; scrollbar-gutter:stable; }
-.upload-node .result-image-grid { overflow-y:auto; }
+.result-image-grid { gap:8px; padding:0; border-radius:18px; overflow:hidden; }
+.upload-node .result-image-grid[data-thumb-overflow="1"],
+.result-image-grid[data-thumb-overflow="1"] { overflow-y:auto; scrollbar-gutter:stable; }
 .result-image-tile { border-radius:14px; overflow:hidden; border:2px solid transparent; background:var(--card); box-shadow:0 1px 0 rgba(15,23,42,.04); transition:border-color .18s ease, box-shadow .18s ease, transform .18s cubic-bezier(.2,.8,.2,1), filter .18s ease; }
 .result-image-tile img,
 .result-image-tile .media-thumb { width:100%; height:100%; max-width:none; max-height:none; object-fit:contain; border-radius:12px; }

@@ -1630,14 +1630,6 @@
                     </svg>
                     <span class="nav-text" data-i18n="nav.history">历史记录</span>
                 </div>
-                <div class="nav-item" onclick="switchUI(this, 'design-brain')">
-                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M12 3a4 4 0 0 0-4 4 4 4 0 0 0-3 6.5A4 4 0 0 0 8 20a4 4 0 0 0 4 1 4 4 0 0 0 4-1 4 4 0 0 0 3-6.5A4 4 0 0 0 16 7a4 4 0 0 0-4-4Z"></path>
-                        <path d="M12 3v18"></path>
-                        <path d="M8 7a4 4 0 0 1 4 4 4 4 0 0 1 4-4"></path>
-                    </svg>
-                    <span class="nav-text">设计大脑</span>
-                </div>
                 <div class="nav-item" onclick="switchUI(this, 'photocraft')">
                     <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"></path>
@@ -1746,7 +1738,7 @@
         <div id="frame-gpt-chat" class="deepseek-route-placeholder" aria-hidden="true"></div>
                 <iframe id="frame-commerce-analysis" data-src="/static/commerce-analysis.html?v=1.0.21.1795425535" scrolling="yes"></iframe>
                 <iframe id="frame-commerce" data-src="/static/commerce.html?v=1.0.21.1795425535&image-recovery=1" scrolling="yes" title="电商工作台"></iframe>
-            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=1.0.21.1795425535&amp;startup=2&amp;prompt-export=1" scrolling="yes"></iframe>
+            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=1.0.21.1795511767&amp;startup=2&amp;prompt-export=1" scrolling="yes"></iframe>
             <iframe id="frame-design-brain" data-src="/static/design-brain.html?v=1.0.21.1795425535&batch-resolution=2026.10.25.1" scrolling="yes" title="设计大脑"></iframe>
             <iframe id="frame-photocraft" data-src="/static/photocraft/index.html?v=1.0.21.1794192428" allow="fullscreen; clipboard-read; clipboard-write" allowfullscreen scrolling="yes" title="PS 修图"></iframe>
             <iframe id="frame-video-workbench" data-src="/video-workbench/" allow="fullscreen; clipboard-read; clipboard-write" allowfullscreen scrolling="yes" title="视频工作台"></iframe>
@@ -1791,7 +1783,8 @@
                             var launchId = new URLSearchParams(window.location.search).get('page');
                             if(launchId === 'task-manager') launchId = 'commerce-analysis';
                             var launchUsed = sessionStorage.getItem('xiaomei_launch_page_used') === '1';
-                            var id = !launchUsed && pageIds.includes(launchId) ? launchId : savedId;
+                            var restoredId = savedId === 'design-brain' ? 'online' : savedId;
+                            var id = !launchUsed && pageIds.includes(launchId) ? launchId : restoredId;
                             if(id === 'task-manager') id = 'commerce-analysis';
                             if(!pageIds.includes(id)) id = 'online';
                             var target = document.getElementById('frame-' + id);
@@ -2799,8 +2792,7 @@
             if(event.data?.type === 'design-brain-experiences-pick') {
                 const timestamps = Array.isArray(event.data.timestamps) ? event.data.timestamps : [];
                 if(!timestamps.length) return;
-                const designBrainTrigger = document.querySelector(`[onclick*="'design-brain'"],[onclick*='"design-brain"']`);
-                switchUI(designBrainTrigger, 'design-brain');
+                switchUI(null, 'design-brain', { skipRemember:true });
                 postToStudioFrame('design-brain', { type:'design-brain-prefill', timestamps }, 60);
                 return;
             }
@@ -2944,7 +2936,9 @@
             const launchPage = requestedLaunchPage;
             const launchPageUsed = sessionStorage.getItem('xiaomei_launch_page_used') === '1';
             const useLaunchPage = !launchPageUsed && PAGE_IDS.includes(launchPage);
-            const restoredPage = savedId === 'task-manager' ? 'commerce-analysis' : savedId;
+            let restoredPage = savedId;
+            if (savedId === 'task-manager') restoredPage = 'commerce-analysis';
+            if (savedId === 'design-brain') restoredPage = DEFAULT_PAGE_ID;
             const id = useLaunchPage ? launchPage : (PAGE_IDS.includes(restoredPage) ? restoredPage : DEFAULT_PAGE_ID);
             if (useLaunchPage) sessionStorage.setItem('xiaomei_launch_page_used', '1');
             if(savedId !== id) localStorage.setItem(ACTIVE_PAGE_KEY, id);

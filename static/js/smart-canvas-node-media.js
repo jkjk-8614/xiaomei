@@ -80,15 +80,23 @@
 
         const grid = body.querySelector('.thumb-grid');
         if (grid) {
-            const rows = Math.max(1, Math.min(options.visibleRows, Number(layout.visibleRows || layout.rows || 1)));
+            const fallbackRows = Math.max(1, Number(layout.visibleRows || layout.rows || 1));
+            const rows = Number.isFinite(Number(layout.visibleRows)) && Number(layout.visibleRows) > 0
+                ? Math.max(1, Number(layout.visibleRows))
+                : Math.max(1, Math.min(options.visibleRows || fallbackRows, fallbackRows));
             const thumbHeight = layout.thumbH || layout.thumb;
             const gap = 8;
+            const maxHeight = Number.isFinite(Number(layout.gridMaxHeight)) && Number(layout.gridMaxHeight) > 0
+                ? Math.round(Number(layout.gridMaxHeight))
+                : rows * (Number(thumbHeight) || 96) + (rows - 1) * gap;
+            const overflow = Boolean(layout.scrollable) || Number(layout.rows || 1) > rows;
+            grid.dataset.thumbOverflow = overflow ? '1' : '0';
             const properties = {
                 '--thumb-cols': layout.cols,
                 '--thumb-size': `${layout.thumb}px`,
                 '--thumb-w': `${layout.thumbW || layout.thumb}px`,
                 '--thumb-h': `${thumbHeight}px`,
-                '--thumb-max-height': `${rows * (Number(thumbHeight) || 96) + (rows - 1) * gap}px`,
+                '--thumb-max-height': `${maxHeight}px`,
             };
             for (const [key, value] of Object.entries(properties)) grid.style.setProperty(key, value);
             [...grid.querySelectorAll('.thumb-item')].forEach((tile, index) => {

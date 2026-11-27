@@ -54,7 +54,230 @@
         return { cols, rows, visibleRows: Math.min(maxRows, rows), thumb: minThumb };
     }
 
-    function thumbnails({ count, width, height, minWidth, minHeight, aspect, scale, baseThumb, maxRows, single }) {
+    function minCell(aspect) {
+        const safeAspect = aspect > 0 ? aspect : 1;
+        const wide = safeAspect >= 1;
+        const ratio = wide ? safeAspect : 1 / safeAspect;
+        const longSide = Math.max(minThumb, Math.round(minThumb * ratio));
+        return wide ? { thumbW: longSide, thumbH: minThumb, fits: 0 } : { thumbW: minThumb, thumbH: longSide, fits: 0 };
+    }
+
+    function fitCell(maxW, maxH, aspect) {
+        const safeAspect = aspect > 0 ? aspect : 1;
+        const capW = Math.floor(maxW);
+        const capH = Math.floor(maxH);
+        if (capW <= 0 || capH <= 0) return minCell(safeAspect);
+        const wide = safeAspect >= 1;
+        const ratio = wide ? safeAspect : 1 / safeAspect;
+        const capShort = wide ? capH : capW;
+        const capLong = wide ? capW : capH;
+        // 以短边整数为基准推导长边，保证输出尺寸再回算时严格幂等，不出现松手后缩 1px。
+        let shortSide = Math.min(capShort, Math.floor((capLong + 0.5) / ratio));
+        while (shortSide > 0 && Math.round(shortSide * ratio) > capLong) shortSide--;
+        while (shortSide + 1 <= capShort && Math.round((shortSide + 1) * ratio) <= capLong) shortSide++;
+        const longSide = Math.round(shortSide * ratio);
+        const fits = shortSide >= minThumb && longSide >= minThumb ? 1 : 0;
+        const finalShort = Math.max(minThumb, shortSide);
+        const finalLong = Math.max(minThumb, Math.round(finalShort * ratio));
+        return wide
+            ? { thumbW: finalLong, thumbH: finalShort, fits }
+            : { thumbW: finalShort, thumbH: finalLong, fits };
+    }
+
+    function fitByWidth(maxW, aspect) {
+        const safeAspect = aspect > 0 ? aspect : 1;
+        const capW = Math.floor(maxW);
+        if (capW <= 0) return minCell(safeAspect);
+        const wide = safeAspect >= 1;
+        const ratio = wide ? safeAspect : 1 / safeAspect;
+        if (!wide) {
+            const shortSide = capW;
+            const longSide = Math.round(shortSide * ratio);
+            const fits = shortSide >= minThumb && longSide >= minThumb ? 1 : 0;
+            const finalShort = Math.max(minThumb, shortSide);
+            return { thumbW: finalShort, thumbH: Math.max(minThumb, Math.round(finalShort * ratio)), fits };
+        }
+        let shortSide = Math.floor((capW + 0.5) / ratio);
+        while (shortSide > 0 && Math.round(shortSide * ratio) > capW) shortSide--;
+        while (Math.round((shortSide + 1) * ratio) <= capW) shortSide++;
+        const longSide = Math.round(shortSide * ratio);
+        const fits = shortSide >= minThumb && longSide >= minThumb ? 1 : 0;
+        const finalShort = Math.max(minThumb, shortSide);
+        return { thumbW: Math.max(minThumb, Math.round(finalShort * ratio)), thumbH: finalShort, fits };
+    }
+
+    function revealScrollLayout(count, aspect, innerW, innerH, baseCols, maxDefaultRows) {
+        const baseRows = Math.ceil(count / baseCols);
+        if (baseRows <= maxDefaultRows) return null;
+        const maxW = (innerW - (baseCols - 1) * thumbnailGap) / baseCols;
+        if (maxW <= 0) return null;
+        const cell = fitByWidth(maxW, aspect);
+        if (!cell.fits) return null;
+        const totalH = baseRows * cell.thumbH + (baseRows - 1) * thumbnailGap;
+        const minDefaultH = maxDefaultRows * cell.thumbH + (maxDefaultRows - 1) * thumbnailGap;
+        if (innerH < totalH && innerH >= minDefaultH - 2) {
+            const usedW = baseCols * cell.thumbW + (baseCols - 1) * thumbnailGap;
+            const clampedInnerH = Math.max(minThumb, Math.round(innerH));
+            return {
+                cols: baseCols,
+                rows: baseRows,
+                visibleRows: Math.max(1, Math.min(baseRows, Math.ceil((clampedInnerH + thumbnailGap) / (cell.thumbH + thumbnailGap)))),
+                thumbW: cell.thumbW,
+                thumbH: cell.thumbH,
+                thumb: cell.thumbH,
+                usedW,
+                gridMaxHeight: clampedInnerH,
+                scrollable: true
+            };
+        }
+        return null;
+    }
+
+    function adaptiveGrid(count, width, height, {
+        aspect = 1,
+        maxDefaultRows = 3,
+        fixedCols = 0,
+        padX = thumbnailInsets,
+        padY = thumbnailInsets
+    } = {}) {
+        const safeCount = Math.max(1, Math.round(Number(count) || 1));
+        const safeAspect = Number.isFinite(Number(aspect)) && Number(aspect) > 0 ? Number(aspect) : 1;
+        const safeMaxRows = Math.max(1, Math.round(Number(maxDefaultRows) || 3));
+        const safeFixedCols = fixedCols > 0 ? Math.max(1, Math.min(safeCount, Math.round(fixedCols))) : 0;
+        const innerW = Math.max(minThumb, Math.round(width) - padX);
+        const innerH = Math.max(minThumb, Math.round(height) - padY);
+        const baseCols = safeFixedCols > 0
+            ? safeFixedCols
+            : (safeCount <= 4 ? 2 : Math.min(4, Math.max(2, Math.ceil(Math.sqrt(safeCount)))));
+
+        const reveal = revealScrollLayout(safeCount, safeAspect, innerW, innerH, baseCols, safeMaxRows);
+        if (reveal) {
+            return {
+                cols: reveal.cols,
+                rows: reveal.rows,
+                visibleRows: reveal.visibleRows,
+                thumbW: reveal.thumbW,
+                thumbH: reveal.thumbH,
+                thumb: reveal.thumb,
+                width: Math.round(reveal.usedW + padX),
+                height: Math.round(reveal.gridMaxHeight + padY),
+                gridMaxHeight: reveal.gridMaxHeight,
+                scrollable: true
+            };
+        }
+
+        const startCol = safeFixedCols > 0 ? safeFixedCols : 1;
+        const endCol = safeFixedCols > 0 ? safeFixedCols : safeCount;
+        const isBetter = (a, b) => {
+            if (!b) return true;
+            let diff = a.fits - b.fits;
+            if (!diff) {
+                if (a.fits) {
+                    diff = a.area - b.area
+                        || b.emptySlots - a.emptySlots
+                        || b.waste - a.waste
+                        || b.rows - a.rows;
+                } else {
+                    diff = b.maxOverflow - a.maxOverflow
+                        || b.overflow - a.overflow
+                        || b.emptySlots - a.emptySlots
+                        || b.rows - a.rows;
+                }
+            }
+            return diff > 0;
+        };
+
+        let full = null;
+        let fullNonConflict = null;
+        for (let cols = startCol; cols <= endCol; cols++) {
+            const rows = Math.ceil(safeCount / cols);
+            const maxW = (innerW - (cols - 1) * thumbnailGap) / cols;
+            const maxH = (innerH - (rows - 1) * thumbnailGap) / rows;
+            const cell = fitCell(maxW, maxH, safeAspect);
+            const usedW = cols * cell.thumbW + (cols - 1) * thumbnailGap;
+            const usedH = rows * cell.thumbH + (rows - 1) * thumbnailGap;
+            const cand = {
+                cols,
+                rows,
+                visibleRows: rows,
+                thumbW: cell.thumbW,
+                thumbH: cell.thumbH,
+                thumb: cell.thumbH,
+                width: Math.round(usedW + padX),
+                height: Math.round(usedH + padY),
+                gridMaxHeight: usedH,
+                fits: cell.fits,
+                area: cell.thumbW * cell.thumbH,
+                emptySlots: cols * rows - safeCount,
+                overflow: Math.max(0, usedW - innerW) + Math.max(0, usedH - innerH),
+                maxOverflow: Math.max(Math.max(0, usedW - innerW), Math.max(0, usedH - innerH)),
+                waste: Math.max(0, innerW - usedW) + Math.max(0, innerH - usedH),
+                scrollable: false
+            };
+            if (isBetter(cand, full)) full = cand;
+            if (!revealScrollLayout(safeCount, safeAspect, usedW, usedH, baseCols, safeMaxRows) && isBetter(cand, fullNonConflict)) {
+                fullNonConflict = cand;
+            }
+        }
+
+        if (full && !full.fits) {
+            const baseRows = Math.ceil(safeCount / baseCols);
+            if (baseRows > safeMaxRows) {
+                const maxW = (innerW - (baseCols - 1) * thumbnailGap) / baseCols;
+                const cell = fitByWidth(maxW, safeAspect);
+                const totalH = baseRows * cell.thumbH + (baseRows - 1) * thumbnailGap;
+                if (innerH < totalH) {
+                    const usedW = baseCols * cell.thumbW + (baseCols - 1) * thumbnailGap;
+                    const clampedInnerH = Math.max(minThumb, Math.round(innerH));
+                    return {
+                        cols: baseCols,
+                        rows: baseRows,
+                        visibleRows: Math.max(1, Math.min(baseRows, Math.ceil((clampedInnerH + thumbnailGap) / (cell.thumbH + thumbnailGap)))),
+                        thumbW: cell.thumbW,
+                        thumbH: cell.thumbH,
+                        thumb: cell.thumbH,
+                        width: Math.round(usedW + padX),
+                        height: Math.round(clampedInnerH + padY),
+                        gridMaxHeight: clampedInnerH,
+                        scrollable: true
+                    };
+                }
+            }
+        }
+
+        const chosen = (fullNonConflict && fullNonConflict.fits) ? fullNonConflict : full;
+        if (chosen && !chosen.scrollable) {
+            const reReveal = revealScrollLayout(safeCount, safeAspect, chosen.width - padX, chosen.height - padY, baseCols, safeMaxRows);
+            if (reReveal) {
+                return {
+                    cols: reReveal.cols,
+                    rows: reReveal.rows,
+                    visibleRows: reReveal.visibleRows,
+                    thumbW: reReveal.thumbW,
+                    thumbH: reReveal.thumbH,
+                    thumb: reReveal.thumb,
+                    width: Math.round(reReveal.usedW + padX),
+                    height: Math.round(reReveal.gridMaxHeight + padY),
+                    gridMaxHeight: reReveal.gridMaxHeight,
+                    scrollable: true
+                };
+            }
+        }
+        return {
+            cols: chosen.cols,
+            rows: chosen.rows,
+            visibleRows: chosen.visibleRows,
+            thumbW: chosen.thumbW,
+            thumbH: chosen.thumbH,
+            thumb: chosen.thumb,
+            width: chosen.width,
+            height: chosen.height,
+            gridMaxHeight: chosen.gridMaxHeight,
+            scrollable: chosen.scrollable
+        };
+    }
+
+    function thumbnails({ count, width, height, minWidth, minHeight, aspect, scale, baseThumb, maxRows, single, adaptive = false }) {
         const insets = thumbnailInsets;
         const chrome = insets + summaryHeight;
         const gap = thumbnailGap;
@@ -80,6 +303,19 @@
         const gapH = (visibleRows - 1) * gap;
         const edge = baseThumb * scale;
         if (aspect > 0) {
+            if (fixed && adaptive) {
+                const fitted = adaptiveGrid(count, width, height, {
+                    aspect,
+                    maxDefaultRows: maxRows,
+                    padX: insets,
+                    padY: chrome
+                });
+                return {
+                    ...fitted,
+                    width: Math.max(minWidth, fitted.width),
+                    height: Math.max(minHeight, fitted.height)
+                };
+            }
             let thumbW = aspect >= 1 ? Math.round(edge) : Math.max(minThumb, Math.round(edge * aspect));
             let thumbH = aspect >= 1 ? Math.max(minThumb, Math.round(edge / aspect)) : Math.round(edge);
             if (fixed) {
@@ -96,6 +332,19 @@
             };
         }
         if (fixed) {
+            if (adaptive && maxRows < count) {
+                const fitted = adaptiveGrid(count, width, height, {
+                    aspect: 1,
+                    maxDefaultRows: maxRows,
+                    padX: insets,
+                    padY: chrome
+                });
+                return {
+                    ...fitted,
+                    width: Math.max(minWidth, fitted.width),
+                    height: Math.max(minHeight, fitted.height)
+                };
+            }
             const fitted = squareGrid(count, Math.max(72, width - insets), Math.max(56, height - chrome),
                 { maxThumb: 100000, maxRows, padding: 0 });
             return { ...fitted, width: Math.round(width), height: Math.round(height) };
@@ -163,5 +412,5 @@
         return { positions, width: horizontal.length + 2 * padding, height: vertical.length + 2 * padding + header };
     }
 
-    root.XiaomeiSmartGroupLayout = { readingOrder, squareGrid, thumbnails, compactPositions, tileMembers };
+    root.XiaomeiSmartGroupLayout = { readingOrder, squareGrid, adaptiveGrid, thumbnails, compactPositions, tileMembers };
 })(window);

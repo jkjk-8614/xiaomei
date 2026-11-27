@@ -16,6 +16,7 @@ from physical_dimensions import (migrate_dimensions, buildNormalizedDimensions, 
 
 GOOGLE_SOURCE = 'https://ai.google.dev/gemini-api/docs/image-generation'
 OPENAI_SOURCE = 'https://developers.openai.com/api/reference/python/resources/images/methods/edit'
+VOLCENGINE_SOURCE = 'https://www.volcengine.com/docs/82379/1541523'
 RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']
 _CACHE_LOCK = threading.Lock()
 PRODUCT_CATEGORIES = dict(textile='地毯／布艺／家纺', clothing='服装／鞋帽', bag='箱包／皮具',
@@ -32,43 +33,60 @@ def capabilities(provider, model, protocol, request_mode, transport_limit=16):
     name = str(model).lower().removeprefix('models/')
     google = bool(re.match(r'gemini-(?:2\.5-flash-image|3-pro-image|3\.1-flash(?:-lite)?-image|nano-banana-2\.1)(?:-preview)?$', name))
     alias = name in {'nano-banana', 'nano-banana-pro', 'nano-banana-2', 'nano-banana-2.1'}
-    gpt = bool(re.match(r'gpt-image-2(?:\.5-(?:flare|sunburst))?(?:-\d{4}-\d{2}-\d{2}|-high|-medium)?$', name))
-    direct_google = 'generativelanguage.googleapis.com' in str(provider.get('base_url', ''))
-    direct_openai = 'api.openai.com' in str(provider.get('base_url', ''))
+    gpt_fixed_1k = name in {'gpt-image-2-1k', 'gpt-image-2-all', 'gpt-image-2.5-1k'}
+    gpt = gpt_fixed_1k or bool(re.match(r'gpt-image-2(?:\.[56]-(?:flare|sunburst))?(?:-\d{4}-\d{2}-\d{2}|-high|-medium)?$', name))
+    seedream = (
+        bool(re.match(r'(?:doubao-)?seedream-(?:[4-9](?:[.-]\d+)?(?:-[a-z0-9]+)*)$', name))
+        and not re.search(r'(?:^|-)t2i(?:-|$)', name)
+    )
+    base_url = str(provider.get('base_url', ''))
+    direct_google = 'generativelanguage.googleapis.com' in base_url
+    direct_openai = 'api.openai.com' in base_url
+    direct_volcengine = 'volces.com' in base_url
     transport = ('google-generate-content' if protocol == 'gemini' else
                  'codex' if protocol == 'codex' else
+                 'volcengine-images' if protocol == 'volcengine' else
+                 'apimart-images' if protocol == 'apimart' else
                  'openai-images' if protocol == 'openai' and request_mode == 'openai' else request_mode)
-    known_route = transport in {'google-generate-content', 'openai-images', 'codex', 'openai-json', 'openai-responses'}
-    supported = known_route and (gpt or google or alias)
+    known_route = transport in {
+        'google-generate-content', 'openai-images', 'codex',
+        'volcengine-images', 'apimart-images', 'openai-json', 'openai-responses',
+    }
+    supported = known_route and (gpt or google or alias or seedream)
     legacy = name in {'gemini-2.5-flash-image', 'gemini-2.5-flash-image-preview', 'nano-banana'}
     ratios = RATIOS + ['1:4', '4:1', '1:8', '8:1'] if name.removesuffix('-preview') in {
         'gemini-3.1-flash-image', 'gemini-nano-banana-2.1', 'nano-banana-2', 'nano-banana-2.1',
     } else RATIOS
     lite = 'lite' in name
     pro = 'pro' in name
-    limit = 16 if gpt else (14 if google and not legacy else None)
+    seedream_compact = seedream and bool(re.search(r'(?:^|-)5[.-]0-(?:pro|flash)(?:-|$)', name))
+    limit = 16 if gpt else (14 if google and not legacy else (10 if seedream_compact else 14 if seedream else None))
     # Alias/version and proxy limits are not official limits. Stay within a
     # conservative application budget until the channel is independently probed.
     budget = min(transport_limit, limit or (3 if legacy or alias else 1))
-    return dict(provider='openai' if gpt else 'google' if google or alias else 'unknown',
+    gpt_next = gpt and ('2.5' in name or '2.6' in name)
+    output_sizes = (['1K'] if legacy or lite else ['1K', '2K', '4K']) if google or alias else (
+        ['1K'] if gpt_fixed_1k else ['auto', 'pixel-dimensions']
+    )
+    return dict(provider='openai' if gpt else 'google' if google or alias else 'bytedance' if seedream else 'unknown',
                 modelId=model, channelId=provider.get('id'), transport=transport,
                 supported=supported, supportsImageReferences=supported,
                 supportsMultipleReferences=supported and budget > 1,
-                maxReferenceImages=limit if (direct_google or direct_openai) else None,
+                maxReferenceImages=limit if (direct_google or direct_openai or direct_volcengine) else None,
                 applicationReferenceLimit=budget,
-                preferredReferenceImages=1 if lite else 3 if legacy or alias else 5 if pro else 4,
+                preferredReferenceImages=1 if lite else 3 if legacy or alias else 5 if (pro and not seedream) else 4,
                 supportsImageEditing=supported,
-                maskEditMode='native-raster-mask' if gpt and transport == 'openai-images' else 'semantic-only' if google or alias else 'none',
+                maskEditMode='native-raster-mask' if gpt and transport == 'openai-images' else 'semantic-only' if (google or alias or seedream) else 'none',
                 maskAppliesToFirstImage=bool(gpt and transport == 'openai-images'),
-                nativeMaskUsed=False, supportsTransparentOutput=bool(gpt and '2.5' in name),
+                nativeMaskUsed=False, supportsTransparentOutput=bool(gpt_next),
                 supportedAspectRatios=ratios if google or alias else [],
-                supportedOutputSizes=(['1K'] if legacy or lite else ['1K', '2K', '4K']) if google or alias else ['auto', 'pixel-dimensions'],
-                availableQualities=(['auto', 'low', 'medium', 'high', 'xhigh', 'max'] if '2.5' in name else ['auto', 'low', 'medium', 'high']) if gpt else [],
+                supportedOutputSizes=output_sizes,
+                availableQualities=(['auto', 'low', 'medium', 'high', 'xhigh', 'max'] if gpt_next else ['auto', 'low', 'medium', 'high']) if gpt else [],
                 supportsNativeControlNet=False, supportsNativeDepthControl=False,
                 supportsNativeEdgeControl=False, supportsNativeCameraControl=False,
                 supportsPhysicalDimensionParameters=False,
                 supportsGeometryGuide=supported, supportsLocalProductProtection=supported,
-                verificationSource=OPENAI_SOURCE if gpt else GOOGLE_SOURCE,
+                verificationSource=OPENAI_SOURCE if gpt else VOLCENGINE_SOURCE if seedream else GOOGLE_SOURCE,
                 channelVerified=False, aliasVersionVerified=not alias,
                 verifiedAt='2026-10-13', localPixelProtection=True,
                 localFeatureAlignment=importlib.util.find_spec('cv2') is not None)
@@ -351,7 +369,7 @@ def preprocess(refs, config, caps, resolve, save):
     if not config['enabled']:
         return None
     if not caps['supported']:
-        raise ValueError('当前模型或渠道尚未验证产品保真参考图链路，请选择已接入的 GPT-Image 或 Gemini 图片模型')
+        raise ValueError('当前模型或渠道尚未验证产品保真参考图链路，请选择已接入的 GPT-Image、Gemini 或 Seedream 图片模型')
     dimensions = config['dimensions']
     physical = dimensions['enabled']
     ids = [r.get('reference_id', '') for r in refs]
@@ -390,6 +408,8 @@ def preprocess(refs, config, caps, resolve, save):
         warnings.append('Google 使用语义编辑；产品蒙版仅在本地合成使用，未上传为原生二值 mask')
         if 'lite' in str(caps['modelId']).lower():
             warnings.append('Lite 只生成 1K 背景；未针对多参考图优化，优先少量原始产品图')
+    elif caps['provider'] == 'bytedance':
+        warnings.append('Seedream 使用语义编辑；产品蒙版仅在本地合成使用，未上传为原生二值 mask')
     if config['mode'] == 'strict' and ids.index(selected) != 0:
         warnings.append('产品主图不是第一张：保持用户顺序，使用本地蒙版合成，不提交原生 mask')
     assets = []

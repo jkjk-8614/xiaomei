@@ -9,6 +9,14 @@ test('batch materials, parameters, overview and single-screen editing survive re
     const browser = await chromium.launch({channel:'msedge',headless:true});
     t.after(() => browser.close());
     const page = await browser.newPage({viewport:{width:1600,height:1100}});
+    await page.addInitScript(() => {
+        const schedule = window.setTimeout;
+        window.planningTimeouts = [];
+        window.setTimeout = function(callback, delay, ...args){
+            if(delay >= 360000) window.planningTimeouts.push(delay);
+            return schedule.call(window, callback, delay, ...args);
+        };
+    });
     const errors = [], requests = [];
     page.on('pageerror', e => errors.push(e.message));
     t.after(() => assert.deepEqual(errors, []));
@@ -28,7 +36,10 @@ test('batch materials, parameters, overview and single-screen editing survive re
             if(req.method() === 'PUT') saved = {...saved,...req.postDataJSON()};
             return route.fulfill({json:{canvas:saved}});
         }
-        if(url.pathname === '/api/config') return route.fulfill({json:{api_providers:[{id:'fixture',name:'图片平台',enabled:true,image_models:['image-model'],chat_models:['text-model']}],comfy_instances:[]}});
+        if(url.pathname === '/api/config') return route.fulfill({json:{api_providers:[
+            {id:'fixture',name:'图片平台',enabled:true,image_models:['image-model'],chat_models:['text-model']},
+            {id:'gemini-cli',name:'Antigravity CLI',protocol:'gemini-cli',enabled:true,chat_models:['agy-model']},
+        ],comfy_instances:[]}});
         if(url.pathname === '/api/ai/upload') return route.fulfill({json:{files:[{url:'/fixture/reference.svg',name:'风格参考.svg',kind:'image'}]}});
         if(url.pathname.startsWith('/fixture/') || url.pathname.includes('preview')) return route.fulfill({contentType:'image/svg+xml',body:svg});
         if(url.pathname === '/api/canvas-llm'){
@@ -62,6 +73,8 @@ test('batch materials, parameters, overview and single-screen editing survive re
     await batch.locator('[data-loop-commerce="copy"]').selectOption({label:'全部无文字'});
     await batch.locator('[data-loop-commerce-plan]').click();
     await page.waitForFunction(() => nodes.find(n => n.id === 'batch').aiSplitPrompts?.length === 2);
+    assert.equal(requests[0].cli_timeout, undefined);
+    assert.ok(await page.evaluate(() => planningTimeouts.includes(360000)));
     assert.equal(await batch.locator('.loop-batch-overview').count(),1, 'planning prompts opens the overview so screens can be reviewed before spending');
     const overview = batch.locator('.loop-batch-overview');
     const link = batch.locator('.batch-overview-link path');
@@ -82,12 +95,12 @@ test('batch materials, parameters, overview and single-screen editing survive re
         const distances = await page.evaluate(() => {
         const card = document.querySelector('[data-id="batch"]');
         const path = card.querySelector('.batch-overview-link path');
-        const port = card.querySelector('.port-out').getBoundingClientRect();
+        const source = card.getBoundingClientRect();
         const panel = card.querySelector('.loop-batch-overview').getBoundingClientRect();
         const matrix = path.getScreenCTM();
         const start = path.getPointAtLength(0).matrixTransform(matrix);
         const end = path.getPointAtLength(path.getTotalLength()).matrixTransform(matrix);
-        return {start:Math.hypot(start.x - port.left - port.width / 2,start.y - port.top - port.height / 2),end:Math.hypot(end.x - panel.left,end.y - panel.top - panel.height / 2)};
+        return {start:Math.hypot(start.x - source.right,start.y - source.top - source.height / 2),end:Math.hypot(end.x - panel.left,end.y - panel.top - panel.height / 2)};
         });
         assert.ok(distances.start < 2 && distances.end < 2, JSON.stringify(distances));
     };
@@ -295,9 +308,18 @@ test('batch materials, parameters, overview and single-screen editing survive re
     assert.equal(calls[1].model,'image-model');
     assert.equal(await page.locator(`.image-node[data-id="${state.ids[1]}"]`).count(),0);
     const before = await page.evaluate(() => nodes.find(n => n.id === 'batch').aiSplitPrompts);
+    await page.evaluate(() => {
+        const loop = nodes.find(n => n.id === 'batch');
+        loop.batchAiProvider = 'gemini-cli';
+        loop.batchAiModel = 'agy-model';
+        render();
+    });
     failPlan = true;
     await page.locator('[data-loop-commerce-plan]').click();
     await page.waitForFunction(() => !nodes.find(n => n.id === 'batch').aiSplitRunning);
+    assert.equal(requests.at(-1).provider, 'gemini-cli');
+    assert.equal(requests.at(-1).cli_timeout, 600);
+    assert.ok(await page.evaluate(() => planningTimeouts.includes(660000)));
     assert.deepEqual(await page.evaluate(() => nodes.find(n => n.id === 'batch').aiSplitPrompts),before);
     await page.locator('[data-batch-add-screen]').click();
     await page.locator('[data-batch-screen-prompt="2"]').fill('新增第三屏');

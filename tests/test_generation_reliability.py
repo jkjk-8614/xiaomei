@@ -289,6 +289,97 @@ class GenerationReliabilityTests(unittest.TestCase):
         merged = main._merge_asset_library_additions(latest, incoming, [added])
         self.assertNotIn("characters", [cat["id"] for cat in merged["libraries"][0]["categories"]])
 
+    def test_soonstudio_seedream_models_preserve_data_urls_and_use_seedream_schema(self):
+        async def scenario(root):
+            provider = {
+                "id": "soon-fixture",
+                "name": "SoonStudio",
+                "base_url": "https://api.soonstudio.ai/v1",
+                "protocol": "openai",
+                "image_request_mode": "openai",
+            }
+            ref_a = Path(root, "ref_a.png")
+            ref_b = Path(root, "ref_b.jpg")
+            Image.new("RGB", (64, 48), "red").save(ref_a)
+            Image.new("RGB", (64, 48), "blue").save(ref_b)
+            captured = []
+
+            def respond(request):
+                captured.append((request.url.path, request.url.query.decode("ascii"), json.loads(request.content)))
+                return httpx.Response(200, json={"data": [{"url": "https://fixture.invalid/result.png"}]})
+
+            client_type = httpx.AsyncClient
+            with mock.patch.multiple(main, OUTPUT_OUTPUT_DIR=root), \
+                 mock.patch.object(main, "get_api_provider", return_value=provider), \
+                 mock.patch.object(main, "api_headers", return_value={}), \
+                 mock.patch.object(main.httpx, "AsyncClient", side_effect=lambda **kwargs: client_type(
+                     transport=httpx.MockTransport(respond), **kwargs
+                 )):
+                await main.generate_ai_image(
+                    "产品图", "2160x3840", "auto", "seedream-v5.5",
+                    reference_images=[{"url": "/output/ref_a.png"}, {"url": "/output/ref_b.jpg"}],
+                    aspect_ratio="9:16", background="opaque", resolution="4K", size_is_resolved=True,
+                )
+                await main.generate_ai_image(
+                    "纯底图", "2160x3840", "auto", "seedream-v5.5",
+                    reference_images=[],
+                    aspect_ratio="9:16", background="auto", resolution="4K", size_is_resolved=True,
+                )
+                await main.generate_ai_image(
+                    "海报", "2048x2048", "auto", "seedream-v5-pro",
+                    reference_images=[{"url": "/output/ref_a.png"}],
+                    resolution="4K", size_is_resolved=True,
+                )
+                await main.generate_ai_image(
+                    "详情图", "2048x2048", "auto", "doubao-seedream-5-0-260128",
+                    reference_images=[{"url": "/output/ref_a.png"}],
+                    resolution="2K", size_is_resolved=True,
+                )
+                with self.assertRaises(main.HTTPException) as missing_ref:
+                    await main.generate_ai_image(
+                        "缺失图", "2048x2048", "auto", "seedream-v5.5",
+                        reference_images=[{"url": "/api/storage-files/missing.png"}],
+                        resolution="2K", size_is_resolved=True,
+                    )
+                self.assertEqual(missing_ref.exception.status_code, 400)
+
+            self.assertEqual(len(captured), 4)
+
+            path, query, body = captured[0]
+            self.assertEqual((path, query), ("/v1/images/edits", "async=true"))
+            self.assertEqual(body["model"], "seedream-v5.5")
+            self.assertEqual(body["mode"], "image-to-image")
+            self.assertEqual(body["resolution"], "2K")
+            self.assertEqual(body["outputFormat"], "png")
+            self.assertEqual(body["background"], "opaque")
+            self.assertEqual(body["watermark"], "false")
+            self.assertEqual(body["optimizePromptMode"], "standard")
+            self.assertNotIn("image", body)
+            self.assertNotIn("image_size", body)
+            self.assertEqual(len(body["images"]), 2)
+            self.assertTrue(body["images"][0].startswith("data:image/png;base64,"))
+            self.assertTrue(body["images"][1].startswith("data:image/jpeg;base64,"))
+
+            path, query, body = captured[1]
+            self.assertEqual((path, query), ("/v1/images/generations", "async=true"))
+            self.assertEqual(body["mode"], "text-to-image")
+            self.assertEqual((body["width"], body["height"]), (2160, 3840))
+            self.assertNotIn("resolution", body)
+            self.assertNotIn("images", body)
+
+            path, query, body = captured[2]
+            self.assertEqual((path, query), ("/v1/images/edits", "async=true"))
+            self.assertEqual(body["resolution"], "2k")
+            self.assertTrue(body["images"][0].startswith("data:image/png;base64,"))
+
+            path, query, body = captured[3]
+            self.assertEqual((path, query), ("/v1/images/generations", "async=true"))
+            self.assertEqual(body["size"], "2048x2048")
+            self.assertTrue(body["image"].startswith("data:image/png;base64,"))
+
+        with tempfile.TemporaryDirectory() as root:
+            asyncio.run(scenario(root))
+
     def test_history_cache_refreshes_after_atomic_write(self):
         with tempfile.TemporaryDirectory(prefix="history-cache-") as root:
             target = Path(root) / "history.json"

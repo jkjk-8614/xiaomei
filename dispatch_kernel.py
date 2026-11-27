@@ -65,6 +65,8 @@ def join_endpoint(provider: Mapping[str, Any] | None, key: str, default_path: st
         if parsed.scheme and parsed.netloc:
             return f"{parsed.scheme}://{parsed.netloc}{override}"
         return override
+    if base_url.endswith("/v1beta/openai") and str(default_path).startswith("/v1beta/"):
+        return f"{base_url[:-len('/openai')]}{default_path[len('/v1beta'):]}"
     for prefix in VERSION_PREFIXES:
         if base_url.endswith(prefix) and str(default_path).startswith(prefix + "/"):
             return f"{base_url}{default_path[len(prefix):]}"

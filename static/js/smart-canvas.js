@@ -3428,7 +3428,8 @@ function smartGroupThumbLayout(node){
         scale,
         baseThumb:MEDIA_GROUP_THUMB_BASE,
         maxRows:compactMembers.length ? count : SMART_GROUP_MAX_VISIBLE_ROWS,
-        single:() => singleImageLayout(images[0], {}, scale)
+        single:() => singleImageLayout(images[0], {}, scale),
+        adaptive:node.manualSize === true
     });
     return {...layout, refs, compactMembers};
 }
@@ -4032,6 +4033,15 @@ function imageLayout(images, scale=1, node=null){
         const cols = Math.max(1, Number(grid.cols || 1));
         const rows = Math.max(1, Number(grid.rows || 1));
         const visibleRows = Math.min(MEDIA_GROUP_MAX_VISIBLE_ROWS, rows);
+        if(node?.manualSize === true && Number.isFinite(explicitW) && explicitW > 40 && Number.isFinite(explicitH) && explicitH > 40){
+            return XiaomeiSmartGroupLayout.adaptiveGrid(count, explicitW, explicitH, {
+                aspect:1,
+                maxDefaultRows:MEDIA_GROUP_MAX_VISIBLE_ROWS,
+                fixedCols:cols,
+                padX:PAD,
+                padY:PAD
+            });
+        }
         if(Number.isFinite(explicitW) && explicitW > 40 && Number.isFinite(explicitH) && explicitH > 40){
             const fittedThumb = Math.max(28, Math.floor(Math.min((explicitW - PAD - (cols - 1) * 8) / cols, (explicitH - PAD - (visibleRows - 1) * 8) / visibleRows)));
             return {cols, rows, visibleRows, width:Math.round(explicitW), height:visibleRows * (fittedThumb + 8) - 8 + PAD, thumb:fittedThumb};
@@ -4042,32 +4052,28 @@ function imageLayout(images, scale=1, node=null){
     // 9:21、21:9、方图及自定义比例均会让外框贴合网格；四张图稳定显示为 2×2。
     const gridAspect = imageGridAspect(node, images);
     const ratioAwareGrid = gridAspect > 0 && (images || []).every(img => mediaKindForItem(img) === 'image');
-    const cols = isSmartUploadNode(node) && node.imageArrangement === 'horizontal' ? count
+    const fixedArrangementCols = isSmartUploadNode(node) && node.imageArrangement === 'horizontal' ? count
         : isSmartUploadNode(node) && node.imageArrangement === 'vertical' ? 1
+        : 0;
+    const cols = fixedArrangementCols > 0 ? fixedArrangementCols
         : count <= 4 ? 2 : Math.min(4, Math.max(2, Math.ceil(Math.sqrt(count))));
     const rows = Math.ceil(count / cols);
     const visibleRows = Math.min(MEDIA_GROUP_MAX_VISIBLE_ROWS, rows);
+    if(node?.manualSize === true && Number.isFinite(explicitW) && explicitW > 40 && Number.isFinite(explicitH) && explicitH > 40){
+        // 手动拖拽缩放时解除 3 排上限：向下拉长可平滑展开隐藏行，拉宽或拉成竖条时按比例自适应列数。
+        return XiaomeiSmartGroupLayout.adaptiveGrid(count, explicitW, explicitH, {
+            aspect:ratioAwareGrid ? gridAspect : 1,
+            maxDefaultRows:MEDIA_GROUP_MAX_VISIBLE_ROWS,
+            fixedCols:fixedArrangementCols,
+            padX:PAD,
+            padY:PAD
+        });
+    }
     if(ratioAwareGrid){
         const aspect = gridAspect;
-        let thumbW = aspect >= 1 ? thumb : Math.max(32, Math.round(thumb * aspect));
-        let thumbH = aspect >= 1 ? Math.max(32, Math.round(thumb / aspect)) : thumb;
-        if(node?.manualSize === true && Number.isFinite(explicitW)&&explicitW>40&&Number.isFinite(explicitH)&&explicitH>40){
-            const maxW=Math.max(28,(explicitW-PAD-(cols-1)*8)/cols);
-            const maxH=Math.max(28,(explicitH-PAD-(visibleRows-1)*8)/visibleRows);
-            const fit = Math.min(maxW / Math.max(1, thumbW), maxH / Math.max(1, thumbH));
-            thumbW = Math.max(28, Math.floor(thumbW * fit));
-            thumbH = Math.max(28, Math.floor(thumbH * fit));
-            // 拖拽框只是可用边界，最终节点必须收紧到实际网格尺寸。
-            // 否则自定义宽高比与拖拽框比例不一致时，会在上下或左右留下大片空白。
-            const fittedW = cols * thumbW + (cols - 1) * 8 + PAD;
-            const fittedH = visibleRows * thumbH + (visibleRows - 1) * 8 + PAD;
-            return {cols,rows,visibleRows,width:Math.round(fittedW),height:Math.round(fittedH),thumb:thumbH,thumbW,thumbH};
-        }
+        const thumbW = aspect >= 1 ? thumb : Math.max(32, Math.round(thumb * aspect));
+        const thumbH = aspect >= 1 ? Math.max(32, Math.round(thumb / aspect)) : thumb;
         return {cols,rows,visibleRows,width:cols*thumbW+(cols-1)*8+PAD,height:visibleRows*thumbH+(visibleRows-1)*8+PAD,thumb:thumbH,thumbW,thumbH};
-    }
-    if(node?.manualSize === true && Number.isFinite(explicitW) && explicitW > 40 && Number.isFinite(explicitH) && explicitH > 40){
-        const fitted = XiaomeiSmartGroupLayout.squareGrid(count, explicitW, explicitH, {maxThumb:thumb, maxRows:MEDIA_GROUP_MAX_VISIBLE_ROWS, padding:PAD});
-        return {cols:fitted.cols, rows:fitted.rows, visibleRows:fitted.visibleRows, width:Math.round(explicitW), height:fitted.visibleRows * (fitted.thumb + 8) - 8 + PAD, thumb:fitted.thumb};
     }
     const width = Math.max(Math.round(226*s), cols * cell + PAD);
     const height = visibleRows * cell - 8 + PAD;
@@ -5216,9 +5222,13 @@ function providerChatModels(providerId){
     const provider = chatApiProviders().find(p => p.id === providerId);
     return [...new Set(provider?.chat_models || [])];
 }
+function isNonTextChatModel(model=''){
+    return /(?:^|[-_/.])(tts|embed(?:ding)?s?|rerank(?:er)?|whisper|transcribe|moderation|aqa|lyria)(?:$|[-_/.])|text-to-speech|native-audio/i.test(String(model || '').trim());
+}
 function resolveChatModel(model='', providerId=''){
     const models = providerChatModels(resolveChatProviderId(providerId));
-    return models.includes(model) ? model : (models[0] || model || 'gpt-4o-mini');
+    if(models.includes(model)) return model;
+    return models.find(item => !isNonTextChatModel(item)) || models[0] || model || 'gpt-4o-mini';
 }
 function chatProviderOptions(selectedId=''){
     const selected = selectedId || resolveChatProviderId();
@@ -9531,9 +9541,9 @@ function updateNodeElementDuringResize(node){
     const grouped = isSmartGroupNode(node);
     const images = grouped ? smartGroupImageRefs(node).map(ref => ref.item) : (node.images || []);
     const layout = imageLayout(images, nodeScale(node), node);
-    const visibleRows = grouped
+    const visibleRows = Math.max(1, Number(layout.visibleRows || (grouped
         ? (smartGroupCompactMembers(node).length ? Number(layout.rows || 1) : SMART_GROUP_MAX_VISIBLE_ROWS)
-        : MEDIA_GROUP_MAX_VISIBLE_ROWS;
+        : MEDIA_GROUP_MAX_VISIBLE_ROWS)));
     XiaomeiSmartNodeMedia.patchSize(el, layout, {
         agent:node.type === 'smart-agent', grouped, images, visibleRows,
         pending:Math.max(Number(node.pending) || 0, smartPendingTasks(node).length),
@@ -12488,7 +12498,9 @@ async function runSmartBatchPromptGeneration(nodeId){
         const images = smartLoopPreviewImages(node);
         if(!images.length || !images.some(img => smartBatchRole(node, img) === 'product')) throw new Error('请先连接产品图，再生成分屏提示词');
         const {provider, model} = smartLoopBatchChatSettings(node);
-        if(!smartConfigReady || !agentChatProviders().some(item => item.id === provider && (item.chat_models || []).includes(model))) throw new Error('请先在文本模型中选择可用的平台和模型');
+        const textProvider = agentChatProviders().find(item => item.id === provider && (item.chat_models || []).includes(model));
+        if(!smartConfigReady || !textProvider) throw new Error('请先在文本模型中选择可用的平台和模型');
+        const cliTimeout = textProvider.protocol === 'gemini-cli' ? 600 : undefined;
         const roles = images.map((img, i) => `图${i + 1}：${smartBatchRole(node, img) === 'reference' ? '仅参考风格和排版' : '产品图，保持产品外观'}`).join('；');
         const referenceStyleRules = smartBatchReferenceStyleRules(node, images);
         const d = smartLoopCommerceFields(node), source = smartLoopDetailSourceText(node), guideInput = smartLoopDetailGuideInput(node), guide = smartLoopDetailVisualGuide(node);
@@ -12498,7 +12510,7 @@ async function runSmartBatchPromptGeneration(nodeId){
         const regeneration = previousTitles.length ? `\n\n【重新策划】\n上一版分屏标题（仅供识别旧方案，不是本次内容要求）：${JSON.stringify(previousTitles)}\n请基于当前产品资料、参考图和表单要求重新安排每屏的切入点、内容分工与画面构图，并同步重写每屏的 title 和 prompt。不要沿用上一版整套标题和分屏框架后只改写提示词措辞；标题必须准确概括本次该屏的新内容。用户明确指定的卖点、风格和顺序，以及平台强制要求继续遵守，不为求变化编造产品信息。` : '';
         const snapshot = JSON.stringify([d, source, guideInput, guide, count, imageSettings, images.map(ref => [inputRefKey(ref), ref.url, smartBatchRole(node, ref)]), node.batchCommerceRoles || {}]);
         const controller = new AbortController();
-        timeout = setTimeout(() => controller.abort(), 360000);
+        timeout = setTimeout(() => controller.abort(), ((cliTimeout ?? 300) + 60) * 1000);
         node.batchAiProvider = provider;
         node.batchAiModel = model;
         smartBatchPromptProgress.set(node, {startedAt:nowMs(), label:'正在生成分屏提示词', phase:'等待文本模型返回', controller});
@@ -12524,7 +12536,7 @@ ${platformRules}
 将平台策略落实到每屏的主体、构图和内容分工中。平台策略与参考图风格不一致时，优先保证平台的图片用途要求。
 ${referenceStyleRules ? `${referenceStyleRules}\n先逐张查看风格参考，再写方案。将从主参考中实际观察到的主辅色HEX及面积比例、版式骨架、标题字形与层级、图文占比和留白、背景质感、光影及装饰语言写入visual_guide，注明对应参考图号；看不清的特征明确说明，不凭空补造。每屏prompt说明借用了哪张参考的哪个局部或模块、保留哪些具体视觉特征、如何替换为当前商品和真实文案。字体设为自动判断时优先沿用参考图可见的字形特征与字级关系，无须臆造具体字体名称。不要只写抽象风格词，也不要把产品照片的背景风格当成参考图分析结果。` : ''}
 ${mainCopyRules ? `${mainCopyRules}\n每屏prompt明确列出允许上图的文字并禁止增加其他文字；visual_guide只描述视觉，不新增文案。屏幕title只作方案标识，不自动印到图中。` : ''}`;
-        const response = await fetch('/api/canvas-llm', {method:'POST', headers:{'Content-Type':'application/json'}, signal:controller.signal, body:JSON.stringify({message:message + regeneration, messages:[], images:images.map(image => smartOriginalMediaUrl(image)), videos:[], model, provider, system_prompt:systemPrompt})});
+        const response = await fetch('/api/canvas-llm', {method:'POST', headers:{'Content-Type':'application/json'}, signal:controller.signal, body:JSON.stringify({message:message + regeneration, messages:[], images:images.map(image => smartOriginalMediaUrl(image)), videos:[], model, provider, system_prompt:systemPrompt, cli_timeout:cliTimeout})});
         if(!response.ok) throw new Error(await smartResponseErrorMessage(response, '生成分屏提示词失败'));
         if(smartBatchPromptCancelled(node)) throw Object.assign(new Error('已取消'), {name:'SmartBatchCancelled'});
         smartBatchPromptProgress.get(node).phase = '正在接收分屏提示词';
@@ -13822,9 +13834,12 @@ function nodeBodyHtml(node, layout){
         return `<div class="collapsed-stack" style="--fan-spread:${fanSpread}px;width:${cardWidth}px;height:${cardHeight}px" aria-label="已折叠 ${imgs.length} 张图片">${cards}</div>${recoveryActions}`;
     }
     if(imgs.length > 1){
-        const visibleRows = Math.max(1, Math.min(MEDIA_GROUP_MAX_VISIBLE_ROWS, Number(layout.visibleRows || layout.rows || 1)));
-        const maxHeight = visibleRows * Number(layout.thumbH || layout.thumb || 96) + Math.max(0, visibleRows - 1) * 8;
-        return `<div class="thumb-grid result-image-grid" data-thumb-scroll="1" style="--thumb-cols:${layout.cols}; --thumb-size:${layout.thumb}px; --thumb-w:${layout.thumbW || layout.thumb}px; --thumb-h:${layout.thumbH || layout.thumb}px; --thumb-max-height:${maxHeight}px">${imgs.map((img, i) => `<div class="thumb-item result-image-tile ${selectedImage.nodeId === node.id && selectedImage.index === i ? 'image-selected' : ''}" data-image-index="${i}" data-image-number="${i + 1}"><span class="result-image-index" aria-hidden="true">${i + 1}</span>${thumbMediaHtml(img)}${imageResolutionBadgeHtml(img)}<button class="mini-x image-delete" type="button" data-image-index="${i}" title="${escapeHtml(tr('smart.deleteImage'))}"><i data-lucide="trash-2"></i></button></div>`).join('')}</div>${recoveryActions}`;
+        const visibleRows = Math.max(1, Number(layout.visibleRows || Math.min(MEDIA_GROUP_MAX_VISIBLE_ROWS, Number(layout.rows || 1))));
+        const maxHeight = Number.isFinite(Number(layout.gridMaxHeight)) && Number(layout.gridMaxHeight) > 0
+            ? Math.round(Number(layout.gridMaxHeight))
+            : visibleRows * Number(layout.thumbH || layout.thumb || 96) + Math.max(0, visibleRows - 1) * 8;
+        const overflow = Boolean(layout.scrollable) || Number(layout.rows || 1) > visibleRows;
+        return `<div class="thumb-grid result-image-grid" data-thumb-scroll="1" data-thumb-overflow="${overflow ? '1' : '0'}" style="--thumb-cols:${layout.cols}; --thumb-size:${layout.thumb}px; --thumb-w:${layout.thumbW || layout.thumb}px; --thumb-h:${layout.thumbH || layout.thumb}px; --thumb-max-height:${maxHeight}px">${imgs.map((img, i) => `<div class="thumb-item result-image-tile ${selectedImage.nodeId === node.id && selectedImage.index === i ? 'image-selected' : ''}" data-image-index="${i}" data-image-number="${i + 1}"><span class="result-image-index" aria-hidden="true">${i + 1}</span>${thumbMediaHtml(img)}${imageResolutionBadgeHtml(img)}<button class="mini-x image-delete" type="button" data-image-index="${i}" title="${escapeHtml(tr('smart.deleteImage'))}"><i data-lucide="trash-2"></i></button></div>`).join('')}</div>${recoveryActions}`;
     }
     // 单图节点的右上角只保留“删除节点”按钮，避免和图片级删除按钮重叠。
     // 图片级删除仍保留给多图节点及分组，用于移除其中一张图片而不删除容器。
@@ -19712,8 +19727,10 @@ async function publishSmartOcrEdit({node, image, index}, {file, width, height, m
 function applyImageBrush(){
     return exportSmartInk('brush', '_paint', '画笔保存失败', '请先添加画笔或文字标记', (file, {node}) => {
         const rect = nodeRect(node);
-        const output = createNode(rect.x + rect.width + 40, rect.y, [file], {skipRender:true, skipSave:true});
+        const output = createNode(rect.x + rect.width + 40, rect.y, [file],
+            {nodeType:SMART_UPLOAD_NODE_TYPE, skipRender:true, skipSave:true});
         if(!output) return;
+        addConnection(node.id, output.id, 'flow');
         selectedIds = [];
         selectedImage = {nodeId:output.id, index:0};
         closeImageEditor();
@@ -26688,6 +26705,7 @@ window.onmousemove = e => {
             // 否则拖动过程里会按成员包围盒/缩放比例收缩，松手才回到拖动宽度（用户反馈的“变宽时先缩小”）。
             node.w = Math.max(minW, Math.round(resizeState.startW + dx));
             node.h = Math.max(minH, Math.round(resizeState.startH + dy));
+            node.manualSize = true;
             if(smartGroupCompactMembers(node).length) arrangeSmartGroupMembers(node, {skipUndo:true, syncDom:true});
             scheduleNodeElementResizeUpdate(node);
             applyResizePush(resizeState, node);
@@ -26883,7 +26901,8 @@ window.onmouseup = e => {
         world.querySelector(`.image-node[data-id="${CSS.escape(resizeState.id)}"]`)?.classList.remove('resizing');
         const rect = node ? nodeRect(node) : null;
         const changed = rect && (Math.abs(rect.width - resizeState.startW) > 1 || Math.abs(rect.height - resizeState.startH) > 1);
-        if(node && rect && isSmartImageNode(node) && !isSmartReplicaNode(node)){
+        if(node && rect && ((isSmartImageNode(node) && !isSmartReplicaNode(node))
+            || (node.type === 'smart-group' && node.manualSize === true && smartGroupImageRefs(node).some(ref => ref.item?.url)))){
             // 保存真实内容尺寸，而不是鼠标拖出的临时包围框；刷新和重新生成后也保持自适应结果。
             node.w = Math.round(rect.width);
             node.h = Math.round(rect.height);
@@ -26952,7 +26971,7 @@ shell.addEventListener('wheel', e => {
     if((target?.closest?.('.canvas-agent-panel,.canvas-agent-toggle,.canvas-collab-status,.canvas-collab-panel,.agent-smart-node,.smart-back,.image-edit-modal,.asset-panel,.asset-toggle,.smart-log-toggle,.smart-shortcut-toggle,.smart-prompt-toggle,.smart-workflow-toggle,.workflow-transfer-panel,.log-modal,.shortcut-modal,.prompt-optimize-modal,.prompt-node-llm,.smart-group-list'))
         ||(agentPanelEl&&target&&agentPanelEl.contains(target))) return;
     if(composerWheelNeedsInternalScroll(e.target)) return;
-    const uploadGrid = target?.closest?.('.upload-node .result-image-grid');
+    const uploadGrid = target?.closest?.('.upload-node .result-image-grid, .result-image-grid[data-thumb-overflow="1"], .smart-group-thumb-grid');
     if(!e.ctrlKey && !e.metaKey && e.deltaY && uploadGrid && uploadGrid.scrollHeight > uploadGrid.clientHeight) return;
     e.preventDefault();
     // 触控板/高刷新率鼠标会在一帧内派发多次 wheel；合并后只更新一次矩阵。

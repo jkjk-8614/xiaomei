@@ -462,8 +462,10 @@
         }
         modelEl.disabled=false;
         const old=modelEl.value||pref.model,models=[...new Set(provider?.chat_models||[])];
+        const preferred=models.find(item=>!/(?:^|[-_/.])(tts|embed(?:ding)?s?|rerank(?:er)?|whisper|transcribe|moderation|aqa|lyria)(?:$|[-_/.])|text-to-speech|native-audio/i.test(String(item||'')))||models[0]||'';
         modelEl.innerHTML=models.map(model=>`<option value="${esc(model)}">${esc(model)}</option>`).join('');
         if(models.includes(old))modelEl.value=old;
+        else if(preferred)modelEl.value=preferred;
         savePreferences();
     }
     function generationNode(){

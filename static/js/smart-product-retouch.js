@@ -6,7 +6,7 @@ const PRODUCT_RETOUCH_DEFAULT_RESOLUTION = '4k';
 let productRetouchOptionsRequest = null;
 
 function productRetouchOptions(){
-    if(!productRetouchOptionsRequest)productRetouchOptionsRequest=XiaomeiImageTaskClient.requestJson('/api/product-retouch/options').catch(error=>{productRetouchOptionsRequest=null;throw error;});
+    if(!productRetouchOptionsRequest)productRetouchOptionsRequest=XiaomeiImageTaskClient.requestJson('/api/product-retouch/options',{requestInit:{cache:'no-store'}}).catch(error=>{productRetouchOptionsRequest=null;throw error;});
     return productRetouchOptionsRequest;
 }
 function productRetouchStateCurrent(state){return canvasId===state.canvasId && productRetouchSessions.get(state.nodeId)===state && state.panel?.isConnected;}

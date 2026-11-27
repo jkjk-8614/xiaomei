@@ -250,6 +250,182 @@
         };
     }
 
+    function adaptiveMinCell(aspect) {
+        var safeAspect = aspect > 0 ? aspect : 1;
+        var wide = safeAspect >= 1;
+        var ratio = wide ? safeAspect : 1 / safeAspect;
+        var longSide = Math.max(28, round(28 * ratio));
+        return wide ? { thumbW: longSide, thumbH: 28, fits: 0 } : { thumbW: 28, thumbH: longSide, fits: 0 };
+    }
+
+    function adaptiveFitCell(maxW, maxH, aspect) {
+        var safeAspect = aspect > 0 ? aspect : 1;
+        var capW = Math.floor(maxW);
+        var capH = Math.floor(maxH);
+        if (capW <= 0 || capH <= 0) return adaptiveMinCell(safeAspect);
+        var wide = safeAspect >= 1;
+        var ratio = wide ? safeAspect : 1 / safeAspect;
+        var capShort = wide ? capH : capW;
+        var capLong = wide ? capW : capH;
+        var shortSide = Math.min(capShort, Math.floor((capLong + 0.5) / ratio));
+        while (shortSide > 0 && round(shortSide * ratio) > capLong) shortSide -= 1;
+        while (shortSide + 1 <= capShort && round((shortSide + 1) * ratio) <= capLong) shortSide += 1;
+        var longSide = round(shortSide * ratio);
+        var fits = shortSide >= 28 && longSide >= 28 ? 1 : 0;
+        var finalShort = Math.max(28, shortSide);
+        var finalLong = Math.max(28, round(finalShort * ratio));
+        return wide
+            ? { thumbW: finalLong, thumbH: finalShort, fits: fits }
+            : { thumbW: finalShort, thumbH: finalLong, fits: fits };
+    }
+
+    function adaptiveFitByWidth(maxW, aspect) {
+        var safeAspect = aspect > 0 ? aspect : 1;
+        var capW = Math.floor(maxW);
+        if (capW <= 0) return adaptiveMinCell(safeAspect);
+        var wide = safeAspect >= 1;
+        var ratio = wide ? safeAspect : 1 / safeAspect;
+        if (!wide) {
+            var shortSide = capW;
+            var longSide = round(shortSide * ratio);
+            var fits = shortSide >= 28 && longSide >= 28 ? 1 : 0;
+            var finalShort = Math.max(28, shortSide);
+            return { thumbW: finalShort, thumbH: Math.max(28, round(finalShort * ratio)), fits: fits };
+        }
+        var wideShort = Math.floor((capW + 0.5) / ratio);
+        while (wideShort > 0 && round(wideShort * ratio) > capW) wideShort -= 1;
+        while (round((wideShort + 1) * ratio) <= capW) wideShort += 1;
+        var wideLong = round(wideShort * ratio);
+        var wideFits = wideShort >= 28 && wideLong >= 28 ? 1 : 0;
+        var finalWideShort = Math.max(28, wideShort);
+        return { thumbW: Math.max(28, round(finalWideShort * ratio)), thumbH: finalWideShort, fits: wideFits };
+    }
+
+    function adaptiveRevealScroll(count, aspect, innerW, innerH, baseCols, maxDefaultRows, gap) {
+        var baseRows = Math.ceil(count / baseCols);
+        if (baseRows <= maxDefaultRows) return null;
+        var maxW = (innerW - (baseCols - 1) * gap) / baseCols;
+        if (maxW <= 0) return null;
+        var cell = adaptiveFitByWidth(maxW, aspect);
+        if (!cell.fits) return null;
+        var totalH = baseRows * cell.thumbH + (baseRows - 1) * gap;
+        var minDefaultH = maxDefaultRows * cell.thumbH + (maxDefaultRows - 1) * gap;
+        if (innerH < totalH && innerH >= minDefaultH - 2) {
+            var usedW = baseCols * cell.thumbW + (baseCols - 1) * gap;
+            var clampedInnerH = Math.max(28, round(innerH));
+            return {
+                cols: baseCols,
+                rows: baseRows,
+                visibleRows: Math.max(1, Math.min(baseRows, Math.ceil((clampedInnerH + gap) / (cell.thumbH + gap)))),
+                thumbW: cell.thumbW,
+                thumbH: cell.thumbH,
+                thumb: cell.thumbH,
+                usedW: usedW,
+                gridMaxHeight: clampedInnerH,
+                scrollable: true
+            };
+        }
+        return null;
+    }
+
+    function adaptiveGridLayout(count, explicitW, explicitH, aspect, maxDefaultRows, fixedCols, pad, gap) {
+        var PAD = pad == null ? 32 : pad;
+        var GAP = gap == null ? 8 : gap;
+        var safeCount = Math.max(1, round(count || 1));
+        var safeAspect = aspect > 0 ? aspect : 1;
+        var safeMaxRows = Math.max(1, round(maxDefaultRows == null ? MEDIA_GROUP_MAX_VISIBLE_ROWS : maxDefaultRows));
+        var safeFixedCols = fixedCols > 0 ? Math.max(1, Math.min(safeCount, round(fixedCols))) : 0;
+        var innerW = Math.max(28, round(explicitW) - PAD);
+        var innerH = Math.max(28, round(explicitH) - PAD);
+        var baseCols = safeFixedCols > 0
+            ? safeFixedCols
+            : (safeCount <= 4 ? 2 : Math.min(4, Math.max(2, Math.ceil(Math.sqrt(safeCount)))));
+
+        var reveal = adaptiveRevealScroll(safeCount, safeAspect, innerW, innerH, baseCols, safeMaxRows, GAP);
+        if (reveal) {
+            return {
+                width: round(reveal.usedW + PAD),
+                height: round(reveal.gridMaxHeight + PAD)
+            };
+        }
+
+        var startCol = safeFixedCols > 0 ? safeFixedCols : 1;
+        var endCol = safeFixedCols > 0 ? safeFixedCols : safeCount;
+        var isBetter = function (a, b) {
+            if (!b) return true;
+            var diff = a.fits - b.fits;
+            if (!diff) {
+                if (a.fits) {
+                    diff = a.area - b.area
+                        || b.emptySlots - a.emptySlots
+                        || b.waste - a.waste
+                        || b.rows - a.rows;
+                } else {
+                    diff = b.maxOverflow - a.maxOverflow
+                        || b.overflow - a.overflow
+                        || b.emptySlots - a.emptySlots
+                        || b.rows - a.rows;
+                }
+            }
+            return diff > 0;
+        };
+
+        var full = null;
+        var fullNonConflict = null;
+        for (var cols = startCol; cols <= endCol; cols += 1) {
+            var rows = Math.ceil(safeCount / cols);
+            var maxW = (innerW - (cols - 1) * GAP) / cols;
+            var maxH = (innerH - (rows - 1) * GAP) / rows;
+            var cell = adaptiveFitCell(maxW, maxH, safeAspect);
+            var usedW = cols * cell.thumbW + (cols - 1) * GAP;
+            var usedH = rows * cell.thumbH + (rows - 1) * GAP;
+            var cand = {
+                cols: cols,
+                rows: rows,
+                width: round(usedW + PAD),
+                height: round(usedH + PAD),
+                fits: cell.fits,
+                area: cell.thumbW * cell.thumbH,
+                emptySlots: cols * rows - safeCount,
+                overflow: Math.max(0, usedW - innerW) + Math.max(0, usedH - innerH),
+                maxOverflow: Math.max(Math.max(0, usedW - innerW), Math.max(0, usedH - innerH)),
+                waste: Math.max(0, innerW - usedW) + Math.max(0, innerH - usedH)
+            };
+            if (isBetter(cand, full)) full = cand;
+            if (!adaptiveRevealScroll(safeCount, safeAspect, usedW, usedH, baseCols, safeMaxRows, GAP) && isBetter(cand, fullNonConflict)) {
+                fullNonConflict = cand;
+            }
+        }
+
+        if (full && !full.fits) {
+            var baseRows = Math.ceil(safeCount / baseCols);
+            if (baseRows > safeMaxRows) {
+                var fallbackMaxW = (innerW - (baseCols - 1) * GAP) / baseCols;
+                var fallbackCell = adaptiveFitByWidth(fallbackMaxW, safeAspect);
+                var totalH = baseRows * fallbackCell.thumbH + (baseRows - 1) * GAP;
+                if (innerH < totalH) {
+                    var fallbackUsedW = baseCols * fallbackCell.thumbW + (baseCols - 1) * GAP;
+                    return {
+                        width: round(fallbackUsedW + PAD),
+                        height: round(Math.max(28, round(innerH)) + PAD)
+                    };
+                }
+            }
+        }
+
+        var chosen = (fullNonConflict && fullNonConflict.fits) ? fullNonConflict : full;
+        if (chosen) {
+            var reReveal = adaptiveRevealScroll(safeCount, safeAspect, chosen.width - PAD, chosen.height - PAD, baseCols, safeMaxRows, GAP);
+            if (reReveal) {
+                return {
+                    width: round(reReveal.usedW + PAD),
+                    height: round(reReveal.gridMaxHeight + PAD)
+                };
+            }
+        }
+        return { width: chosen.width, height: chosen.height };
+    }
+
     function singleImageLayout(image, node, scale) {
         var explicitW = finite(node && node.w);
         var explicitH = finite(node && node.h);
@@ -478,6 +654,10 @@
             var gridCols = Math.max(1, finite(gridMeta.cols) || 1);
             var gridRows = Math.max(1, finite(gridMeta.rows) || 1);
             var gridVisible = Math.min(MEDIA_GROUP_MAX_VISIBLE_ROWS, gridRows);
+            if (node && node.manualSize === true
+                && explicitWidth !== null && explicitWidth > 40 && explicitHeight !== null && explicitHeight > 40) {
+                return adaptiveGridLayout(count, explicitWidth, explicitHeight, 1, MEDIA_GROUP_MAX_VISIBLE_ROWS, gridCols, PAD, GAP);
+            }
             if (explicitWidth !== null && explicitWidth > 40 && explicitHeight !== null && explicitHeight > 40) {
                 var fittedThumb = Math.max(28, Math.floor(Math.min(
                     (explicitWidth - PAD - (gridCols - 1) * GAP) / gridCols,
@@ -494,46 +674,34 @@
         var gridAspect = imageGridAspect(node, list);
         var ratioAware = gridAspect > 0 && list.every(function (image) { return mediaKindOf(image) === 'image'; });
 
-        var cols;
-        if (type === 'smart-upload' && node.imageArrangement === 'horizontal') cols = count;
-        else if (type === 'smart-upload' && node.imageArrangement === 'vertical') cols = 1;
-        else if (count <= 4) cols = 2;
-        else cols = Math.min(4, Math.max(2, Math.ceil(Math.sqrt(count))));
+        var fixedCols = 0;
+        if (type === 'smart-upload' && node.imageArrangement === 'horizontal') fixedCols = count;
+        else if (type === 'smart-upload' && node.imageArrangement === 'vertical') fixedCols = 1;
+
+        var cols = fixedCols > 0 ? fixedCols
+            : (count <= 4 ? 2 : Math.min(4, Math.max(2, Math.ceil(Math.sqrt(count)))));
 
         var rows = Math.ceil(count / cols);
         var visibleRows = Math.min(MEDIA_GROUP_MAX_VISIBLE_ROWS, rows);
+
+        if (node && node.manualSize === true
+            && explicitWidth !== null && explicitWidth > 40 && explicitHeight !== null && explicitHeight > 40) {
+            return adaptiveGridLayout(
+                count, explicitWidth, explicitHeight,
+                ratioAware ? gridAspect : 1,
+                MEDIA_GROUP_MAX_VISIBLE_ROWS,
+                fixedCols,
+                PAD, GAP
+            );
+        }
 
         if (ratioAware) {
             var aspect = gridAspect;
             var thumbW = aspect >= 1 ? thumb : Math.max(32, round(thumb * aspect));
             var thumbH = aspect >= 1 ? Math.max(32, round(thumb / aspect)) : thumb;
-
-            if (node && node.manualSize === true
-                && explicitWidth !== null && explicitWidth > 40 && explicitHeight !== null && explicitHeight > 40) {
-                var maxW = Math.max(28, (explicitWidth - PAD - (cols - 1) * GAP) / cols);
-                var maxH = Math.max(28, (explicitHeight - PAD - (visibleRows - 1) * GAP) / visibleRows);
-                var fit = Math.min(maxW / Math.max(1, thumbW), maxH / Math.max(1, thumbH));
-                thumbW = Math.max(28, Math.floor(thumbW * fit));
-                thumbH = Math.max(28, Math.floor(thumbH * fit));
-                /* 拖拽框只是可用边界，最终节点必须收紧到实际网格尺寸，
-                   否则比例不一致时上下或左右会留大片空白。 */
-                return {
-                    width: round(cols * thumbW + (cols - 1) * GAP + PAD),
-                    height: round(visibleRows * thumbH + (visibleRows - 1) * GAP + PAD)
-                };
-            }
             return {
                 width: cols * thumbW + (cols - 1) * GAP + PAD,
                 height: visibleRows * thumbH + (visibleRows - 1) * GAP + PAD
-            };
-        }
-
-        if (node && node.manualSize === true
-            && explicitWidth !== null && explicitWidth > 40 && explicitHeight !== null && explicitHeight > 40) {
-            var fitted = groupImageGridLayout(count, explicitWidth, explicitHeight, thumb, PAD, GAP);
-            return {
-                width: round(explicitWidth),
-                height: fitted.visibleRows * (fitted.thumb + GAP) - GAP + PAD
             };
         }
 

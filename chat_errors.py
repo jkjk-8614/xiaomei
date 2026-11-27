@@ -19,11 +19,13 @@ def _error_fields(text):
         payload = json.loads(text)
     except (ValueError, TypeError):
         return "", text
+    if isinstance(payload, list):
+        payload = next((item for item in payload if isinstance(item, dict)), None)
     if not isinstance(payload, dict):
         return "", text
     nested = payload.get("error")
     fields = nested if isinstance(nested, dict) else {}
-    code = str(fields.get("code") or payload.get("code") or "").strip().lower()
+    code = str(fields.get("code") or fields.get("status") or payload.get("code") or "").strip().lower()
     detail = fields.get("message") or payload.get("message") or (nested if isinstance(nested, str) else text)
     return code, str(detail).strip()
 
@@ -46,18 +48,31 @@ def friendly_detail(text, model="", provider=None, status_code=0):
     source = str(text or "")
     status = _status(status_code)
     code, detail = _error_fields(source)
+    detail_lower = detail.lower()
     profile = provider or {}
     platform = profile.get("name") or profile.get("id") or "当前 API 平台"
     name = str(model or "").strip() or "当前模型"
     if str(profile.get("protocol") or "").strip().lower() == "volcengine" and (
-        code in _ARK_ACCESS_CODES or "does not exist or you do not have access to it" in detail.lower()
+        code in _ARK_ACCESS_CODES or "does not exist or you do not have access to it" in detail_lower
     ):
         return (
             f"火山方舟无法访问聊天模型「{name}」。请确认模型权限，或填写已开通的推理接入点 ID（ep-…）。"
             "如果已经使用接入点，请检查其绑定的模型和所在区域。"
         )
-    if status == 401 or re.search(r"\b(?:401|unauthorized)\b", source, re.I):
+    if (
+        status == 401
+        or re.search(r"\b(?:401|unauthorized)\b", source, re.I)
+        or "missing or invalid authorization header" in detail_lower
+        or "api key not valid" in detail_lower
+        or "api_key_invalid" in detail_lower
+    ):
         return "API Key 无效或已过期，请到「API 设置」检查 Key。"
+    if status == 400 and (
+        "does not support the requested response modalities" in detail_lower
+        or "only supports audio output" in detail_lower
+        or ("modalit" in detail_lower and "tts" in name.lower())
+    ):
+        return f"模型「{name}」不支持文字对话或识图反推（属于语音/TTS 模型），请切换为其他对话模型。"
     if status == 429 or re.search(r"\b(?:429|rate limit)", source, re.I):
         return "请求过于频繁，已被上游限流，请稍后再试。"
     if is_transient(source, status):

@@ -271,11 +271,28 @@ class FidelityTests(unittest.TestCase):
         self.assertEqual(final.tobytes(),output.tobytes())
 
     def test_model_specific_capabilities_and_proxy_alias_uncertainty(self):
-        for model in ['gpt-image-2','gpt-image-2.5-flare','gpt-image-2.5-sunburst']:
+        for model in ['gpt-image-2','gpt-image-2.5-flare','gpt-image-2.5-sunburst','gpt-image-2.6-flare','gpt-image-2.6-sunburst']:
             caps=pf.capabilities(dict(id='oa',base_url='https://api.openai.com'),model,'openai','openai')
+            self.assertTrue(caps['supported'],model)
             self.assertEqual(caps['maxReferenceImages'],16)
             self.assertEqual(caps['maskEditMode'],'native-raster-mask')
             self.assertFalse(caps['supportsNativeControlNet'])
+        fixed=pf.capabilities(dict(id='soon',base_url='https://api.soonstudio.ai/v1'),'gpt-image-2-1k','openai','openai')
+        self.assertTrue(fixed['supported'])
+        self.assertEqual(fixed['supportedOutputSizes'],['1K'])
+        for model in ['seedream-5.5','seedream-5.0','doubao-seedream-5-0-260128','doubao-seedream-4-5-251128']:
+            caps=pf.capabilities(dict(id='api-6789',base_url='https://www.6789api.top'),model,'openai','openai')
+            self.assertTrue(caps['supported'],model)
+            self.assertEqual(caps['provider'],'bytedance')
+            self.assertEqual(caps['maskEditMode'],'semantic-only')
+            self.assertIsNone(caps['maxReferenceImages'])
+            self.assertEqual(caps['applicationReferenceLimit'],14)
+        ark=pf.capabilities(dict(id='volcengine',base_url='https://ark.cn-beijing.volces.com/api/v3'),'doubao-seedream-5-0-pro-260628','volcengine','openai')
+        self.assertTrue(ark['supported'])
+        self.assertEqual(ark['transport'],'volcengine-images')
+        self.assertEqual(ark['maxReferenceImages'],10)
+        legacy_t2i=pf.capabilities(dict(id='volcengine',base_url='https://ark.cn-beijing.volces.com/api/v3'),'doubao-seedream-3-0-t2i-250415','volcengine','openai')
+        self.assertFalse(legacy_t2i['supported'])
         for model in ['gemini-2.5-flash-image','gemini-3-pro-image-preview','gemini-3.1-flash-image','gemini-nano-banana-2.1','gemini-3.1-flash-lite-image']:
             caps=pf.capabilities(dict(id='gg',base_url='https://generativelanguage.googleapis.com'),model,'gemini','openai')
             self.assertTrue(caps['supported'],model)

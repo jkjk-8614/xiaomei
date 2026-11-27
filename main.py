@@ -7494,6 +7494,16 @@ def display_title(text):
     title = re.sub(r"\s+", " ", text or "").strip()
     return title[:24] or "新对话"
 
+def gemini_openai_chat_base(base_root: str) -> str:
+    root = str(base_root or "").strip().rstrip("/")
+    if root.endswith("/v1beta/openai"):
+        return root
+    if root.endswith("/v1beta"):
+        return root + "/openai"
+    if root.endswith("/openai"):
+        return root
+    return root + "/v1beta/openai"
+
 def resolve_chat_provider(provider: str, model: str, ms_model: str):
     api_provider = get_api_provider(provider or "")
     if is_codex_provider(api_provider):
@@ -7505,19 +7515,38 @@ def resolve_chat_provider(provider: str, model: str, ms_model: str):
         raise HTTPException(status_code=400, detail=f"{api_provider.get('name') or api_provider['id']} 未配置 Base URL")
     default_model = preferred_chat_model(api_provider)
     mdl = selected_model(model, default_model)
-    protocol = effective_protocol(api_provider, mdl)
-    if protocol == "gemini":
-        base = base_root if base_root.endswith("/v1beta") else base_root + "/v1beta"
-    elif protocol == "volcengine":
+    chat_protocol = provider_protocol(api_provider)
+    if chat_protocol == "gemini":
+        mdl = mdl.removeprefix("models/")
+    if provider_discovery.is_non_chat_model(mdl):
+        suggestion = next(
+            (
+                str(item or "").strip()
+                for item in (api_provider.get("chat_models") or [])
+                if str(item or "").strip() and not provider_discovery.is_non_chat_model(item)
+            ),
+            "",
+        )
+        hint = f"请切换为其他对话模型（例如 {suggestion}）。" if suggestion else "请切换为支持文本对话或识图的模型。"
+        raise HTTPException(
+            status_code=400,
+            detail=f"模型「{mdl}」属于语音/嵌入等非对话模型，不支持文字对话或识图反推。{hint}",
+        )
+    if chat_protocol == "gemini":
+        base = gemini_openai_chat_base(base_root)
+    elif chat_protocol == "volcengine":
         base = base_root if base_root.endswith("/api/v3") else base_root + "/api/v3"
-    elif protocol == "runninghub":
+    elif chat_protocol == "runninghub":
         base = RUNNINGHUB_LLM_BASE_URL
     else:
-        base = base_root if base_root.endswith("/v1") else base_root + "/v1"
-    hdrs = api_headers(provider=api_provider, model=mdl)
+        base = base_root if base_root.endswith(("/v1", "/v1beta/openai")) else base_root + "/v1"
+    # 所有调用 resolve_chat_provider 的链路都请求 OpenAI 兼容的 /chat/completions 端点；
+    # Google Gemini 的 /v1beta/openai/chat/completions 同样强制使用 Authorization: Bearer 鉴权，
+    # 不接受原生 /v1beta/models/...:generateContent 使用的 x-goog-api-key 请求头。
+    hdrs = api_headers(provider=api_provider, model=mdl, auth_protocol="openai")
     return base, hdrs, mdl
 
-def api_headers(json_body=True, provider=None, model=""):
+def api_headers(json_body=True, provider=None, model="", auth_protocol=None):
     if provider:
         if is_codex_provider(provider) or is_gemini_cli_provider(provider):
             raise HTTPException(status_code=400, detail="CLI 协议使用本机登录态，不需要 API Key。当前入口应走对应 CLI 专用通道。")
@@ -7529,7 +7558,8 @@ def api_headers(json_body=True, provider=None, model=""):
         api_key = AI_API_KEY
         if not api_key:
             raise HTTPException(status_code=400, detail="未配置 COMFLY_API_KEY，请在 API/.env 中填写。")
-    if provider and effective_protocol(provider, model) == "gemini":
+    header_protocol = str(auth_protocol or "").strip().lower() or (effective_protocol(provider, model) if provider else "")
+    if provider and header_protocol == "gemini":
         headers = {"Accept": "application/json", "x-goog-api-key": api_key}
     else:
         headers = {"Accept": "application/json", "Authorization": bearer_auth_value(api_key)}
@@ -7568,14 +7598,16 @@ def preferred_chat_model(provider):
     models = [item for item in values if item]
     if not models:
         return CHAT_MODEL
+    usable_models = [item for item in models if not provider_discovery.is_non_chat_model(item)]
+    candidates = usable_models or models
     if is_volcengine_provider(provider):
-        endpoint_models = [item for item in models if item.lower().startswith("ep-")]
+        endpoint_models = [item for item in candidates if item.lower().startswith("ep-")]
         if endpoint_models:
             return endpoint_models[0]
-        text_like_models = [item for item in models if not looks_like_vision_chat_model(item)]
+        text_like_models = [item for item in candidates if not looks_like_vision_chat_model(item)]
         if text_like_models:
             return text_like_models[0]
-    return models[0]
+    return candidates[0]
 
 
 def canvas_llm_model_candidates(provider, requested_model):
@@ -9153,21 +9185,45 @@ async def run_gemini_cli(prompt, model="", timeout=None, allow_tools=False, task
     if not exe:
         raise HTTPException(status_code=400, detail="未找到 Antigravity CLI。请先安装 Google Antigravity CLI，并完成 agy 登录。")
     timeout_seconds = timeout or gemini_cli_timeout()
-    args = gemini_cli_command(exe, prompt, model=model, allow_tools=allow_tools, timeout=timeout_seconds)
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_seconds
+    remaining = timeout_seconds
+    retry_delays = iter((3, 12, 45))
     try:
-        try:
-            proc = await cli_process.start(args, BASE_DIR)
-        except (FileNotFoundError, OSError) as first_error:
-            # WinGet can replace agy.exe while the desktop app stays open.
-            # Re-resolve once so a stale path cannot strand the current task.
-            refreshed_exe = gemini_cli_executable()
-            same_exe = refreshed_exe and os.path.normcase(os.path.abspath(refreshed_exe)) == os.path.normcase(os.path.abspath(exe))
-            if not refreshed_exe or same_exe:
-                raise first_error
-            exe = refreshed_exe
-            args = gemini_cli_command(exe, prompt, model=model, allow_tools=allow_tools, timeout=timeout_seconds)
-            proc = await cli_process.start(args, BASE_DIR)
-        code, stdout, stderr = await cli_process.collect(proc, timeout_seconds)
+        while remaining > 0:
+            args = gemini_cli_command(exe, prompt, model=model, allow_tools=allow_tools, timeout=math.ceil(remaining))
+            try:
+                proc = await cli_process.start(args, BASE_DIR)
+            except OSError:
+                # WinGet can replace agy.exe while the desktop app stays open.
+                refreshed_exe = gemini_cli_executable()
+                same_exe = refreshed_exe and os.path.normcase(os.path.abspath(refreshed_exe)) == os.path.normcase(os.path.abspath(exe))
+                if not refreshed_exe or same_exe:
+                    raise
+                exe = refreshed_exe
+                args = gemini_cli_command(exe, prompt, model=model, allow_tools=allow_tools, timeout=math.ceil(remaining))
+                proc = await cli_process.start(args, BASE_DIR)
+            code, stdout, stderr = await cli_process.collect(proc, deadline - loop.time())
+            out_text, err_text = codex_decode_output(stdout, stderr)
+            if code == 0:
+                break
+
+            message = err_text or out_text or f"exit={code}"
+            # The CLI exits before submitting the prompt when opening the conversation fails.
+            session_start_failed = is_antigravity_cli(exe) and re.search(
+                r"(?im)^(?:(?:error|print mode): )?failed to start conversation: "
+                r"backend returned an empty conversation id[ \t\r]*$",
+                message,
+            )
+            if not session_start_failed:
+                raise HTTPException(status_code=502, detail=gemini_cli_failure_detail(message, exe))
+            delay = next(retry_delays, None)
+            if delay is None or deadline - loop.time() <= delay:
+                raise HTTPException(status_code=502, detail="Antigravity CLI 暂时无法创建会话。请稍后重试。")
+            await asyncio.sleep(delay)
+            remaining = deadline - loop.time()
+        else:
+            raise asyncio.TimeoutError()
     except asyncio.TimeoutError as exc:
         if task_kind == "image" and is_antigravity_cli(exe):
             detail = (
@@ -9175,20 +9231,16 @@ async def run_gemini_cli(prompt, model="", timeout=None, allow_tools=False, task
                 "原生 generate_image 工具未在时限内完成；已停止任务，且不会改走其他生图平台。"
             )
         else:
-            detail = f"{gemini_cli_display_name(exe)} 执行超时（已等待 {int(timeout_seconds)} 秒）。可设置 GEMINI_CLI_TIMEOUT 增大聊天等待时间。"
+            detail = f"{gemini_cli_display_name(exe)} 执行超时（已等待 {int(timeout_seconds)} 秒）。请重试或切换文本模型。"
         raise HTTPException(status_code=504, detail=detail) from exc
-    except (FileNotFoundError, OSError) as exc:
+    except OSError as exc:
         raise HTTPException(
             status_code=400,
             detail=f"{gemini_cli_display_name(exe)} 启动失败（当前路径：{exe}）。请在 API 设置中重新检测 CLI；若未安装，请点击“安装 / 更新”后重试。",
         ) from exc
-    out_text, err_text = codex_decode_output(stdout, stderr)
     # Antigravity is invoked with ``--output-format json`` above.  Unwrap only
     # its response envelope; model-returned JSON remains intact.
     raw, text = gemini_cli_parse_stdout(out_text, unwrap_envelope=True)
-    if code != 0:
-        message = err_text or out_text or f"exit={code}"
-        raise HTTPException(status_code=502, detail=gemini_cli_failure_detail(message, exe))
     # Keep an actually empty response empty.  Returning the JSON envelope here
     # would make the chat layer mistake metadata for the model's answer.
     return {"text": text, "raw": raw, "_stdout": out_text, "_stderr": err_text}
@@ -24360,6 +24412,11 @@ def comfly_gemini_reference_data_url(ref, max_size=1536, target_ratio=""):
         return value
 
 SOONSTUDIO_IMAGE_REFERENCE_MAX = 14
+SOONSTUDIO_SEEDREAM_REFERENCE_MAX = 10
+SOONSTUDIO_SEEDREAM_V55_MIN_PIXELS = 921_600
+SOONSTUDIO_SEEDREAM_V55_MAX_PIXELS = 8_294_400
+SOONSTUDIO_SEEDREAM_V55_MIN_EDGE = 240
+SOONSTUDIO_SEEDREAM_V55_MAX_EDGE = 11_520
 
 
 def soonstudio_reference_base64(ref, max_size=1536):
@@ -24368,6 +24425,70 @@ def soonstudio_reference_base64(ref, max_size=1536):
     if isinstance(value, str) and value.startswith("data:") and "," in value:
         return value.split(",", 1)[1].strip()
     return str(value or "").strip()
+
+
+def soonstudio_reference_data_url(ref, max_size=1536):
+    """SoonStudio 的 Seedream 接口接收公网 URL 或完整 data:image/...;base64,...。"""
+    value = str(reference_to_data_url(ref, max_size=max_size) or "").strip()
+    if not value:
+        return ""
+    if value.startswith(("data:image/", "http://", "https://")):
+        return value
+    raise HTTPException(
+        status_code=400,
+        detail="无法读取本地参考图文件，请重新上传参考图后再试。",
+    )
+
+
+def soonstudio_seedream_variant(model):
+    """区分 SoonStudio 下的 Seedream 接口家族，避免把裸 base64 发给要求 Data URL 的上游。"""
+    normalized = re.sub(r"^/+", "", str(model or "").strip())
+    normalized = re.sub(r"^[^/:]+::", "", normalized).strip().lower()
+    if not normalized or "layer-decomposition" in normalized:
+        return ""
+    if re.fullmatch(r"(?:seedream-v5\.5|dola-seedream-5\.5)", normalized):
+        return "v5.5"
+    if re.fullmatch(r"(?:seedream-v5-pro|dola-seedream-5\.0-flash)", normalized) or (
+        "seedream-v5-pro" in normalized and "layer" not in normalized
+    ):
+        return "v5-pro"
+    if volcengine_images._limits(normalized) is not None:
+        return "doubao"
+    return ""
+
+
+def soonstudio_seedream_v55_resolution(requested_resolution=""):
+    requested = str(requested_resolution or "").strip().upper()
+    if requested in {"1K", "1.5K", "2K"}:
+        return requested
+    return "2K"
+
+
+def soonstudio_seedream_v55_dimensions(size):
+    width, height = parse_size_pair(size)
+    if not width or not height:
+        return None
+    limits = volcengine_images.ImageLimits(
+        SOONSTUDIO_SEEDREAM_V55_MIN_PIXELS,
+        SOONSTUDIO_SEEDREAM_V55_MAX_PIXELS,
+        SOONSTUDIO_SEEDREAM_REFERENCE_MAX,
+    )
+    width, height = volcengine_images._fit(width, height, limits)
+    if not (
+        SOONSTUDIO_SEEDREAM_V55_MIN_EDGE <= width <= SOONSTUDIO_SEEDREAM_V55_MAX_EDGE
+        and SOONSTUDIO_SEEDREAM_V55_MIN_EDGE <= height <= SOONSTUDIO_SEEDREAM_V55_MAX_EDGE
+    ):
+        return None
+    return width, height
+
+
+def soonstudio_seedream_v5_pro_resolution(model, requested_resolution=""):
+    requested = str(requested_resolution or "").strip().lower()
+    if requested in {"1k", "2k"}:
+        return requested
+    if requested == "1.5k" and re.fullmatch(r"dola-seedream-5\.0-flash", str(model or "").strip(), flags=re.IGNORECASE):
+        return "1.5k"
+    return "2k"
 
 
 def soonstudio_request_aspect_ratio(size, aspect_ratio=""):
@@ -24390,7 +24511,7 @@ def soonstudio_output_resolution(model, requested_resolution=""):
     old unbound CDN upload failure.
     """
     requested = str(requested_resolution or "").strip().upper()
-    return requested if requested in {"1K", "2K", "4K"} else ""
+    return requested if requested in {"1K", "1.5K", "2K", "4K"} else ""
 
 
 def soonstudio_fixed_output_resolution(model):
@@ -24654,6 +24775,124 @@ async def generate_ai_image(prompt, size, quality, model, reference_images=None,
                 headers=api_headers(provider=provider, model=model),
                 json=body,
             )
+        elif is_soonstudio_provider(provider) and soonstudio_seedream_variant(model):
+            # SoonStudio 的 Seedream 系列（v5.5 / v5-pro / doubao-seedream）
+            # 要求参考图为公网 URL 或完整 data:image/...;base64,... Data URI，
+            # 不能像 Nano Banana 那样剥离 data: 前缀发送裸 base64，否则上游会返回
+            # Invalid image format. Must be a valid URL, Base64 string, or asset ID (asset-xxx).
+            seedream_variant = soonstudio_seedream_variant(model)
+            soonstudio_refs = [*image_refs, *mask_refs]
+            if seedream_variant == "v5.5":
+                encoded_refs = [
+                    encoded
+                    for ref in soonstudio_refs[:SOONSTUDIO_SEEDREAM_REFERENCE_MAX]
+                    if (encoded := soonstudio_reference_data_url(ref, max_size=1536))
+                ]
+                has_refs = bool(encoded_refs)
+                bg_value = str(background or "auto").strip().lower()
+                soonstudio_bg = bg_value if bg_value in {"auto", "transparent", "opaque"} else "auto"
+                target_resolution = soonstudio_seedream_v55_resolution(requested_soonstudio_resolution)
+                body = {
+                    "model": model,
+                    "mode": "image-to-image" if has_refs else "text-to-image",
+                    "prompt": prompt,
+                    "outputFormat": "png",
+                    "watermark": "false",
+                    "background": soonstudio_bg,
+                    "optimizePromptMode": "standard",
+                    "response_format": "url",
+                }
+                if has_refs:
+                    body["images"] = encoded_refs
+                    body["resolution"] = target_resolution
+                    target_endpoint = edit_url
+                else:
+                    dims = soonstudio_seedream_v55_dimensions(size)
+                    if dims:
+                        body["width"], body["height"] = dims
+                    else:
+                        body["resolution"] = target_resolution
+                    target_endpoint = gen_url
+                soonstudio_url = f"{target_endpoint}{'&' if '?' in target_endpoint else '?'}async=true"
+                resolution_desc = body.get("resolution") or f"{body.get('width')}x{body.get('height')}"
+                print(
+                    "SoonStudio Seedream 5.5 异步生图提交："
+                    f"model={model} mode={body['mode']} "
+                    f"resolution={resolution_desc} refs={len(encoded_refs)}"
+                )
+                response = await client.post(
+                    soonstudio_url,
+                    headers=api_headers(provider=provider, model=model),
+                    json=body,
+                )
+                if response.status_code in {400, 422} and not has_refs and ("width" in body or "height" in body):
+                    err_lower = (response.text or "").lower()
+                    if "width" in err_lower or "height" in err_lower or "resolution" in err_lower:
+                        body.pop("width", None)
+                        body.pop("height", None)
+                        body["resolution"] = target_resolution
+                        print("SoonStudio Seedream 5.5 不接受自定义宽高，改用 resolution 重试")
+                        response = await client.post(
+                            soonstudio_url,
+                            headers=api_headers(provider=provider, model=model),
+                            json=body,
+                        )
+            elif seedream_variant == "v5-pro":
+                encoded_refs = [
+                    encoded
+                    for ref in soonstudio_refs[:SOONSTUDIO_SEEDREAM_REFERENCE_MAX]
+                    if (encoded := soonstudio_reference_data_url(ref, max_size=1536))
+                ]
+                body = {
+                    "model": model,
+                    "prompt": prompt,
+                    "resolution": soonstudio_seedream_v5_pro_resolution(model, requested_soonstudio_resolution),
+                    "outputFormat": "png",
+                    "response_format": "url",
+                }
+                if encoded_refs:
+                    body["images"] = encoded_refs
+                    target_endpoint = edit_url
+                else:
+                    target_endpoint = gen_url
+                soonstudio_url = f"{target_endpoint}{'&' if '?' in target_endpoint else '?'}async=true"
+                print(
+                    "SoonStudio Seedream v5-pro 异步生图提交："
+                    f"model={model} resolution={body['resolution']} refs={len(encoded_refs)}"
+                )
+                response = await client.post(
+                    soonstudio_url,
+                    headers=api_headers(provider=provider, model=model),
+                    json=body,
+                )
+            else:
+                encoded_refs = [
+                    encoded
+                    for ref in soonstudio_refs[:SOONSTUDIO_IMAGE_REFERENCE_MAX]
+                    if (encoded := soonstudio_reference_data_url(ref, max_size=1536))
+                ]
+                body = {
+                    "model": model,
+                    "prompt": prompt,
+                    "size": volcengine_images.output_size(size, model),
+                    "response_format": "url",
+                    "watermark": False,
+                    "sequential_image_generation": "disabled",
+                }
+                if len(encoded_refs) == 1:
+                    body["image"] = encoded_refs[0]
+                elif len(encoded_refs) > 1:
+                    body["image"] = encoded_refs
+                soonstudio_url = f"{gen_url}{'&' if '?' in gen_url else '?'}async=true"
+                print(
+                    "SoonStudio Doubao Seedream 异步生图提交："
+                    f"model={model} size={body['size']} refs={len(encoded_refs)}"
+                )
+                response = await client.post(
+                    soonstudio_url,
+                    headers=api_headers(provider=provider, model=model),
+                    json=body,
+                )
         elif is_soonstudio_provider(provider) and not is_gpt2:
             # SoonStudio 的生图是异步任务：POST /images/generations?async=true，
             # 用 JSON 顶层 image 数组传纯 base64 参考图，再轮询 /images/tasks/{id}。
@@ -28532,7 +28771,10 @@ from product_retouch import ProductRetouchService
 
 
 @app.get("/api/product-retouch/options")
-async def product_retouch_options():
+async def product_retouch_options(response: Response = None):
+    if response is not None:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
     # Public providers already apply the saved selection and CLI availability.
     providers = await public_api_providers((await detect_codex_image_capabilities()).get('image_models'))
     models = []
@@ -28787,14 +29029,17 @@ async def build_online_image_result(payload: OnlineImageRequest, history_source=
     record_type = history_source if history_source in {"angle", "klein", "zimage"} else "online"
     project_id = str(payload.project_id or "").strip()
     retouch_context = await prepare_product_retouch(payload) if payload.product_retouch else None
-    gpt_retouch = retouch_context is not None and is_gpt_image_2_model(model)
     retouch_ratio = retouch_context['submitted_aspect_ratio'] if retouch_context else ''
+    pixel_retouch = retouch_context is not None and not retouch_ratio
     request_aspect_ratio = retouch_ratio or payload.aspect_ratio
     if gif_output:
         requested_size = "auto"
-    elif gpt_retouch:
+    elif pixel_retouch:
         edge = {'1k': 1024, '2k': 2048, '4k': 4096}[payload.resolution]
         width, height = _local_upscale_size_for_long_edge(*retouch_context['source'].size, edge)
+        if not is_gpt_image_2_model(model):
+            width = max(16, int(round(width / 16)) * 16)
+            height = max(16, int(round(height / 16)) * 16)
         requested_size = f'{width}x{height}'
     elif retouch_ratio:
         sizes = COMFLY_GEMINI_STANDARD_SIZES.get(retouch_ratio)
@@ -28884,7 +29129,7 @@ async def build_online_image_result(payload: OnlineImageRequest, history_source=
         query_token = IMAGE_QUERY_OBSERVED.set(False)
         started = time.monotonic()
         try:
-            size_is_resolved = (gpt_retouch or retouch_ratio) if payload.product_retouch else bool(all(parse_size_pair(request_size)))
+            size_is_resolved = (pixel_retouch or bool(retouch_ratio)) if payload.product_retouch else bool(all(parse_size_pair(request_size)))
             if operation == "upscale":
                 image_data, raw_item = await generate_jimeng_upscale_image(image_refs, payload.resolution_type)
             else:
@@ -29494,7 +29739,7 @@ async def create_canvas_image_task(payload: OnlineImageRequest):
         # Fail before a paid task is created if the model, source or matte is unavailable.
         retouch_ratio = await prepare_product_retouch(payload, preflight=True)
     task_id = f"canvas_img_{uuid.uuid4().hex}"
-    if payload.resolution and payload.output_format != "gif" and not (payload.product_retouch and is_gpt_image_2_model(payload.model)):
+    if payload.resolution and payload.output_format != "gif" and not (payload.product_retouch and not retouch_ratio):
         payload = payload.model_copy(update=resolve_image_generation_params(
             payload.size, payload.resolution, payload.aspect_ratio, payload.model))
     add_canvas_task(task_id, {

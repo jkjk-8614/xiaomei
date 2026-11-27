@@ -223,15 +223,19 @@
         } else {
             const grid = make('div', 'thumb-grid smart-group-thumb-grid');
             const rows = Number(layout.rows || 1);
-            const visible = Math.max(1, Math.min(layout.compactMembers?.length ? rows : limits.rows, Number(layout.visibleRows || rows)));
+            const fallbackVisible = Math.min(layout.compactMembers?.length ? rows : limits.rows, rows);
+            const visible = Math.max(1, Number(layout.visibleRows || fallbackVisible));
             const thumbHeight = layout.thumbH || layout.thumb;
+            const maxHeight = Number.isFinite(Number(layout.gridMaxHeight)) && Number(layout.gridMaxHeight) > 0
+                ? Math.max(44, Math.round(Number(layout.gridMaxHeight)))
+                : Math.max(44, visible * Number(thumbHeight || 96) + (visible - 1) * gap);
             grid.dataset.thumbScroll = '1';
             const properties = {
                 '--thumb-cols': layout.cols,
                 '--thumb-size': layout.thumb + 'px',
                 '--thumb-w': (layout.thumbW || layout.thumb) + 'px',
                 '--thumb-h': thumbHeight + 'px',
-                '--thumb-max-height': Math.max(44, visible * Number(thumbHeight || 96) + (visible - 1) * gap) + 'px',
+                '--thumb-max-height': maxHeight + 'px',
             };
             for (const [name, value] of Object.entries(properties)) grid.style.setProperty(name, value);
             for (const ref of refs) grid.append(tile(ref, 'thumb-item', thumbnail(ref.item)));
