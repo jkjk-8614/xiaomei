@@ -30,7 +30,7 @@
         return {catalog, rows};
     }
 
-    function readSelection(session, provider, requiresOpenAi) {
+    function readSelection(session, provider, {requiresOpenAi, fixedImageProtocol}) {
         const lists = {image: [], chat: [], video: []};
         const labels = [], protocols = [];
         const previous = provider.model_protocols || {};
@@ -38,7 +38,7 @@
             if (!row.checked) continue;
             lists[row.kind].push(row.id);
             if (row.label && row.label !== row.id) labels.push([row.id, row.label]);
-            if (row.kind === 'video') continue;
+            if (row.kind === 'video' || (row.kind === 'image' && fixedImageProtocol)) continue;
             const id = row.id.toLowerCase();
             if (id.startsWith('nano-banana') || (id.startsWith('gemini-') && id.includes('image'))) {
                 protocols.push([row.id, requiresOpenAi ? 'openai' : 'gemini']);

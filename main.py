@@ -2299,6 +2299,15 @@ def runninghub_openapi_url(provider, path=""):
     base = runninghub_openapi_base_url(provider)
     return f"{base}/{path}" if path else base
 
+def is_apimart_host(base_url):
+    base_url = str(base_url or "").strip()
+    try:
+        host = (urllib.parse.urlsplit(base_url).hostname or "").rstrip(".")
+    except ValueError:
+        return False
+    return any(host == domain or host.endswith("." + domain) for domain in ("apimart.ai", "apib.ai"))
+
+
 def normalize_provider(item):
     identity = dispatch_kernel.provider_core(item)
     if "error" in identity:
@@ -2328,7 +2337,9 @@ def normalize_provider(item):
     provider_id = identity["id"]
     rule = locked_recommended_provider_rule(provider_id, name, connection["base_url"])
     models = {field: model_list_from_values(item.get(field)) for field in provider_catalog.MODEL_FIELDS}
-    if rule:
+    if is_apimart_host(connection["base_url"]):
+        connection["protocol"] = "apimart"
+    elif rule:
         connection["protocol"] = rule["protocol"]
         mode = rule["image_request_mode"]
         if "video_models" in rule:
@@ -7721,7 +7732,7 @@ def is_soonstudio_provider(provider):
     return host == "soonstudio.ai" or host.endswith(".soonstudio.ai")
 
 def effective_protocol(provider, model=""):
-    """返回某模型实际生效的协议：优先单模型覆盖，否则用平台全局协议。"""
+    """按平台约束、单模型覆盖和模型名推断解析请求协议。"""
     base = provider_protocol(provider)
     pid = str((provider or {}).get("id") or "").strip().lower()
     if pid in FIXED_PROTOCOL_PROVIDER_IDS:
@@ -7731,11 +7742,15 @@ def effective_protocol(provider, model=""):
     # {"detail":"Application \"v1beta\" not found"}。
     if is_soonstudio_provider(provider):
         return "openai"
+    if is_apimart_host((provider or {}).get("base_url")):
+        return "apimart"
     overrides = (provider or {}).get("model_protocols")
     if isinstance(overrides, dict):
         val = str(overrides.get(str(model or "").strip()) or "").strip().lower()
         if val in PER_MODEL_PROTOCOL_OPTIONS:
             return val
+    if base == "apimart":
+        return base
     # 混合聚合平台通常同时提供 OpenAI 图片模型和 Google/Nano Banana 图片模型。
     # 拉取模型后即使还没有保存单模型覆盖，也要按模型 ID 自动选择正确协议。
     model_id = str(model or "").strip().lower()
@@ -7746,8 +7761,7 @@ def effective_protocol(provider, model=""):
     return base
 
 def is_apimart_provider(provider):
-    base_url = str((provider or {}).get("base_url") or "").lower()
-    return provider_protocol(provider) == "apimart" or "apimart.ai" in base_url
+    return provider_protocol(provider) == "apimart" or is_apimart_host((provider or {}).get("base_url"))
 
 detect_image_request_mode = provider_discovery.image_mode_hint
 
@@ -23303,7 +23317,7 @@ def gpt_image_2_size_exceeds_supported(size):
     width, height = parse_size_pair(size)
     return bool(width and height and (max(width, height) > GPT_IMAGE2_MAX_EDGE or width * height > GPT_IMAGE2_MAX_PIXELS))
 
-# APIMart 图像接口只接受这 14 个比例（nano-banana 2 / 2.1 一致）。
+# 前十个比例也适用于 Nano Banana 2 Lite。
 # 提交 2:1、3:1、9:21 这类“看起来合理”的比例不会被 400 拒绝，而是在任务
 # 执行阶段失败并照常扣费，因此提交前必须就近吸附到受支持的比例。
 APIMART_ASPECT_RATIOS = [
@@ -23312,10 +23326,11 @@ APIMART_ASPECT_RATIOS = [
     (21, 9, "21:9"), (1, 4, "1:4"), (4, 1, "4:1"), (1, 8, "1:8"), (8, 1, "8:1"),
 ]
 
-def apimart_nearest_aspect(ratio):
+def apimart_nearest_aspect(ratio, *, lite=False):
     if not ratio or ratio <= 0:
         return "1:1"
-    best = min(APIMART_ASPECT_RATIOS, key=lambda item: abs(ratio - item[0] / item[1]))
+    ratios = APIMART_ASPECT_RATIOS[:10] if lite else APIMART_ASPECT_RATIOS
+    best = min(ratios, key=lambda item: abs(ratio - item[0] / item[1]))
     return best[2]
 
 def apimart_model_supports_official_fallback(model):
@@ -23325,7 +23340,7 @@ def apimart_model_supports_official_fallback(model):
     判为无效参数，因此按模型名决定是否提交。"""
     return "ext" in str(model or "").strip().lower()
 
-def apimart_size_resolution(size):
+def apimart_size_resolution(size, *, lite=False):
     width, height = parse_size_pair(size)
     if not width or not height:
         raw = str(size or "").strip().lower().replace(" ", "")
@@ -23336,7 +23351,7 @@ def apimart_size_resolution(size):
         match = re.fullmatch(r"(\d+):(\d+)", raw)
         if match:
             w, h = int(match.group(1)), int(match.group(2))
-            return apimart_nearest_aspect(w / h if h else 0), "1k"
+            return apimart_nearest_aspect(w / h if h else 0, lite=lite), "1k"
         return "1:1", "1k"
     long_edge = max(width, height)
     pixels = width * height
@@ -23346,7 +23361,7 @@ def apimart_size_resolution(size):
         resolution = "2k"
     else:
         resolution = "1k"
-    return apimart_nearest_aspect(width / height), resolution
+    return apimart_nearest_aspect(width / height, lite=lite), resolution
 
 normalize_volcengine_size = volcengine_images.output_size
 
@@ -24711,8 +24726,11 @@ async def generate_ai_image(prompt, size, quality, model, reference_images=None,
             body = gateway_images.json_proxy_payload(model, prompt, size, references)
             response = await client.post(gen_url, json=body, headers=api_headers(provider=provider, model=model))
         elif is_apimart:
-            apimart_size, resolution = apimart_size_resolution(size)
-            resolution = requested_resolution or resolution
+            lite = model.strip().lower().removesuffix("-ext") in {
+                "gemini-3.1-flash-lite-image", "nano-banana-2-lite",
+            }
+            apimart_size, resolution = apimart_size_resolution(size, lite=lite)
+            resolution = "1k" if lite else (requested_resolution or resolution)
             # APIMart 的 GPT-Image-2 图生图仍走 /images/generations，
             # 通过 image_urls 传参考图，不使用 OpenAI multipart /images/edits。
             body = {
@@ -24723,7 +24741,7 @@ async def generate_ai_image(prompt, size, quality, model, reference_images=None,
                 # 文档示例一律用大写档位（1K/2K/4K），提交时统一转大写。
                 "resolution": str(resolution or "1k").upper(),
             }
-            if apimart_model_supports_official_fallback(model):
+            if not lite and apimart_model_supports_official_fallback(model):
                 body["official_fallback"] = False
             if image_refs:
                 # nano-banana 2 上限 14 张参考图，超出会 task failed。
@@ -28382,6 +28400,8 @@ def protocol_from_payload(payload):
     if provider_id == "jimeng":
         return "jimeng"
     base_url = str(getattr(payload, "base_url", "") or "").strip().lower()
+    if is_apimart_host(base_url):
+        return "apimart"
     if "runninghub.cn" in base_url or "runninghub.ai" in base_url:
         return "runninghub"
     protocol = str(getattr(payload, "protocol", "") or "openai").strip().lower()

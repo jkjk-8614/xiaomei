@@ -380,8 +380,13 @@ function volcengineAssetKeyHintText(item){
     return `${ak} · ${sk}`;
 }
 function isApimartProviderContext(item){
-    const baseUrl = String(baseInput?.value || item?.base_url || '').trim().toLowerCase();
-    return baseUrl.includes('apimart.ai');
+    const baseUrl = String(baseInput?.value ?? item?.base_url ?? '').trim();
+    try {
+        const host = new URL(baseUrl).hostname.replace(/\.$/, '');
+        return ['apimart.ai', 'apib.ai'].some(domain => host === domain || host.endsWith('.' + domain));
+    } catch {
+        return false;
+    }
 }
 function updateApimartDomesticHint(item=provider()){
     const hasKey = Boolean(item?.has_key || (keyInput?.value || '').trim());
@@ -2516,7 +2521,10 @@ async function applyModelPicker(){
         alert('当前模型列表已过期，请重新拉取后再应用');
         return;
     }
-    const selection = ApiSettingsModels.readSelection(session, item, isSoonStudioProvider(item));
+    const selection = ApiSettingsModels.readSelection(session, item, {
+        requiresOpenAi: isSoonStudioProvider(item),
+        fixedImageProtocol: isApimartProviderContext(item),
+    });
     for(const [kind, field] of Object.entries(ApiSettingsModels.fields)) item[field] = selection.lists[kind];
     item.model_selection_managed = true;
     item.model_names = selection.model_names;
@@ -2570,7 +2578,8 @@ function renderModels(kind){
     const item = provider();
     const list = {image: imageModelList, chat: chatModelList, video: videoModelList}[kind];
     const models = item?.[ApiSettingsModels.fields[kind]] || [];
-    const showProtocol = kind !== 'video' && providerSupportsModelProtocol(item);
+    const showProtocol = kind !== 'video' && providerSupportsModelProtocol(item)
+        && (kind !== 'image' || !isApimartProviderContext(item));
     const protocols = item?.model_protocols || {};
     const entries = models.map(id => ({
         id,
@@ -2890,6 +2899,7 @@ window.onload = () => {
         updateIdPreview();
         updateApimartDomesticHint();
     });
+    if(baseInput) baseInput.addEventListener('change', () => renderModels('image'));
     if(imageRequestModeInput) imageRequestModeInput.addEventListener('change', () => {
         clearFetchedModelState();
         const item = provider();

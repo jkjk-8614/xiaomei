@@ -710,8 +710,8 @@
     },
     {
       "path": "main.py",
-      "sourceSha256": "ddf98e367c0989d0f19711c990b8c27d7314dc4ca9ad527945c261051f7908a6",
-      "releaseSha256": "ddf98e367c0989d0f19711c990b8c27d7314dc4ca9ad527945c261051f7908a6"
+      "sourceSha256": "7f4b0e0a15fb6be5703f781559f0d3d5869faa8cac57b22fbfb69013af522ed1",
+      "releaseSha256": "7f4b0e0a15fb6be5703f781559f0d3d5869faa8cac57b22fbfb69013af522ed1"
     },
     {
       "path": "mcp_settings.py",
@@ -915,8 +915,8 @@
     },
     {
       "path": "static/api-settings.html",
-      "sourceSha256": "b96adea1e53705658c528ef2e2770130e3d0d8e82a7f4da43eed91d5be27382c",
-      "releaseSha256": "b96adea1e53705658c528ef2e2770130e3d0d8e82a7f4da43eed91d5be27382c"
+      "sourceSha256": "43cda1a02d3f04c63dc9be13b1a574dc6f5d921739481c5553e171287ee27874",
+      "releaseSha256": "43cda1a02d3f04c63dc9be13b1a574dc6f5d921739481c5553e171287ee27874"
     },
     {
       "path": "static/asset-manager.html",
@@ -1330,8 +1330,8 @@
     },
     {
       "path": "static/js/api-settings-models.js",
-      "sourceSha256": "c9817096582899ba7ed326e6bc772ac82b14a1688e77798f75103671e4beec12",
-      "releaseSha256": "c9817096582899ba7ed326e6bc772ac82b14a1688e77798f75103671e4beec12"
+      "sourceSha256": "0945c3cd12c5e7acd931c2ec97278a80b23712aead6039b27c6f2cb7b9257515",
+      "releaseSha256": "0945c3cd12c5e7acd931c2ec97278a80b23712aead6039b27c6f2cb7b9257515"
     },
     {
       "path": "static/js/api-settings-navigation.js",
@@ -1340,8 +1340,8 @@
     },
     {
       "path": "static/js/api-settings.js",
-      "sourceSha256": "b54c56c67bf4fefead184b3c84f423a451ef05d0c7d6d79b4894d442382f9f8c",
-      "releaseSha256": "b54c56c67bf4fefead184b3c84f423a451ef05d0c7d6d79b4894d442382f9f8c"
+      "sourceSha256": "d4b8b30f65129eb7297849575f086d9ca397122ded187db2038590a19ddd170c",
+      "releaseSha256": "d4b8b30f65129eb7297849575f086d9ca397122ded187db2038590a19ddd170c"
     },
     {
       "path": "static/js/asset-manager-annotations.js",
@@ -2326,7 +2326,7 @@
     {
       "path": "static/update-notes.json",
       "sourceSha256": "1a1a3bf638204126f3ebd0e4fc4a862e5b65349e83f5c2547911a5da24ec4f14",
-      "releaseSha256": "654f84bfc12d3b3cfea0ce220638a22ee192064191876b59a7df926e03fcfc5e"
+      "releaseSha256": "e11da280e758c94a02345a1117553bf1c6d68c03e4666231712495254d2700c5"
     },
     {
       "path": "static/vendor/css/fonts.css",
